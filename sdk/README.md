@@ -349,6 +349,40 @@ import type {
 - Holochain conductor running with mycelix-health hApp installed
 - `@holochain/client` ^0.18.0
 
+## Development
+
+```bash
+# Install dependencies
+npm install
+
+# Run tests
+npm test
+
+# Build
+npm run build
+
+# Type check
+npm run typecheck
+```
+
+## Publishing
+
+The SDK is published to npm automatically when a GitHub release is created, or can be triggered manually.
+
+To publish manually:
+
+```bash
+# Ensure you're logged into npm
+npm login
+
+# Build and test
+npm run build
+npm test
+
+# Publish (scoped package requires --access public)
+npm publish --access public
+```
+
 ## License
 
 MIT
