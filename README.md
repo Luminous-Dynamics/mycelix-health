@@ -1,5 +1,9 @@
 # Mycelix-Health 🏥
 
+[![CI](https://github.com/Luminous-Dynamics/mycelix-health/actions/workflows/ci.yml/badge.svg)](https://github.com/Luminous-Dynamics/mycelix-health/actions/workflows/ci.yml)
+[![License](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![SDK](https://img.shields.io/badge/SDK-TypeScript-3178C6)](sdk/)
+
 **Decentralized Healthcare Infrastructure for Patient-Controlled Medical Records**
 
 Mycelix-Health is a Holochain-based healthcare application that puts patients in control of their medical data while enabling seamless, privacy-preserving sharing with healthcare providers, researchers, and insurers.
@@ -113,6 +117,53 @@ hc sandbox generate --num-sandboxes 2
 hc sandbox run 0
 ```
 
+## TypeScript SDK
+
+The `@mycelix/health-sdk` provides type-safe TypeScript bindings for building frontend applications.
+
+### Installation
+
+```bash
+npm install @mycelix/health-sdk
+# or
+yarn add @mycelix/health-sdk
+```
+
+### Quick Example
+
+```typescript
+import { PatientClient, PrivacyBudgetManager, HealthSdkError } from '@mycelix/health-sdk';
+
+// Create a patient
+const patient = await client.patient.createPatient({
+  name: 'Jane Doe',
+  date_of_birth: new Date('1985-03-15'),
+  gender: 'female',
+  blood_type: 'A+',
+});
+
+// Manage differential privacy budgets
+const budgetManager = new PrivacyBudgetManager({
+  total_epsilon: 10.0,
+  consumed_epsilon: 0.0,
+  query_count: 0,
+});
+
+// Check if query is safe
+if (budgetManager.canQuery(1.0)) {
+  const stats = await client.commons.queryPoolStats(poolHash, 'mean', 1.0);
+}
+```
+
+### Key Features
+
+- **Full Type Safety**: Complete TypeScript definitions for all zome calls
+- **Privacy Budget Management**: Client-side differential privacy helpers
+- **Error Handling**: Custom `HealthSdkError` with typed error codes
+- **Holochain Integration**: Works with `@holochain/client`
+
+See [`sdk/README.md`](sdk/README.md) for complete documentation.
+
 ## Zome Overview
 
 ### Patient Zome
@@ -206,6 +257,21 @@ Mycelix ecosystem integration:
 - Epistemic claim federation
 - Reputation aggregation
 - Trust score integration
+
+### Commons Zome 🔒
+Privacy-preserving health data commons with **formal Differential Privacy**:
+- **Data Pools**: Create themed data pools (research, public health, etc.)
+- **Patient Contributions**: Contribute health metrics with mathematically guaranteed privacy
+- **DP Queries**: Aggregate statistics (mean, count, sum) with Laplace/Gaussian noise
+- **Budget Tracking**: Per-patient epsilon budgets with automatic exhaustion protection
+- **Cryptographic RNG**: `getrandom`-based randomness for provable security
+- **Composition Theorems**: Both basic and advanced composition for tight bounds
+
+**Privacy Guarantees**:
+| Mechanism | Privacy | Use Case |
+|-----------|---------|----------|
+| Laplace | (ε, 0)-DP | Count, Sum queries |
+| Gaussian | (ε, δ)-DP | Mean queries with tighter bounds |
 
 ### AI Health Advocate Zome 🆕
 Your personal health ally:
