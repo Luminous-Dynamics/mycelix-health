@@ -1,0 +1,38 @@
+# Rust
+/target/
+**/*.rs.bk
+
+# Holochain
+*.dna
+*.happ
+.hc
+.hc_live*
+workdir/
+
+# Node.js (SDK)
+node_modules/
+dist/
+*.log
+.npm
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# Test artifacts
+coverage/
+.nyc_output/
+
+# Build
+*.wasm
