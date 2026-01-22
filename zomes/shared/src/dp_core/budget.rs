@@ -459,3 +459,138 @@ mod tests {
         assert_eq!(budget.query_count(), 0);
     }
 }
+
+/// Property-based tests using proptest
+#[cfg(test)]
+mod proptest_tests {
+    use super::*;
+    use proptest::prelude::*;
+
+    proptest! {
+        /// Budget should NEVER increase after any consumption
+        #[test]
+        fn budget_monotonicity(
+            total in 1.0..100.0f64,
+            consumptions in proptest::collection::vec(0.01..1.0f64, 1..50)
+        ) {
+            let mut budget = BudgetAccount::new(total);
+            let mut prev_remaining = budget.remaining_epsilon();
+
+            for epsilon in consumptions {
+                if budget.check_and_consume(epsilon).is_ok() {
+                    let current = budget.remaining_epsilon();
+                    prop_assert!(
+                        current <= prev_remaining,
+                        "Budget increased from {} to {} after consuming {}",
+                        prev_remaining, current, epsilon
+                    );
+                    prev_remaining = current;
+                }
+            }
+        }
+
+        /// Budget remaining should always be non-negative
+        #[test]
+        fn budget_never_negative(
+            total in 0.1..10.0f64,
+            consumptions in proptest::collection::vec(0.01..2.0f64, 1..100)
+        ) {
+            let mut budget = BudgetAccount::new(total);
+
+            for epsilon in consumptions {
+                let _ = budget.check_and_consume(epsilon);
+                prop_assert!(
+                    budget.remaining_epsilon() >= 0.0,
+                    "Budget went negative: {}",
+                    budget.remaining_epsilon()
+                );
+            }
+        }
+
+        /// Basic composition should equal sum of epsilons
+        #[test]
+        fn basic_composition_sums_correctly(
+            epsilons in proptest::collection::vec(0.01..1.0f64, 1..20)
+        ) {
+            let total = basic_composition(&epsilons);
+            let sum: f64 = epsilons.iter().sum();
+            prop_assert!(
+                (total - sum).abs() < 1e-10,
+                "Basic composition {} != sum {}",
+                total, sum
+            );
+        }
+
+        /// Advanced composition should be tighter than basic for many queries with small epsilon
+        /// Note: Advanced composition is NOT always tighter - it's only beneficial when k is large
+        /// and epsilon is small. For small k or large epsilon, basic may be tighter.
+        #[test]
+        fn advanced_tighter_for_many_small_queries(
+            epsilon in 0.01..0.15f64,  // Small epsilon
+            k in 50..200usize,          // Many queries
+            delta_prime in 1e-9..1e-5f64
+        ) {
+            let basic = epsilon * k as f64;
+            let advanced = advanced_composition_homogeneous(epsilon, k, delta_prime);
+
+            // For many queries with small epsilon, advanced should be tighter
+            prop_assert!(
+                advanced <= basic * 1.01, // Allow 1% margin for numerical precision
+                "Advanced {} > basic {} for ε={}, k={}, δ'={}",
+                advanced, basic, epsilon, k, delta_prime
+            );
+        }
+
+        /// Query count should match number of successful consumptions
+        #[test]
+        fn query_count_accurate(
+            total in 1.0..10.0f64,
+            consumptions in proptest::collection::vec(0.1..0.5f64, 1..30)
+        ) {
+            let mut budget = BudgetAccount::new(total);
+            let mut successful = 0u32;
+
+            for epsilon in consumptions {
+                if budget.check_and_consume(epsilon).is_ok() {
+                    successful += 1;
+                }
+            }
+
+            prop_assert_eq!(
+                budget.query_count(),
+                successful,
+                "Query count {} != successful consumptions {}",
+                budget.query_count(), successful
+            );
+        }
+
+        /// Serialization should preserve all state
+        #[test]
+        fn serialization_roundtrip(
+            total in 1.0..100.0f64,
+            consumptions in proptest::collection::vec(0.01..0.5f64, 0..20)
+        ) {
+            let mut budget = BudgetAccount::new(total);
+            for epsilon in consumptions {
+                let _ = budget.check_and_consume(epsilon);
+            }
+
+            let bytes = budget.to_bytes();
+            let restored = BudgetAccount::from_bytes(&bytes).unwrap();
+
+            prop_assert!(
+                (restored.total_epsilon() - budget.total_epsilon()).abs() < 1e-10,
+                "Total epsilon mismatch"
+            );
+            prop_assert!(
+                (restored.remaining_epsilon() - budget.remaining_epsilon()).abs() < 1e-10,
+                "Remaining epsilon mismatch"
+            );
+            prop_assert_eq!(
+                restored.query_count(),
+                budget.query_count(),
+                "Query count mismatch"
+            );
+        }
+    }
+}
