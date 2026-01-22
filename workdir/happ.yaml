@@ -1,0 +1,15 @@
+---
+manifest_version: "1"
+name: mycelix-health
+description: Patient-controlled health records with verifiable credentials and cross-hApp queries
+roles:
+  - name: health
+    provisioning:
+      strategy: create
+      deferred: false
+    dna:
+      bundled: "../dnas/health/workdir/health.dna"
+      modifiers:
+        network_seed: ~
+        properties: ~
+        origin_time: ~

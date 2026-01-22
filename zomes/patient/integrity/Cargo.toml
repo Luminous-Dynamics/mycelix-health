@@ -1,0 +1,19 @@
+[package]
+name = "patient_integrity"
+version = "0.1.0"
+edition = "2021"
+description = "Patient identity and demographics integrity zome"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+hdi = { workspace = true }
+holochain_serialized_bytes = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+# Force getrandom feature unification for WASM builds
+getrandom = { workspace = true }
+
+[features]
+default = []

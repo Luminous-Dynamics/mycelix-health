@@ -1,0 +1,19 @@
+[package]
+name = "mycelix-health-shared"
+version = "0.1.0"
+edition = "2021"
+description = "Shared utilities for Mycelix-Health zomes including access control, audit logging, and formal differential privacy"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+hdk = { workspace = true }
+hdi = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+getrandom = { workspace = true }
+
+# proptest disabled temporarily due to wait-timeout build issue
+# [dev-dependencies]
+# proptest = "1.4"

@@ -1,0 +1,20 @@
+[package]
+name = "trials"
+version = "0.1.0"
+edition = "2021"
+description = "Clinical trials and research study management coordinator zome"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+hdk = { workspace = true }
+holochain_serialized_bytes = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+trials_integrity = { path = "../integrity" }
+patient_integrity = { path = "../../patient/integrity" }
+consent_integrity = { path = "../../consent/integrity" }
+
+[features]
+default = []

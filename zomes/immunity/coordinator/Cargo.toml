@@ -1,0 +1,18 @@
+[package]
+name = "immunity_coordinator"
+version = "0.1.0"
+edition = "2021"
+description = "Collective Immunity Intelligence coordinator zome - privacy-preserving public health surveillance"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+hdk = { workspace = true }
+holochain_serialized_bytes = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+immunity_integrity = { path = "../integrity" }
+
+[features]
+default = []

@@ -1,0 +1,28 @@
+---
+manifest_version: "1"
+name: health
+integrity:
+  network_seed: ~
+  origin_time: 1704067200000000
+  properties: ~
+  zomes:
+    - name: records_integrity
+      bundled: "../../../target/wasm32-unknown-unknown/release/records_integrity.wasm"
+    - name: credentials_integrity
+      bundled: "../../../target/wasm32-unknown-unknown/release/credentials_integrity.wasm"
+    - name: health_bridge_integrity
+      bundled: "../../../target/wasm32-unknown-unknown/release/health_bridge_integrity.wasm"
+coordinator:
+  zomes:
+    - name: records
+      bundled: "../../../target/wasm32-unknown-unknown/release/records.wasm"
+      dependencies:
+        - name: records_integrity
+    - name: credentials
+      bundled: "../../../target/wasm32-unknown-unknown/release/credentials.wasm"
+      dependencies:
+        - name: credentials_integrity
+    - name: health_bridge
+      bundled: "../../../target/wasm32-unknown-unknown/release/health_bridge.wasm"
+      dependencies:
+        - name: health_bridge_integrity

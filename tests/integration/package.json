@@ -1,0 +1,22 @@
+{
+  "name": "mycelix-health-integration-tests",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Integration tests for Mycelix-Health hApp",
+  "scripts": {
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:patient": "vitest run patient",
+    "test:consent": "vitest run consent",
+    "test:trials": "vitest run trials",
+    "test:hipaa": "vitest run hipaa",
+    "test:byzantine": "vitest run byzantine"
+  },
+  "devDependencies": {
+    "@holochain/client": "^0.20.0",
+    "@holochain/tryorama": "^0.19.0",
+    "@types/node": "^20.0.0",
+    "typescript": "^5.3.0",
+    "vitest": "^1.0.0"
+  }
+}

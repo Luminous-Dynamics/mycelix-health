@@ -1,0 +1,18 @@
+[package]
+name = "moment_coordinator"
+version = "0.1.0"
+edition = "2021"
+description = "Universal Health Moment coordinator zome - global health context awareness"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+hdk = { workspace = true }
+holochain_serialized_bytes = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+moment_integrity = { path = "../integrity" }
+
+[features]
+default = []

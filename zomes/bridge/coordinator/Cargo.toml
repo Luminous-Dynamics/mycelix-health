@@ -1,0 +1,21 @@
+[package]
+name = "health_bridge"
+version = "0.1.0"
+edition = "2021"
+description = "Mycelix bridge for cross-hApp health data federation coordinator zome"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+hdk = { workspace = true }
+holochain_serialized_bytes = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+bridge_integrity = { path = "../integrity" }
+patient_integrity = { path = "../../patient/integrity" }
+provider_integrity = { path = "../../provider/integrity" }
+records_integrity = { path = "../../records/integrity" }
+
+[features]
+default = []

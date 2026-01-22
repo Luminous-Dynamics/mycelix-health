@@ -1,0 +1,19 @@
+[package]
+name = "insurance"
+version = "0.1.0"
+edition = "2021"
+description = "Insurance claims and coverage verification coordinator zome"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+hdk = { workspace = true }
+holochain_serialized_bytes = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+insurance_integrity = { path = "../integrity" }
+patient_integrity = { path = "../../patient/integrity" }
+
+[features]
+default = []

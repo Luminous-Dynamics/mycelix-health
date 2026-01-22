@@ -1,0 +1,73 @@
+[workspace]
+resolver = "2"
+members = [
+    "zomes/shared",
+    "zomes/patient/integrity",
+    "zomes/patient/coordinator",
+    "zomes/provider/integrity",
+    "zomes/provider/coordinator",
+    "zomes/records/integrity",
+    "zomes/records/coordinator",
+    "zomes/prescriptions/integrity",
+    "zomes/prescriptions/coordinator",
+    "zomes/consent/integrity",
+    "zomes/consent/coordinator",
+    "zomes/trials/integrity",
+    "zomes/trials/coordinator",
+    "zomes/insurance/integrity",
+    "zomes/insurance/coordinator",
+    "zomes/bridge/integrity",
+    "zomes/bridge/coordinator",
+    # Revolutionary Features
+    "zomes/advocate/integrity",
+    "zomes/advocate/coordinator",
+    "zomes/zkhealth/integrity",
+    "zomes/zkhealth/coordinator",
+    "zomes/twin/integrity",
+    "zomes/twin/coordinator",
+    "zomes/dividends/integrity",
+    "zomes/dividends/coordinator",
+    # Health as a Commons
+    "zomes/commons/integrity",
+    "zomes/commons/coordinator",
+    # Collective Immunity Intelligence
+    "zomes/immunity/integrity",
+    "zomes/immunity/coordinator",
+    # Universal Health Moment
+    "zomes/moment/integrity",
+    "zomes/moment/coordinator",
+]
+
+# Tests are separate - run with: cargo test -p mycelix-health-tests
+exclude = ["tests"]
+
+[workspace.dependencies]
+# Holochain 0.7 compatible
+hdi = "0.7"
+hdk = "0.6"
+
+# Required by hdk macros
+holochain_serialized_bytes = "0.0.56"
+
+# Serialization
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+
+# Utilities
+chrono = "0.4"
+thiserror = "1.0"
+derive_more = "0.99"
+
+# WASM compatibility - Use 0.3 with wasm_js feature + rustflags in .cargo/config.toml
+getrandom = { version = "0.3", features = ["wasm_js"] }
+
+[profile.dev]
+opt-level = "z"
+
+[profile.release]
+opt-level = "z"
+lto = true
+codegen-units = 1
+panic = "abort"
+strip = true
+debug = false
