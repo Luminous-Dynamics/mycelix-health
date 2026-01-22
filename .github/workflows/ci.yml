@@ -15,9 +15,6 @@ jobs:
   rust-tests:
     name: Rust Tests
     runs-on: ubuntu-latest
-    env:
-      # Override the default wasm target in .cargo/config.toml for native tests
-      CARGO_BUILD_TARGET: ""
     steps:
       - uses: actions/checkout@v4
 
