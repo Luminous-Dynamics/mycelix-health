@@ -15,6 +15,9 @@ jobs:
   rust-tests:
     name: Rust Tests
     runs-on: ubuntu-latest
+    env:
+      # Override the default wasm target in .cargo/config.toml for native tests
+      CARGO_BUILD_TARGET: ""
     steps:
       - uses: actions/checkout@v4
 
@@ -33,6 +36,11 @@ jobs:
           key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
           restore-keys: |
             ${{ runner.os }}-cargo-
+
+      - name: Remove default WASM target for tests
+        run: |
+          # Remove [build] section that sets default target to wasm
+          sed -i '/^\[build\]/,/^$/d' .cargo/config.toml
 
       - name: Check formatting
         continue-on-error: true  # Advisory for now - existing code needs formatting
