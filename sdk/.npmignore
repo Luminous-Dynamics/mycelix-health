@@ -1,0 +1,37 @@
+# Source files (we include dist/)
+src/
+
+# Test files
+tests/
+*.test.ts
+vitest.config.ts
+coverage/
+
+# Examples (not needed for npm package)
+examples/
+
+# Development files
+.eslintrc*
+.prettierrc*
+tsconfig.json
+
+# Git
+.git/
+.gitignore
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Node
+node_modules/
+
+# Build artifacts
+*.log
+*.tsbuildinfo

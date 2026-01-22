@@ -1,0 +1,62 @@
+{
+  "name": "@mycelix/health-sdk",
+  "version": "0.1.0",
+  "description": "TypeScript SDK for Mycelix-Health with formal differential privacy support",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "module": "dist/index.mjs",
+  "exports": {
+    ".": {
+      "import": "./dist/index.mjs",
+      "require": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    },
+    "./privacy": {
+      "import": "./dist/privacy/index.mjs",
+      "require": "./dist/privacy/index.js",
+      "types": "./dist/privacy/index.d.ts"
+    }
+  },
+  "files": [
+    "dist",
+    "src"
+  ],
+  "scripts": {
+    "build": "tsup src/index.ts --format cjs,esm --dts --clean",
+    "dev": "tsup src/index.ts --format cjs,esm --dts --watch",
+    "lint": "eslint src/",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "typecheck": "tsc --noEmit"
+  },
+  "keywords": [
+    "holochain",
+    "mycelix",
+    "health",
+    "differential-privacy",
+    "sdk"
+  ],
+  "author": "Luminous Dynamics",
+  "license": "MIT",
+  "dependencies": {
+    "@holochain/client": ">=0.17.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.19.30",
+    "eslint": "^8.56.0",
+    "tsup": "^8.0.1",
+    "typescript": "^5.3.3",
+    "vitest": "^1.6.1"
+  },
+  "peerDependencies": {
+    "@holochain/client": ">=0.17.0"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Luminous-Dynamics/mycelix-health.git",
+    "directory": "sdk"
+  }
+}
