@@ -1,5 +1,5 @@
 //! Clinical Trials and Research Study Management Integrity Zome
-//! 
+//!
 //! Defines entry types for clinical trials, participant enrollment,
 //! data collection, and adverse event reporting with FDA 21 CFR Part 11 alignment.
 

@@ -2,8 +2,8 @@
 //!
 //! Provides extern functions for the Health Data Dividends system.
 
-use hdk::prelude::*;
 use dividends_integrity::*;
+use hdk::prelude::*;
 
 // ==================== DATA CONTRIBUTIONS ====================
 
@@ -13,8 +13,9 @@ pub fn create_data_contribution(contribution: DataContribution) -> ExternResult<
     validate_data_contribution(&contribution)?;
 
     let contrib_hash = create_entry(&EntryTypes::DataContribution(contribution.clone()))?;
-    let record = get(contrib_hash.clone(), GetOptions::default())?
-        .ok_or(wasm_error!(WasmErrorInner::Guest("Could not find contribution".to_string())))?;
+    let record = get(contrib_hash.clone(), GetOptions::default())?.ok_or(wasm_error!(
+        WasmErrorInner::Guest("Could not find contribution".to_string())
+    ))?;
 
     // Link to patient
     create_link(
@@ -50,22 +51,26 @@ pub fn get_patient_contributions(patient_hash: ActionHash) -> ExternResult<Vec<R
 /// Revoke a contribution
 #[hdk_extern]
 pub fn revoke_contribution(input: RevokeContributionInput) -> ExternResult<Record> {
-    let record = get(input.contribution_hash.clone(), GetOptions::default())?
-        .ok_or(wasm_error!(WasmErrorInner::Guest("Contribution not found".to_string())))?;
+    let record = get(input.contribution_hash.clone(), GetOptions::default())?.ok_or(
+        wasm_error!(WasmErrorInner::Guest("Contribution not found".to_string())),
+    )?;
 
     let mut contribution: DataContribution = record
         .entry()
         .to_app_option()
         .map_err(|e| wasm_error!(WasmErrorInner::Guest(e.to_string())))?
-        .ok_or(wasm_error!(WasmErrorInner::Guest("Invalid contribution".to_string())))?;
+        .ok_or(wasm_error!(WasmErrorInner::Guest(
+            "Invalid contribution".to_string()
+        )))?;
 
     contribution.revoked = true;
     contribution.revoked_at = Some(sys_time()?.as_micros() as i64);
 
     let updated_hash = update_entry(input.contribution_hash, &contribution)?;
 
-    get(updated_hash, GetOptions::default())?
-        .ok_or(wasm_error!(WasmErrorInner::Guest("Could not find updated contribution".to_string())))
+    get(updated_hash, GetOptions::default())?.ok_or(wasm_error!(WasmErrorInner::Guest(
+        "Could not find updated contribution".to_string()
+    )))
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -81,7 +86,12 @@ pub fn get_active_contributions(patient_hash: ActionHash) -> ExternResult<Vec<Re
     let active: Vec<Record> = all
         .into_iter()
         .filter(|record| {
-            if let Some(contrib) = record.entry().to_app_option::<DataContribution>().ok().flatten() {
+            if let Some(contrib) = record
+                .entry()
+                .to_app_option::<DataContribution>()
+                .ok()
+                .flatten()
+            {
                 !contrib.revoked
             } else {
                 false
@@ -98,8 +108,9 @@ pub fn get_active_contributions(patient_hash: ActionHash) -> ExternResult<Vec<Re
 #[hdk_extern]
 pub fn record_data_usage(usage: DataUsage) -> ExternResult<Record> {
     let usage_hash = create_entry(&EntryTypes::DataUsage(usage.clone()))?;
-    let record = get(usage_hash.clone(), GetOptions::default())?
-        .ok_or(wasm_error!(WasmErrorInner::Guest("Could not find usage".to_string())))?;
+    let record = get(usage_hash.clone(), GetOptions::default())?.ok_or(wasm_error!(
+        WasmErrorInner::Guest("Could not find usage".to_string())
+    ))?;
 
     // Link to contribution
     create_link(
@@ -162,8 +173,9 @@ pub fn create_revenue_event(event: RevenueEvent) -> ExternResult<Record> {
     validate_revenue_event(&event)?;
 
     let event_hash = create_entry(&EntryTypes::RevenueEvent(event.clone()))?;
-    let record = get(event_hash.clone(), GetOptions::default())?
-        .ok_or(wasm_error!(WasmErrorInner::Guest("Could not find event".to_string())))?;
+    let record = get(event_hash.clone(), GetOptions::default())?.ok_or(wasm_error!(
+        WasmErrorInner::Guest("Could not find event".to_string())
+    ))?;
 
     // Link to project
     create_link(
@@ -204,8 +216,9 @@ pub fn create_dividend_distribution(distribution: DividendDistribution) -> Exter
     validate_dividend_distribution(&distribution)?;
 
     let dist_hash = create_entry(&EntryTypes::DividendDistribution(distribution.clone()))?;
-    let record = get(dist_hash.clone(), GetOptions::default())?
-        .ok_or(wasm_error!(WasmErrorInner::Guest("Could not find distribution".to_string())))?;
+    let record = get(dist_hash.clone(), GetOptions::default())?.ok_or(wasm_error!(
+        WasmErrorInner::Guest("Could not find distribution".to_string())
+    ))?;
 
     // Link to patient
     create_link(
@@ -254,7 +267,12 @@ pub fn get_unclaimed_dividends(patient_hash: ActionHash) -> ExternResult<Vec<Rec
     let unclaimed: Vec<Record> = all_dividends
         .into_iter()
         .filter(|record| {
-            if let Some(dist) = record.entry().to_app_option::<DividendDistribution>().ok().flatten() {
+            if let Some(dist) = record
+                .entry()
+                .to_app_option::<DividendDistribution>()
+                .ok()
+                .flatten()
+            {
                 matches!(dist.status, DistributionStatus::Distributed) && dist.claimed_at.is_none()
             } else {
                 false
@@ -268,22 +286,26 @@ pub fn get_unclaimed_dividends(patient_hash: ActionHash) -> ExternResult<Vec<Rec
 /// Claim a dividend
 #[hdk_extern]
 pub fn claim_dividend(input: ClaimDividendInput) -> ExternResult<Record> {
-    let record = get(input.distribution_hash.clone(), GetOptions::default())?
-        .ok_or(wasm_error!(WasmErrorInner::Guest("Distribution not found".to_string())))?;
+    let record = get(input.distribution_hash.clone(), GetOptions::default())?.ok_or(
+        wasm_error!(WasmErrorInner::Guest("Distribution not found".to_string())),
+    )?;
 
     let mut distribution: DividendDistribution = record
         .entry()
         .to_app_option()
         .map_err(|e| wasm_error!(WasmErrorInner::Guest(e.to_string())))?
-        .ok_or(wasm_error!(WasmErrorInner::Guest("Invalid distribution".to_string())))?;
+        .ok_or(wasm_error!(WasmErrorInner::Guest(
+            "Invalid distribution".to_string()
+        )))?;
 
     distribution.status = DistributionStatus::Claimed;
     distribution.claimed_at = Some(sys_time()?.as_micros() as i64);
 
     let updated_hash = update_entry(input.distribution_hash, &distribution)?;
 
-    get(updated_hash, GetOptions::default())?
-        .ok_or(wasm_error!(WasmErrorInner::Guest("Could not find updated distribution".to_string())))
+    get(updated_hash, GetOptions::default())?.ok_or(wasm_error!(WasmErrorInner::Guest(
+        "Could not find updated distribution".to_string()
+    )))
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -302,7 +324,12 @@ pub fn get_dividend_summary(patient_hash: ActionHash) -> ExternResult<DividendSu
     let mut pending: f64 = 0.0;
 
     for record in &dividends {
-        if let Some(dist) = record.entry().to_app_option::<DividendDistribution>().ok().flatten() {
+        if let Some(dist) = record
+            .entry()
+            .to_app_option::<DividendDistribution>()
+            .ok()
+            .flatten()
+        {
             let amount = dist.amount.value;
             total_earned += amount;
 
@@ -341,8 +368,9 @@ pub fn set_dividend_preferences(prefs: DividendPreferences) -> ExternResult<Reco
     validate_dividend_preferences(&prefs)?;
 
     let prefs_hash = create_entry(&EntryTypes::DividendPreferences(prefs.clone()))?;
-    let record = get(prefs_hash.clone(), GetOptions::default())?
-        .ok_or(wasm_error!(WasmErrorInner::Guest("Could not find preferences".to_string())))?;
+    let record = get(prefs_hash.clone(), GetOptions::default())?.ok_or(wasm_error!(
+        WasmErrorInner::Guest("Could not find preferences".to_string())
+    ))?;
 
     // Link to patient
     create_link(
@@ -380,17 +408,13 @@ pub fn create_research_project(project: ResearchProject) -> ExternResult<Record>
     validate_research_project(&project)?;
 
     let project_hash = create_entry(&EntryTypes::ResearchProject(project.clone()))?;
-    let record = get(project_hash.clone(), GetOptions::default())?
-        .ok_or(wasm_error!(WasmErrorInner::Guest("Could not find project".to_string())))?;
+    let record = get(project_hash.clone(), GetOptions::default())?.ok_or(wasm_error!(
+        WasmErrorInner::Guest("Could not find project".to_string())
+    ))?;
 
     // Link to active projects
     let anchor = anchor_hash("active_projects")?;
-    create_link(
-        anchor,
-        project_hash,
-        LinkTypes::ActiveProjects,
-        (),
-    )?;
+    create_link(anchor, project_hash, LinkTypes::ActiveProjects, ())?;
 
     Ok(record)
 }
@@ -408,8 +432,16 @@ pub fn get_active_projects(_: ()) -> ExternResult<Vec<Record>> {
     for link in links {
         if let Some(hash) = link.target.into_action_hash() {
             if let Some(record) = get(hash, GetOptions::default())? {
-                if let Some(proj) = record.entry().to_app_option::<ResearchProject>().ok().flatten() {
-                    if !matches!(proj.status, ProjectStatus::Completed | ProjectStatus::Terminated) {
+                if let Some(proj) = record
+                    .entry()
+                    .to_app_option::<ResearchProject>()
+                    .ok()
+                    .flatten()
+                {
+                    if !matches!(
+                        proj.status,
+                        ProjectStatus::Completed | ProjectStatus::Terminated
+                    ) {
                         projects.push(record);
                     }
                 }
@@ -462,26 +494,33 @@ pub fn get_project_contributions(project_hash: ActionHash) -> ExternResult<Vec<R
 /// Update project status
 #[hdk_extern]
 pub fn update_project_status(input: UpdateProjectStatusInput) -> ExternResult<Record> {
-    let record = get(input.project_hash.clone(), GetOptions::default())?
-        .ok_or(wasm_error!(WasmErrorInner::Guest("Project not found".to_string())))?;
+    let record = get(input.project_hash.clone(), GetOptions::default())?.ok_or(wasm_error!(
+        WasmErrorInner::Guest("Project not found".to_string())
+    ))?;
 
     let mut project: ResearchProject = record
         .entry()
         .to_app_option()
         .map_err(|e| wasm_error!(WasmErrorInner::Guest(e.to_string())))?
-        .ok_or(wasm_error!(WasmErrorInner::Guest("Invalid project".to_string())))?;
+        .ok_or(wasm_error!(WasmErrorInner::Guest(
+            "Invalid project".to_string()
+        )))?;
 
     project.status = input.new_status;
 
     // Check project.status since input.new_status was moved
-    if matches!(project.status, ProjectStatus::Completed | ProjectStatus::Terminated) {
+    if matches!(
+        project.status,
+        ProjectStatus::Completed | ProjectStatus::Terminated
+    ) {
         project.actual_end_date = Some(sys_time()?.as_micros() as i64);
     }
 
     let updated_hash = update_entry(input.project_hash, &project)?;
 
-    get(updated_hash, GetOptions::default())?
-        .ok_or(wasm_error!(WasmErrorInner::Guest("Could not find updated project".to_string())))
+    get(updated_hash, GetOptions::default())?.ok_or(wasm_error!(WasmErrorInner::Guest(
+        "Could not find updated project".to_string()
+    )))
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -496,17 +535,13 @@ pub struct UpdateProjectStatusInput {
 #[hdk_extern]
 pub fn create_attribution_chain(chain: AttributionChain) -> ExternResult<Record> {
     let chain_hash = create_entry(&EntryTypes::AttributionChain(chain.clone()))?;
-    let record = get(chain_hash.clone(), GetOptions::default())?
-        .ok_or(wasm_error!(WasmErrorInner::Guest("Could not find chain".to_string())))?;
+    let record = get(chain_hash.clone(), GetOptions::default())?.ok_or(wasm_error!(
+        WasmErrorInner::Guest("Could not find chain".to_string())
+    ))?;
 
     // Link to chains anchor
     let anchor = anchor_hash("attribution_chains")?;
-    create_link(
-        anchor,
-        chain_hash,
-        LinkTypes::AttributionChains,
-        (),
-    )?;
+    create_link(anchor, chain_hash, LinkTypes::AttributionChains, ())?;
 
     Ok(record)
 }
@@ -514,14 +549,17 @@ pub fn create_attribution_chain(chain: AttributionChain) -> ExternResult<Record>
 /// Add link to attribution chain
 #[hdk_extern]
 pub fn add_attribution_link(input: AddAttributionLinkInput) -> ExternResult<Record> {
-    let record = get(input.chain_hash.clone(), GetOptions::default())?
-        .ok_or(wasm_error!(WasmErrorInner::Guest("Chain not found".to_string())))?;
+    let record = get(input.chain_hash.clone(), GetOptions::default())?.ok_or(wasm_error!(
+        WasmErrorInner::Guest("Chain not found".to_string())
+    ))?;
 
     let mut chain: AttributionChain = record
         .entry()
         .to_app_option()
         .map_err(|e| wasm_error!(WasmErrorInner::Guest(e.to_string())))?
-        .ok_or(wasm_error!(WasmErrorInner::Guest("Invalid chain".to_string())))?;
+        .ok_or(wasm_error!(WasmErrorInner::Guest(
+            "Invalid chain".to_string()
+        )))?;
 
     let next_step = chain.chain.len() as u32 + 1;
     chain.chain.push(AttributionLink {
@@ -536,8 +574,9 @@ pub fn add_attribution_link(input: AddAttributionLinkInput) -> ExternResult<Reco
 
     let updated_hash = update_entry(input.chain_hash, &chain)?;
 
-    get(updated_hash, GetOptions::default())?
-        .ok_or(wasm_error!(WasmErrorInner::Guest("Could not find updated chain".to_string())))
+    get(updated_hash, GetOptions::default())?.ok_or(wasm_error!(WasmErrorInner::Guest(
+        "Could not find updated chain".to_string()
+    )))
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -552,22 +591,26 @@ pub struct AddAttributionLinkInput {
 /// Set chain outcome
 #[hdk_extern]
 pub fn set_chain_outcome(input: SetChainOutcomeInput) -> ExternResult<Record> {
-    let record = get(input.chain_hash.clone(), GetOptions::default())?
-        .ok_or(wasm_error!(WasmErrorInner::Guest("Chain not found".to_string())))?;
+    let record = get(input.chain_hash.clone(), GetOptions::default())?.ok_or(wasm_error!(
+        WasmErrorInner::Guest("Chain not found".to_string())
+    ))?;
 
     let mut chain: AttributionChain = record
         .entry()
         .to_app_option()
         .map_err(|e| wasm_error!(WasmErrorInner::Guest(e.to_string())))?
-        .ok_or(wasm_error!(WasmErrorInner::Guest("Invalid chain".to_string())))?;
+        .ok_or(wasm_error!(WasmErrorInner::Guest(
+            "Invalid chain".to_string()
+        )))?;
 
     chain.final_outcome = Some(input.outcome);
     chain.updated_at = sys_time()?.as_micros() as i64;
 
     let updated_hash = update_entry(input.chain_hash, &chain)?;
 
-    get(updated_hash, GetOptions::default())?
-        .ok_or(wasm_error!(WasmErrorInner::Guest("Could not find updated chain".to_string())))
+    get(updated_hash, GetOptions::default())?.ok_or(wasm_error!(WasmErrorInner::Guest(
+        "Could not find updated chain".to_string()
+    )))
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -582,17 +625,13 @@ pub struct SetChainOutcomeInput {
 #[hdk_extern]
 pub fn create_dividend_pool(pool: DividendPool) -> ExternResult<Record> {
     let pool_hash = create_entry(&EntryTypes::DividendPool(pool.clone()))?;
-    let record = get(pool_hash.clone(), GetOptions::default())?
-        .ok_or(wasm_error!(WasmErrorInner::Guest("Could not find pool".to_string())))?;
+    let record = get(pool_hash.clone(), GetOptions::default())?.ok_or(wasm_error!(
+        WasmErrorInner::Guest("Could not find pool".to_string())
+    ))?;
 
     // Link to pools anchor
     let anchor = anchor_hash("dividend_pools")?;
-    create_link(
-        anchor,
-        pool_hash,
-        LinkTypes::DividendPools,
-        (),
-    )?;
+    create_link(anchor, pool_hash, LinkTypes::DividendPools, ())?;
 
     Ok(record)
 }
@@ -621,14 +660,17 @@ pub fn get_dividend_pools(_: ()) -> ExternResult<Vec<Record>> {
 /// Update pool balance
 #[hdk_extern]
 pub fn update_pool_balance(input: UpdatePoolBalanceInput) -> ExternResult<Record> {
-    let record = get(input.pool_hash.clone(), GetOptions::default())?
-        .ok_or(wasm_error!(WasmErrorInner::Guest("Pool not found".to_string())))?;
+    let record = get(input.pool_hash.clone(), GetOptions::default())?.ok_or(wasm_error!(
+        WasmErrorInner::Guest("Pool not found".to_string())
+    ))?;
 
     let mut pool: DividendPool = record
         .entry()
         .to_app_option()
         .map_err(|e| wasm_error!(WasmErrorInner::Guest(e.to_string())))?
-        .ok_or(wasm_error!(WasmErrorInner::Guest("Invalid pool".to_string())))?;
+        .ok_or(wasm_error!(WasmErrorInner::Guest(
+            "Invalid pool".to_string()
+        )))?;
 
     pool.balance = input.new_balance;
 
@@ -639,8 +681,9 @@ pub fn update_pool_balance(input: UpdatePoolBalanceInput) -> ExternResult<Record
 
     let updated_hash = update_entry(input.pool_hash, &pool)?;
 
-    get(updated_hash, GetOptions::default())?
-        .ok_or(wasm_error!(WasmErrorInner::Guest("Could not find updated pool".to_string())))
+    get(updated_hash, GetOptions::default())?.ok_or(wasm_error!(WasmErrorInner::Guest(
+        "Could not find updated pool".to_string()
+    )))
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -655,15 +698,20 @@ pub struct UpdatePoolBalanceInput {
 
 /// Calculate dividends for a revenue event
 #[hdk_extern]
-pub fn calculate_distributions(input: CalculateDistributionsInput) -> ExternResult<Vec<CalculatedDistribution>> {
-    let event_record = get(input.revenue_hash.clone(), GetOptions::default())?
-        .ok_or(wasm_error!(WasmErrorInner::Guest("Revenue event not found".to_string())))?;
+pub fn calculate_distributions(
+    input: CalculateDistributionsInput,
+) -> ExternResult<Vec<CalculatedDistribution>> {
+    let event_record = get(input.revenue_hash.clone(), GetOptions::default())?.ok_or(
+        wasm_error!(WasmErrorInner::Guest("Revenue event not found".to_string())),
+    )?;
 
     let event: RevenueEvent = event_record
         .entry()
         .to_app_option()
         .map_err(|e| wasm_error!(WasmErrorInner::Guest(e.to_string())))?
-        .ok_or(wasm_error!(WasmErrorInner::Guest("Invalid revenue event".to_string())))?;
+        .ok_or(wasm_error!(WasmErrorInner::Guest(
+            "Invalid revenue event".to_string()
+        )))?;
 
     let patient_pool = event.total_value * (event.patient_pool_percent as f64 / 100.0);
 
@@ -673,11 +721,20 @@ pub fn calculate_distributions(input: CalculateDistributionsInput) -> ExternResu
 
     for contrib_hash in &event.contributing_data {
         if let Some(record) = get(contrib_hash.clone(), GetOptions::default())? {
-            if let Some(contrib) = record.entry().to_app_option::<DataContribution>().ok().flatten() {
+            if let Some(contrib) = record
+                .entry()
+                .to_app_option::<DataContribution>()
+                .ok()
+                .flatten()
+            {
                 if !contrib.revoked {
                     let weighted_score = calculate_contribution_weight(&contrib);
                     total_weighted_score += weighted_score;
-                    contrib_scores.push((contrib_hash.clone(), contrib.patient_hash, weighted_score));
+                    contrib_scores.push((
+                        contrib_hash.clone(),
+                        contrib.patient_hash,
+                        weighted_score,
+                    ));
                 }
             }
         }
@@ -709,7 +766,9 @@ pub fn calculate_distributions(input: CalculateDistributionsInput) -> ExternResu
 /// Calculate contribution weight (used for distribution)
 fn calculate_contribution_weight(contribution: &DataContribution) -> f64 {
     let base_score = contribution.quality_score as f64;
-    let size_factor = (contribution.contribution_size.data_point_count as f64).log10().max(1.0);
+    let size_factor = (contribution.contribution_size.data_point_count as f64)
+        .log10()
+        .max(1.0);
     let time_factor = (contribution.contribution_size.time_span_days as f64 / 365.0).min(2.0);
 
     base_score * size_factor * time_factor
@@ -740,7 +799,12 @@ pub fn get_patient_impact_summary(patient_hash: ActionHash) -> ExternResult<Pati
     let mut total_earnings: f64 = 0.0;
 
     for record in &contributions {
-        if let Some(contrib) = record.entry().to_app_option::<DataContribution>().ok().flatten() {
+        if let Some(contrib) = record
+            .entry()
+            .to_app_option::<DataContribution>()
+            .ok()
+            .flatten()
+        {
             total_data_points += contrib.contribution_size.data_point_count;
         }
     }
@@ -757,7 +821,12 @@ pub fn get_patient_impact_summary(patient_hash: ActionHash) -> ExternResult<Pati
     let projects_contributed = unique_projects.len() as u32;
 
     for record in &dividends {
-        if let Some(dist) = record.entry().to_app_option::<DividendDistribution>().ok().flatten() {
+        if let Some(dist) = record
+            .entry()
+            .to_app_option::<DividendDistribution>()
+            .ok()
+            .flatten()
+        {
             total_earnings += dist.amount.value;
         }
     }
@@ -807,19 +876,22 @@ pub struct TrialDataContributionInput {
 #[hdk_extern]
 pub fn create_trial_contribution(input: TrialDataContributionInput) -> ExternResult<Record> {
     // Convert string data categories to enum
-    let data_categories: Vec<DataContributionCategory> = input.data_categories
+    let data_categories: Vec<DataContributionCategory> = input
+        .data_categories
         .iter()
         .map(|cat| string_to_contribution_category(cat))
         .collect();
 
     // Convert permitted uses
-    let permitted_uses: Vec<PermittedUse> = input.permitted_uses
+    let permitted_uses: Vec<PermittedUse> = input
+        .permitted_uses
         .iter()
         .filter_map(|use_str| string_to_permitted_use(use_str))
         .collect();
 
     // Convert prohibited uses
-    let prohibited_uses: Vec<ProhibitedUse> = input.prohibited_uses
+    let prohibited_uses: Vec<ProhibitedUse> = input
+        .prohibited_uses
         .iter()
         .filter_map(|use_str| string_to_prohibited_use(use_str))
         .collect();
@@ -828,9 +900,7 @@ pub fn create_trial_contribution(input: TrialDataContributionInput) -> ExternRes
     let mut data_hash = [0u8; 32];
     let hash_input = format!(
         "TRIAL:{}:{}:{}",
-        input.trial_nct,
-        input.patient_hash,
-        input.contributed_at
+        input.trial_nct, input.patient_hash, input.contributed_at
     );
     for (i, byte) in hash_input.bytes().take(32).enumerate() {
         data_hash[i] = byte;
@@ -843,8 +913,8 @@ pub fn create_trial_contribution(input: TrialDataContributionInput) -> ExternRes
         data_categories,
         data_hash,
         contribution_size: ContributionSize {
-            record_count: 1, // Initial enrollment
-            time_span_days: 0, // Will grow as trial progresses
+            record_count: 1,     // Initial enrollment
+            time_span_days: 0,   // Will grow as trial progresses
             data_point_count: 0, // Will grow with visits
             size_bytes: None,
         },
@@ -860,8 +930,9 @@ pub fn create_trial_contribution(input: TrialDataContributionInput) -> ExternRes
 
     // Create the contribution entry
     let contrib_hash = create_entry(&EntryTypes::DataContribution(contribution.clone()))?;
-    let record = get(contrib_hash.clone(), GetOptions::default())?
-        .ok_or(wasm_error!(WasmErrorInner::Guest("Could not find contribution".to_string())))?;
+    let record = get(contrib_hash.clone(), GetOptions::default())?.ok_or(wasm_error!(
+        WasmErrorInner::Guest("Could not find contribution".to_string())
+    ))?;
 
     // Link to patient
     create_link(
@@ -902,18 +973,21 @@ pub fn track_trial_data_usage(input: TrialVisitDataUsageInput) -> ExternResult<R
     let patient_contributions = get_patient_contributions(input.patient_hash.clone())?;
 
     // Find contribution linked to this trial
-    let contribution_hash = patient_contributions.iter()
-        .find_map(|record| {
-            // Check if this contribution is linked to the trial
-            let links = get_links(
-                LinkQuery::try_new(input.trial_hash.clone(), LinkTypes::ProjectToContributions).ok()?,
-                GetStrategy::default(),
-            ).ok()?;
+    let contribution_hash = patient_contributions.iter().find_map(|record| {
+        // Check if this contribution is linked to the trial
+        let links = get_links(
+            LinkQuery::try_new(input.trial_hash.clone(), LinkTypes::ProjectToContributions).ok()?,
+            GetStrategy::default(),
+        )
+        .ok()?;
 
-            links.iter()
-                .find(|link| link.target.clone().into_action_hash() == Some(record.action_address().clone()))
-                .map(|_| record.action_address().clone())
-        });
+        links
+            .iter()
+            .find(|link| {
+                link.target.clone().into_action_hash() == Some(record.action_address().clone())
+            })
+            .map(|_| record.action_address().clone())
+    });
 
     let contribution_hash = match contribution_hash {
         Some(hash) => hash,
@@ -927,7 +1001,12 @@ pub fn track_trial_data_usage(input: TrialVisitDataUsageInput) -> ExternResult<R
 
     // Update the contribution size
     if let Some(record) = get(contribution_hash.clone(), GetOptions::default())? {
-        if let Some(mut contribution) = record.entry().to_app_option::<DataContribution>().ok().flatten() {
+        if let Some(mut contribution) = record
+            .entry()
+            .to_app_option::<DataContribution>()
+            .ok()
+            .flatten()
+        {
             contribution.contribution_size.record_count += 1;
             contribution.contribution_size.data_point_count += input.data_points_count;
             update_entry(contribution_hash.clone(), &contribution)?;
@@ -958,8 +1037,9 @@ pub fn track_trial_data_usage(input: TrialVisitDataUsageInput) -> ExternResult<R
     };
 
     let usage_hash = create_entry(&EntryTypes::DataUsage(usage.clone()))?;
-    let record = get(usage_hash.clone(), GetOptions::default())?
-        .ok_or(wasm_error!(WasmErrorInner::Guest("Could not find usage".to_string())))?;
+    let record = get(usage_hash.clone(), GetOptions::default())?.ok_or(wasm_error!(
+        WasmErrorInner::Guest("Could not find usage".to_string())
+    ))?;
 
     // Link to contribution
     create_link(
@@ -970,12 +1050,7 @@ pub fn track_trial_data_usage(input: TrialVisitDataUsageInput) -> ExternResult<R
     )?;
 
     // Link to project (trial)
-    create_link(
-        input.trial_hash,
-        usage_hash,
-        LinkTypes::ProjectToUsages,
-        (),
-    )?;
+    create_link(input.trial_hash, usage_hash, LinkTypes::ProjectToUsages, ())?;
 
     Ok(record)
 }

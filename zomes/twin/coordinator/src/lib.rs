@@ -13,8 +13,9 @@ pub fn create_health_twin(twin: HealthTwin) -> ExternResult<Record> {
     validate_health_twin(&twin)?;
 
     let twin_hash = create_entry(&EntryTypes::HealthTwin(twin.clone()))?;
-    let record = get(twin_hash.clone(), GetOptions::default())?
-        .ok_or(wasm_error!(WasmErrorInner::Guest("Could not find twin".to_string())))?;
+    let record = get(twin_hash.clone(), GetOptions::default())?.ok_or(wasm_error!(
+        WasmErrorInner::Guest("Could not find twin".to_string())
+    ))?;
 
     // Link to patient
     create_link(
@@ -26,12 +27,7 @@ pub fn create_health_twin(twin: HealthTwin) -> ExternResult<Record> {
 
     // Link to active twins
     let anchor = anchor_hash("active_twins")?;
-    create_link(
-        anchor,
-        twin_hash,
-        LinkTypes::ActiveTwins,
-        (),
-    )?;
+    create_link(anchor, twin_hash, LinkTypes::ActiveTwins, ())?;
 
     Ok(record)
 }
@@ -57,22 +53,26 @@ pub fn get_patient_twin(patient_hash: ActionHash) -> ExternResult<Option<Record>
 /// Update twin's physiological state
 #[hdk_extern]
 pub fn update_twin_state(input: UpdateTwinStateInput) -> ExternResult<Record> {
-    let record = get(input.twin_hash.clone(), GetOptions::default())?
-        .ok_or(wasm_error!(WasmErrorInner::Guest("Twin not found".to_string())))?;
+    let record = get(input.twin_hash.clone(), GetOptions::default())?.ok_or(wasm_error!(
+        WasmErrorInner::Guest("Twin not found".to_string())
+    ))?;
 
     let mut twin: HealthTwin = record
         .entry()
         .to_app_option()
         .map_err(|e| wasm_error!(WasmErrorInner::Guest(e.to_string())))?
-        .ok_or(wasm_error!(WasmErrorInner::Guest("Invalid twin".to_string())))?;
+        .ok_or(wasm_error!(WasmErrorInner::Guest(
+            "Invalid twin".to_string()
+        )))?;
 
     twin.physiological_state = input.new_state;
     twin.last_updated = sys_time()?.as_micros() as i64;
 
     let updated_hash = update_entry(input.twin_hash, &twin)?;
 
-    get(updated_hash, GetOptions::default())?
-        .ok_or(wasm_error!(WasmErrorInner::Guest("Could not find updated twin".to_string())))
+    get(updated_hash, GetOptions::default())?.ok_or(wasm_error!(WasmErrorInner::Guest(
+        "Could not find updated twin".to_string()
+    )))
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -84,22 +84,26 @@ pub struct UpdateTwinStateInput {
 /// Update twin's risk factors
 #[hdk_extern]
 pub fn update_risk_factors(input: UpdateRiskFactorsInput) -> ExternResult<Record> {
-    let record = get(input.twin_hash.clone(), GetOptions::default())?
-        .ok_or(wasm_error!(WasmErrorInner::Guest("Twin not found".to_string())))?;
+    let record = get(input.twin_hash.clone(), GetOptions::default())?.ok_or(wasm_error!(
+        WasmErrorInner::Guest("Twin not found".to_string())
+    ))?;
 
     let mut twin: HealthTwin = record
         .entry()
         .to_app_option()
         .map_err(|e| wasm_error!(WasmErrorInner::Guest(e.to_string())))?
-        .ok_or(wasm_error!(WasmErrorInner::Guest("Invalid twin".to_string())))?;
+        .ok_or(wasm_error!(WasmErrorInner::Guest(
+            "Invalid twin".to_string()
+        )))?;
 
     twin.risk_factors = input.risk_factors;
     twin.last_updated = sys_time()?.as_micros() as i64;
 
     let updated_hash = update_entry(input.twin_hash, &twin)?;
 
-    get(updated_hash, GetOptions::default())?
-        .ok_or(wasm_error!(WasmErrorInner::Guest("Could not find updated twin".to_string())))
+    get(updated_hash, GetOptions::default())?.ok_or(wasm_error!(WasmErrorInner::Guest(
+        "Could not find updated twin".to_string()
+    )))
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -111,22 +115,26 @@ pub struct UpdateRiskFactorsInput {
 /// Change twin status
 #[hdk_extern]
 pub fn set_twin_status(input: SetTwinStatusInput) -> ExternResult<Record> {
-    let record = get(input.twin_hash.clone(), GetOptions::default())?
-        .ok_or(wasm_error!(WasmErrorInner::Guest("Twin not found".to_string())))?;
+    let record = get(input.twin_hash.clone(), GetOptions::default())?.ok_or(wasm_error!(
+        WasmErrorInner::Guest("Twin not found".to_string())
+    ))?;
 
     let mut twin: HealthTwin = record
         .entry()
         .to_app_option()
         .map_err(|e| wasm_error!(WasmErrorInner::Guest(e.to_string())))?
-        .ok_or(wasm_error!(WasmErrorInner::Guest("Invalid twin".to_string())))?;
+        .ok_or(wasm_error!(WasmErrorInner::Guest(
+            "Invalid twin".to_string()
+        )))?;
 
     twin.status = input.status;
     twin.last_updated = sys_time()?.as_micros() as i64;
 
     let updated_hash = update_entry(input.twin_hash, &twin)?;
 
-    get(updated_hash, GetOptions::default())?
-        .ok_or(wasm_error!(WasmErrorInner::Guest("Could not find updated twin".to_string())))
+    get(updated_hash, GetOptions::default())?.ok_or(wasm_error!(WasmErrorInner::Guest(
+        "Could not find updated twin".to_string()
+    )))
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -141,8 +149,9 @@ pub struct SetTwinStatusInput {
 #[hdk_extern]
 pub fn ingest_data_point(data_point: TwinDataPoint) -> ExternResult<Record> {
     let dp_hash = create_entry(&EntryTypes::TwinDataPoint(data_point.clone()))?;
-    let record = get(dp_hash.clone(), GetOptions::default())?
-        .ok_or(wasm_error!(WasmErrorInner::Guest("Could not find data point".to_string())))?;
+    let record = get(dp_hash.clone(), GetOptions::default())?.ok_or(wasm_error!(
+        WasmErrorInner::Guest("Could not find data point".to_string())
+    ))?;
 
     // Link to twin
     create_link(
@@ -176,7 +185,12 @@ pub fn get_twin_data_points(input: GetDataPointsInput) -> ExternResult<Vec<Recor
     for link in links.into_iter().rev().take(limit as usize) {
         if let Some(hash) = link.target.into_action_hash() {
             if let Some(record) = get(hash, GetOptions::default())? {
-                if let Some(dp) = record.entry().to_app_option::<TwinDataPoint>().ok().flatten() {
+                if let Some(dp) = record
+                    .entry()
+                    .to_app_option::<TwinDataPoint>()
+                    .ok()
+                    .flatten()
+                {
                     if let Some(since_ts) = since {
                         if dp.measured_at >= since_ts {
                             data_points.push(record);
@@ -207,8 +221,9 @@ pub fn create_simulation(simulation: Simulation) -> ExternResult<Record> {
     validate_simulation(&simulation)?;
 
     let sim_hash = create_entry(&EntryTypes::Simulation(simulation.clone()))?;
-    let record = get(sim_hash.clone(), GetOptions::default())?
-        .ok_or(wasm_error!(WasmErrorInner::Guest("Could not find simulation".to_string())))?;
+    let record = get(sim_hash.clone(), GetOptions::default())?.ok_or(wasm_error!(
+        WasmErrorInner::Guest("Could not find simulation".to_string())
+    ))?;
 
     // Link to twin
     create_link(
@@ -224,26 +239,32 @@ pub fn create_simulation(simulation: Simulation) -> ExternResult<Record> {
 /// Run a simulation and get results
 #[hdk_extern]
 pub fn run_simulation(input: RunSimulationInput) -> ExternResult<Record> {
-    let record = get(input.simulation_hash.clone(), GetOptions::default())?
-        .ok_or(wasm_error!(WasmErrorInner::Guest("Simulation not found".to_string())))?;
+    let record = get(input.simulation_hash.clone(), GetOptions::default())?.ok_or(wasm_error!(
+        WasmErrorInner::Guest("Simulation not found".to_string())
+    ))?;
 
     let mut simulation: Simulation = record
         .entry()
         .to_app_option()
         .map_err(|e| wasm_error!(WasmErrorInner::Guest(e.to_string())))?
-        .ok_or(wasm_error!(WasmErrorInner::Guest("Invalid simulation".to_string())))?;
+        .ok_or(wasm_error!(WasmErrorInner::Guest(
+            "Invalid simulation".to_string()
+        )))?;
 
     simulation.status = SimulationStatus::Running;
 
     // Get the twin for the simulation
-    let twin_record = get(simulation.twin_hash.clone(), GetOptions::default())?
-        .ok_or(wasm_error!(WasmErrorInner::Guest("Twin not found".to_string())))?;
+    let twin_record = get(simulation.twin_hash.clone(), GetOptions::default())?.ok_or(
+        wasm_error!(WasmErrorInner::Guest("Twin not found".to_string())),
+    )?;
 
     let twin: HealthTwin = twin_record
         .entry()
         .to_app_option()
         .map_err(|e| wasm_error!(WasmErrorInner::Guest(e.to_string())))?
-        .ok_or(wasm_error!(WasmErrorInner::Guest("Invalid twin".to_string())))?;
+        .ok_or(wasm_error!(WasmErrorInner::Guest(
+            "Invalid twin".to_string()
+        )))?;
 
     // Run simulation (MVP: simplified model)
     let results = run_simulation_model(&twin, &simulation);
@@ -254,8 +275,9 @@ pub fn run_simulation(input: RunSimulationInput) -> ExternResult<Record> {
 
     let updated_hash = update_entry(input.simulation_hash, &simulation)?;
 
-    get(updated_hash, GetOptions::default())?
-        .ok_or(wasm_error!(WasmErrorInner::Guest("Could not find updated simulation".to_string())))
+    get(updated_hash, GetOptions::default())?.ok_or(wasm_error!(WasmErrorInner::Guest(
+        "Could not find updated simulation".to_string()
+    )))
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -294,7 +316,11 @@ fn run_simulation_model(twin: &HealthTwin, simulation: &Simulation) -> Simulatio
         projected_value: projected_health,
         change_percent: ((projected_health - base_health) / base_health) * 100.0,
         confidence_interval: (projected_health - 5.0, projected_health + 5.0),
-        trajectory: generate_trajectory(base_health, projected_health, simulation.time_horizon_months),
+        trajectory: generate_trajectory(
+            base_health,
+            projected_health,
+            simulation.time_horizon_months,
+        ),
     });
 
     // Project cardiovascular risk if available
@@ -374,8 +400,9 @@ pub fn generate_prediction(prediction: Prediction) -> ExternResult<Record> {
     validate_prediction(&prediction)?;
 
     let pred_hash = create_entry(&EntryTypes::Prediction(prediction.clone()))?;
-    let record = get(pred_hash.clone(), GetOptions::default())?
-        .ok_or(wasm_error!(WasmErrorInner::Guest("Could not find prediction".to_string())))?;
+    let record = get(pred_hash.clone(), GetOptions::default())?.ok_or(wasm_error!(
+        WasmErrorInner::Guest("Could not find prediction".to_string())
+    ))?;
 
     // Link to twin
     create_link(
@@ -411,14 +438,17 @@ pub fn get_twin_predictions(twin_hash: ActionHash) -> ExternResult<Vec<Record>> 
 /// Record prediction outcome (for model improvement)
 #[hdk_extern]
 pub fn record_prediction_outcome(input: RecordOutcomeInput) -> ExternResult<Record> {
-    let record = get(input.prediction_hash.clone(), GetOptions::default())?
-        .ok_or(wasm_error!(WasmErrorInner::Guest("Prediction not found".to_string())))?;
+    let record = get(input.prediction_hash.clone(), GetOptions::default())?.ok_or(wasm_error!(
+        WasmErrorInner::Guest("Prediction not found".to_string())
+    ))?;
 
     let mut prediction: Prediction = record
         .entry()
         .to_app_option()
         .map_err(|e| wasm_error!(WasmErrorInner::Guest(e.to_string())))?
-        .ok_or(wasm_error!(WasmErrorInner::Guest("Invalid prediction".to_string())))?;
+        .ok_or(wasm_error!(WasmErrorInner::Guest(
+            "Invalid prediction".to_string()
+        )))?;
 
     let error = (input.actual_value - prediction.predicted_value).abs();
     let accurate = error <= input.accuracy_threshold.unwrap_or(10.0);
@@ -432,8 +462,9 @@ pub fn record_prediction_outcome(input: RecordOutcomeInput) -> ExternResult<Reco
 
     let updated_hash = update_entry(input.prediction_hash, &prediction)?;
 
-    get(updated_hash, GetOptions::default())?
-        .ok_or(wasm_error!(WasmErrorInner::Guest("Could not find updated prediction".to_string())))
+    get(updated_hash, GetOptions::default())?.ok_or(wasm_error!(WasmErrorInner::Guest(
+        "Could not find updated prediction".to_string()
+    )))
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -449,8 +480,9 @@ pub struct RecordOutcomeInput {
 #[hdk_extern]
 pub fn set_twin_configuration(config: TwinConfiguration) -> ExternResult<Record> {
     let config_hash = create_entry(&EntryTypes::TwinConfiguration(config.clone()))?;
-    let record = get(config_hash.clone(), GetOptions::default())?
-        .ok_or(wasm_error!(WasmErrorInner::Guest("Could not find config".to_string())))?;
+    let record = get(config_hash.clone(), GetOptions::default())?.ok_or(wasm_error!(
+        WasmErrorInner::Guest("Could not find config".to_string())
+    ))?;
 
     // Link to patient
     create_link(
@@ -486,8 +518,9 @@ pub fn get_twin_configuration(patient_hash: ActionHash) -> ExternResult<Option<R
 #[hdk_extern]
 pub fn create_health_trajectory(trajectory: HealthTrajectory) -> ExternResult<Record> {
     let traj_hash = create_entry(&EntryTypes::HealthTrajectory(trajectory.clone()))?;
-    let record = get(traj_hash.clone(), GetOptions::default())?
-        .ok_or(wasm_error!(WasmErrorInner::Guest("Could not find trajectory".to_string())))?;
+    let record = get(traj_hash.clone(), GetOptions::default())?.ok_or(wasm_error!(
+        WasmErrorInner::Guest("Could not find trajectory".to_string())
+    ))?;
 
     // Link to twin
     create_link(
@@ -523,15 +556,21 @@ pub fn get_twin_trajectories(twin_hash: ActionHash) -> ExternResult<Vec<Record>>
 // ==================== MODEL UPDATES ====================
 
 /// Trigger a model update
-fn trigger_model_update(twin_hash: ActionHash, triggering_data: Vec<ActionHash>) -> ExternResult<Record> {
-    let twin_record = get(twin_hash.clone(), GetOptions::default())?
-        .ok_or(wasm_error!(WasmErrorInner::Guest("Twin not found".to_string())))?;
+fn trigger_model_update(
+    twin_hash: ActionHash,
+    triggering_data: Vec<ActionHash>,
+) -> ExternResult<Record> {
+    let twin_record = get(twin_hash.clone(), GetOptions::default())?.ok_or(wasm_error!(
+        WasmErrorInner::Guest("Twin not found".to_string())
+    ))?;
 
     let twin: HealthTwin = twin_record
         .entry()
         .to_app_option()
         .map_err(|e| wasm_error!(WasmErrorInner::Guest(e.to_string())))?
-        .ok_or(wasm_error!(WasmErrorInner::Guest("Invalid twin".to_string())))?;
+        .ok_or(wasm_error!(WasmErrorInner::Guest(
+            "Invalid twin".to_string()
+        )))?;
 
     let update = ModelUpdate {
         update_id: format!("UPD-{}", sys_time()?.as_micros()),
@@ -545,16 +584,12 @@ fn trigger_model_update(twin_hash: ActionHash, triggering_data: Vec<ActionHash>)
     };
 
     let update_hash = create_entry(&EntryTypes::ModelUpdate(update.clone()))?;
-    let record = get(update_hash.clone(), GetOptions::default())?
-        .ok_or(wasm_error!(WasmErrorInner::Guest("Could not find update".to_string())))?;
+    let record = get(update_hash.clone(), GetOptions::default())?.ok_or(wasm_error!(
+        WasmErrorInner::Guest("Could not find update".to_string())
+    ))?;
 
     // Link to twin
-    create_link(
-        twin_hash,
-        update_hash,
-        LinkTypes::TwinToUpdates,
-        (),
-    )?;
+    create_link(twin_hash, update_hash, LinkTypes::TwinToUpdates, ())?;
 
     Ok(record)
 }
@@ -602,22 +637,27 @@ pub fn generate_twin_id(_: ()) -> ExternResult<String> {
 /// Get twin health summary (quick overview)
 #[hdk_extern]
 pub fn get_twin_summary(twin_hash: ActionHash) -> ExternResult<TwinSummary> {
-    let twin_record = get(twin_hash.clone(), GetOptions::default())?
-        .ok_or(wasm_error!(WasmErrorInner::Guest("Twin not found".to_string())))?;
+    let twin_record = get(twin_hash.clone(), GetOptions::default())?.ok_or(wasm_error!(
+        WasmErrorInner::Guest("Twin not found".to_string())
+    ))?;
 
     let twin: HealthTwin = twin_record
         .entry()
         .to_app_option()
         .map_err(|e| wasm_error!(WasmErrorInner::Guest(e.to_string())))?
-        .ok_or(wasm_error!(WasmErrorInner::Guest("Invalid twin".to_string())))?;
+        .ok_or(wasm_error!(WasmErrorInner::Guest(
+            "Invalid twin".to_string()
+        )))?;
 
-    let high_risks: Vec<String> = twin.risk_factors
+    let high_risks: Vec<String> = twin
+        .risk_factors
         .iter()
         .filter(|r| r.risk_level > 0.7)
         .map(|r| r.name.clone())
         .collect();
 
-    let worsening_trends: Vec<String> = twin.risk_factors
+    let worsening_trends: Vec<String> = twin
+        .risk_factors
         .iter()
         .filter(|r| matches!(r.trend, RiskTrend::Worsening))
         .map(|r| r.name.clone())

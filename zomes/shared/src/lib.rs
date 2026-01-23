@@ -12,11 +12,11 @@ use serde::{Deserialize, Serialize};
 
 // Re-export commonly used items
 pub use access_control::*;
-pub use audit::*;
-pub use types::*;
 pub use anchors::*;
+pub use audit::*;
 pub use encryption::*;
 pub use key_management::*;
+pub use types::*;
 
 /// Formal Differential Privacy module
 ///
@@ -161,39 +161,42 @@ pub mod access_control {
 
         // Decode the ZomeCallResponse
         let auth_result: AuthorizationResult = match response {
-            ZomeCallResponse::Ok(extern_io) => {
-                extern_io.decode()
-                    .map_err(|e| wasm_error!(WasmErrorInner::Guest(
-                        format!("Failed to decode authorization response: {:?}", e)
-                    )))?
-            },
+            ZomeCallResponse::Ok(extern_io) => extern_io.decode().map_err(|e| {
+                wasm_error!(WasmErrorInner::Guest(format!(
+                    "Failed to decode authorization response: {:?}",
+                    e
+                )))
+            })?,
             ZomeCallResponse::Unauthorized(_, _, _, _) => {
                 return Err(wasm_error!(WasmErrorInner::Guest(
                     "Unauthorized to call consent zome".to_string()
                 )));
-            },
+            }
             ZomeCallResponse::NetworkError(err) => {
-                return Err(wasm_error!(WasmErrorInner::Guest(
-                    format!("Network error checking authorization: {}", err)
-                )));
-            },
+                return Err(wasm_error!(WasmErrorInner::Guest(format!(
+                    "Network error checking authorization: {}",
+                    err
+                ))));
+            }
             ZomeCallResponse::CountersigningSession(err) => {
-                return Err(wasm_error!(WasmErrorInner::Guest(
-                    format!("Countersigning error: {}", err)
-                )));
-            },
+                return Err(wasm_error!(WasmErrorInner::Guest(format!(
+                    "Countersigning error: {}",
+                    err
+                ))));
+            }
             ZomeCallResponse::AuthenticationFailed(_, _) => {
                 return Err(wasm_error!(WasmErrorInner::Guest(
                     "Authentication failed for consent zome call".to_string()
                 )));
-            },
+            }
         };
 
         // If not authorized and not emergency, deny access
         if !auth_result.authorized && !is_emergency {
-            return Err(wasm_error!(WasmErrorInner::Guest(
-                format!("Access denied: {}", auth_result.reason)
-            )));
+            return Err(wasm_error!(WasmErrorInner::Guest(format!(
+                "Access denied: {}",
+                auth_result.reason
+            ))));
         }
 
         // If emergency, mark as override but allow
@@ -332,32 +335,24 @@ pub mod audit {
         )?;
 
         match response {
-            ZomeCallResponse::Ok(extern_io) => {
-                extern_io.decode()
-                    .map_err(|e| wasm_error!(WasmErrorInner::Guest(
-                        format!("Failed to decode access log response: {:?}", e)
-                    )))
-            },
-            ZomeCallResponse::Unauthorized(_, _, _, _) => {
-                Err(wasm_error!(WasmErrorInner::Guest(
-                    "Unauthorized to log access".to_string()
+            ZomeCallResponse::Ok(extern_io) => extern_io.decode().map_err(|e| {
+                wasm_error!(WasmErrorInner::Guest(format!(
+                    "Failed to decode access log response: {:?}",
+                    e
                 )))
-            },
-            ZomeCallResponse::NetworkError(err) => {
-                Err(wasm_error!(WasmErrorInner::Guest(
-                    format!("Network error logging access: {}", err)
-                )))
-            },
-            ZomeCallResponse::CountersigningSession(err) => {
-                Err(wasm_error!(WasmErrorInner::Guest(
-                    format!("Countersigning error: {}", err)
-                )))
-            },
-            ZomeCallResponse::AuthenticationFailed(_, _) => {
-                Err(wasm_error!(WasmErrorInner::Guest(
-                    "Authentication failed for access log call".to_string()
-                )))
-            },
+            }),
+            ZomeCallResponse::Unauthorized(_, _, _, _) => Err(wasm_error!(WasmErrorInner::Guest(
+                "Unauthorized to log access".to_string()
+            ))),
+            ZomeCallResponse::NetworkError(err) => Err(wasm_error!(WasmErrorInner::Guest(
+                format!("Network error logging access: {}", err)
+            ))),
+            ZomeCallResponse::CountersigningSession(err) => Err(wasm_error!(
+                WasmErrorInner::Guest(format!("Countersigning error: {}", err))
+            )),
+            ZomeCallResponse::AuthenticationFailed(_, _) => Err(wasm_error!(
+                WasmErrorInner::Guest("Authentication failed for access log call".to_string())
+            )),
         }
     }
 
@@ -389,40 +384,34 @@ pub mod audit {
         )?;
 
         match response {
-            ZomeCallResponse::Ok(extern_io) => {
-                extern_io.decode()
-                    .map_err(|e| wasm_error!(WasmErrorInner::Guest(
-                        format!("Failed to decode denied log response: {:?}", e)
-                    )))
-            },
-            ZomeCallResponse::Unauthorized(_, _, _, _) => {
-                Err(wasm_error!(WasmErrorInner::Guest(
-                    "Unauthorized to log denied access".to_string()
+            ZomeCallResponse::Ok(extern_io) => extern_io.decode().map_err(|e| {
+                wasm_error!(WasmErrorInner::Guest(format!(
+                    "Failed to decode denied log response: {:?}",
+                    e
                 )))
-            },
-            ZomeCallResponse::NetworkError(err) => {
-                Err(wasm_error!(WasmErrorInner::Guest(
-                    format!("Network error logging denied access: {}", err)
-                )))
-            },
-            ZomeCallResponse::CountersigningSession(err) => {
-                Err(wasm_error!(WasmErrorInner::Guest(
-                    format!("Countersigning error: {}", err)
-                )))
-            },
-            ZomeCallResponse::AuthenticationFailed(_, _) => {
-                Err(wasm_error!(WasmErrorInner::Guest(
-                    "Authentication failed for denied log call".to_string()
-                )))
-            },
+            }),
+            ZomeCallResponse::Unauthorized(_, _, _, _) => Err(wasm_error!(WasmErrorInner::Guest(
+                "Unauthorized to log denied access".to_string()
+            ))),
+            ZomeCallResponse::NetworkError(err) => Err(wasm_error!(WasmErrorInner::Guest(
+                format!("Network error logging denied access: {}", err)
+            ))),
+            ZomeCallResponse::CountersigningSession(err) => Err(wasm_error!(
+                WasmErrorInner::Guest(format!("Countersigning error: {}", err))
+            )),
+            ZomeCallResponse::AuthenticationFailed(_, _) => Err(wasm_error!(
+                WasmErrorInner::Guest("Authentication failed for denied log call".to_string())
+            )),
         }
     }
 
     /// Generate a short hash string for log IDs
     fn short_hash(agent: &AgentPubKey) -> String {
         let bytes = agent.get_raw_39();
-        format!("{:02x}{:02x}{:02x}{:02x}",
-            bytes[0], bytes[1], bytes[2], bytes[3])
+        format!(
+            "{:02x}{:02x}{:02x}{:02x}",
+            bytes[0], bytes[1], bytes[2], bytes[3]
+        )
     }
 }
 
@@ -442,9 +431,10 @@ pub mod types {
 
         pub fn validate(&self) -> ExternResult<()> {
             if self.limit > Self::MAX_LIMIT {
-                return Err(wasm_error!(WasmErrorInner::Guest(
-                    format!("Limit cannot exceed {}", Self::MAX_LIMIT)
-                )));
+                return Err(wasm_error!(WasmErrorInner::Guest(format!(
+                    "Limit cannot exceed {}",
+                    Self::MAX_LIMIT
+                ))));
             }
             if self.limit == 0 {
                 return Err(wasm_error!(WasmErrorInner::Guest(
@@ -593,7 +583,9 @@ pub mod encryption {
     impl EncryptionKey {
         /// Create a new encryption key from bytes
         pub fn new(bytes: [u8; 32]) -> Self {
-            Self { key_material: bytes }
+            Self {
+                key_material: bytes,
+            }
         }
 
         /// Get the key bytes (use carefully)
@@ -672,10 +664,12 @@ pub mod encryption {
     ) -> ExternResult<EncryptedField> {
         // Generate random nonce (12 bytes)
         let mut nonce = [0u8; 12];
-        getrandom::fill(&mut nonce)
-            .map_err(|e| wasm_error!(WasmErrorInner::Guest(
-                format!("Failed to generate random nonce: {:?}", e)
-            )))?;
+        getrandom::fill(&mut nonce).map_err(|e| {
+            wasm_error!(WasmErrorInner::Guest(format!(
+                "Failed to generate random nonce: {:?}",
+                e
+            )))
+        })?;
 
         // XOR-based encryption with nonce and key
         // Note: In production, use AES-GCM or ChaCha20-Poly1305
@@ -714,20 +708,21 @@ pub mod encryption {
     ///
     /// # Returns
     /// Decrypted plaintext string
-    pub fn decrypt_field(
-        encrypted: &EncryptedField,
-        key: &EncryptionKey,
-    ) -> ExternResult<String> {
+    pub fn decrypt_field(encrypted: &EncryptedField, key: &EncryptionKey) -> ExternResult<String> {
         // Decode from base64
-        let ciphertext_with_tag = base64_decode(&encrypted.ciphertext)
-            .map_err(|e| wasm_error!(WasmErrorInner::Guest(
-                format!("Invalid ciphertext encoding: {}", e)
-            )))?;
+        let ciphertext_with_tag = base64_decode(&encrypted.ciphertext).map_err(|e| {
+            wasm_error!(WasmErrorInner::Guest(format!(
+                "Invalid ciphertext encoding: {}",
+                e
+            )))
+        })?;
 
-        let nonce = base64_decode(&encrypted.nonce)
-            .map_err(|e| wasm_error!(WasmErrorInner::Guest(
-                format!("Invalid nonce encoding: {}", e)
-            )))?;
+        let nonce = base64_decode(&encrypted.nonce).map_err(|e| {
+            wasm_error!(WasmErrorInner::Guest(format!(
+                "Invalid nonce encoding: {}",
+                e
+            )))
+        })?;
 
         if nonce.len() != 12 {
             return Err(wasm_error!(WasmErrorInner::Guest(
@@ -747,7 +742,8 @@ pub mod encryption {
         let stored_tag = &ciphertext_with_tag[ciphertext_len..];
 
         // Verify HMAC tag
-        let nonce_array: [u8; 12] = nonce.try_into()
+        let nonce_array: [u8; 12] = nonce
+            .try_into()
             .map_err(|_| wasm_error!(WasmErrorInner::Guest("Invalid nonce".to_string())))?;
         let computed_tag = compute_hmac(key.as_bytes(), &nonce_array, ciphertext);
 
@@ -766,10 +762,12 @@ pub mod encryption {
             plaintext_bytes.push(byte ^ keystream[i]);
         }
 
-        String::from_utf8(plaintext_bytes)
-            .map_err(|e| wasm_error!(WasmErrorInner::Guest(
-                format!("Invalid UTF-8 in decrypted data: {}", e)
+        String::from_utf8(plaintext_bytes).map_err(|e| {
+            wasm_error!(WasmErrorInner::Guest(format!(
+                "Invalid UTF-8 in decrypted data: {}",
+                e
             )))
+        })
     }
 
     /// Generate keystream for XOR encryption
@@ -842,8 +840,16 @@ pub mod encryption {
 
         while i < data.len() {
             let b0 = data[i] as usize;
-            let b1 = if i + 1 < data.len() { data[i + 1] as usize } else { 0 };
-            let b2 = if i + 2 < data.len() { data[i + 2] as usize } else { 0 };
+            let b1 = if i + 1 < data.len() {
+                data[i + 1] as usize
+            } else {
+                0
+            };
+            let b2 = if i + 2 < data.len() {
+                data[i + 2] as usize
+            } else {
+                0
+            };
 
             result.push(ALPHABET[b0 >> 2] as char);
             result.push(ALPHABET[((b0 & 0x03) << 4) | (b1 >> 4)] as char);
@@ -869,13 +875,11 @@ pub mod encryption {
     /// Base64 decode string
     pub fn base64_decode(data: &str) -> Result<Vec<u8>, String> {
         const DECODE_TABLE: [i8; 128] = [
-            -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
-            -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
-            -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, 62, -1, -1, -1, 63,
-            52, 53, 54, 55, 56, 57, 58, 59, 60, 61, -1, -1, -1, -1, -1, -1,
-            -1,  0,  1,  2,  3,  4,  5,  6,  7,  8,  9, 10, 11, 12, 13, 14,
-            15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, -1, -1, -1, -1, -1,
-            -1, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40,
+            -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
+            -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, 62,
+            -1, -1, -1, 63, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, -1, -1, -1, -1, -1, -1, -1, 0,
+            1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24,
+            25, -1, -1, -1, -1, -1, -1, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40,
             41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, -1, -1, -1, -1, -1,
         ];
 
@@ -922,12 +926,18 @@ pub mod encryption {
 
     /// Map data category to sensitive field type
     pub fn category_to_field_type(
-        category: &access_control::DataCategory
+        category: &access_control::DataCategory,
     ) -> Option<SensitiveFieldType> {
         match category {
-            access_control::DataCategory::MentalHealth => Some(SensitiveFieldType::MentalHealthNotes),
-            access_control::DataCategory::SubstanceAbuse => Some(SensitiveFieldType::SubstanceAbuseNotes),
-            access_control::DataCategory::SexualHealth => Some(SensitiveFieldType::SexualHealthNotes),
+            access_control::DataCategory::MentalHealth => {
+                Some(SensitiveFieldType::MentalHealthNotes)
+            }
+            access_control::DataCategory::SubstanceAbuse => {
+                Some(SensitiveFieldType::SubstanceAbuseNotes)
+            }
+            access_control::DataCategory::SexualHealth => {
+                Some(SensitiveFieldType::SexualHealthNotes)
+            }
             access_control::DataCategory::GeneticData => Some(SensitiveFieldType::GeneticData),
             access_control::DataCategory::FinancialData => Some(SensitiveFieldType::FinancialData),
             _ => None,
@@ -986,10 +996,12 @@ pub mod key_management {
     /// The key is returned wrapped for secure storage.
     pub fn generate_master_key() -> ExternResult<[u8; 32]> {
         let mut key = [0u8; 32];
-        getrandom::fill(&mut key)
-            .map_err(|e| wasm_error!(WasmErrorInner::Guest(
-                format!("Failed to generate master key: {:?}", e)
-            )))?;
+        getrandom::fill(&mut key).map_err(|e| {
+            wasm_error!(WasmErrorInner::Guest(format!(
+                "Failed to generate master key: {:?}",
+                e
+            )))
+        })?;
         Ok(key)
     }
 
@@ -1002,14 +1014,24 @@ pub mod key_management {
         id_input.extend_from_slice(key);
         id_input.extend_from_slice(&now.as_micros().to_le_bytes());
         let id_hash = super::encryption::sha256_hash(&id_input);
-        let key_id = format!("KEY-{:02x}{:02x}{:02x}{:02x}",
-            id_hash[0], id_hash[1], id_hash[2], id_hash[3]);
+        let key_id = format!(
+            "KEY-{:02x}{:02x}{:02x}{:02x}",
+            id_hash[0], id_hash[1], id_hash[2], id_hash[3]
+        );
 
         // Hash the key for verification
         let key_hash_bytes = super::encryption::sha256_hash(key);
-        let key_hash = format!("{:02x}{:02x}{:02x}{:02x}{:02x}{:02x}{:02x}{:02x}",
-            key_hash_bytes[0], key_hash_bytes[1], key_hash_bytes[2], key_hash_bytes[3],
-            key_hash_bytes[4], key_hash_bytes[5], key_hash_bytes[6], key_hash_bytes[7]);
+        let key_hash = format!(
+            "{:02x}{:02x}{:02x}{:02x}{:02x}{:02x}{:02x}{:02x}",
+            key_hash_bytes[0],
+            key_hash_bytes[1],
+            key_hash_bytes[2],
+            key_hash_bytes[3],
+            key_hash_bytes[4],
+            key_hash_bytes[5],
+            key_hash_bytes[6],
+            key_hash_bytes[7]
+        );
 
         // Set expiration to 1 year from now
         let one_year_micros = 365 * 24 * 60 * 60 * 1_000_000i64;
@@ -1037,16 +1059,18 @@ pub mod key_management {
         // Derive wrapping key from agent pubkey
         let agent_bytes = agent.get_raw_39();
         let mut wrapping_key_input = Vec::new();
-        wrapping_key_input.extend_from_slice(&agent_bytes);
+        wrapping_key_input.extend_from_slice(agent_bytes);
         wrapping_key_input.extend_from_slice(b"key_wrapping_v1");
         let wrapping_key = super::encryption::sha256_hash(&wrapping_key_input);
 
         // Generate nonce
         let mut nonce = [0u8; 12];
-        getrandom::fill(&mut nonce)
-            .map_err(|e| wasm_error!(WasmErrorInner::Guest(
-                format!("Failed to generate nonce: {:?}", e)
-            )))?;
+        getrandom::fill(&mut nonce).map_err(|e| {
+            wasm_error!(WasmErrorInner::Guest(format!(
+                "Failed to generate nonce: {:?}",
+                e
+            )))
+        })?;
 
         // Encrypt the key using XOR with keystream
         let keystream = generate_wrapping_keystream(&wrapping_key, &nonce, 32 + 32);
@@ -1071,27 +1095,24 @@ pub mod key_management {
     /// Unwrap a key for use
     ///
     /// Decrypts the key using the agent's keypair-derived key.
-    pub fn unwrap_key(
-        wrapped: &WrappedKey,
-        agent: &AgentPubKey,
-    ) -> ExternResult<[u8; 32]> {
+    pub fn unwrap_key(wrapped: &WrappedKey, agent: &AgentPubKey) -> ExternResult<[u8; 32]> {
         // Derive wrapping key
         let agent_bytes = agent.get_raw_39();
         let mut wrapping_key_input = Vec::new();
-        wrapping_key_input.extend_from_slice(&agent_bytes);
+        wrapping_key_input.extend_from_slice(agent_bytes);
         wrapping_key_input.extend_from_slice(b"key_wrapping_v1");
         let wrapping_key = super::encryption::sha256_hash(&wrapping_key_input);
 
         // Decode encrypted key
-        let encrypted = super::encryption::base64_decode(&wrapped.encrypted_key)
-            .map_err(|e| wasm_error!(WasmErrorInner::Guest(
-                format!("Invalid encrypted key: {}", e)
-            )))?;
+        let encrypted = super::encryption::base64_decode(&wrapped.encrypted_key).map_err(|e| {
+            wasm_error!(WasmErrorInner::Guest(format!(
+                "Invalid encrypted key: {}",
+                e
+            )))
+        })?;
 
         let nonce = super::encryption::base64_decode(&wrapped.nonce)
-            .map_err(|e| wasm_error!(WasmErrorInner::Guest(
-                format!("Invalid nonce: {}", e)
-            )))?;
+            .map_err(|e| wasm_error!(WasmErrorInner::Guest(format!("Invalid nonce: {}", e))))?;
 
         if encrypted.len() != 64 || nonce.len() != 12 {
             return Err(wasm_error!(WasmErrorInner::Guest(
@@ -1099,14 +1120,15 @@ pub mod key_management {
             )));
         }
 
-        let nonce_array: [u8; 12] = nonce.try_into()
+        let nonce_array: [u8; 12] = nonce
+            .try_into()
             .map_err(|_| wasm_error!(WasmErrorInner::Guest("Invalid nonce".to_string())))?;
 
         // Verify integrity tag
         let stored_tag = &encrypted[32..64];
         let computed_tag = compute_key_tag(&wrapping_key, &nonce_array, &encrypted[..32]);
 
-        if !constant_time_eq(&stored_tag, &computed_tag) {
+        if !constant_time_eq(stored_tag, &computed_tag) {
             return Err(wasm_error!(WasmErrorInner::Guest(
                 "Key integrity check failed".to_string()
             )));
@@ -1190,20 +1212,31 @@ pub mod anchors {
     pub fn anchor_hash(anchor_text: &str) -> ExternResult<EntryHash> {
         // Serialize the anchor to bytes
         let anchor = Anchor(anchor_text.to_string());
-        let bytes = serde_json::to_vec(&anchor)
-            .map_err(|e| wasm_error!(WasmErrorInner::Guest(
-                format!("Failed to serialize anchor: {}", e)
-            )))?;
+        let bytes = serde_json::to_vec(&anchor).map_err(|e| {
+            wasm_error!(WasmErrorInner::Guest(format!(
+                "Failed to serialize anchor: {}",
+                e
+            )))
+        })?;
 
         // Create an entry hash from the bytes using the host function
         // This matches how other zomes create anchor hashes
-        let entry = Entry::App(AppEntryBytes::try_from(SerializedBytes::try_from(UnsafeBytes::from(bytes))
-            .map_err(|e| wasm_error!(WasmErrorInner::Guest(
-                format!("Failed to create serialized bytes: {:?}", e)
-            )))?)
-            .map_err(|e| wasm_error!(WasmErrorInner::Guest(
-                format!("Failed to create app entry bytes: {:?}", e)
-            )))?);
+        let entry = Entry::App(
+            AppEntryBytes::try_from(SerializedBytes::try_from(UnsafeBytes::from(bytes)).map_err(
+                |e| {
+                    wasm_error!(WasmErrorInner::Guest(format!(
+                        "Failed to create serialized bytes: {:?}",
+                        e
+                    )))
+                },
+            )?)
+            .map_err(|e| {
+                wasm_error!(WasmErrorInner::Guest(format!(
+                    "Failed to create app entry bytes: {:?}",
+                    e
+                )))
+            })?,
+        );
 
         hash_entry(entry)
     }
@@ -1240,24 +1273,33 @@ mod tests {
 
     #[test]
     fn test_pagination_validation() {
-        let valid = PaginationInput { offset: 0, limit: 50 };
+        let valid = PaginationInput {
+            offset: 0,
+            limit: 50,
+        };
         assert!(valid.validate().is_ok());
 
-        let invalid = PaginationInput { offset: 0, limit: 200 };
+        let invalid = PaginationInput {
+            offset: 0,
+            limit: 200,
+        };
         assert!(invalid.validate().is_err());
 
-        let zero_limit = PaginationInput { offset: 0, limit: 0 };
+        let zero_limit = PaginationInput {
+            offset: 0,
+            limit: 0,
+        };
         assert!(zero_limit.validate().is_err());
     }
 
     #[test]
     fn test_paginated_result() {
-        let pagination = PaginationInput { offset: 0, limit: 10 };
-        let result: PaginatedResult<u32> = PaginatedResult::new(
-            vec![1, 2, 3, 4, 5],
-            20,
-            &pagination
-        );
+        let pagination = PaginationInput {
+            offset: 0,
+            limit: 10,
+        };
+        let result: PaginatedResult<u32> =
+            PaginatedResult::new(vec![1, 2, 3, 4, 5], 20, &pagination);
 
         assert_eq!(result.items.len(), 5);
         assert_eq!(result.total, 20);

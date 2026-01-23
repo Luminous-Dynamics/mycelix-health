@@ -49,10 +49,16 @@ pub fn create_surveillance_zone(input: CreateSurveillanceZoneInput) -> ExternRes
 
     // Link to active surveillance
     let anchor = anchor_for_active_surveillance()?;
-    create_link(anchor, action_hash.clone(), LinkTypes::ActiveSurveillance, ())?;
+    create_link(
+        anchor,
+        action_hash.clone(),
+        LinkTypes::ActiveSurveillance,
+        (),
+    )?;
 
-    let record = get(action_hash, GetOptions::default())?
-        .ok_or(wasm_error!(WasmErrorInner::Guest("Could not retrieve created zone".to_string())))?;
+    let record = get(action_hash, GetOptions::default())?.ok_or(wasm_error!(
+        WasmErrorInner::Guest("Could not retrieve created zone".to_string())
+    ))?;
 
     Ok(record)
 }
@@ -68,14 +74,17 @@ pub fn get_surveillance_zone(zone_hash: ActionHash) -> ExternResult<Option<Surve
 pub fn list_active_zones(_: ()) -> ExternResult<Vec<SurveillanceZone>> {
     let anchor = anchor_for_active_surveillance()?;
     let links = get_links(
-        LinkQuery::try_new(anchor, LinkTypes::ActiveSurveillance)?, GetStrategy::default()
+        LinkQuery::try_new(anchor, LinkTypes::ActiveSurveillance)?,
+        GetStrategy::default(),
     )?;
 
     let mut zones = Vec::new();
     for link in links {
-        if let Some(zone) = get_zone_from_hash(&ActionHash::try_from(link.target).map_err(|_| {
-            wasm_error!(WasmErrorInner::Guest("Invalid link target".to_string()))
-        })?)? {
+        if let Some(zone) =
+            get_zone_from_hash(&ActionHash::try_from(link.target).map_err(|_| {
+                wasm_error!(WasmErrorInner::Guest("Invalid link target".to_string()))
+            })?)?
+        {
             if zone.active {
                 zones.push(zone);
             }
@@ -92,11 +101,14 @@ pub fn list_active_zones(_: ()) -> ExternResult<Vec<SurveillanceZone>> {
 #[hdk_extern]
 pub fn submit_health_event_report(input: SubmitHealthEventInput) -> ExternResult<Record> {
     // Get zone to check privacy parameters
-    let zone = get_zone_from_hash(&input.zone_hash)?
-        .ok_or(wasm_error!(WasmErrorInner::Guest("Zone not found".to_string())))?;
+    let zone = get_zone_from_hash(&input.zone_hash)?.ok_or(wasm_error!(WasmErrorInner::Guest(
+        "Zone not found".to_string()
+    )))?;
 
     if !zone.active {
-        return Err(wasm_error!(WasmErrorInner::Guest("Zone is not active".to_string())));
+        return Err(wasm_error!(WasmErrorInner::Guest(
+            "Zone is not active".to_string()
+        )));
     }
 
     // Validate privacy budget
@@ -127,13 +139,19 @@ pub fn submit_health_event_report(input: SubmitHealthEventInput) -> ExternResult
     let action_hash = create_entry(EntryTypes::HealthEventReport(report))?;
 
     // Link to zone
-    create_link(input.zone_hash.clone(), action_hash.clone(), LinkTypes::ZoneToReports, ())?;
+    create_link(
+        input.zone_hash.clone(),
+        action_hash.clone(),
+        LinkTypes::ZoneToReports,
+        (),
+    )?;
 
     // Check if this triggers an alert
     let _ = check_alert_threshold(&input.zone_hash);
 
-    let record = get(action_hash, GetOptions::default())?
-        .ok_or(wasm_error!(WasmErrorInner::Guest("Could not retrieve created report".to_string())))?;
+    let record = get(action_hash, GetOptions::default())?.ok_or(wasm_error!(
+        WasmErrorInner::Guest("Could not retrieve created report".to_string())
+    ))?;
 
     Ok(record)
 }
@@ -141,21 +159,28 @@ pub fn submit_health_event_report(input: SubmitHealthEventInput) -> ExternResult
 /// Get aggregated reports for a zone (respects minimum contributor threshold)
 #[hdk_extern]
 pub fn get_zone_reports(input: GetZoneReportsInput) -> ExternResult<Vec<HealthEventReport>> {
-    let zone = get_zone_from_hash(&input.zone_hash)?
-        .ok_or(wasm_error!(WasmErrorInner::Guest("Zone not found".to_string())))?;
+    let zone = get_zone_from_hash(&input.zone_hash)?.ok_or(wasm_error!(WasmErrorInner::Guest(
+        "Zone not found".to_string()
+    )))?;
 
     let links = get_links(
-        LinkQuery::try_new(input.zone_hash.clone(), LinkTypes::ZoneToReports)?, GetStrategy::default()
+        LinkQuery::try_new(input.zone_hash.clone(), LinkTypes::ZoneToReports)?,
+        GetStrategy::default(),
     )?;
 
     let mut reports = Vec::new();
     for link in links {
-        if let Some(record) = get(ActionHash::try_from(link.target).map_err(|_| {
-            wasm_error!(WasmErrorInner::Guest("Invalid link target".to_string()))
-        })?, GetOptions::default())? {
-            if let Some(report) = record.entry().to_app_option::<HealthEventReport>().map_err(|e| {
-                wasm_error!(WasmErrorInner::Guest(e.to_string()))
-            })? {
+        if let Some(record) = get(
+            ActionHash::try_from(link.target).map_err(|_| {
+                wasm_error!(WasmErrorInner::Guest("Invalid link target".to_string()))
+            })?,
+            GetOptions::default(),
+        )? {
+            if let Some(report) = record
+                .entry()
+                .to_app_option::<HealthEventReport>()
+                .map_err(|e| wasm_error!(WasmErrorInner::Guest(e.to_string())))?
+            {
                 // Only include reports meeting minimum contributor threshold
                 if report.contributor_count >= zone.privacy_params.min_contributors {
                     // Apply time filter if specified
@@ -198,10 +223,16 @@ pub fn create_aggregate_alert(input: CreateAlertInput) -> ExternResult<Record> {
     let action_hash = create_entry(EntryTypes::AggregateAlert(alert))?;
 
     // Link to zone
-    create_link(input.zone_hash, action_hash.clone(), LinkTypes::ZoneToAlerts, ())?;
+    create_link(
+        input.zone_hash,
+        action_hash.clone(),
+        LinkTypes::ZoneToAlerts,
+        (),
+    )?;
 
-    let record = get(action_hash, GetOptions::default())?
-        .ok_or(wasm_error!(WasmErrorInner::Guest("Could not retrieve created alert".to_string())))?;
+    let record = get(action_hash, GetOptions::default())?.ok_or(wasm_error!(
+        WasmErrorInner::Guest("Could not retrieve created alert".to_string())
+    ))?;
 
     Ok(record)
 }
@@ -210,19 +241,25 @@ pub fn create_aggregate_alert(input: CreateAlertInput) -> ExternResult<Record> {
 #[hdk_extern]
 pub fn get_zone_alerts(zone_hash: ActionHash) -> ExternResult<Vec<AggregateAlert>> {
     let links = get_links(
-        LinkQuery::try_new(zone_hash, LinkTypes::ZoneToAlerts)?, GetStrategy::default()
+        LinkQuery::try_new(zone_hash, LinkTypes::ZoneToAlerts)?,
+        GetStrategy::default(),
     )?;
 
     let now = sys_time()?.as_micros() as i64;
     let mut alerts = Vec::new();
 
     for link in links {
-        if let Some(record) = get(ActionHash::try_from(link.target).map_err(|_| {
-            wasm_error!(WasmErrorInner::Guest("Invalid link target".to_string()))
-        })?, GetOptions::default())? {
-            if let Some(alert) = record.entry().to_app_option::<AggregateAlert>().map_err(|e| {
-                wasm_error!(WasmErrorInner::Guest(e.to_string()))
-            })? {
+        if let Some(record) = get(
+            ActionHash::try_from(link.target).map_err(|_| {
+                wasm_error!(WasmErrorInner::Guest("Invalid link target".to_string()))
+            })?,
+            GetOptions::default(),
+        )? {
+            if let Some(alert) = record
+                .entry()
+                .to_app_option::<AggregateAlert>()
+                .map_err(|e| wasm_error!(WasmErrorInner::Guest(e.to_string())))?
+            {
                 // Only include active, non-expired alerts
                 if alert.status == AlertStatus::Active && alert.expires_at > now {
                     alerts.push(alert);
@@ -237,12 +274,17 @@ pub fn get_zone_alerts(zone_hash: ActionHash) -> ExternResult<Vec<AggregateAlert
 /// Update alert status
 #[hdk_extern]
 pub fn update_alert_status(input: UpdateAlertStatusInput) -> ExternResult<Record> {
-    let record = get(input.alert_hash.clone(), GetOptions::default())?
-        .ok_or(wasm_error!(WasmErrorInner::Guest("Alert not found".to_string())))?;
+    let record = get(input.alert_hash.clone(), GetOptions::default())?.ok_or(wasm_error!(
+        WasmErrorInner::Guest("Alert not found".to_string())
+    ))?;
 
-    let mut alert = record.entry().to_app_option::<AggregateAlert>()
+    let mut alert = record
+        .entry()
+        .to_app_option::<AggregateAlert>()
         .map_err(|e| wasm_error!(WasmErrorInner::Guest(e.to_string())))?
-        .ok_or(wasm_error!(WasmErrorInner::Guest("Could not deserialize alert".to_string())))?;
+        .ok_or(wasm_error!(WasmErrorInner::Guest(
+            "Could not deserialize alert".to_string()
+        )))?;
 
     alert.status = input.new_status;
     if let Some(msg) = input.public_message {
@@ -251,8 +293,9 @@ pub fn update_alert_status(input: UpdateAlertStatusInput) -> ExternResult<Record
 
     let action_hash = update_entry(input.alert_hash, EntryTypes::AggregateAlert(alert))?;
 
-    let updated_record = get(action_hash, GetOptions::default())?
-        .ok_or(wasm_error!(WasmErrorInner::Guest("Could not retrieve updated alert".to_string())))?;
+    let updated_record = get(action_hash, GetOptions::default())?.ok_or(wasm_error!(
+        WasmErrorInner::Guest("Could not retrieve updated alert".to_string())
+    ))?;
 
     Ok(updated_record)
 }
@@ -262,8 +305,9 @@ pub fn update_alert_status(input: UpdateAlertStatusInput) -> ExternResult<Record
 /// Compute and store vaccination coverage for a zone
 #[hdk_extern]
 pub fn compute_vaccination_coverage(input: ComputeCoverageInput) -> ExternResult<Record> {
-    let zone = get_zone_from_hash(&input.zone_hash)?
-        .ok_or(wasm_error!(WasmErrorInner::Guest("Zone not found".to_string())))?;
+    let zone = get_zone_from_hash(&input.zone_hash)?.ok_or(wasm_error!(WasmErrorInner::Guest(
+        "Zone not found".to_string()
+    )))?;
 
     // Validate we have enough contributors for privacy
     if input.total_contributors < zone.privacy_params.min_contributors {
@@ -278,13 +322,15 @@ pub fn compute_vaccination_coverage(input: ComputeCoverageInput) -> ExternResult
     let noisy_sample = apply_laplace_noise(input.total_contributors as f64, 0.05);
 
     // Noise the age-specific coverage
-    let coverage_by_age: Vec<AgeCoverage> = input.coverage_by_age.iter().map(|ac| {
-        AgeCoverage {
+    let coverage_by_age: Vec<AgeCoverage> = input
+        .coverage_by_age
+        .iter()
+        .map(|ac| AgeCoverage {
             age_bracket: ac.age_bracket.clone(),
             coverage_rate: apply_laplace_noise(ac.coverage_rate, 0.1).max(0.0).min(1.0),
             sample_size: apply_laplace_noise(ac.sample_size, 0.05).max(0.0),
-        }
-    }).collect();
+        })
+        .collect();
 
     let now = sys_time()?.as_micros() as i64;
 
@@ -304,10 +350,16 @@ pub fn compute_vaccination_coverage(input: ComputeCoverageInput) -> ExternResult
     let action_hash = create_entry(EntryTypes::VaccinationCoverage(coverage))?;
 
     // Link to zone
-    create_link(input.zone_hash, action_hash.clone(), LinkTypes::ZoneToCoverage, ())?;
+    create_link(
+        input.zone_hash,
+        action_hash.clone(),
+        LinkTypes::ZoneToCoverage,
+        (),
+    )?;
 
-    let record = get(action_hash, GetOptions::default())?
-        .ok_or(wasm_error!(WasmErrorInner::Guest("Could not retrieve created coverage".to_string())))?;
+    let record = get(action_hash, GetOptions::default())?.ok_or(wasm_error!(
+        WasmErrorInner::Guest("Could not retrieve created coverage".to_string())
+    ))?;
 
     Ok(record)
 }
@@ -316,18 +368,24 @@ pub fn compute_vaccination_coverage(input: ComputeCoverageInput) -> ExternResult
 #[hdk_extern]
 pub fn get_vaccination_coverage(input: GetCoverageInput) -> ExternResult<Vec<VaccinationCoverage>> {
     let links = get_links(
-        LinkQuery::try_new(input.zone_hash.clone(), LinkTypes::ZoneToCoverage)?, GetStrategy::default()
+        LinkQuery::try_new(input.zone_hash.clone(), LinkTypes::ZoneToCoverage)?,
+        GetStrategy::default(),
     )?;
 
     let mut coverages = Vec::new();
 
     for link in links {
-        if let Some(record) = get(ActionHash::try_from(link.target).map_err(|_| {
-            wasm_error!(WasmErrorInner::Guest("Invalid link target".to_string()))
-        })?, GetOptions::default())? {
-            if let Some(cov) = record.entry().to_app_option::<VaccinationCoverage>().map_err(|e| {
-                wasm_error!(WasmErrorInner::Guest(e.to_string()))
-            })? {
+        if let Some(record) = get(
+            ActionHash::try_from(link.target).map_err(|_| {
+                wasm_error!(WasmErrorInner::Guest("Invalid link target".to_string()))
+            })?,
+            GetOptions::default(),
+        )? {
+            if let Some(cov) = record
+                .entry()
+                .to_app_option::<VaccinationCoverage>()
+                .map_err(|e| wasm_error!(WasmErrorInner::Guest(e.to_string())))?
+            {
                 // Filter by vaccine type if specified
                 if let Some(ref vt) = input.vaccine_type {
                     if &cov.vaccine_type == vt {
@@ -351,8 +409,9 @@ pub fn get_vaccination_coverage(input: GetCoverageInput) -> ExternResult<Vec<Vac
 /// Submit syndromic surveillance report
 #[hdk_extern]
 pub fn submit_syndromic_report(input: SubmitSyndromicInput) -> ExternResult<Record> {
-    let zone = get_zone_from_hash(&input.zone_hash)?
-        .ok_or(wasm_error!(WasmErrorInner::Guest("Zone not found".to_string())))?;
+    let zone = get_zone_from_hash(&input.zone_hash)?.ok_or(wasm_error!(WasmErrorInner::Guest(
+        "Zone not found".to_string()
+    )))?;
 
     // Validate contributor count
     if input.contributor_count < zone.privacy_params.min_contributors {
@@ -381,10 +440,16 @@ pub fn submit_syndromic_report(input: SubmitSyndromicInput) -> ExternResult<Reco
     let action_hash = create_entry(EntryTypes::SyndromicSurveillance(report))?;
 
     // Link to zone
-    create_link(input.zone_hash, action_hash.clone(), LinkTypes::ZoneToReports, ())?;
+    create_link(
+        input.zone_hash,
+        action_hash.clone(),
+        LinkTypes::ZoneToReports,
+        (),
+    )?;
 
-    let record = get(action_hash, GetOptions::default())?
-        .ok_or(wasm_error!(WasmErrorInner::Guest("Could not retrieve created report".to_string())))?;
+    let record = get(action_hash, GetOptions::default())?.ok_or(wasm_error!(
+        WasmErrorInner::Guest("Could not retrieve created report".to_string())
+    ))?;
 
     Ok(record)
 }
@@ -409,10 +474,16 @@ pub fn create_public_health_response(input: CreateResponseInput) -> ExternResult
     let action_hash = create_entry(EntryTypes::PublicHealthResponse(response))?;
 
     // Link to alert
-    create_link(input.alert_hash, action_hash.clone(), LinkTypes::AlertToResponses, ())?;
+    create_link(
+        input.alert_hash,
+        action_hash.clone(),
+        LinkTypes::AlertToResponses,
+        (),
+    )?;
 
-    let record = get(action_hash, GetOptions::default())?
-        .ok_or(wasm_error!(WasmErrorInner::Guest("Could not retrieve created response".to_string())))?;
+    let record = get(action_hash, GetOptions::default())?.ok_or(wasm_error!(
+        WasmErrorInner::Guest("Could not retrieve created response".to_string())
+    ))?;
 
     Ok(record)
 }
@@ -420,12 +491,17 @@ pub fn create_public_health_response(input: CreateResponseInput) -> ExternResult
 /// Update response status
 #[hdk_extern]
 pub fn update_response_status(input: UpdateResponseInput) -> ExternResult<Record> {
-    let record = get(input.response_hash.clone(), GetOptions::default())?
-        .ok_or(wasm_error!(WasmErrorInner::Guest("Response not found".to_string())))?;
+    let record = get(input.response_hash.clone(), GetOptions::default())?.ok_or(wasm_error!(
+        WasmErrorInner::Guest("Response not found".to_string())
+    ))?;
 
-    let mut response = record.entry().to_app_option::<PublicHealthResponse>()
+    let mut response = record
+        .entry()
+        .to_app_option::<PublicHealthResponse>()
         .map_err(|e| wasm_error!(WasmErrorInner::Guest(e.to_string())))?
-        .ok_or(wasm_error!(WasmErrorInner::Guest("Could not deserialize response".to_string())))?;
+        .ok_or(wasm_error!(WasmErrorInner::Guest(
+            "Could not deserialize response".to_string()
+        )))?;
 
     response.status = input.new_status.clone();
 
@@ -438,10 +514,14 @@ pub fn update_response_status(input: UpdateResponseInput) -> ExternResult<Record
         response.effectiveness = Some(assessment);
     }
 
-    let action_hash = update_entry(input.response_hash, EntryTypes::PublicHealthResponse(response))?;
+    let action_hash = update_entry(
+        input.response_hash,
+        EntryTypes::PublicHealthResponse(response),
+    )?;
 
-    let updated_record = get(action_hash, GetOptions::default())?
-        .ok_or(wasm_error!(WasmErrorInner::Guest("Could not retrieve updated response".to_string())))?;
+    let updated_record = get(action_hash, GetOptions::default())?.ok_or(wasm_error!(
+        WasmErrorInner::Guest("Could not retrieve updated response".to_string())
+    ))?;
 
     Ok(updated_record)
 }
@@ -477,8 +557,9 @@ pub fn start_outbreak_investigation(input: StartInvestigationInput) -> ExternRes
     let anchor = anchor_for_ongoing_outbreaks()?;
     create_link(anchor, action_hash.clone(), LinkTypes::OngoingOutbreaks, ())?;
 
-    let record = get(action_hash, GetOptions::default())?
-        .ok_or(wasm_error!(WasmErrorInner::Guest("Could not retrieve created investigation".to_string())))?;
+    let record = get(action_hash, GetOptions::default())?.ok_or(wasm_error!(
+        WasmErrorInner::Guest("Could not retrieve created investigation".to_string())
+    ))?;
 
     Ok(record)
 }
@@ -486,23 +567,35 @@ pub fn start_outbreak_investigation(input: StartInvestigationInput) -> ExternRes
 /// Update outbreak investigation with epidemiological data
 #[hdk_extern]
 pub fn update_investigation(input: UpdateInvestigationInput) -> ExternResult<Record> {
-    let record = get(input.investigation_hash.clone(), GetOptions::default())?
-        .ok_or(wasm_error!(WasmErrorInner::Guest("Investigation not found".to_string())))?;
+    let record = get(input.investigation_hash.clone(), GetOptions::default())?.ok_or(
+        wasm_error!(WasmErrorInner::Guest("Investigation not found".to_string())),
+    )?;
 
-    let mut investigation = record.entry().to_app_option::<OutbreakInvestigation>()
+    let mut investigation = record
+        .entry()
+        .to_app_option::<OutbreakInvestigation>()
         .map_err(|e| wasm_error!(WasmErrorInner::Guest(e.to_string())))?
-        .ok_or(wasm_error!(WasmErrorInner::Guest("Could not deserialize investigation".to_string())))?;
+        .ok_or(wasm_error!(WasmErrorInner::Guest(
+            "Could not deserialize investigation".to_string()
+        )))?;
 
     // Update epi summary with noisy data
     if let Some(epi) = input.epi_summary {
         investigation.epi_summary = EpiSummary {
             case_count: apply_laplace_noise(epi.case_count, 0.1).max(0.0),
             hospitalizations: apply_laplace_noise(epi.hospitalizations, 0.1).max(0.0),
-            mortality: epi.mortality.map(|m| {
-                // Suppress if low for privacy
-                let noisy = apply_laplace_noise(m, 0.1);
-                if noisy < 5.0 { None } else { Some(noisy) }
-            }).flatten(),
+            mortality: epi
+                .mortality
+                .map(|m| {
+                    // Suppress if low for privacy
+                    let noisy = apply_laplace_noise(m, 0.1);
+                    if noisy < 5.0 {
+                        None
+                    } else {
+                        Some(noisy)
+                    }
+                })
+                .flatten(),
             attack_rate: epi.attack_rate,
             serial_interval_days: epi.serial_interval_days,
             r_number: epi.r_number,
@@ -524,10 +617,14 @@ pub fn update_investigation(input: UpdateInvestigationInput) -> ExternResult<Rec
         investigation.findings.extend(findings);
     }
 
-    let action_hash = update_entry(input.investigation_hash, EntryTypes::OutbreakInvestigation(investigation))?;
+    let action_hash = update_entry(
+        input.investigation_hash,
+        EntryTypes::OutbreakInvestigation(investigation),
+    )?;
 
-    let updated_record = get(action_hash, GetOptions::default())?
-        .ok_or(wasm_error!(WasmErrorInner::Guest("Could not retrieve updated investigation".to_string())))?;
+    let updated_record = get(action_hash, GetOptions::default())?.ok_or(wasm_error!(
+        WasmErrorInner::Guest("Could not retrieve updated investigation".to_string())
+    ))?;
 
     Ok(updated_record)
 }
@@ -537,18 +634,24 @@ pub fn update_investigation(input: UpdateInvestigationInput) -> ExternResult<Rec
 pub fn get_ongoing_investigations(_: ()) -> ExternResult<Vec<OutbreakInvestigation>> {
     let anchor = anchor_for_ongoing_outbreaks()?;
     let links = get_links(
-        LinkQuery::try_new(anchor, LinkTypes::OngoingOutbreaks)?, GetStrategy::default()
+        LinkQuery::try_new(anchor, LinkTypes::OngoingOutbreaks)?,
+        GetStrategy::default(),
     )?;
 
     let mut investigations = Vec::new();
 
     for link in links {
-        if let Some(record) = get(ActionHash::try_from(link.target).map_err(|_| {
-            wasm_error!(WasmErrorInner::Guest("Invalid link target".to_string()))
-        })?, GetOptions::default())? {
-            if let Some(inv) = record.entry().to_app_option::<OutbreakInvestigation>().map_err(|e| {
-                wasm_error!(WasmErrorInner::Guest(e.to_string()))
-            })? {
+        if let Some(record) = get(
+            ActionHash::try_from(link.target).map_err(|_| {
+                wasm_error!(WasmErrorInner::Guest("Invalid link target".to_string()))
+            })?,
+            GetOptions::default(),
+        )? {
+            if let Some(inv) = record
+                .entry()
+                .to_app_option::<OutbreakInvestigation>()
+                .map_err(|e| wasm_error!(WasmErrorInner::Guest(e.to_string())))?
+            {
                 // Only include non-concluded investigations
                 if inv.status != InvestigationStatus::Concluded {
                     investigations.push(inv);
@@ -565,8 +668,9 @@ pub fn get_ongoing_investigations(_: ()) -> ExternResult<Vec<OutbreakInvestigati
 /// Compute aggregated immunity status for a zone
 #[hdk_extern]
 pub fn compute_immunity_status(input: ComputeImmunityInput) -> ExternResult<Record> {
-    let zone = get_zone_from_hash(&input.zone_hash)?
-        .ok_or(wasm_error!(WasmErrorInner::Guest("Zone not found".to_string())))?;
+    let zone = get_zone_from_hash(&input.zone_hash)?.ok_or(wasm_error!(WasmErrorInner::Guest(
+        "Zone not found".to_string()
+    )))?;
 
     // Validate sample size
     if input.sample_size < zone.privacy_params.min_contributors as f64 {
@@ -599,8 +703,9 @@ pub fn compute_immunity_status(input: ComputeImmunityInput) -> ExternResult<Reco
 
     let action_hash = create_entry(EntryTypes::ImmunityStatus(status))?;
 
-    let record = get(action_hash, GetOptions::default())?
-        .ok_or(wasm_error!(WasmErrorInner::Guest("Could not retrieve created status".to_string())))?;
+    let record = get(action_hash, GetOptions::default())?.ok_or(wasm_error!(
+        WasmErrorInner::Guest("Could not retrieve created status".to_string())
+    ))?;
 
     Ok(record)
 }
@@ -615,7 +720,9 @@ pub struct Anchor(pub String);
 fn get_zone_from_hash(zone_hash: &ActionHash) -> ExternResult<Option<SurveillanceZone>> {
     match get(zone_hash.clone(), GetOptions::default())? {
         Some(record) => {
-            let zone = record.entry().to_app_option::<SurveillanceZone>()
+            let zone = record
+                .entry()
+                .to_app_option::<SurveillanceZone>()
                 .map_err(|e| wasm_error!(WasmErrorInner::Guest(e.to_string())))?;
             Ok(zone)
         }
@@ -651,7 +758,7 @@ fn apply_laplace_noise(value: f64, epsilon: f64) -> f64 {
 
 /// Create time bucket (e.g., "2024-01-15-AM")
 fn create_time_bucket(bucket_hours: u32) -> String {
-    let now = sys_time().map(|t| t.as_micros() as i64).unwrap_or(0);
+    let now = sys_time().map(|t| t.as_micros()).unwrap_or(0);
     let hours = (now / (3600 * 1_000_000)) as u32;
     let bucket = hours / bucket_hours;
     format!("bucket-{}", bucket)
@@ -690,12 +797,16 @@ fn compute_margin_of_error(sample_size: f64) -> f64 {
 }
 
 fn get_timestamp_micros() -> i64 {
-    sys_time().map(|t| t.as_micros() as i64).unwrap_or(0)
+    sys_time().map(|t| t.as_micros()).unwrap_or(0)
 }
 
 fn generate_zone_id(name: &str) -> String {
     let now = get_timestamp_micros();
-    format!("ZONE-{}-{}", name.chars().take(4).collect::<String>().to_uppercase(), now % 10000)
+    format!(
+        "ZONE-{}-{}",
+        name.chars().take(4).collect::<String>().to_uppercase(),
+        now % 10000
+    )
 }
 
 fn generate_report_id() -> String {

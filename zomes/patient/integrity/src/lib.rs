@@ -1,5 +1,5 @@
 //! Patient Identity and Demographics Integrity Zome
-//! 
+//!
 //! Defines entry types for patient profiles, health identifiers,
 //! and demographic information with HIPAA-compliant validation.
 
@@ -239,7 +239,9 @@ fn validate_identity_link(link: &PatientIdentityLink) -> ExternResult<ValidateCa
     Ok(ValidateCallbackResult::Valid)
 }
 
-fn validate_health_summary(_summary: &PatientHealthSummary) -> ExternResult<ValidateCallbackResult> {
+fn validate_health_summary(
+    _summary: &PatientHealthSummary,
+) -> ExternResult<ValidateCallbackResult> {
     // Basic validation - summary must reference a patient
     // Additional validation would check if patient_hash exists
     Ok(ValidateCallbackResult::Valid)
@@ -254,6 +256,8 @@ fn is_valid_date_format(date: &str) -> bool {
     if parts.len() != 3 {
         return false;
     }
-    parts[0].len() == 4 && parts[1].len() == 2 && parts[2].len() == 2
+    parts[0].len() == 4
+        && parts[1].len() == 2
+        && parts[2].len() == 2
         && parts.iter().all(|p| p.chars().all(|c| c.is_ascii_digit()))
 }

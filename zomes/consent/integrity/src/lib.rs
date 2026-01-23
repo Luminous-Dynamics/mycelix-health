@@ -1,5 +1,5 @@
 //! Patient Consent and Data Access Authorization Integrity Zome
-//! 
+//!
 //! Defines entry types for granular consent management, access control,
 //! and audit logging with HIPAA alignment.
 
@@ -742,10 +742,14 @@ fn validate_delegation_grant(delegation: &DelegationGrant) -> ExternResult<Valid
         ));
     }
     // Healthcare proxy and legal guardian require identity verification
-    if matches!(delegation.delegation_type, DelegationType::HealthcareProxy | DelegationType::LegalGuardian) {
+    if matches!(
+        delegation.delegation_type,
+        DelegationType::HealthcareProxy | DelegationType::LegalGuardian
+    ) {
         if !delegation.identity_verified {
             return Ok(ValidateCallbackResult::Invalid(
-                "Healthcare proxy and legal guardian delegations require identity verification".to_string(),
+                "Healthcare proxy and legal guardian delegations require identity verification"
+                    .to_string(),
             ));
         }
         if delegation.legal_document_hash.is_none() {
@@ -755,13 +759,12 @@ fn validate_delegation_grant(delegation: &DelegationGrant) -> ExternResult<Valid
         }
     }
     // Temporary delegation must have expiration
-    if matches!(delegation.delegation_type, DelegationType::Temporary) {
-        if delegation.expires_at.is_none() {
+    if matches!(delegation.delegation_type, DelegationType::Temporary)
+        && delegation.expires_at.is_none() {
             return Ok(ValidateCallbackResult::Invalid(
                 "Temporary delegations must have an expiration date".to_string(),
             ));
         }
-    }
     Ok(ValidateCallbackResult::Valid)
 }
 
@@ -769,7 +772,9 @@ fn validate_delegation_grant(delegation: &DelegationGrant) -> ExternResult<Valid
 // VALIDATION: PATIENT NOTIFICATIONS
 // ============================================================
 
-fn validate_access_notification(notification: &AccessNotification) -> ExternResult<ValidateCallbackResult> {
+fn validate_access_notification(
+    notification: &AccessNotification,
+) -> ExternResult<ValidateCallbackResult> {
     if notification.notification_id.is_empty() {
         return Ok(ValidateCallbackResult::Invalid(
             "Notification ID is required".to_string(),
@@ -793,7 +798,9 @@ fn validate_access_notification(notification: &AccessNotification) -> ExternResu
     Ok(ValidateCallbackResult::Valid)
 }
 
-fn validate_notification_preferences(prefs: &NotificationPreferences) -> ExternResult<ValidateCallbackResult> {
+fn validate_notification_preferences(
+    prefs: &NotificationPreferences,
+) -> ExternResult<ValidateCallbackResult> {
     // Validate daily digest hour
     if let Some(hour) = prefs.daily_digest_hour {
         if hour > 23 {
@@ -825,7 +832,9 @@ fn validate_notification_preferences(prefs: &NotificationPreferences) -> ExternR
     Ok(ValidateCallbackResult::Valid)
 }
 
-fn validate_notification_digest(digest: &NotificationDigest) -> ExternResult<ValidateCallbackResult> {
+fn validate_notification_digest(
+    digest: &NotificationDigest,
+) -> ExternResult<ValidateCallbackResult> {
     if digest.digest_id.is_empty() {
         return Ok(ValidateCallbackResult::Invalid(
             "Digest ID is required".to_string(),
@@ -844,7 +853,9 @@ fn validate_notification_digest(digest: &NotificationDigest) -> ExternResult<Val
 // VALIDATION: CARE TEAM TEMPLATES
 // ============================================================
 
-fn validate_care_team_template(template: &CareTeamTemplate) -> ExternResult<ValidateCallbackResult> {
+fn validate_care_team_template(
+    template: &CareTeamTemplate,
+) -> ExternResult<ValidateCallbackResult> {
     if template.template_id.is_empty() {
         return Ok(ValidateCallbackResult::Invalid(
             "Template ID is required".to_string(),

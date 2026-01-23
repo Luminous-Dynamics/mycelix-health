@@ -7,6 +7,7 @@ name = "advocate_coordinator"
 version = "0.1.0"
 dependencies = [
  "advocate_integrity",
+ "getrandom",
  "hdk",
  "holochain_serialized_bytes",
  "serde",
@@ -164,6 +165,7 @@ name = "commons_coordinator"
 version = "0.1.0"
 dependencies = [
  "commons_integrity",
+ "getrandom",
  "hdk",
  "holochain_serialized_bytes",
  "mycelix-health-shared",
@@ -176,6 +178,7 @@ dependencies = [
 name = "commons_integrity"
 version = "0.1.0"
 dependencies = [
+ "getrandom",
  "hdi",
  "holochain_serialized_bytes",
  "serde",
@@ -187,6 +190,7 @@ name = "consent"
 version = "0.1.0"
 dependencies = [
  "consent_integrity",
+ "getrandom",
  "hdk",
  "holochain_serialized_bytes",
  "patient_integrity",
@@ -337,6 +341,7 @@ name = "dividends_coordinator"
 version = "0.1.0"
 dependencies = [
  "dividends_integrity",
+ "getrandom",
  "hdk",
  "holochain_serialized_bytes",
  "serde",
@@ -573,6 +578,7 @@ name = "health_bridge"
 version = "0.1.0"
 dependencies = [
  "bridge_integrity",
+ "getrandom",
  "hdk",
  "holochain_serialized_bytes",
  "patient_integrity",
@@ -776,6 +782,7 @@ checksum = "b9e0384b61958566e926dc50660321d12159025e767c18e043daf26b70104c39"
 name = "immunity_coordinator"
 version = "0.1.0"
 dependencies = [
+ "getrandom",
  "hdk",
  "holochain_serialized_bytes",
  "immunity_integrity",
@@ -787,6 +794,7 @@ dependencies = [
 name = "immunity_integrity"
 version = "0.1.0"
 dependencies = [
+ "getrandom",
  "hdi",
  "holochain_serialized_bytes",
  "serde",
@@ -807,6 +815,7 @@ dependencies = [
 name = "insurance"
 version = "0.1.0"
 dependencies = [
+ "getrandom",
  "hdk",
  "holochain_serialized_bytes",
  "insurance_integrity",
@@ -870,6 +879,7 @@ checksum = "f52b00d39961fc5b2736ea853c9cc86238e165017a493d1d5c8eac6bdc4cc273"
 name = "moment_coordinator"
 version = "0.1.0"
 dependencies = [
+ "getrandom",
  "hdk",
  "holochain_serialized_bytes",
  "moment_integrity",
@@ -881,6 +891,7 @@ dependencies = [
 name = "moment_integrity"
 version = "0.1.0"
 dependencies = [
+ "getrandom",
  "hdi",
  "holochain_serialized_bytes",
  "serde",
@@ -1057,6 +1068,7 @@ dependencies = [
 name = "provider"
 version = "0.1.0"
 dependencies = [
+ "getrandom",
  "hdk",
  "holochain_serialized_bytes",
  "provider_integrity",
@@ -1433,6 +1445,7 @@ name = "trials"
 version = "0.1.0"
 dependencies = [
  "consent_integrity",
+ "getrandom",
  "hdk",
  "holochain_serialized_bytes",
  "patient_integrity",
@@ -1456,6 +1469,7 @@ dependencies = [
 name = "twin_coordinator"
 version = "0.1.0"
 dependencies = [
+ "getrandom",
  "hdk",
  "holochain_serialized_bytes",
  "serde",
@@ -1678,6 +1692,7 @@ dependencies = [
 name = "zkhealth_coordinator"
 version = "0.1.0"
 dependencies = [
+ "getrandom",
  "hdk",
  "holochain_serialized_bytes",
  "serde",

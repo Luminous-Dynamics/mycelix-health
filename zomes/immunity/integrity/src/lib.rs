@@ -79,35 +79,21 @@ pub struct HealthEventReport {
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 pub enum HealthEventType {
     /// Respiratory symptoms
-    Respiratory {
-        severity: SymptomSeverity,
-    },
+    Respiratory { severity: SymptomSeverity },
     /// Gastrointestinal symptoms
-    Gastrointestinal {
-        severity: SymptomSeverity,
-    },
+    Gastrointestinal { severity: SymptomSeverity },
     /// Fever/influenza-like illness
     InfluenzaLike,
     /// Vaccination event
-    Vaccination {
-        vaccine_type: VaccineType,
-    },
+    Vaccination { vaccine_type: VaccineType },
     /// Lab-confirmed infection (aggregated)
-    LabConfirmed {
-        pathogen_category: PathogenCategory,
-    },
+    LabConfirmed { pathogen_category: PathogenCategory },
     /// Emergency department visit (category only)
-    EmergencyVisit {
-        category: EDCategory,
-    },
+    EmergencyVisit { category: EDCategory },
     /// Hospitalization (category only)
-    Hospitalization {
-        category: HospitalizationCategory,
-    },
+    Hospitalization { category: HospitalizationCategory },
     /// Unusual cluster detected
-    UnusualCluster {
-        description: String,
-    },
+    UnusualCluster { description: String },
 }
 
 /// Symptom severity levels (anonymized)
@@ -628,17 +614,25 @@ pub enum FindingType {
 // ==================== VALIDATION ====================
 
 /// Validate health event report
-pub fn validate_health_event_report(report: &HealthEventReport) -> ExternResult<ValidateCallbackResult> {
+pub fn validate_health_event_report(
+    report: &HealthEventReport,
+) -> ExternResult<ValidateCallbackResult> {
     if report.report_id.is_empty() {
-        return Ok(ValidateCallbackResult::Invalid("Report ID required".to_string()));
+        return Ok(ValidateCallbackResult::Invalid(
+            "Report ID required".to_string(),
+        ));
     }
 
     if report.contributor_count == 0 {
-        return Ok(ValidateCallbackResult::Invalid("Must have at least one contributor".to_string()));
+        return Ok(ValidateCallbackResult::Invalid(
+            "Must have at least one contributor".to_string(),
+        ));
     }
 
     if report.epsilon_consumed <= 0.0 {
-        return Ok(ValidateCallbackResult::Invalid("Epsilon consumed must be positive".to_string()));
+        return Ok(ValidateCallbackResult::Invalid(
+            "Epsilon consumed must be positive".to_string(),
+        ));
     }
 
     Ok(ValidateCallbackResult::Valid)
@@ -647,15 +641,21 @@ pub fn validate_health_event_report(report: &HealthEventReport) -> ExternResult<
 /// Validate surveillance zone
 pub fn validate_surveillance_zone(zone: &SurveillanceZone) -> ExternResult<ValidateCallbackResult> {
     if zone.zone_id.is_empty() {
-        return Ok(ValidateCallbackResult::Invalid("Zone ID required".to_string()));
+        return Ok(ValidateCallbackResult::Invalid(
+            "Zone ID required".to_string(),
+        ));
     }
 
     if zone.name.is_empty() {
-        return Ok(ValidateCallbackResult::Invalid("Zone name required".to_string()));
+        return Ok(ValidateCallbackResult::Invalid(
+            "Zone name required".to_string(),
+        ));
     }
 
     if zone.privacy_params.min_contributors < 10 {
-        return Ok(ValidateCallbackResult::Invalid("Minimum 10 contributors for privacy".to_string()));
+        return Ok(ValidateCallbackResult::Invalid(
+            "Minimum 10 contributors for privacy".to_string(),
+        ));
     }
 
     Ok(ValidateCallbackResult::Valid)
@@ -664,11 +664,15 @@ pub fn validate_surveillance_zone(zone: &SurveillanceZone) -> ExternResult<Valid
 /// Validate aggregate alert
 pub fn validate_aggregate_alert(alert: &AggregateAlert) -> ExternResult<ValidateCallbackResult> {
     if alert.alert_id.is_empty() {
-        return Ok(ValidateCallbackResult::Invalid("Alert ID required".to_string()));
+        return Ok(ValidateCallbackResult::Invalid(
+            "Alert ID required".to_string(),
+        ));
     }
 
     if alert.expires_at <= alert.triggered_at {
-        return Ok(ValidateCallbackResult::Invalid("Expiry must be after trigger".to_string()));
+        return Ok(ValidateCallbackResult::Invalid(
+            "Expiry must be after trigger".to_string(),
+        ));
     }
 
     Ok(ValidateCallbackResult::Valid)

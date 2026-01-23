@@ -57,9 +57,8 @@ impl SecureRng {
     /// * `Ok(())` on success
     /// * `Err(RngError)` if entropy source fails
     pub fn fill_bytes(buffer: &mut [u8]) -> Result<(), RngError> {
-        getrandom::fill(buffer).map_err(|e| {
-            RngError::EntropyError(format!("Failed to get entropy: {:?}", e))
-        })
+        getrandom::fill(buffer)
+            .map_err(|e| RngError::EntropyError(format!("Failed to get entropy: {:?}", e)))
     }
 
     /// Generate a random u64

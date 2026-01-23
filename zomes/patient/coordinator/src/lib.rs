@@ -6,29 +6,24 @@
 //! All data access functions enforce consent-based access control.
 
 use hdk::prelude::*;
-use patient_integrity::*;
 use mycelix_health_shared::{
-    require_authorization, require_admin_authorization,
-    log_data_access,
-    DataCategory, Permission, GetPatientInput,
+    log_data_access, require_admin_authorization, require_authorization, DataCategory,
+    GetPatientInput, Permission,
 };
+use patient_integrity::*;
 
 /// Create a new patient profile
 #[hdk_extern]
 pub fn create_patient(patient: Patient) -> ExternResult<Record> {
     let patient_hash = create_entry(&EntryTypes::Patient(patient.clone()))?;
-    let record = get(patient_hash.clone(), GetOptions::default())?
-        .ok_or(wasm_error!(WasmErrorInner::Guest("Could not find newly created patient".to_string())))?;
-    
+    let record = get(patient_hash.clone(), GetOptions::default())?.ok_or(wasm_error!(
+        WasmErrorInner::Guest("Could not find newly created patient".to_string())
+    ))?;
+
     // Link to global patients anchor
     let patients_anchor = anchor_hash("all_patients")?;
-    create_link(
-        patients_anchor,
-        patient_hash,
-        LinkTypes::AllPatients,
-        (),
-    )?;
-    
+    create_link(patients_anchor, patient_hash, LinkTypes::AllPatients, ())?;
+
     Ok(record)
 }
 
@@ -86,8 +81,9 @@ pub fn update_patient(input: UpdatePatientInput) -> ExternResult<Record> {
     )?;
 
     let updated_hash = update_entry(input.original_hash.clone(), &input.updated_patient)?;
-    let record = get(updated_hash.clone(), GetOptions::default())?
-        .ok_or(wasm_error!(WasmErrorInner::Guest("Could not find updated patient".to_string())))?;
+    let record = get(updated_hash.clone(), GetOptions::default())?.ok_or(wasm_error!(
+        WasmErrorInner::Guest("Could not find updated patient".to_string())
+    ))?;
 
     // Create update link for history tracking
     create_link(
@@ -149,7 +145,10 @@ pub fn get_all_patients(_: ()) -> ExternResult<Vec<Record>> {
     require_admin_authorization()?;
 
     let patients_anchor = anchor_hash("all_patients")?;
-    let links = get_links(LinkQuery::try_new(patients_anchor, LinkTypes::AllPatients)?, GetStrategy::default())?;
+    let links = get_links(
+        LinkQuery::try_new(patients_anchor, LinkTypes::AllPatients)?,
+        GetStrategy::default(),
+    )?;
 
     let mut patients = Vec::new();
     for link in links {
@@ -166,7 +165,10 @@ pub fn get_all_patients(_: ()) -> ExternResult<Vec<Record>> {
 /// Internal version without access control for internal queries
 fn get_all_patients_internal() -> ExternResult<Vec<Record>> {
     let patients_anchor = anchor_hash("all_patients")?;
-    let links = get_links(LinkQuery::try_new(patients_anchor, LinkTypes::AllPatients)?, GetStrategy::default())?;
+    let links = get_links(
+        LinkQuery::try_new(patients_anchor, LinkTypes::AllPatients)?,
+        GetStrategy::default(),
+    )?;
 
     let mut patients = Vec::new();
     for link in links {
@@ -220,11 +222,12 @@ pub fn link_patient_to_identity(input: LinkIdentityInput) -> ExternResult<Record
         verification_method: input.verification_method,
         confidence_score: input.confidence_score,
     };
-    
+
     let link_hash = create_entry(&EntryTypes::PatientIdentityLink(link))?;
-    let record = get(link_hash, GetOptions::default())?
-        .ok_or(wasm_error!(WasmErrorInner::Guest("Could not find identity link".to_string())))?;
-    
+    let record = get(link_hash, GetOptions::default())?.ok_or(wasm_error!(
+        WasmErrorInner::Guest("Could not find identity link".to_string())
+    ))?;
+
     Ok(record)
 }
 
@@ -240,9 +243,10 @@ pub struct LinkIdentityInput {
 #[hdk_extern]
 pub fn create_health_summary(summary: PatientHealthSummary) -> ExternResult<Record> {
     let summary_hash = create_entry(&EntryTypes::PatientHealthSummary(summary.clone()))?;
-    let record = get(summary_hash, GetOptions::default())?
-        .ok_or(wasm_error!(WasmErrorInner::Guest("Could not find health summary".to_string())))?;
-    
+    let record = get(summary_hash, GetOptions::default())?.ok_or(wasm_error!(
+        WasmErrorInner::Guest("Could not find health summary".to_string())
+    ))?;
+
     Ok(record)
 }
 
@@ -294,21 +298,25 @@ pub fn add_patient_allergy(input: AddAllergyInput) -> ExternResult<Record> {
         input.is_emergency,
     )?;
 
-    let record = get_patient_internal(input.patient_hash.clone())?
-        .ok_or(wasm_error!(WasmErrorInner::Guest("Patient not found".to_string())))?;
+    let record = get_patient_internal(input.patient_hash.clone())?.ok_or(wasm_error!(
+        WasmErrorInner::Guest("Patient not found".to_string())
+    ))?;
 
     let mut patient: Patient = record
         .entry()
         .to_app_option()
         .map_err(|e| wasm_error!(WasmErrorInner::Guest(e.to_string())))?
-        .ok_or(wasm_error!(WasmErrorInner::Guest("Invalid patient entry".to_string())))?;
+        .ok_or(wasm_error!(WasmErrorInner::Guest(
+            "Invalid patient entry".to_string()
+        )))?;
 
     patient.allergies.push(input.allergy);
     patient.updated_at = sys_time()?;
 
     let updated_hash = update_entry(input.patient_hash.clone(), &patient)?;
-    let updated_record = get(updated_hash.clone(), GetOptions::default())?
-        .ok_or(wasm_error!(WasmErrorInner::Guest("Could not find updated patient".to_string())))?;
+    let updated_record = get(updated_hash.clone(), GetOptions::default())?.ok_or(wasm_error!(
+        WasmErrorInner::Guest("Could not find updated patient".to_string())
+    ))?;
 
     create_link(
         input.patient_hash.clone(),

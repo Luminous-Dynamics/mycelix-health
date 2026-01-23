@@ -27,17 +27,14 @@
 //! When the budget is exhausted, no more queries can be answered.
 //! This is a fundamental limit, not a bug - it's what makes DP meaningful.
 
-use serde::{Deserialize, Serialize};
 use super::validation::{validate_epsilon, DpValidationError};
+use serde::{Deserialize, Serialize};
 
 /// Error type for budget operations
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub enum BudgetError {
     /// Insufficient budget remaining
-    Exhausted {
-        required: f64,
-        remaining: f64,
-    },
+    Exhausted { required: f64, remaining: f64 },
     /// Invalid budget parameters
     InvalidParameter(String),
     /// Budget operation failed
@@ -47,8 +44,15 @@ pub enum BudgetError {
 impl std::fmt::Display for BudgetError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            BudgetError::Exhausted { required, remaining } => {
-                write!(f, "Privacy budget exhausted: need ε={:.4}, have ε={:.4}", required, remaining)
+            BudgetError::Exhausted {
+                required,
+                remaining,
+            } => {
+                write!(
+                    f,
+                    "Privacy budget exhausted: need ε={:.4}, have ε={:.4}",
+                    required, remaining
+                )
             }
             BudgetError::InvalidParameter(msg) => write!(f, "Invalid parameter: {}", msg),
             BudgetError::OperationFailed(msg) => write!(f, "Operation failed: {}", msg),
@@ -220,10 +224,16 @@ impl BudgetAccount {
     /// # Returns
     /// * `Ok(())` if budget was consumed
     /// * `Err(BudgetError::Exhausted)` if insufficient budget
-    pub fn check_and_consume_with_delta(&mut self, epsilon: f64, delta: f64) -> Result<(), BudgetError> {
+    pub fn check_and_consume_with_delta(
+        &mut self,
+        epsilon: f64,
+        delta: f64,
+    ) -> Result<(), BudgetError> {
         validate_epsilon(epsilon)?;
         if delta < 0.0 {
-            return Err(BudgetError::InvalidParameter("Delta must be non-negative".to_string()));
+            return Err(BudgetError::InvalidParameter(
+                "Delta must be non-negative".to_string(),
+            ));
         }
 
         // Check delta first (simple additive)
@@ -393,7 +403,12 @@ mod tests {
         let advanced = advanced_composition_homogeneous(epsilon, k, delta_prime);
 
         // Advanced should be tighter than basic
-        assert!(advanced < basic, "Advanced {} should be < basic {}", advanced, basic);
+        assert!(
+            advanced < basic,
+            "Advanced {} should be < basic {}",
+            advanced,
+            basic
+        );
 
         // For these parameters:
         // term1 = √(2 * 100 * ln(1e6)) * 0.1 ≈ 5.25
@@ -411,7 +426,10 @@ mod tests {
         assert!((comparison.basic_total - 10.0).abs() < 1e-10);
         // Advanced composition saves about 1.5x for these parameters
         assert!(comparison.savings_ratio > 1.3, "Should save at least 1.3x");
-        assert!(comparison.advanced_total < comparison.basic_total, "Advanced should be tighter");
+        assert!(
+            comparison.advanced_total < comparison.basic_total,
+            "Advanced should be tighter"
+        );
     }
 
     #[test]
@@ -439,12 +457,17 @@ mod tests {
 
         // Under basic composition, we'd have used 5.0 (exhausted)
         // Under advanced, we should have budget remaining
-        assert!(budget.remaining_epsilon() > 0.0,
-                "Advanced composition should leave budget: remaining = {}",
-                budget.remaining_epsilon());
+        assert!(
+            budget.remaining_epsilon() > 0.0,
+            "Advanced composition should leave budget: remaining = {}",
+            budget.remaining_epsilon()
+        );
 
         // We should be able to answer more queries
-        assert!(budget.has_budget(0.1, 0.0), "Should have budget for another query");
+        assert!(
+            budget.has_budget(0.1, 0.0),
+            "Should have budget for another query"
+        );
     }
 
     #[test]

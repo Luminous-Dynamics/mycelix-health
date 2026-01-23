@@ -2,8 +2,8 @@
 //!
 //! Provides extern functions for the AI Health Advocate system.
 
-use hdk::prelude::*;
 use advocate_integrity::*;
+use hdk::prelude::*;
 
 // ==================== APPOINTMENT PREPARATION ====================
 
@@ -13,8 +13,9 @@ pub fn create_appointment_prep(prep: AppointmentPrep) -> ExternResult<Record> {
     validate_appointment_prep(&prep)?;
 
     let prep_hash = create_entry(&EntryTypes::AppointmentPrep(prep.clone()))?;
-    let record = get(prep_hash.clone(), GetOptions::default())?
-        .ok_or(wasm_error!(WasmErrorInner::Guest("Could not find prep".to_string())))?;
+    let record = get(prep_hash.clone(), GetOptions::default())?.ok_or(wasm_error!(
+        WasmErrorInner::Guest("Could not find prep".to_string())
+    ))?;
 
     // Link to patient
     create_link(
@@ -50,22 +51,26 @@ pub fn get_patient_preps(patient_hash: ActionHash) -> ExternResult<Vec<Record>> 
 /// Mark prep as reviewed
 #[hdk_extern]
 pub fn mark_prep_reviewed(input: MarkPrepReviewedInput) -> ExternResult<Record> {
-    let record = get(input.prep_hash.clone(), GetOptions::default())?
-        .ok_or(wasm_error!(WasmErrorInner::Guest("Prep not found".to_string())))?;
+    let record = get(input.prep_hash.clone(), GetOptions::default())?.ok_or(wasm_error!(
+        WasmErrorInner::Guest("Prep not found".to_string())
+    ))?;
 
     let mut prep: AppointmentPrep = record
         .entry()
         .to_app_option()
         .map_err(|e| wasm_error!(WasmErrorInner::Guest(e.to_string())))?
-        .ok_or(wasm_error!(WasmErrorInner::Guest("Invalid prep".to_string())))?;
+        .ok_or(wasm_error!(WasmErrorInner::Guest(
+            "Invalid prep".to_string()
+        )))?;
 
     prep.reviewed = true;
     prep.patient_notes = input.patient_notes;
 
     let updated_hash = update_entry(input.prep_hash, &prep)?;
 
-    get(updated_hash, GetOptions::default())?
-        .ok_or(wasm_error!(WasmErrorInner::Guest("Could not find updated prep".to_string())))
+    get(updated_hash, GetOptions::default())?.ok_or(wasm_error!(WasmErrorInner::Guest(
+        "Could not find updated prep".to_string()
+    )))
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -82,8 +87,9 @@ pub fn create_health_insight(insight: HealthInsight) -> ExternResult<Record> {
     validate_health_insight(&insight)?;
 
     let insight_hash = create_entry(&EntryTypes::HealthInsight(insight.clone()))?;
-    let record = get(insight_hash.clone(), GetOptions::default())?
-        .ok_or(wasm_error!(WasmErrorInner::Guest("Could not find insight".to_string())))?;
+    let record = get(insight_hash.clone(), GetOptions::default())?.ok_or(wasm_error!(
+        WasmErrorInner::Guest("Could not find insight".to_string())
+    ))?;
 
     // Link to patient
     create_link(
@@ -119,22 +125,26 @@ pub fn get_patient_insights(patient_hash: ActionHash) -> ExternResult<Vec<Record
 /// Acknowledge an insight
 #[hdk_extern]
 pub fn acknowledge_insight(input: AcknowledgeInsightInput) -> ExternResult<Record> {
-    let record = get(input.insight_hash.clone(), GetOptions::default())?
-        .ok_or(wasm_error!(WasmErrorInner::Guest("Insight not found".to_string())))?;
+    let record = get(input.insight_hash.clone(), GetOptions::default())?.ok_or(wasm_error!(
+        WasmErrorInner::Guest("Insight not found".to_string())
+    ))?;
 
     let mut insight: HealthInsight = record
         .entry()
         .to_app_option()
         .map_err(|e| wasm_error!(WasmErrorInner::Guest(e.to_string())))?
-        .ok_or(wasm_error!(WasmErrorInner::Guest("Invalid insight".to_string())))?;
+        .ok_or(wasm_error!(WasmErrorInner::Guest(
+            "Invalid insight".to_string()
+        )))?;
 
     insight.acknowledged = true;
     insight.action_taken = input.action_taken;
 
     let updated_hash = update_entry(input.insight_hash, &insight)?;
 
-    get(updated_hash, GetOptions::default())?
-        .ok_or(wasm_error!(WasmErrorInner::Guest("Could not find updated insight".to_string())))
+    get(updated_hash, GetOptions::default())?.ok_or(wasm_error!(WasmErrorInner::Guest(
+        "Could not find updated insight".to_string()
+    )))
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -151,8 +161,9 @@ pub fn create_provider_review(review: ProviderReview) -> ExternResult<Record> {
     validate_provider_review(&review)?;
 
     let review_hash = create_entry(&EntryTypes::ProviderReview(review.clone()))?;
-    let record = get(review_hash.clone(), GetOptions::default())?
-        .ok_or(wasm_error!(WasmErrorInner::Guest("Could not find review".to_string())))?;
+    let record = get(review_hash.clone(), GetOptions::default())?.ok_or(wasm_error!(
+        WasmErrorInner::Guest("Could not find review".to_string())
+    ))?;
 
     // Link to patient
     create_link(
@@ -232,7 +243,12 @@ pub fn get_provider_aggregate_rating(provider_hash: ActionHash) -> ExternResult<
     let mut wait_times: Vec<u32> = Vec::new();
 
     for record in &reviews {
-        if let Some(review) = record.entry().to_app_option::<ProviderReview>().ok().flatten() {
+        if let Some(review) = record
+            .entry()
+            .to_app_option::<ProviderReview>()
+            .ok()
+            .flatten()
+        {
             total_rating += review.overall_rating as u32;
             if review.would_recommend {
                 would_recommend_count += 1;
@@ -274,8 +290,9 @@ pub fn create_health_alert(alert: HealthAlert) -> ExternResult<Record> {
     validate_health_alert(&alert)?;
 
     let alert_hash = create_entry(&EntryTypes::HealthAlert(alert.clone()))?;
-    let record = get(alert_hash.clone(), GetOptions::default())?
-        .ok_or(wasm_error!(WasmErrorInner::Guest("Could not find alert".to_string())))?;
+    let record = get(alert_hash.clone(), GetOptions::default())?.ok_or(wasm_error!(
+        WasmErrorInner::Guest("Could not find alert".to_string())
+    ))?;
 
     // Link to patient
     create_link(
@@ -288,12 +305,7 @@ pub fn create_health_alert(alert: HealthAlert) -> ExternResult<Record> {
     // Link to active alerts if not resolved
     if !matches!(alert.status, AlertStatus::Resolved | AlertStatus::Dismissed) {
         let active_anchor = anchor_hash("active_alerts")?;
-        create_link(
-            active_anchor,
-            alert_hash,
-            LinkTypes::ActiveAlerts,
-            (),
-        )?;
+        create_link(active_anchor, alert_hash, LinkTypes::ActiveAlerts, ())?;
     }
 
     Ok(record)
@@ -341,14 +353,17 @@ pub fn get_active_alerts(patient_hash: ActionHash) -> ExternResult<Vec<Record>> 
 /// Update alert status
 #[hdk_extern]
 pub fn update_alert_status(input: UpdateAlertStatusInput) -> ExternResult<Record> {
-    let record = get(input.alert_hash.clone(), GetOptions::default())?
-        .ok_or(wasm_error!(WasmErrorInner::Guest("Alert not found".to_string())))?;
+    let record = get(input.alert_hash.clone(), GetOptions::default())?.ok_or(wasm_error!(
+        WasmErrorInner::Guest("Alert not found".to_string())
+    ))?;
 
     let mut alert: HealthAlert = record
         .entry()
         .to_app_option()
         .map_err(|e| wasm_error!(WasmErrorInner::Guest(e.to_string())))?
-        .ok_or(wasm_error!(WasmErrorInner::Guest("Invalid alert".to_string())))?;
+        .ok_or(wasm_error!(WasmErrorInner::Guest(
+            "Invalid alert".to_string()
+        )))?;
 
     alert.status = input.new_status.clone();
 
@@ -365,8 +380,9 @@ pub fn update_alert_status(input: UpdateAlertStatusInput) -> ExternResult<Record
 
     let updated_hash = update_entry(input.alert_hash, &alert)?;
 
-    get(updated_hash, GetOptions::default())?
-        .ok_or(wasm_error!(WasmErrorInner::Guest("Could not find updated alert".to_string())))
+    get(updated_hash, GetOptions::default())?.ok_or(wasm_error!(WasmErrorInner::Guest(
+        "Could not find updated alert".to_string()
+    )))
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -382,8 +398,9 @@ pub struct UpdateAlertStatusInput {
 #[hdk_extern]
 pub fn create_advocate_session(session: AdvocateSession) -> ExternResult<Record> {
     let session_hash = create_entry(&EntryTypes::AdvocateSession(session.clone()))?;
-    let record = get(session_hash.clone(), GetOptions::default())?
-        .ok_or(wasm_error!(WasmErrorInner::Guest("Could not find session".to_string())))?;
+    let record = get(session_hash.clone(), GetOptions::default())?.ok_or(wasm_error!(
+        WasmErrorInner::Guest("Could not find session".to_string())
+    ))?;
 
     // Link to patient
     create_link(
@@ -399,22 +416,26 @@ pub fn create_advocate_session(session: AdvocateSession) -> ExternResult<Record>
 /// Add message to session
 #[hdk_extern]
 pub fn add_session_message(input: AddMessageInput) -> ExternResult<Record> {
-    let record = get(input.session_hash.clone(), GetOptions::default())?
-        .ok_or(wasm_error!(WasmErrorInner::Guest("Session not found".to_string())))?;
+    let record = get(input.session_hash.clone(), GetOptions::default())?.ok_or(wasm_error!(
+        WasmErrorInner::Guest("Session not found".to_string())
+    ))?;
 
     let mut session: AdvocateSession = record
         .entry()
         .to_app_option()
         .map_err(|e| wasm_error!(WasmErrorInner::Guest(e.to_string())))?
-        .ok_or(wasm_error!(WasmErrorInner::Guest("Invalid session".to_string())))?;
+        .ok_or(wasm_error!(WasmErrorInner::Guest(
+            "Invalid session".to_string()
+        )))?;
 
     session.messages.push(input.message);
     session.last_message_at = sys_time()?.as_micros() as i64;
 
     let updated_hash = update_entry(input.session_hash, &session)?;
 
-    get(updated_hash, GetOptions::default())?
-        .ok_or(wasm_error!(WasmErrorInner::Guest("Could not find updated session".to_string())))
+    get(updated_hash, GetOptions::default())?.ok_or(wasm_error!(WasmErrorInner::Guest(
+        "Could not find updated session".to_string()
+    )))
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -426,14 +447,17 @@ pub struct AddMessageInput {
 /// End session with summary
 #[hdk_extern]
 pub fn end_session(input: EndSessionInput) -> ExternResult<Record> {
-    let record = get(input.session_hash.clone(), GetOptions::default())?
-        .ok_or(wasm_error!(WasmErrorInner::Guest("Session not found".to_string())))?;
+    let record = get(input.session_hash.clone(), GetOptions::default())?.ok_or(wasm_error!(
+        WasmErrorInner::Guest("Session not found".to_string())
+    ))?;
 
     let mut session: AdvocateSession = record
         .entry()
         .to_app_option()
         .map_err(|e| wasm_error!(WasmErrorInner::Guest(e.to_string())))?
-        .ok_or(wasm_error!(WasmErrorInner::Guest("Invalid session".to_string())))?;
+        .ok_or(wasm_error!(WasmErrorInner::Guest(
+            "Invalid session".to_string()
+        )))?;
 
     session.ended = true;
     session.summary = Some(input.summary);
@@ -442,8 +466,9 @@ pub fn end_session(input: EndSessionInput) -> ExternResult<Record> {
 
     let updated_hash = update_entry(input.session_hash, &session)?;
 
-    get(updated_hash, GetOptions::default())?
-        .ok_or(wasm_error!(WasmErrorInner::Guest("Could not find updated session".to_string())))
+    get(updated_hash, GetOptions::default())?.ok_or(wasm_error!(WasmErrorInner::Guest(
+        "Could not find updated session".to_string()
+    )))
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -482,8 +507,9 @@ pub fn set_advocate_preferences(prefs: AdvocatePreferences) -> ExternResult<Reco
     validate_advocate_preferences(&prefs)?;
 
     let prefs_hash = create_entry(&EntryTypes::AdvocatePreferences(prefs.clone()))?;
-    let record = get(prefs_hash.clone(), GetOptions::default())?
-        .ok_or(wasm_error!(WasmErrorInner::Guest("Could not find preferences".to_string())))?;
+    let record = get(prefs_hash.clone(), GetOptions::default())?.ok_or(wasm_error!(
+        WasmErrorInner::Guest("Could not find preferences".to_string())
+    ))?;
 
     // Link to patient
     create_link(
@@ -520,17 +546,13 @@ pub fn get_advocate_preferences(patient_hash: ActionHash) -> ExternResult<Option
 #[hdk_extern]
 pub fn create_second_opinion_request(request: SecondOpinionRequest) -> ExternResult<Record> {
     let request_hash = create_entry(&EntryTypes::SecondOpinionRequest(request.clone()))?;
-    let record = get(request_hash.clone(), GetOptions::default())?
-        .ok_or(wasm_error!(WasmErrorInner::Guest("Could not find request".to_string())))?;
+    let record = get(request_hash.clone(), GetOptions::default())?.ok_or(wasm_error!(
+        WasmErrorInner::Guest("Could not find request".to_string())
+    ))?;
 
     // Link to active requests
     let anchor = anchor_hash("second_opinion_requests")?;
-    create_link(
-        anchor,
-        request_hash,
-        LinkTypes::SecondOpinionRequests,
-        (),
-    )?;
+    create_link(anchor, request_hash, LinkTypes::SecondOpinionRequests, ())?;
 
     Ok(record)
 }
@@ -538,14 +560,17 @@ pub fn create_second_opinion_request(request: SecondOpinionRequest) -> ExternRes
 /// Update second opinion with AI analysis
 #[hdk_extern]
 pub fn add_ai_analysis(input: AddAIAnalysisInput) -> ExternResult<Record> {
-    let record = get(input.request_hash.clone(), GetOptions::default())?
-        .ok_or(wasm_error!(WasmErrorInner::Guest("Request not found".to_string())))?;
+    let record = get(input.request_hash.clone(), GetOptions::default())?.ok_or(wasm_error!(
+        WasmErrorInner::Guest("Request not found".to_string())
+    ))?;
 
     let mut request: SecondOpinionRequest = record
         .entry()
         .to_app_option()
         .map_err(|e| wasm_error!(WasmErrorInner::Guest(e.to_string())))?
-        .ok_or(wasm_error!(WasmErrorInner::Guest("Invalid request".to_string())))?;
+        .ok_or(wasm_error!(WasmErrorInner::Guest(
+            "Invalid request".to_string()
+        )))?;
 
     request.ai_analysis = Some(input.analysis);
     request.status = SecondOpinionStatus::Completed;
@@ -553,8 +578,9 @@ pub fn add_ai_analysis(input: AddAIAnalysisInput) -> ExternResult<Record> {
 
     let updated_hash = update_entry(input.request_hash, &request)?;
 
-    get(updated_hash, GetOptions::default())?
-        .ok_or(wasm_error!(WasmErrorInner::Guest("Could not find updated request".to_string())))
+    get(updated_hash, GetOptions::default())?.ok_or(wasm_error!(WasmErrorInner::Guest(
+        "Could not find updated request".to_string()
+    )))
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -571,8 +597,9 @@ pub fn create_medication_check(check: MedicationCheck) -> ExternResult<Record> {
     validate_medication_check(&check)?;
 
     let check_hash = create_entry(&EntryTypes::MedicationCheck(check.clone()))?;
-    let record = get(check_hash.clone(), GetOptions::default())?
-        .ok_or(wasm_error!(WasmErrorInner::Guest("Could not find check".to_string())))?;
+    let record = get(check_hash.clone(), GetOptions::default())?.ok_or(wasm_error!(
+        WasmErrorInner::Guest("Could not find check".to_string())
+    ))?;
 
     // Link to patient
     create_link(
@@ -612,13 +639,15 @@ pub fn get_latest_medication_check(patient_hash: ActionHash) -> ExternResult<Opt
 
     // Find the most recent by generated_at
     let latest = checks.into_iter().max_by(|a, b| {
-        let a_time = a.entry()
+        let a_time = a
+            .entry()
             .to_app_option::<MedicationCheck>()
             .ok()
             .flatten()
             .map(|c| c.generated_at)
             .unwrap_or(0);
-        let b_time = b.entry()
+        let b_time = b
+            .entry()
             .to_app_option::<MedicationCheck>()
             .ok()
             .flatten()
@@ -636,8 +665,9 @@ pub fn get_latest_medication_check(patient_hash: ActionHash) -> ExternResult<Opt
 #[hdk_extern]
 pub fn create_recommended_question(question: RecommendedQuestion) -> ExternResult<Record> {
     let question_hash = create_entry(&EntryTypes::RecommendedQuestion(question.clone()))?;
-    let record = get(question_hash.clone(), GetOptions::default())?
-        .ok_or(wasm_error!(WasmErrorInner::Guest("Could not find question".to_string())))?;
+    let record = get(question_hash.clone(), GetOptions::default())?.ok_or(wasm_error!(
+        WasmErrorInner::Guest("Could not find question".to_string())
+    ))?;
 
     // Link to patient
     create_link(
@@ -673,22 +703,26 @@ pub fn get_patient_questions(patient_hash: ActionHash) -> ExternResult<Vec<Recor
 /// Mark question as asked
 #[hdk_extern]
 pub fn mark_question_asked(input: MarkQuestionAskedInput) -> ExternResult<Record> {
-    let record = get(input.question_hash.clone(), GetOptions::default())?
-        .ok_or(wasm_error!(WasmErrorInner::Guest("Question not found".to_string())))?;
+    let record = get(input.question_hash.clone(), GetOptions::default())?.ok_or(wasm_error!(
+        WasmErrorInner::Guest("Question not found".to_string())
+    ))?;
 
     let mut question: RecommendedQuestion = record
         .entry()
         .to_app_option()
         .map_err(|e| wasm_error!(WasmErrorInner::Guest(e.to_string())))?
-        .ok_or(wasm_error!(WasmErrorInner::Guest("Invalid question".to_string())))?;
+        .ok_or(wasm_error!(WasmErrorInner::Guest(
+            "Invalid question".to_string()
+        )))?;
 
     question.asked = true;
     question.answer_received = input.answer_received;
 
     let updated_hash = update_entry(input.question_hash, &question)?;
 
-    get(updated_hash, GetOptions::default())?
-        .ok_or(wasm_error!(WasmErrorInner::Guest("Could not find updated question".to_string())))
+    get(updated_hash, GetOptions::default())?.ok_or(wasm_error!(WasmErrorInner::Guest(
+        "Could not find updated question".to_string()
+    )))
 }
 
 #[derive(Serialize, Deserialize, Debug)]

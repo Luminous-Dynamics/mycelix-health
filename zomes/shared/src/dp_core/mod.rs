@@ -42,15 +42,15 @@
 //! let noisy_count = laplace::add_noise(true_count, sensitivity, epsilon)?;
 //! ```
 
-pub mod rng;
-pub mod laplace;
-pub mod gaussian;
 pub mod budget;
+pub mod gaussian;
+pub mod laplace;
+pub mod rng;
 pub mod validation;
 
 // Re-export commonly used items
-pub use rng::SecureRng;
-pub use laplace::LaplaceMechanism;
-pub use gaussian::GaussianMechanism;
 pub use budget::{BudgetAccount, BudgetError, CompositionTheorem};
-pub use validation::{DpValidationError, validate_epsilon, validate_delta, validate_sensitivity};
+pub use gaussian::GaussianMechanism;
+pub use laplace::LaplaceMechanism;
+pub use rng::SecureRng;
+pub use validation::{validate_delta, validate_epsilon, validate_sensitivity, DpValidationError};

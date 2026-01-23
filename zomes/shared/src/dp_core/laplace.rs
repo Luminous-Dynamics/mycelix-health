@@ -94,7 +94,9 @@ impl LaplaceMechanism {
     /// This is equivalent to the standard inverse CDF with U' = U + 0.5 ~ Uniform(0, 1).
     pub fn sample(scale: f64) -> Result<f64, LaplaceError> {
         if scale <= 0.0 {
-            return Err(LaplaceError::Validation("Scale must be positive".to_string()));
+            return Err(LaplaceError::Validation(
+                "Scale must be positive".to_string(),
+            ));
         }
 
         let u = SecureRng::random_f64_centered()?;
@@ -238,7 +240,8 @@ mod tests {
             .collect();
 
         let mean: f64 = samples.iter().sum::<f64>() / n as f64;
-        let variance: f64 = samples.iter().map(|x| (x - mean).powi(2)).sum::<f64>() / (n - 1) as f64;
+        let variance: f64 =
+            samples.iter().map(|x| (x - mean).powi(2)).sum::<f64>() / (n - 1) as f64;
 
         // Expected variance = 2 * scale² = 2 * 4 = 8
         let expected = 2.0 * scale * scale;
