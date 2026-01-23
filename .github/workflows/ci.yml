@@ -54,7 +54,6 @@ jobs:
   wasm-build:
     name: WASM Build
     runs-on: ubuntu-latest
-    continue-on-error: true  # Advisory - getrandom 0.3 WASM config needs further work
     steps:
       - uses: actions/checkout@v4
 
