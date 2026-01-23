@@ -11,7 +11,7 @@ env:
   RUST_BACKTRACE: 1
 
 jobs:
-  # Rust Tests
+  # Rust Tests & Quality
   rust-tests:
     name: Rust Tests
     runs-on: ubuntu-latest
@@ -40,15 +40,74 @@ jobs:
           sed -i '/^\[build\]/,/^$/d' .cargo/config.toml
 
       - name: Check formatting
-        continue-on-error: true  # Advisory for now - existing code needs formatting
         run: cargo fmt --all -- --check
 
       - name: Run clippy
-        continue-on-error: true  # Advisory for now - existing code has warnings
-        run: cargo clippy --all-targets -- -D warnings
+        run: |
+          # Allow minor style lints, deny everything else
+          cargo clippy --all-targets -- \
+            -D warnings \
+            -A clippy::match_single_binding \
+            -A clippy::collapsible_match \
+            -A clippy::large_enum_variant \
+            -A clippy::manual_clamp \
+            -A clippy::wildcard_in_or_patterns
 
       - name: Run tests
         run: cargo test --workspace
+
+  # Code Coverage
+  coverage:
+    name: Code Coverage
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install cargo-tarpaulin
+        run: cargo install cargo-tarpaulin
+
+      - name: Remove default WASM target
+        run: sed -i '/^\[build\]/,/^$/d' .cargo/config.toml
+
+      - name: Generate coverage report
+        run: |
+          cargo tarpaulin --workspace --out xml --out html \
+            --exclude-files "*/tests/*" \
+            --exclude-files "*/test_*" \
+            --timeout 300
+
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@v4
+        with:
+          files: cobertura.xml
+          fail_ci_if_error: false
+        env:
+          CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
+
+      - name: Upload coverage HTML report
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-report
+          path: tarpaulin-report.html
+
+  # Security Audit
+  security:
+    name: Security Audit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install cargo-audit
+        run: cargo install cargo-audit
+
+      - name: Run security audit
+        run: cargo audit
 
   # WASM Build
   wasm-build:
@@ -128,7 +187,7 @@ jobs:
   # All checks passed
   ci-success:
     name: CI Success
-    needs: [rust-tests, wasm-build, sdk-tests]
+    needs: [rust-tests, coverage, security, wasm-build, sdk-tests]
     runs-on: ubuntu-latest
     steps:
       - name: All checks passed
