@@ -77,6 +77,11 @@ jobs:
       - name: Show cargo config
         run: cat .cargo/config.toml
 
+      - name: Clean cached WASM artifacts
+        run: |
+          # Force fresh build to ensure proper feature resolution
+          rm -rf target/wasm32-unknown-unknown
+
       - name: Build WASM (integrity zomes)
         run: |
           # .cargo/config.toml has wasm32 as default target and correct rustflags
