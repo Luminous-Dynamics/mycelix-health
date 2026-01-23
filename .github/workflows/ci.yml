@@ -55,9 +55,6 @@ jobs:
     name: WASM Build
     runs-on: ubuntu-latest
     continue-on-error: true  # Advisory - getrandom 0.3 WASM config needs further work
-    env:
-      # Required for getrandom 0.3+ wasm_js backend
-      RUSTFLAGS: '--cfg getrandom_backend="wasm_js"'
     steps:
       - uses: actions/checkout@v4
 
@@ -77,19 +74,23 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-cargo-wasm-
 
+      - name: Show cargo config
+        run: cat .cargo/config.toml
+
       - name: Build WASM (integrity zomes)
         run: |
-          cargo build --release --target wasm32-unknown-unknown -p patient_integrity
-          cargo build --release --target wasm32-unknown-unknown -p consent_integrity
-          cargo build --release --target wasm32-unknown-unknown -p commons_integrity
-          cargo build --release --target wasm32-unknown-unknown -p trials_integrity
+          # .cargo/config.toml has wasm32 as default target and correct rustflags
+          cargo build --release -p patient_integrity
+          cargo build --release -p consent_integrity
+          cargo build --release -p commons_integrity
+          cargo build --release -p trials_integrity
 
       - name: Build WASM (coordinator zomes)
         run: |
-          cargo build --release --target wasm32-unknown-unknown -p patient
-          cargo build --release --target wasm32-unknown-unknown -p consent
-          cargo build --release --target wasm32-unknown-unknown -p commons_coordinator
-          cargo build --release --target wasm32-unknown-unknown -p trials
+          cargo build --release -p patient
+          cargo build --release -p consent
+          cargo build --release -p commons_coordinator
+          cargo build --release -p trials
 
   # TypeScript SDK Tests
   sdk-tests:
