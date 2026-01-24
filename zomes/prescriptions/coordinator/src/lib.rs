@@ -8,10 +8,12 @@
 //! audit requirements.
 
 use hdk::prelude::*;
-use mycelix_health_shared::{
-    log_data_access, require_admin_authorization, require_authorization, DataCategory, Permission,
-};
 use prescriptions_integrity::*;
+use mycelix_health_shared::{
+    require_authorization, require_admin_authorization,
+    log_data_access,
+    DataCategory, Permission,
+};
 
 /// Input for creating prescription with access control
 #[derive(Serialize, Deserialize, Debug)]
@@ -33,9 +35,8 @@ pub fn create_prescription(input: CreatePrescriptionInput) -> ExternResult<Recor
     )?;
 
     let rx_hash = create_entry(&EntryTypes::Prescription(input.prescription.clone()))?;
-    let record = get(rx_hash.clone(), GetOptions::default())?.ok_or(wasm_error!(
-        WasmErrorInner::Guest("Could not find prescription".to_string())
-    ))?;
+    let record = get(rx_hash.clone(), GetOptions::default())?
+        .ok_or(wasm_error!(WasmErrorInner::Guest("Could not find prescription".to_string())))?;
 
     // Link to patient
     create_link(
@@ -54,9 +55,7 @@ pub fn create_prescription(input: CreatePrescriptionInput) -> ExternResult<Recor
     )?;
 
     // If controlled substance, add to tracking
-    if input.prescription.schedule.is_some()
-        && input.prescription.schedule != Some(DrugSchedule::NotControlled)
-    {
+    if input.prescription.schedule.is_some() && input.prescription.schedule != Some(DrugSchedule::NotControlled) {
         let controlled_anchor = anchor_hash("controlled_substances")?;
         create_link(
             controlled_anchor,
@@ -102,9 +101,7 @@ pub fn get_prescription(input: GetPrescriptionInput) -> ExternResult<Option<Reco
             .entry()
             .to_app_option()
             .map_err(|e| wasm_error!(WasmErrorInner::Guest(e.to_string())))?
-            .ok_or(wasm_error!(WasmErrorInner::Guest(
-                "Invalid prescription entry".to_string()
-            )))?;
+            .ok_or(wasm_error!(WasmErrorInner::Guest("Invalid prescription entry".to_string())))?;
 
         // Require Read authorization
         let auth = require_authorization(
@@ -137,10 +134,7 @@ pub struct GetPatientPrescriptionsInput {
 
 /// Internal get without access control
 fn get_patient_prescriptions_internal(patient_hash: ActionHash) -> ExternResult<Vec<Record>> {
-    let links = get_links(
-        LinkQuery::try_new(patient_hash, LinkTypes::PatientToPrescriptions)?,
-        GetStrategy::default(),
-    )?;
+    let links = get_links(LinkQuery::try_new(patient_hash, LinkTypes::PatientToPrescriptions)?, GetStrategy::default())?;
 
     let mut prescriptions = Vec::new();
     for link in links {
@@ -197,12 +191,7 @@ pub fn get_active_prescriptions(input: GetPatientPrescriptionsInput) -> ExternRe
     let active: Vec<Record> = all_rx
         .into_iter()
         .filter(|record| {
-            if let Some(rx) = record
-                .entry()
-                .to_app_option::<Prescription>()
-                .ok()
-                .flatten()
-            {
+            if let Some(rx) = record.entry().to_app_option::<Prescription>().ok().flatten() {
                 matches!(rx.status, PrescriptionStatus::Active)
             } else {
                 false
@@ -236,17 +225,14 @@ pub struct FillPrescriptionInput {
 #[hdk_extern]
 pub fn fill_prescription(input: FillPrescriptionInput) -> ExternResult<Record> {
     // First, verify the prescription exists and has refills
-    let rx_record = get(input.fill.prescription_hash.clone(), GetOptions::default())?.ok_or(
-        wasm_error!(WasmErrorInner::Guest("Prescription not found".to_string())),
-    )?;
+    let rx_record = get(input.fill.prescription_hash.clone(), GetOptions::default())?
+        .ok_or(wasm_error!(WasmErrorInner::Guest("Prescription not found".to_string())))?;
 
     let mut prescription: Prescription = rx_record
         .entry()
         .to_app_option()
         .map_err(|e| wasm_error!(WasmErrorInner::Guest(e.to_string())))?
-        .ok_or(wasm_error!(WasmErrorInner::Guest(
-            "Invalid prescription".to_string()
-        )))?;
+        .ok_or(wasm_error!(WasmErrorInner::Guest("Invalid prescription".to_string())))?;
 
     // Require Write authorization for Medications category
     let auth = require_authorization(
@@ -257,16 +243,13 @@ pub fn fill_prescription(input: FillPrescriptionInput) -> ExternResult<Record> {
     )?;
 
     if prescription.refills_remaining == 0 {
-        return Err(wasm_error!(WasmErrorInner::Guest(
-            "No refills remaining".to_string()
-        )));
+        return Err(wasm_error!(WasmErrorInner::Guest("No refills remaining".to_string())));
     }
 
     // Create the fill record
     let fill_hash = create_entry(&EntryTypes::PrescriptionFill(input.fill.clone()))?;
-    let fill_record = get(fill_hash.clone(), GetOptions::default())?.ok_or(wasm_error!(
-        WasmErrorInner::Guest("Could not find fill".to_string())
-    ))?;
+    let fill_record = get(fill_hash.clone(), GetOptions::default())?
+        .ok_or(wasm_error!(WasmErrorInner::Guest("Could not find fill".to_string())))?;
 
     // Link fill to prescription
     create_link(
@@ -304,17 +287,14 @@ pub struct GetPrescriptionFillsInput {
 #[hdk_extern]
 pub fn get_prescription_fills(input: GetPrescriptionFillsInput) -> ExternResult<Vec<Record>> {
     // First get the prescription to find the patient_hash
-    let rx_record = get_prescription_internal(input.rx_hash.clone())?.ok_or(wasm_error!(
-        WasmErrorInner::Guest("Prescription not found".to_string())
-    ))?;
+    let rx_record = get_prescription_internal(input.rx_hash.clone())?
+        .ok_or(wasm_error!(WasmErrorInner::Guest("Prescription not found".to_string())))?;
 
     let prescription: Prescription = rx_record
         .entry()
         .to_app_option()
         .map_err(|e| wasm_error!(WasmErrorInner::Guest(e.to_string())))?
-        .ok_or(wasm_error!(WasmErrorInner::Guest(
-            "Invalid prescription entry".to_string()
-        )))?;
+        .ok_or(wasm_error!(WasmErrorInner::Guest("Invalid prescription entry".to_string())))?;
 
     // Require Read authorization
     let auth = require_authorization(
@@ -324,10 +304,7 @@ pub fn get_prescription_fills(input: GetPrescriptionFillsInput) -> ExternResult<
         input.is_emergency,
     )?;
 
-    let links = get_links(
-        LinkQuery::try_new(input.rx_hash, LinkTypes::PrescriptionToFills)?,
-        GetStrategy::default(),
-    )?;
+    let links = get_links(LinkQuery::try_new(input.rx_hash, LinkTypes::PrescriptionToFills)?, GetStrategy::default())?;
 
     let mut fills = Vec::new();
     for link in links {
@@ -372,9 +349,8 @@ pub fn record_adherence(input: RecordAdherenceInput) -> ExternResult<Record> {
     )?;
 
     let adherence_hash = create_entry(&EntryTypes::MedicationAdherence(input.adherence.clone()))?;
-    let record = get(adherence_hash.clone(), GetOptions::default())?.ok_or(wasm_error!(
-        WasmErrorInner::Guest("Could not find adherence record".to_string())
-    ))?;
+    let record = get(adherence_hash.clone(), GetOptions::default())?
+        .ok_or(wasm_error!(WasmErrorInner::Guest("Could not find adherence record".to_string())))?;
 
     create_link(
         input.adherence.patient_hash.clone(),
@@ -416,9 +392,8 @@ pub fn create_interaction_alert(input: CreateInteractionAlertInput) -> ExternRes
     )?;
 
     let alert_hash = create_entry(&EntryTypes::DrugInteractionAlert(input.alert.clone()))?;
-    let record = get(alert_hash.clone(), GetOptions::default())?.ok_or(wasm_error!(
-        WasmErrorInner::Guest("Could not find alert".to_string())
-    ))?;
+    let record = get(alert_hash.clone(), GetOptions::default())?
+        .ok_or(wasm_error!(WasmErrorInner::Guest("Could not find alert".to_string())))?;
 
     create_link(
         input.alert.prescription_hash,
@@ -460,17 +435,14 @@ pub fn acknowledge_alert(input: AcknowledgeAlertInput) -> ExternResult<Record> {
         input.is_emergency,
     )?;
 
-    let record = get(input.alert_hash.clone(), GetOptions::default())?.ok_or(wasm_error!(
-        WasmErrorInner::Guest("Alert not found".to_string())
-    ))?;
+    let record = get(input.alert_hash.clone(), GetOptions::default())?
+        .ok_or(wasm_error!(WasmErrorInner::Guest("Alert not found".to_string())))?;
 
     let mut alert: DrugInteractionAlert = record
         .entry()
         .to_app_option()
         .map_err(|e| wasm_error!(WasmErrorInner::Guest(e.to_string())))?
-        .ok_or(wasm_error!(WasmErrorInner::Guest(
-            "Invalid alert".to_string()
-        )))?;
+        .ok_or(wasm_error!(WasmErrorInner::Guest("Invalid alert".to_string())))?;
 
     alert.acknowledged = true;
     alert.acknowledged_by = Some(agent_info()?.agent_initial_pubkey);
@@ -478,9 +450,8 @@ pub fn acknowledge_alert(input: AcknowledgeAlertInput) -> ExternResult<Record> {
     alert.override_reason = input.override_reason;
 
     let updated_hash = update_entry(input.alert_hash, &alert)?;
-    let updated_record = get(updated_hash, GetOptions::default())?.ok_or(wasm_error!(
-        WasmErrorInner::Guest("Could not find updated alert".to_string())
-    ))?;
+    let updated_record = get(updated_hash, GetOptions::default())?
+        .ok_or(wasm_error!(WasmErrorInner::Guest("Could not find updated alert".to_string())))?;
 
     // Log the access
     log_data_access(
@@ -501,9 +472,8 @@ pub fn register_pharmacy(pharmacy: Pharmacy) -> ExternResult<Record> {
     require_admin_authorization()?;
 
     let pharmacy_hash = create_entry(&EntryTypes::Pharmacy(pharmacy.clone()))?;
-    let record = get(pharmacy_hash.clone(), GetOptions::default())?.ok_or(wasm_error!(
-        WasmErrorInner::Guest("Could not find pharmacy".to_string())
-    ))?;
+    let record = get(pharmacy_hash.clone(), GetOptions::default())?
+        .ok_or(wasm_error!(WasmErrorInner::Guest("Could not find pharmacy".to_string())))?;
 
     let pharmacies_anchor = anchor_hash("all_pharmacies")?;
     create_link(
@@ -520,10 +490,7 @@ pub fn register_pharmacy(pharmacy: Pharmacy) -> ExternResult<Record> {
 #[hdk_extern]
 pub fn get_all_pharmacies(_: ()) -> ExternResult<Vec<Record>> {
     let pharmacies_anchor = anchor_hash("all_pharmacies")?;
-    let links = get_links(
-        LinkQuery::try_new(pharmacies_anchor, LinkTypes::AllPharmacies)?,
-        GetStrategy::default(),
-    )?;
+    let links = get_links(LinkQuery::try_new(pharmacies_anchor, LinkTypes::AllPharmacies)?, GetStrategy::default())?;
 
     let mut pharmacies = Vec::new();
     for link in links {
@@ -588,17 +555,14 @@ pub struct DiscontinueInput {
 /// Discontinue a prescription with access control
 #[hdk_extern]
 pub fn discontinue_prescription(input: DiscontinueInput) -> ExternResult<Record> {
-    let record = get(input.rx_hash.clone(), GetOptions::default())?.ok_or(wasm_error!(
-        WasmErrorInner::Guest("Prescription not found".to_string())
-    ))?;
+    let record = get(input.rx_hash.clone(), GetOptions::default())?
+        .ok_or(wasm_error!(WasmErrorInner::Guest("Prescription not found".to_string())))?;
 
     let mut prescription: Prescription = record
         .entry()
         .to_app_option()
         .map_err(|e| wasm_error!(WasmErrorInner::Guest(e.to_string())))?
-        .ok_or(wasm_error!(WasmErrorInner::Guest(
-            "Invalid prescription".to_string()
-        )))?;
+        .ok_or(wasm_error!(WasmErrorInner::Guest("Invalid prescription".to_string())))?;
 
     // Require Write authorization for Medications category
     let auth = require_authorization(
@@ -611,9 +575,8 @@ pub fn discontinue_prescription(input: DiscontinueInput) -> ExternResult<Record>
     prescription.status = PrescriptionStatus::Discontinued;
 
     let updated_hash = update_entry(input.rx_hash, &prescription)?;
-    let updated_record = get(updated_hash, GetOptions::default())?.ok_or(wasm_error!(
-        WasmErrorInner::Guest("Could not find updated prescription".to_string())
-    ))?;
+    let updated_record = get(updated_hash, GetOptions::default())?
+        .ok_or(wasm_error!(WasmErrorInner::Guest("Could not find updated prescription".to_string())))?;
 
     // Log the access
     log_data_access(

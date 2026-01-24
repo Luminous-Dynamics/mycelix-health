@@ -1,0 +1,13 @@
+[package]
+name = "trial_matching"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+name = "trial_matching"
+
+[dependencies]
+hdk = { workspace = true }
+serde = { workspace = true }
+trial_matching_integrity = { path = "../integrity" }

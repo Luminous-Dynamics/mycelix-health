@@ -47,6 +47,16 @@ import { PatientClient } from './zomes/patient';
 import { ConsentClient } from './zomes/consent';
 import { CommonsClient } from './zomes/commons';
 import { TrialsClient } from './zomes/trials';
+// Phase 3 - Clinical Integration
+import { FhirMappingClient } from './zomes/fhir-mapping';
+import { CdsClient } from './zomes/cds';
+import { ProviderDirectoryClient } from './zomes/provider-directory';
+import { TelehealthClient } from './zomes/telehealth';
+// Phase 4 - Equity & Access
+import { SdohClient } from './zomes/sdoh';
+import { MentalHealthClient } from './zomes/mental-health';
+import { ChronicCareClient } from './zomes/chronic-care';
+import { PediatricClient } from './zomes/pediatric';
 import { HealthSdkError, HealthSdkErrorCode, DEFAULT_CONFIG } from './types';
 import type { MycelixHealthConfig } from './types';
 
@@ -65,6 +75,9 @@ export * from './zomes';
 
 // Re-export privacy utilities
 export * from './privacy';
+
+// Re-export accessibility utilities
+export * from './accessibility';
 
 /**
  * MycelixHealthClient
@@ -104,6 +117,50 @@ export class MycelixHealthClient {
    */
   public readonly trials: TrialsClient;
 
+  // Phase 3 - Clinical Integration
+
+  /**
+   * FHIR R4 mapping (patient bundles, terminology validation)
+   */
+  public readonly fhirMapping: FhirMappingClient;
+
+  /**
+   * Clinical Decision Support (drug interactions, alerts, guidelines)
+   */
+  public readonly cds: CdsClient;
+
+  /**
+   * Provider Directory (NPI verification, search, affiliations)
+   */
+  public readonly providerDirectory: ProviderDirectoryClient;
+
+  /**
+   * Telehealth (sessions, scheduling, waiting room)
+   */
+  public readonly telehealth: TelehealthClient;
+
+  // Phase 4 - Equity & Access
+
+  /**
+   * Social Determinants of Health (SDOH screening, resources, interventions)
+   */
+  public readonly sdoh: SdohClient;
+
+  /**
+   * Mental Health (screenings, crisis management, 42 CFR Part 2 consent)
+   */
+  public readonly mentalHealth: MentalHealthClient;
+
+  /**
+   * Chronic Care (disease management, care plans, adherence tracking)
+   */
+  public readonly chronicCare: ChronicCareClient;
+
+  /**
+   * Pediatric Care (growth, immunizations, developmental milestones)
+   */
+  public readonly pediatric: PediatricClient;
+
   /**
    * The underlying Holochain client
    */
@@ -126,6 +183,18 @@ export class MycelixHealthClient {
     this.consent = new ConsentClient(client, config.roleName);
     this.commons = new CommonsClient(client, config.roleName);
     this.trials = new TrialsClient(client, config.roleName);
+
+    // Phase 3 - Clinical Integration
+    this.fhirMapping = new FhirMappingClient(client, config.roleName);
+    this.cds = new CdsClient(client, config.roleName);
+    this.providerDirectory = new ProviderDirectoryClient(client, config.roleName);
+    this.telehealth = new TelehealthClient(client, config.roleName);
+
+    // Phase 4 - Equity & Access
+    this.sdoh = new SdohClient(client, config.roleName);
+    this.mentalHealth = new MentalHealthClient(client, config.roleName);
+    this.chronicCare = new ChronicCareClient(client, config.roleName);
+    this.pediatric = new PediatricClient(client, config.roleName);
   }
 
   /**
@@ -246,6 +315,14 @@ export class MycelixHealthClient {
     consent: string[];
     commons: string[];
     trials: string[];
+    fhirMapping: string[];
+    cds: string[];
+    providerDirectory: string[];
+    telehealth: string[];
+    sdoh: string[];
+    mentalHealth: string[];
+    chronicCare: string[];
+    pediatric: string[];
   } {
     return {
       patients: [
@@ -304,6 +381,129 @@ export class MycelixHealthClient {
         'listAdverseEventsBySeverity',
         'updateAdverseEventOutcome',
         'getTrialStatistics',
+      ],
+      // Phase 3 - Clinical Integration
+      fhirMapping: [
+        'createPatientMapping',
+        'getPatientMapping',
+        'exportPatientBundle',
+        'importFhirBundle',
+        'validateLoincCode',
+        'validateSnomedCode',
+        'validateIcd10Code',
+        'createObservationMapping',
+        'createConditionMapping',
+        'createMedicationMapping',
+      ],
+      cds: [
+        'checkDrugInteractions',
+        'checkDrugAllergyInteractions',
+        'createClinicalAlert',
+        'getPatientAlerts',
+        'acknowledgeAlert',
+        'dismissAlert',
+        'createGuideline',
+        'getApplicableGuidelines',
+        'updatePatientGuidelineStatus',
+      ],
+      providerDirectory: [
+        'registerProvider',
+        'getProvider',
+        'updateProvider',
+        'searchProviders',
+        'verifyNpi',
+        'addAffiliation',
+        'removeAffiliation',
+        'getProviderAffiliations',
+        'setAcceptingNewPatients',
+        'getAcceptingProviders',
+      ],
+      telehealth: [
+        'scheduleSession',
+        'getSession',
+        'updateSession',
+        'cancelSession',
+        'startSession',
+        'endSession',
+        'joinWaitingRoom',
+        'leaveWaitingRoom',
+        'getWaitingRoom',
+        'admitFromWaitingRoom',
+        'createDocumentation',
+        'getSessionDocumentation',
+        'getAvailableSlots',
+        'getProviderSessions',
+        'getPatientSessions',
+      ],
+      // Phase 4 - Equity & Access
+      sdoh: [
+        'createScreening',
+        'getScreening',
+        'getPatientScreenings',
+        'createResource',
+        'getResource',
+        'searchResources',
+        'createIntervention',
+        'getScreeningInterventions',
+        'updateIntervention',
+        'createFollowUp',
+        'getInterventionFollowUps',
+        'getPatientSdohSummary',
+      ],
+      mentalHealth: [
+        'createScreening',
+        'getPatientScreenings',
+        'createMoodEntry',
+        'getPatientMoodEntries',
+        'createSafetyPlan',
+        'getPatientSafetyPlan',
+        'updateSafetyPlan',
+        'createCrisisEvent',
+        'getPatientCrisisEvents',
+        'createPart2Consent',
+        'getPatientPart2Consents',
+        'revokePart2Consent',
+        'createTherapyNote',
+        'getPatientTherapyNotes',
+      ],
+      chronicCare: [
+        'enrollPatient',
+        'getPatientEnrollments',
+        'createCarePlan',
+        'getCarePlans',
+        'updateCarePlan',
+        'recordOutcome',
+        'recordDiabetesMetrics',
+        'recordHeartFailureMetrics',
+        'recordCOPDMetrics',
+        'recordMedicationAdherence',
+        'getAdherenceRate',
+        'createAlert',
+        'acknowledgeAlert',
+        'getPendingAlerts',
+        'recordExacerbation',
+        'getChronicCareSummary',
+      ],
+      pediatric: [
+        'recordGrowth',
+        'getGrowthHistory',
+        'calculateGrowthPercentiles',
+        'recordImmunization',
+        'getImmunizationHistory',
+        'getImmunizationStatus',
+        'recordMilestone',
+        'getPatientMilestones',
+        'getDevelopmentalSummary',
+        'recordWellChildVisit',
+        'getPatientWellChildVisits',
+        'recordCondition',
+        'getPatientConditions',
+        'createSchoolHealthRecord',
+        'getSchoolHealthRecords',
+        'recordAdolescentAssessment',
+        'getAdolescentAssessments',
+        'createNewbornRecord',
+        'getNewbornRecord',
       ],
     };
   }

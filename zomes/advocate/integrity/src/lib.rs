@@ -824,21 +824,15 @@ pub enum OptimizationType {
 /// Validate an appointment prep
 pub fn validate_appointment_prep(prep: &AppointmentPrep) -> ExternResult<ValidateCallbackResult> {
     if prep.prep_id.is_empty() {
-        return Ok(ValidateCallbackResult::Invalid(
-            "Prep ID required".to_string(),
-        ));
+        return Ok(ValidateCallbackResult::Invalid("Prep ID required".to_string()));
     }
 
     if prep.provider_name.is_empty() {
-        return Ok(ValidateCallbackResult::Invalid(
-            "Provider name required".to_string(),
-        ));
+        return Ok(ValidateCallbackResult::Invalid("Provider name required".to_string()));
     }
 
     if prep.confidence_score < 0.0 || prep.confidence_score > 1.0 {
-        return Ok(ValidateCallbackResult::Invalid(
-            "Confidence must be between 0 and 1".to_string(),
-        ));
+        return Ok(ValidateCallbackResult::Invalid("Confidence must be between 0 and 1".to_string()));
     }
 
     Ok(ValidateCallbackResult::Valid)
@@ -847,21 +841,15 @@ pub fn validate_appointment_prep(prep: &AppointmentPrep) -> ExternResult<Validat
 /// Validate a health insight
 pub fn validate_health_insight(insight: &HealthInsight) -> ExternResult<ValidateCallbackResult> {
     if insight.insight_id.is_empty() {
-        return Ok(ValidateCallbackResult::Invalid(
-            "Insight ID required".to_string(),
-        ));
+        return Ok(ValidateCallbackResult::Invalid("Insight ID required".to_string()));
     }
 
     if insight.summary.is_empty() {
-        return Ok(ValidateCallbackResult::Invalid(
-            "Summary required".to_string(),
-        ));
+        return Ok(ValidateCallbackResult::Invalid("Summary required".to_string()));
     }
 
     if insight.confidence < 0.0 || insight.confidence > 1.0 {
-        return Ok(ValidateCallbackResult::Invalid(
-            "Confidence must be between 0 and 1".to_string(),
-        ));
+        return Ok(ValidateCallbackResult::Invalid("Confidence must be between 0 and 1".to_string()));
     }
 
     Ok(ValidateCallbackResult::Valid)
@@ -870,15 +858,11 @@ pub fn validate_health_insight(insight: &HealthInsight) -> ExternResult<Validate
 /// Validate a provider review
 pub fn validate_provider_review(review: &ProviderReview) -> ExternResult<ValidateCallbackResult> {
     if review.review_id.is_empty() {
-        return Ok(ValidateCallbackResult::Invalid(
-            "Review ID required".to_string(),
-        ));
+        return Ok(ValidateCallbackResult::Invalid("Review ID required".to_string()));
     }
 
     if review.overall_rating < 1 || review.overall_rating > 5 {
-        return Ok(ValidateCallbackResult::Invalid(
-            "Rating must be between 1 and 5".to_string(),
-        ));
+        return Ok(ValidateCallbackResult::Invalid("Rating must be between 1 and 5".to_string()));
     }
 
     Ok(ValidateCallbackResult::Valid)
@@ -887,42 +871,30 @@ pub fn validate_provider_review(review: &ProviderReview) -> ExternResult<Validat
 /// Validate a health alert
 pub fn validate_health_alert(alert: &HealthAlert) -> ExternResult<ValidateCallbackResult> {
     if alert.alert_id.is_empty() {
-        return Ok(ValidateCallbackResult::Invalid(
-            "Alert ID required".to_string(),
-        ));
+        return Ok(ValidateCallbackResult::Invalid("Alert ID required".to_string()));
     }
 
     if alert.title.is_empty() {
-        return Ok(ValidateCallbackResult::Invalid(
-            "Alert title required".to_string(),
-        ));
+        return Ok(ValidateCallbackResult::Invalid("Alert title required".to_string()));
     }
 
     if alert.description.is_empty() {
-        return Ok(ValidateCallbackResult::Invalid(
-            "Alert description required".to_string(),
-        ));
+        return Ok(ValidateCallbackResult::Invalid("Alert description required".to_string()));
     }
 
     Ok(ValidateCallbackResult::Valid)
 }
 
 /// Validate advocate preferences
-pub fn validate_advocate_preferences(
-    prefs: &AdvocatePreferences,
-) -> ExternResult<ValidateCallbackResult> {
+pub fn validate_advocate_preferences(prefs: &AdvocatePreferences) -> ExternResult<ValidateCallbackResult> {
     if let Some(hour) = prefs.daily_summary_hour {
         if hour > 23 {
-            return Ok(ValidateCallbackResult::Invalid(
-                "Daily summary hour must be 0-23".to_string(),
-            ));
+            return Ok(ValidateCallbackResult::Invalid("Daily summary hour must be 0-23".to_string()));
         }
     }
 
     if prefs.language.is_empty() {
-        return Ok(ValidateCallbackResult::Invalid(
-            "Language required".to_string(),
-        ));
+        return Ok(ValidateCallbackResult::Invalid("Language required".to_string()));
     }
 
     Ok(ValidateCallbackResult::Valid)
@@ -931,22 +903,17 @@ pub fn validate_advocate_preferences(
 /// Validate medication check
 pub fn validate_medication_check(check: &MedicationCheck) -> ExternResult<ValidateCallbackResult> {
     if check.check_id.is_empty() {
-        return Ok(ValidateCallbackResult::Invalid(
-            "Check ID required".to_string(),
-        ));
+        return Ok(ValidateCallbackResult::Invalid("Check ID required".to_string()));
     }
 
     if check.medications.is_empty() {
-        return Ok(ValidateCallbackResult::Invalid(
-            "At least one medication required".to_string(),
-        ));
+        return Ok(ValidateCallbackResult::Invalid("At least one medication required".to_string()));
     }
 
     if check.safety_score > 100 {
-        return Ok(ValidateCallbackResult::Invalid(
-            "Safety score must be 0-100".to_string(),
-        ));
+        return Ok(ValidateCallbackResult::Invalid("Safety score must be 0-100".to_string()));
     }
 
     Ok(ValidateCallbackResult::Valid)
 }
+

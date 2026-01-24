@@ -1,9 +1,5 @@
 # Mycelix-Health 🏥
 
-[![CI](https://github.com/Luminous-Dynamics/mycelix-health/actions/workflows/ci.yml/badge.svg)](https://github.com/Luminous-Dynamics/mycelix-health/actions/workflows/ci.yml)
-[![License](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-[![SDK](https://img.shields.io/badge/SDK-TypeScript-3178C6)](sdk/)
-
 **Decentralized Healthcare Infrastructure for Patient-Controlled Medical Records**
 
 Mycelix-Health is a Holochain-based healthcare application that puts patients in control of their medical data while enabling seamless, privacy-preserving sharing with healthcare providers, researchers, and insurers.
@@ -59,7 +55,7 @@ Healthcare data belongs to patients, not institutions. Mycelix-Health enables:
 ```
 mycelix-health/
 ├── dna/
-│   └── dna.yaml           # DNA manifest with 12 zomes
+│   └── dna.yaml           # DNA manifest
 ├── happ.yaml              # hApp manifest
 ├── zomes/
 │   ├── patient/           # Patient identity & demographics
@@ -73,13 +69,47 @@ mycelix-health/
 │   ├── insurance/         # Claims & coverage
 │   ├── bridge/            # Mycelix federation
 │   │
-│   │ # Revolutionary Features
+│   │ # Revolutionary Features (Phase 2)
 │   ├── advocate/          # AI Health Advocate system
 │   ├── zkhealth/          # Zero-knowledge health proofs
 │   ├── twin/              # Digital health twins
-│   └── dividends/         # Data dividend distribution
+│   ├── dividends/         # Data dividend distribution
+│   │
+│   │ # Clinical Integration (Phase 3)
+│   ├── fhir_mapping/      # FHIR R4 resource mapping
+│   ├── cds/               # Clinical Decision Support
+│   ├── provider_directory/ # Provider directory & NPI
+│   ├── telehealth/        # Telehealth sessions
+│   │
+│   │ # Equity & Access (Phase 4)
+│   ├── sdoh/              # Social Determinants of Health
+│   ├── mental_health/     # Mental health pathways
+│   ├── chronic_care/      # Chronic disease management
+│   ├── pediatric/         # Pediatric lifecycle care
+│   │
+│   │ # Advanced Research (Phase 5)
+│   ├── research_commons/  # De-identified data sharing
+│   ├── trial_matching/    # Patient-trial matching
+│   ├── irb/               # Decentralized IRB
+│   ├── federated_learning/ # Privacy-preserving ML
+│   ├── population_health/ # Population analytics
+│   │
+│   │ # Global Scale (Phase 6)
+│   ├── ips/               # International Patient Summary
+│   ├── i18n/              # Multi-language support
+│   ├── disaster_response/ # Emergency healthcare operations
+│   ├── verifiable_credentials/ # W3C VC for health credentials
+│   └── mobile_support/    # Mobile sync & offline support
+│
+├── services/
+│   └── ehr-gateway/       # EHR integration service (TypeScript)
+│       ├── auth/          # SMART on FHIR OAuth2
+│       ├── adapters/      # Epic, Cerner, generic FHIR
+│       └── sync/          # Pull/push & conflict resolution
+│
+├── sdk/                   # TypeScript SDK (@mycelix/health-sdk)
 ├── docs/                  # Documentation
-└── tests/                 # 441 comprehensive tests
+└── tests/                 # Comprehensive tests
 ```
 
 ## Quick Start
@@ -116,53 +146,6 @@ cargo test
 hc sandbox generate --num-sandboxes 2
 hc sandbox run 0
 ```
-
-## TypeScript SDK
-
-The `@mycelix/health-sdk` provides type-safe TypeScript bindings for building frontend applications.
-
-### Installation
-
-```bash
-npm install @mycelix/health-sdk
-# or
-yarn add @mycelix/health-sdk
-```
-
-### Quick Example
-
-```typescript
-import { PatientClient, PrivacyBudgetManager, HealthSdkError } from '@mycelix/health-sdk';
-
-// Create a patient
-const patient = await client.patient.createPatient({
-  name: 'Jane Doe',
-  date_of_birth: new Date('1985-03-15'),
-  gender: 'female',
-  blood_type: 'A+',
-});
-
-// Manage differential privacy budgets
-const budgetManager = new PrivacyBudgetManager({
-  total_epsilon: 10.0,
-  consumed_epsilon: 0.0,
-  query_count: 0,
-});
-
-// Check if query is safe
-if (budgetManager.canQuery(1.0)) {
-  const stats = await client.commons.queryPoolStats(poolHash, 'mean', 1.0);
-}
-```
-
-### Key Features
-
-- **Full Type Safety**: Complete TypeScript definitions for all zome calls
-- **Privacy Budget Management**: Client-side differential privacy helpers
-- **Error Handling**: Custom `HealthSdkError` with typed error codes
-- **Holochain Integration**: Works with `@holochain/client`
-
-See [`sdk/README.md`](sdk/README.md) for complete documentation.
 
 ## Zome Overview
 
@@ -258,21 +241,6 @@ Mycelix ecosystem integration:
 - Reputation aggregation
 - Trust score integration
 
-### Commons Zome 🔒
-Privacy-preserving health data commons with **formal Differential Privacy**:
-- **Data Pools**: Create themed data pools (research, public health, etc.)
-- **Patient Contributions**: Contribute health metrics with mathematically guaranteed privacy
-- **DP Queries**: Aggregate statistics (mean, count, sum) with Laplace/Gaussian noise
-- **Budget Tracking**: Per-patient epsilon budgets with automatic exhaustion protection
-- **Cryptographic RNG**: `getrandom`-based randomness for provable security
-- **Composition Theorems**: Both basic and advanced composition for tight bounds
-
-**Privacy Guarantees**:
-| Mechanism | Privacy | Use Case |
-|-----------|---------|----------|
-| Laplace | (ε, 0)-DP | Count, Sum queries |
-| Gaussian | (ε, δ)-DP | Mean queries with tighter bounds |
-
 ### AI Health Advocate Zome 🆕
 Your personal health ally:
 - **Appointment Preparation**: AI analyzes your history, suggests questions, identifies medications to discuss
@@ -309,6 +277,144 @@ Fair compensation when your data creates value:
 - **Fair Calculation**: Weighted by data quality, quantity, uniqueness
 - **Patient Control**: Specify permitted uses, exclude prohibited purposes
 - **Transparency**: Full visibility into dividend calculations
+
+### SDOH Screening Zome 🆕
+Social determinants of health assessment and intervention:
+- **Screening Instruments**: PRAPARE, AHC-HRSN, WeCare, custom tools
+- **5 SDOH Domains**: Economic stability, education, healthcare, neighborhood, social/community
+- **Risk Assessment**: No risk through urgent, with domain-specific scoring
+- **Community Resources**: Searchable directory of local services
+- **Intervention Tracking**: Referrals, follow-ups, outcome monitoring
+- **Patient Summaries**: Aggregate view of social needs and support
+
+### Mental Health Pathway Zome 🆕
+Comprehensive mental health support with regulatory compliance:
+- **Screening Instruments**: PHQ-9, PHQ-2, GAD-7, C-SSRS, AUDIT, DAST-10, PCL-5, MDQ, EPDS, PSC-17
+- **Severity Tracking**: None through severe with crisis level monitoring
+- **Safety Plans**: Warning signs, coping strategies, crisis contacts, reasons for living
+- **42 CFR Part 2 Consent**: Substance abuse record protection with proper consent management
+- **Treatment Planning**: Goals, medications, modalities, therapy notes
+- **Crisis Management**: Event logging, emergency contacts, intervention tracking
+
+### Chronic Care Zome 🆕
+Specialized management for chronic conditions:
+- **Condition Enrollment**: Diabetes, heart failure, COPD, CKD with type-specific data
+- **Care Plans**: Goals, medications, self-management tasks, review scheduling
+- **Condition Metrics**: HbA1c/glucose (diabetes), LVEF/BNP (heart failure), FEV1 (COPD), eGFR (CKD)
+- **Medication Adherence**: Tracking with adherence rate calculations
+- **Clinical Alerts**: Info through critical severity with acknowledgment
+- **Exacerbation Events**: Track disease flare-ups with severity and triggers
+- **Outcome Tracking**: Patient-reported outcomes for quality of life
+
+### Pediatric Zome 🆕
+Complete pediatric lifecycle management:
+- **Growth Tracking**: Weight, height, head circumference with WHO/CDC percentile calculations
+- **Immunizations**: Full CDC schedule, lot tracking, VIS documentation, catch-up scheduling
+- **Developmental Milestones**: ASQ-3 based domains (motor, language, cognitive, social-emotional)
+- **Well-Child Visits**: Comprehensive visit documentation with screening results
+- **Pediatric Conditions**: Age-specific condition tracking with onset/resolution
+- **School Health Records**: Sports physicals, accommodations, emergency contacts
+- **Adolescent Health**: HEADSS assessment, reproductive health, mental health screening
+- **Newborn Records**: Birth details, APGAR, feeding, circumcision, hearing screen
+
+### Research Commons Zome 🆕
+Privacy-preserving research data sharing:
+- **De-identification Methods**: HIPAA Safe Harbor, Expert Determination, k-anonymity, differential privacy
+- **Dataset Management**: Create, search, and manage de-identified research datasets
+- **Access Agreements**: Formal agreements with approved uses and restrictions
+- **Contribution Tracking**: Record and audit all data contributions
+- **Data Quality**: Automated quality reports with completeness and consistency metrics
+- **Usage Auditing**: Complete audit trail of all data access
+
+### Trial Matching Zome 🆕
+Intelligent patient-trial matching:
+- **Eligibility Criteria**: Structured inclusion/exclusion criteria with comparison operators
+- **Matching Profiles**: Patient data mapped to matchable attributes (diagnoses, labs, vitals)
+- **Patient Preferences**: Travel distance, visit frequency, placebo acceptance, language preferences
+- **Match Results**: Scored matches with criteria met/not met/indeterminate
+- **Notifications**: Patient-controlled notifications for new matching opportunities
+- **Provider Review**: Workflow for provider recommendation before patient contact
+
+### Decentralized IRB Zome 🆕
+Distributed ethics review for research:
+- **Protocol Submissions**: Full protocol submission with risk assessment and consent documents
+- **IRB Members**: Reviewer profiles with roles, credentials, and expertise
+- **Review Workflow**: Individual reviews with votes, comments, required modifications
+- **Meeting Management**: Quorum tracking, attendance, protocol agenda
+- **Decision Recording**: Vote tallies, conditions, approval duration, chair signature
+- **Continuing Review**: Annual progress reports with enrollment and adverse event tracking
+
+### Federated Learning Zome 🆕
+Privacy-preserving distributed machine learning:
+- **Learning Projects**: Define tasks with model architecture and aggregation strategy
+- **Participant Management**: Join projects with sample counts and public keys
+- **Training Rounds**: Coordinate distributed training with learning parameters
+- **Model Updates**: Encrypted gradient submissions with noise for differential privacy
+- **Aggregation**: FedAvg, FedProx, Secure Aggregation, Byzantine-resilient options
+- **Privacy Budgets**: Track epsilon consumption across training rounds
+- **Model Evaluation**: Validation metrics with confusion matrices and confidence intervals
+
+### Population Health Zome 🆕
+Aggregate health analytics with privacy:
+- **Population Statistics**: Prevalence, incidence, mortality with confidence intervals
+- **Health Indicators**: Composite scores for geographic regions with benchmarks
+- **Disease Surveillance**: Case counts vs expected with automatic anomaly detection
+- **Public Health Alerts**: Severity-graded alerts with recommendations and acknowledgment
+- **Disparity Analysis**: Stratified analysis by race, income, education with trend tracking
+- **Quality Indicators**: HEDIS-style measures with star ratings and percentiles
+- **Differential Privacy**: All statistics protected with configurable epsilon
+
+### International Patient Summary (IPS) Zome 🆕
+Cross-border healthcare data exchange following HL7 IPS standard:
+- **IPS Document**: Complete patient summary with FHIR Bundle export
+- **8 Clinical Sections**: Allergies, medications, problems, immunizations, procedures, medical devices, results, advance directives
+- **Coding Systems**: SNOMED CT, RxNorm, LOINC, ICD-10, ATC, CVX
+- **Cross-Border Sharing**: Track IPS shares with purpose and jurisdiction
+- **Translation Support**: Automatic translation of summaries
+- **Validation**: Ensure compliance with HL7 IPS implementation guide
+
+### Internationalization (i18n) Zome 🆕
+Multi-language support for global healthcare:
+- **Locale Management**: BCP 47 tags with country/language/script variants
+- **Translation System**: Source strings, translations, plural forms
+- **Medical Terminology**: Domain-specific medical term translations
+- **User Preferences**: Per-user locale settings with fallback chains
+- **Translation Memory**: Fuzzy matching for translation reuse
+- **Glossary**: Authoritative medical terminology with sources
+- **RTL Support**: Right-to-left language rendering
+
+### Disaster Response Zome 🆕
+Emergency healthcare operations for mass casualty events:
+- **Disaster Declaration**: Multi-level severity (1-5), affected area, emergency contacts
+- **START Triage**: Immediate/Delayed/Minor/Expectant/Deceased categorization
+- **Resource Management**: Personnel, supplies, equipment, beds, transport tracking
+- **Patient Tracking**: Missing, displaced, evacuated, at shelter/facility status
+- **Emergency Access**: Break-glass access with consent waiver and audit
+- **Shelter Health**: Capacity, medical staff, special needs, health alerts
+- **Resource Requests**: Priority-based resource request and fulfillment
+
+### Verifiable Credentials Zome 🆕
+W3C Verifiable Credentials standard for health credentials:
+- **15+ Credential Types**: Vaccination, lab results, medical license, insurance, patient identity
+- **W3C VC Data Model**: JSON-LD context, proof types, credential status
+- **Issuer Management**: Trusted issuer registry with key verification
+- **Holder Wallet**: Personal credential storage with favorites and categories
+- **Presentations**: Selective disclosure, presentation requests, verifier flow
+- **Revocation**: Batch revocation registries, status checks
+- **Trust Registry**: Hierarchical trust chains for issuer verification
+- **Health-Specific Claims**: Vaccination records, lab results, medical licenses
+
+### Mobile Support Zome 🆕
+Mobile-optimized healthcare operations:
+- **Device Management**: Multi-device registration, platform-specific handling
+- **Offline Sync**: Checkpoint-based resumable sync with priority queuing
+- **Conflict Resolution**: Server/client wins, last-write-wins, manual merge
+- **Delta Sync**: Incremental changes for bandwidth optimization
+- **Push Notifications**: FCM/APNS support with quiet hours and type filtering
+- **QR Codes**: Device pairing, record sharing, emergency access
+- **Biometric Auth**: Fingerprint/face authentication integration
+- **Emergency Snapshot**: Offline-available critical health info (allergies, medications, emergency contacts)
+- **Bandwidth Tracking**: Usage monitoring for data-constrained environments
 
 ## Ecosystem Integration
 
@@ -392,33 +498,33 @@ All data access requires:
 - ✅ **Data Dividends**: Fair compensation system with attribution chains
 - ✅ 441 comprehensive tests (149 new for revolutionary features)
 
-### Phase 3: Clinical Integration
-- 📋 Full FHIR R4 compatibility
-- 📋 EHR integration APIs
-- 📋 Clinical decision support
-- 📋 Provider directory
-- 📋 Telehealth support
+### Phase 3: Clinical Integration ✅
+- ✅ **FHIR R4 Mapping**: Patient bundles, observations, conditions, medications with LOINC/SNOMED/ICD-10 terminology
+- ✅ **EHR Gateway**: SMART on FHIR authentication, Epic/Cerner adapters, bidirectional sync
+- ✅ **Clinical Decision Support**: Drug interactions (RxNorm), allergy checks, clinical alerts, guidelines
+- ✅ **Provider Directory**: NPI verification, provider search, affiliations, accepting patients
+- ✅ **Telehealth**: Session scheduling, waiting room, documentation, provider availability
 
-### Phase 4: Equity & Access
-- 📋 SDOH screening integration
-- 📋 Mental health pathway
-- 📋 Chronic disease modules
-- 📋 Pediatric lifecycle management
-- 📋 Accessibility features
+### Phase 4: Equity & Access ✅
+- ✅ **SDOH Screening**: PRAPARE/AHC-HRSN instruments, 5 domains, community resources, intervention tracking
+- ✅ **Mental Health Pathway**: PHQ-9/GAD-7/C-SSRS screenings, safety plans, 42 CFR Part 2 consent
+- ✅ **Chronic Disease Management**: Diabetes, heart failure, COPD, CKD with condition-specific metrics
+- ✅ **Pediatric Lifecycle**: Growth tracking, CDC immunizations, developmental milestones, well-child visits
+- ✅ **Accessibility (WCAG 2.1)**: ARIA labels, screen reader support, contrast checking, reading level adaptation
 
-### Phase 5: Advanced Research
-- 📋 De-identified data commons
-- 📋 Clinical trial matching
-- 📋 Decentralized IRB support
-- 📋 Federated learning
-- 📋 Population health analytics
+### Phase 5: Advanced Research ✅
+- ✅ **Research Commons**: De-identified data sharing with HIPAA Safe Harbor/Expert Determination, k-anonymity, differential privacy
+- ✅ **Trial Matching**: Eligibility criteria matching, patient preferences, automatic notifications
+- ✅ **Decentralized IRB**: Protocol submissions, reviewer management, voting, continuing reviews
+- ✅ **Federated Learning**: Privacy-preserving ML with FedAvg/SecureAggregation, differential privacy budgets
+- ✅ **Population Health**: Aggregate statistics, surveillance reports, public health alerts, disparity analyses
 
-### Phase 6: Global Scale
-- 📋 International standards (IPS)
-- 📋 Multi-language expansion
-- 📋 Disaster response mode
-- 📋 Verifiable credentials
-- 📋 Mobile applications
+### Phase 6: Global Scale ✅
+- ✅ **International Patient Summary (IPS)**: HL7 IPS standard with FHIR Bundle export, 8 clinical sections, cross-border sharing
+- ✅ **Internationalization (i18n)**: BCP 47 locales, translation memory, medical terminology, RTL support
+- ✅ **Disaster Response**: Multi-severity declarations, START triage, resource management, emergency access
+- ✅ **Verifiable Credentials**: W3C VC standard with 15+ credential types, issuer/holder/verifier workflows, revocation
+- ✅ **Mobile Support**: Offline sync, conflict resolution, push notifications, QR codes, emergency snapshots
 
 ## Contributing
 

@@ -745,50 +745,34 @@ pub enum PoolType {
 // ==================== VALIDATION ====================
 
 /// Validate a data contribution
-pub fn validate_data_contribution(
-    contribution: &DataContribution,
-) -> ExternResult<ValidateCallbackResult> {
+pub fn validate_data_contribution(contribution: &DataContribution) -> ExternResult<ValidateCallbackResult> {
     if contribution.contribution_id.is_empty() {
-        return Ok(ValidateCallbackResult::Invalid(
-            "Contribution ID required".to_string(),
-        ));
+        return Ok(ValidateCallbackResult::Invalid("Contribution ID required".to_string()));
     }
 
     if contribution.data_categories.is_empty() {
-        return Ok(ValidateCallbackResult::Invalid(
-            "At least one data category required".to_string(),
-        ));
+        return Ok(ValidateCallbackResult::Invalid("At least one data category required".to_string()));
     }
 
     if contribution.quality_score < 0.0 || contribution.quality_score > 1.0 {
-        return Ok(ValidateCallbackResult::Invalid(
-            "Quality score must be between 0 and 1".to_string(),
-        ));
+        return Ok(ValidateCallbackResult::Invalid("Quality score must be between 0 and 1".to_string()));
     }
 
     if contribution.permitted_uses.is_empty() {
-        return Ok(ValidateCallbackResult::Invalid(
-            "At least one permitted use required".to_string(),
-        ));
+        return Ok(ValidateCallbackResult::Invalid("At least one permitted use required".to_string()));
     }
 
     Ok(ValidateCallbackResult::Valid)
 }
 
 /// Validate a dividend distribution
-pub fn validate_dividend_distribution(
-    dist: &DividendDistribution,
-) -> ExternResult<ValidateCallbackResult> {
+pub fn validate_dividend_distribution(dist: &DividendDistribution) -> ExternResult<ValidateCallbackResult> {
     if dist.distribution_id.is_empty() {
-        return Ok(ValidateCallbackResult::Invalid(
-            "Distribution ID required".to_string(),
-        ));
+        return Ok(ValidateCallbackResult::Invalid("Distribution ID required".to_string()));
     }
 
     if dist.amount.value < 0.0 {
-        return Ok(ValidateCallbackResult::Invalid(
-            "Amount cannot be negative".to_string(),
-        ));
+        return Ok(ValidateCallbackResult::Invalid("Amount cannot be negative".to_string()));
     }
 
     Ok(ValidateCallbackResult::Valid)
@@ -797,93 +781,64 @@ pub fn validate_dividend_distribution(
 /// Validate a revenue event
 pub fn validate_revenue_event(event: &RevenueEvent) -> ExternResult<ValidateCallbackResult> {
     if event.event_id.is_empty() {
-        return Ok(ValidateCallbackResult::Invalid(
-            "Event ID required".to_string(),
-        ));
+        return Ok(ValidateCallbackResult::Invalid("Event ID required".to_string()));
     }
 
     if event.total_value < 0.0 {
-        return Ok(ValidateCallbackResult::Invalid(
-            "Total value cannot be negative".to_string(),
-        ));
+        return Ok(ValidateCallbackResult::Invalid("Total value cannot be negative".to_string()));
     }
 
     if event.patient_pool_percent < 0.0 || event.patient_pool_percent > 100.0 {
-        return Ok(ValidateCallbackResult::Invalid(
-            "Patient pool percent must be 0-100".to_string(),
-        ));
+        return Ok(ValidateCallbackResult::Invalid("Patient pool percent must be 0-100".to_string()));
     }
 
     if event.contributing_data.is_empty() {
-        return Ok(ValidateCallbackResult::Invalid(
-            "At least one contribution required".to_string(),
-        ));
+        return Ok(ValidateCallbackResult::Invalid("At least one contribution required".to_string()));
     }
 
     Ok(ValidateCallbackResult::Valid)
 }
 
 /// Validate a research project
-pub fn validate_research_project(
-    project: &ResearchProject,
-) -> ExternResult<ValidateCallbackResult> {
+pub fn validate_research_project(project: &ResearchProject) -> ExternResult<ValidateCallbackResult> {
     if project.project_id.is_empty() {
-        return Ok(ValidateCallbackResult::Invalid(
-            "Project ID required".to_string(),
-        ));
+        return Ok(ValidateCallbackResult::Invalid("Project ID required".to_string()));
     }
 
     if project.name.is_empty() {
-        return Ok(ValidateCallbackResult::Invalid(
-            "Project name required".to_string(),
-        ));
+        return Ok(ValidateCallbackResult::Invalid("Project name required".to_string()));
     }
 
     if project.organization.is_empty() {
-        return Ok(ValidateCallbackResult::Invalid(
-            "Organization required".to_string(),
-        ));
+        return Ok(ValidateCallbackResult::Invalid("Organization required".to_string()));
     }
 
     let terms = &project.revenue_sharing;
     if terms.patient_pool_percent < 0.0 || terms.patient_pool_percent > 100.0 {
-        return Ok(ValidateCallbackResult::Invalid(
-            "Patient pool percent must be 0-100".to_string(),
-        ));
+        return Ok(ValidateCallbackResult::Invalid("Patient pool percent must be 0-100".to_string()));
     }
 
     Ok(ValidateCallbackResult::Valid)
 }
 
 /// Validate dividend preferences
-pub fn validate_dividend_preferences(
-    prefs: &DividendPreferences,
-) -> ExternResult<ValidateCallbackResult> {
+pub fn validate_dividend_preferences(prefs: &DividendPreferences) -> ExternResult<ValidateCallbackResult> {
     if prefs.auto_donate_percent < 0.0 || prefs.auto_donate_percent > 100.0 {
-        return Ok(ValidateCallbackResult::Invalid(
-            "Auto-donate percent must be 0-100".to_string(),
-        ));
+        return Ok(ValidateCallbackResult::Invalid("Auto-donate percent must be 0-100".to_string()));
     }
 
     if prefs.minimum_distribution < 0.0 {
-        return Ok(ValidateCallbackResult::Invalid(
-            "Minimum distribution cannot be negative".to_string(),
-        ));
+        return Ok(ValidateCallbackResult::Invalid("Minimum distribution cannot be negative".to_string()));
     }
 
     // Verify donation recipients sum to 100% if any exist
     if !prefs.auto_donate_recipients.is_empty() {
-        let total: f32 = prefs
-            .auto_donate_recipients
-            .iter()
-            .map(|r| r.percentage)
-            .sum();
+        let total: f32 = prefs.auto_donate_recipients.iter().map(|r| r.percentage).sum();
         if (total - 100.0).abs() > 0.01 {
-            return Ok(ValidateCallbackResult::Invalid(
-                "Donation recipient percentages must sum to 100".to_string(),
-            ));
+            return Ok(ValidateCallbackResult::Invalid("Donation recipient percentages must sum to 100".to_string()));
         }
     }
 
     Ok(ValidateCallbackResult::Valid)
 }
+

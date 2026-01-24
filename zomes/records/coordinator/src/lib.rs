@@ -13,10 +13,12 @@
 //! continuous model updates and health predictions.
 
 use hdk::prelude::*;
-use mycelix_health_shared::{
-    log_data_access, require_admin_authorization, require_authorization, DataCategory, Permission,
-};
 use records_integrity::*;
+use mycelix_health_shared::{
+    require_authorization, require_admin_authorization,
+    log_data_access,
+    DataCategory, Permission,
+};
 
 // ==================== HEALTH TWIN INTEGRATION ====================
 
@@ -28,10 +30,7 @@ fn try_feed_to_health_twin(patient_hash: &ActionHash, data_point: TwinDataPointI
 }
 
 /// Internal function to feed data to health twin
-fn feed_to_health_twin_internal(
-    patient_hash: &ActionHash,
-    data_point: TwinDataPointInput,
-) -> ExternResult<()> {
+fn feed_to_health_twin_internal(patient_hash: &ActionHash, data_point: TwinDataPointInput) -> ExternResult<()> {
     // First, check if patient has a twin
     let twin_response = call(
         CallTargetCell::Local,
@@ -43,12 +42,8 @@ fn feed_to_health_twin_internal(
 
     // Decode the response
     let twin_record: Option<Record> = match twin_response {
-        ZomeCallResponse::Ok(io) => io.decode().map_err(|e| {
-            wasm_error!(WasmErrorInner::Guest(format!(
-                "Failed to decode twin response: {}",
-                e
-            )))
-        })?,
+        ZomeCallResponse::Ok(io) => io.decode()
+            .map_err(|e| wasm_error!(WasmErrorInner::Guest(format!("Failed to decode twin response: {}", e))))?,
         // Any non-success response means we can't reach the twin - that's ok
         _ => return Ok(()),
     };
@@ -177,14 +172,13 @@ fn lab_result_to_twin_data_point(lab: &LabResult) -> TwinDataPointInput {
         "interpretation": format!("{:?}", lab.interpretation),
         "loinc_code": lab.loinc_code,
         "test_name": lab.test_name,
-    })
-    .to_string();
+    }).to_string();
 
     TwinDataPointInput {
         data_type: TwinDataType::LabResult(lab.loinc_code.clone()),
         value: value_json,
         unit: Some(lab.unit.clone()),
-        measured_at: lab.result_time.as_micros(),
+        measured_at: lab.result_time.as_micros() as i64,
         source: TwinDataSourceType::Laboratory,
         quality: TwinDataQuality::Clinical,
     }
@@ -193,7 +187,7 @@ fn lab_result_to_twin_data_point(lab: &LabResult) -> TwinDataPointInput {
 /// Convert vital signs to twin data points (multiple points from one reading)
 fn vitals_to_twin_data_points(vitals: &VitalSigns) -> Vec<TwinDataPointInput> {
     let mut data_points = Vec::new();
-    let measured_at = vitals.recorded_at.as_micros();
+    let measured_at = vitals.recorded_at.as_micros() as i64;
 
     // Heart rate
     if let Some(hr) = vitals.heart_rate_bpm {
@@ -208,10 +202,7 @@ fn vitals_to_twin_data_points(vitals: &VitalSigns) -> Vec<TwinDataPointInput> {
     }
 
     // Blood pressure (combined)
-    if let (Some(sys), Some(dia)) = (
-        vitals.blood_pressure_systolic,
-        vitals.blood_pressure_diastolic,
-    ) {
+    if let (Some(sys), Some(dia)) = (vitals.blood_pressure_systolic, vitals.blood_pressure_diastolic) {
         data_points.push(TwinDataPointInput {
             data_type: TwinDataType::VitalSign(TwinVitalSignType::BloodPressure),
             value: serde_json::json!({"systolic": sys, "diastolic": dia}).to_string(),
@@ -317,9 +308,8 @@ pub fn create_encounter(input: CreateEncounterInput) -> ExternResult<Record> {
     )?;
 
     let encounter_hash = create_entry(&EntryTypes::Encounter(input.encounter.clone()))?;
-    let record = get(encounter_hash.clone(), GetOptions::default())?.ok_or(wasm_error!(
-        WasmErrorInner::Guest("Could not find encounter".to_string())
-    ))?;
+    let record = get(encounter_hash.clone(), GetOptions::default())?
+        .ok_or(wasm_error!(WasmErrorInner::Guest("Could not find encounter".to_string())))?;
 
     // Link to patient
     create_link(
@@ -373,9 +363,7 @@ pub fn get_encounter(input: GetEncounterInput) -> ExternResult<Option<Record>> {
             .entry()
             .to_app_option()
             .map_err(|e| wasm_error!(WasmErrorInner::Guest(e.to_string())))?
-            .ok_or(wasm_error!(WasmErrorInner::Guest(
-                "Invalid encounter entry".to_string()
-            )))?;
+            .ok_or(wasm_error!(WasmErrorInner::Guest("Invalid encounter entry".to_string())))?;
 
         // Require Read authorization
         let auth = require_authorization(
@@ -417,10 +405,7 @@ pub fn get_patient_encounters(input: GetPatientEncountersInput) -> ExternResult<
         input.is_emergency,
     )?;
 
-    let links = get_links(
-        LinkQuery::try_new(input.patient_hash.clone(), LinkTypes::PatientToEncounters)?,
-        GetStrategy::default(),
-    )?;
+    let links = get_links(LinkQuery::try_new(input.patient_hash.clone(), LinkTypes::PatientToEncounters)?, GetStrategy::default())?;
 
     let mut encounters = Vec::new();
     for link in links {
@@ -466,9 +451,8 @@ pub fn create_diagnosis(input: CreateDiagnosisInput) -> ExternResult<Record> {
     )?;
 
     let diagnosis_hash = create_entry(&EntryTypes::Diagnosis(input.diagnosis.clone()))?;
-    let record = get(diagnosis_hash.clone(), GetOptions::default())?.ok_or(wasm_error!(
-        WasmErrorInner::Guest("Could not find diagnosis".to_string())
-    ))?;
+    let record = get(diagnosis_hash.clone(), GetOptions::default())?
+        .ok_or(wasm_error!(WasmErrorInner::Guest("Could not find diagnosis".to_string())))?;
 
     // Link to encounter if provided
     if let Some(encounter_hash) = input.diagnosis.encounter_hash {
@@ -504,17 +488,14 @@ pub struct GetEncounterDiagnosesInput {
 #[hdk_extern]
 pub fn get_encounter_diagnoses(input: GetEncounterDiagnosesInput) -> ExternResult<Vec<Record>> {
     // First get the encounter to find the patient_hash
-    let encounter_record = get_encounter_internal(input.encounter_hash.clone())?.ok_or(
-        wasm_error!(WasmErrorInner::Guest("Encounter not found".to_string())),
-    )?;
+    let encounter_record = get_encounter_internal(input.encounter_hash.clone())?
+        .ok_or(wasm_error!(WasmErrorInner::Guest("Encounter not found".to_string())))?;
 
     let encounter: Encounter = encounter_record
         .entry()
         .to_app_option()
         .map_err(|e| wasm_error!(WasmErrorInner::Guest(e.to_string())))?
-        .ok_or(wasm_error!(WasmErrorInner::Guest(
-            "Invalid encounter entry".to_string()
-        )))?;
+        .ok_or(wasm_error!(WasmErrorInner::Guest("Invalid encounter entry".to_string())))?;
 
     // Require Read authorization for Diagnoses category
     let auth = require_authorization(
@@ -524,10 +505,7 @@ pub fn get_encounter_diagnoses(input: GetEncounterDiagnosesInput) -> ExternResul
         input.is_emergency,
     )?;
 
-    let links = get_links(
-        LinkQuery::try_new(input.encounter_hash, LinkTypes::EncounterToDiagnoses)?,
-        GetStrategy::default(),
-    )?;
+    let links = get_links(LinkQuery::try_new(input.encounter_hash, LinkTypes::EncounterToDiagnoses)?, GetStrategy::default())?;
 
     let mut diagnoses = Vec::new();
     for link in links {
@@ -573,9 +551,8 @@ pub fn create_procedure(input: CreateProcedureInput) -> ExternResult<Record> {
     )?;
 
     let procedure_hash = create_entry(&EntryTypes::ProcedurePerformed(input.procedure.clone()))?;
-    let record = get(procedure_hash.clone(), GetOptions::default())?.ok_or(wasm_error!(
-        WasmErrorInner::Guest("Could not find procedure".to_string())
-    ))?;
+    let record = get(procedure_hash.clone(), GetOptions::default())?
+        .ok_or(wasm_error!(WasmErrorInner::Guest("Could not find procedure".to_string())))?;
 
     create_link(
         input.procedure.encounter_hash,
@@ -619,9 +596,8 @@ pub fn create_lab_result(input: CreateLabResultInput) -> ExternResult<Record> {
     )?;
 
     let result_hash = create_entry(&EntryTypes::LabResult(input.lab_result.clone()))?;
-    let record = get(result_hash.clone(), GetOptions::default())?.ok_or(wasm_error!(
-        WasmErrorInner::Guest("Could not find lab result".to_string())
-    ))?;
+    let record = get(result_hash.clone(), GetOptions::default())?
+        .ok_or(wasm_error!(WasmErrorInner::Guest("Could not find lab result".to_string())))?;
 
     // Link to patient
     create_link(
@@ -634,7 +610,12 @@ pub fn create_lab_result(input: CreateLabResultInput) -> ExternResult<Record> {
     // If critical, add to critical results
     if input.lab_result.is_critical {
         let critical_anchor = anchor_hash("critical_results")?;
-        create_link(critical_anchor, result_hash, LinkTypes::CriticalResults, ())?;
+        create_link(
+            critical_anchor,
+            result_hash,
+            LinkTypes::CriticalResults,
+            (),
+        )?;
     }
 
     // ==================== HEALTH TWIN INTEGRATION ====================
@@ -674,10 +655,7 @@ pub fn get_patient_lab_results(input: GetPatientLabResultsInput) -> ExternResult
         input.is_emergency,
     )?;
 
-    let links = get_links(
-        LinkQuery::try_new(input.patient_hash.clone(), LinkTypes::PatientToLabResults)?,
-        GetStrategy::default(),
-    )?;
+    let links = get_links(LinkQuery::try_new(input.patient_hash.clone(), LinkTypes::PatientToLabResults)?, GetStrategy::default())?;
 
     let mut results = Vec::new();
     for link in links {
@@ -713,17 +691,14 @@ pub struct AcknowledgeInput {
 /// Acknowledge critical lab result with access control
 #[hdk_extern]
 pub fn acknowledge_critical_result(input: AcknowledgeInput) -> ExternResult<Record> {
-    let record = get(input.result_hash.clone(), GetOptions::default())?.ok_or(wasm_error!(
-        WasmErrorInner::Guest("Lab result not found".to_string())
-    ))?;
+    let record = get(input.result_hash.clone(), GetOptions::default())?
+        .ok_or(wasm_error!(WasmErrorInner::Guest("Lab result not found".to_string())))?;
 
     let mut lab_result: LabResult = record
         .entry()
         .to_app_option()
         .map_err(|e| wasm_error!(WasmErrorInner::Guest(e.to_string())))?
-        .ok_or(wasm_error!(WasmErrorInner::Guest(
-            "Invalid lab result".to_string()
-        )))?;
+        .ok_or(wasm_error!(WasmErrorInner::Guest("Invalid lab result".to_string())))?;
 
     // Require Write authorization (Amend would be more specific but Write is sufficient)
     let auth = require_authorization(
@@ -737,9 +712,8 @@ pub fn acknowledge_critical_result(input: AcknowledgeInput) -> ExternResult<Reco
     lab_result.acknowledged_at = Some(sys_time()?);
 
     let updated_hash = update_entry(input.result_hash, &lab_result)?;
-    let updated_record = get(updated_hash, GetOptions::default())?.ok_or(wasm_error!(
-        WasmErrorInner::Guest("Could not find updated result".to_string())
-    ))?;
+    let updated_record = get(updated_hash, GetOptions::default())?
+        .ok_or(wasm_error!(WasmErrorInner::Guest("Could not find updated result".to_string())))?;
 
     // Log the access
     log_data_access(
@@ -773,9 +747,8 @@ pub fn create_imaging_study(input: CreateImagingStudyInput) -> ExternResult<Reco
     )?;
 
     let imaging_hash = create_entry(&EntryTypes::ImagingStudy(input.imaging.clone()))?;
-    let record = get(imaging_hash.clone(), GetOptions::default())?.ok_or(wasm_error!(
-        WasmErrorInner::Guest("Could not find imaging study".to_string())
-    ))?;
+    let record = get(imaging_hash.clone(), GetOptions::default())?
+        .ok_or(wasm_error!(WasmErrorInner::Guest("Could not find imaging study".to_string())))?;
 
     create_link(
         input.imaging.patient_hash.clone(),
@@ -825,10 +798,7 @@ pub fn get_patient_imaging(input: GetPatientImagingInput) -> ExternResult<Vec<Re
         input.is_emergency,
     )?;
 
-    let links = get_links(
-        LinkQuery::try_new(input.patient_hash.clone(), LinkTypes::PatientToImaging)?,
-        GetStrategy::default(),
-    )?;
+    let links = get_links(LinkQuery::try_new(input.patient_hash.clone(), LinkTypes::PatientToImaging)?, GetStrategy::default())?;
 
     let mut studies = Vec::new();
     for link in links {
@@ -876,9 +846,8 @@ pub fn record_vital_signs(input: RecordVitalSignsInput) -> ExternResult<Record> 
     )?;
 
     let vitals_hash = create_entry(&EntryTypes::VitalSigns(input.vitals.clone()))?;
-    let record = get(vitals_hash.clone(), GetOptions::default())?.ok_or(wasm_error!(
-        WasmErrorInner::Guest("Could not find vitals".to_string())
-    ))?;
+    let record = get(vitals_hash.clone(), GetOptions::default())?
+        .ok_or(wasm_error!(WasmErrorInner::Guest("Could not find vitals".to_string())))?;
 
     create_link(
         input.vitals.patient_hash.clone(),
@@ -927,10 +896,7 @@ pub fn get_patient_vitals(input: GetPatientVitalsInput) -> ExternResult<Vec<Reco
         input.is_emergency,
     )?;
 
-    let links = get_links(
-        LinkQuery::try_new(input.patient_hash.clone(), LinkTypes::PatientToVitals)?,
-        GetStrategy::default(),
-    )?;
+    let links = get_links(LinkQuery::try_new(input.patient_hash.clone(), LinkTypes::PatientToVitals)?, GetStrategy::default())?;
 
     let mut vitals = Vec::new();
     for link in links {
@@ -963,10 +929,7 @@ pub fn get_critical_results(_: ()) -> ExternResult<Vec<Record>> {
     require_admin_authorization()?;
 
     let critical_anchor = anchor_hash("critical_results")?;
-    let links = get_links(
-        LinkQuery::try_new(critical_anchor, LinkTypes::CriticalResults)?,
-        GetStrategy::default(),
-    )?;
+    let links = get_links(LinkQuery::try_new(critical_anchor, LinkTypes::CriticalResults)?, GetStrategy::default())?;
 
     let mut results = Vec::new();
     for link in links {
@@ -977,12 +940,7 @@ pub fn get_critical_results(_: ()) -> ExternResult<Vec<Record>> {
                     if lab.acknowledged_by.is_none() {
                         results.push(record);
                     }
-                } else if let Some(imaging) = record
-                    .entry()
-                    .to_app_option::<ImagingStudy>()
-                    .ok()
-                    .flatten()
-                {
+                } else if let Some(imaging) = record.entry().to_app_option::<ImagingStudy>().ok().flatten() {
                     if imaging.is_critical {
                         results.push(record);
                     }
@@ -1015,9 +973,8 @@ pub fn update_encounter(input: UpdateEncounterInput) -> ExternResult<Record> {
     )?;
 
     let updated_hash = update_entry(input.original_hash.clone(), &input.updated_encounter)?;
-    let record = get(updated_hash.clone(), GetOptions::default())?.ok_or(wasm_error!(
-        WasmErrorInner::Guest("Could not find updated encounter".to_string())
-    ))?;
+    let record = get(updated_hash.clone(), GetOptions::default())?
+        .ok_or(wasm_error!(WasmErrorInner::Guest("Could not find updated encounter".to_string())))?;
 
     create_link(
         input.original_hash,
@@ -1060,9 +1017,8 @@ pub fn update_diagnosis(input: UpdateDiagnosisInput) -> ExternResult<Record> {
     )?;
 
     let updated_hash = update_entry(input.original_hash.clone(), &input.updated_diagnosis)?;
-    let record = get(updated_hash, GetOptions::default())?.ok_or(wasm_error!(
-        WasmErrorInner::Guest("Could not find updated diagnosis".to_string())
-    ))?;
+    let record = get(updated_hash, GetOptions::default())?
+        .ok_or(wasm_error!(WasmErrorInner::Guest("Could not find updated diagnosis".to_string())))?;
 
     // Log the access
     log_data_access(
@@ -1097,9 +1053,8 @@ pub fn update_lab_result(input: UpdateLabResultInput) -> ExternResult<Record> {
     )?;
 
     let updated_hash = update_entry(input.original_hash.clone(), &input.updated_result)?;
-    let record = get(updated_hash, GetOptions::default())?.ok_or(wasm_error!(
-        WasmErrorInner::Guest("Could not find updated lab result".to_string())
-    ))?;
+    let record = get(updated_hash, GetOptions::default())?
+        .ok_or(wasm_error!(WasmErrorInner::Guest("Could not find updated lab result".to_string())))?;
 
     // Log the access
     log_data_access(
@@ -1125,17 +1080,14 @@ pub struct DeleteEncounterInput {
 #[hdk_extern]
 pub fn delete_encounter(input: DeleteEncounterInput) -> ExternResult<ActionHash> {
     // First get the encounter to find the patient_hash
-    let record = get_encounter_internal(input.encounter_hash.clone())?.ok_or(wasm_error!(
-        WasmErrorInner::Guest("Encounter not found".to_string())
-    ))?;
+    let record = get_encounter_internal(input.encounter_hash.clone())?
+        .ok_or(wasm_error!(WasmErrorInner::Guest("Encounter not found".to_string())))?;
 
     let encounter: Encounter = record
         .entry()
         .to_app_option()
         .map_err(|e| wasm_error!(WasmErrorInner::Guest(e.to_string())))?
-        .ok_or(wasm_error!(WasmErrorInner::Guest(
-            "Invalid encounter entry".to_string()
-        )))?;
+        .ok_or(wasm_error!(WasmErrorInner::Guest("Invalid encounter entry".to_string())))?;
 
     // Require Delete authorization
     let auth = require_authorization(
@@ -1171,17 +1123,14 @@ pub struct GetEncounterHistoryInput {
 #[hdk_extern]
 pub fn get_encounter_history(input: GetEncounterHistoryInput) -> ExternResult<Vec<Record>> {
     // First get the encounter to find the patient_hash
-    let original = get_encounter_internal(input.encounter_hash.clone())?.ok_or(wasm_error!(
-        WasmErrorInner::Guest("Encounter not found".to_string())
-    ))?;
+    let original = get_encounter_internal(input.encounter_hash.clone())?
+        .ok_or(wasm_error!(WasmErrorInner::Guest("Encounter not found".to_string())))?;
 
     let encounter: Encounter = original
         .entry()
         .to_app_option()
         .map_err(|e| wasm_error!(WasmErrorInner::Guest(e.to_string())))?
-        .ok_or(wasm_error!(WasmErrorInner::Guest(
-            "Invalid encounter entry".to_string()
-        )))?;
+        .ok_or(wasm_error!(WasmErrorInner::Guest("Invalid encounter entry".to_string())))?;
 
     // Require Read authorization for Procedures category
     let auth = require_authorization(
@@ -1191,10 +1140,7 @@ pub fn get_encounter_history(input: GetEncounterHistoryInput) -> ExternResult<Ve
         input.is_emergency,
     )?;
 
-    let links = get_links(
-        LinkQuery::try_new(input.encounter_hash, LinkTypes::EncounterUpdates)?,
-        GetStrategy::default(),
-    )?;
+    let links = get_links(LinkQuery::try_new(input.encounter_hash, LinkTypes::EncounterUpdates)?, GetStrategy::default())?;
 
     let mut history = Vec::new();
     history.push(original);

@@ -1,5 +1,5 @@
 //! Insurance Claims and Coverage Verification Integrity Zome
-//!
+//! 
 //! Defines entry types for insurance policies, claims, prior authorizations,
 //! and coverage verification with X12 EDI alignment.
 

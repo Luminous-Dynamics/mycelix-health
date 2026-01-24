@@ -100,10 +100,7 @@ pub fn validate_epsilon(epsilon: f64) -> Result<(), DpValidationError> {
     if epsilon < MIN_EPSILON {
         return Err(DpValidationError::InvalidEpsilon {
             value: epsilon,
-            reason: format!(
-                "Epsilon too small (< {}): would add infinite noise",
-                MIN_EPSILON
-            ),
+            reason: format!("Epsilon too small (< {}): would add infinite noise", MIN_EPSILON),
         });
     }
 
@@ -153,10 +150,7 @@ pub fn validate_delta(delta: f64) -> Result<(), DpValidationError> {
     if delta > MAX_DELTA {
         return Err(DpValidationError::InvalidDelta {
             value: delta,
-            reason: format!(
-                "Delta too large (> {}): privacy guarantee too weak",
-                MAX_DELTA
-            ),
+            reason: format!("Delta too large (> {}): privacy guarantee too weak", MAX_DELTA),
         });
     }
 
@@ -229,10 +223,7 @@ pub fn validate_dp_parameters(
 /// # Returns
 /// * `Ok(())` if valid
 /// * `Err(DpValidationError)` if delta is too large for dataset
-pub fn validate_delta_for_dataset(
-    delta: f64,
-    dataset_size: usize,
-) -> Result<(), DpValidationError> {
+pub fn validate_delta_for_dataset(delta: f64, dataset_size: usize) -> Result<(), DpValidationError> {
     if dataset_size == 0 {
         return Err(DpValidationError::InvalidQuery(
             "Dataset size must be positive".to_string(),

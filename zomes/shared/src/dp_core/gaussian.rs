@@ -42,9 +42,7 @@
 //! Both Z₁ and Z₂ are independent standard normal N(0, 1) samples.
 
 use super::rng::{RngError, SecureRng};
-use super::validation::{
-    validate_delta, validate_epsilon, validate_sensitivity, DpValidationError,
-};
+use super::validation::{validate_epsilon, validate_delta, validate_sensitivity, DpValidationError};
 use serde::{Deserialize, Serialize};
 
 /// Error type for Gaussian mechanism operations
@@ -103,9 +101,7 @@ impl GaussianMechanism {
     /// A sample from N(0, σ²)
     pub fn sample(sigma: f64) -> Result<f64, GaussianError> {
         if sigma <= 0.0 {
-            return Err(GaussianError::Validation(
-                "Sigma must be positive".to_string(),
-            ));
+            return Err(GaussianError::Validation("Sigma must be positive".to_string()));
         }
 
         let z = Self::sample_standard_normal()?;
@@ -222,11 +218,7 @@ mod tests {
         // ln(1.25e6) ≈ 14.04
         // √(2 * 14.04) ≈ 5.30
         // σ ≈ 53.0
-        assert!(
-            sigma > 50.0 && sigma < 60.0,
-            "Sigma {} out of expected range",
-            sigma
-        );
+        assert!(sigma > 50.0 && sigma < 60.0, "Sigma {} out of expected range", sigma);
     }
 
     #[test]
@@ -257,8 +249,7 @@ mod tests {
             .collect();
 
         let mean: f64 = samples.iter().sum::<f64>() / n as f64;
-        let variance: f64 =
-            samples.iter().map(|x| (x - mean).powi(2)).sum::<f64>() / (n - 1) as f64;
+        let variance: f64 = samples.iter().map(|x| (x - mean).powi(2)).sum::<f64>() / (n - 1) as f64;
 
         // Expected variance = 1.0
         assert!(
@@ -277,8 +268,7 @@ mod tests {
             .collect();
 
         let mean: f64 = samples.iter().sum::<f64>() / n as f64;
-        let variance: f64 =
-            samples.iter().map(|x| (x - mean).powi(2)).sum::<f64>() / (n - 1) as f64;
+        let variance: f64 = samples.iter().map(|x| (x - mean).powi(2)).sum::<f64>() / (n - 1) as f64;
 
         // Expected variance = σ² = 9.0
         assert!(

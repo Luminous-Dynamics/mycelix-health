@@ -1,0 +1,13 @@
+[package]
+name = "federated_learning"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+name = "federated_learning"
+
+[dependencies]
+hdk = { workspace = true }
+serde = { workspace = true }
+federated_learning_integrity = { path = "../integrity" }

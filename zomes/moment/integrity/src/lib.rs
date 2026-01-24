@@ -708,21 +708,15 @@ pub struct GlobalConcern {
 /// Validate health moment
 pub fn validate_health_moment(moment: &HealthMoment) -> ExternResult<ValidateCallbackResult> {
     if moment.moment_id.is_empty() {
-        return Ok(ValidateCallbackResult::Invalid(
-            "Moment ID required".to_string(),
-        ));
+        return Ok(ValidateCallbackResult::Invalid("Moment ID required".to_string()));
     }
 
     if moment.region.country.is_empty() {
-        return Ok(ValidateCallbackResult::Invalid(
-            "Country required".to_string(),
-        ));
+        return Ok(ValidateCallbackResult::Invalid("Country required".to_string()));
     }
 
     if moment.data_quality.confidence < 0.0 || moment.data_quality.confidence > 1.0 {
-        return Ok(ValidateCallbackResult::Invalid(
-            "Confidence must be 0-1".to_string(),
-        ));
+        return Ok(ValidateCallbackResult::Invalid("Confidence must be 0-1".to_string()));
     }
 
     Ok(ValidateCallbackResult::Valid)
@@ -731,40 +725,28 @@ pub fn validate_health_moment(moment: &HealthMoment) -> ExternResult<ValidateCal
 /// Validate health advisory
 pub fn validate_health_advisory(advisory: &HealthAdvisory) -> ExternResult<ValidateCallbackResult> {
     if advisory.advisory_id.is_empty() {
-        return Ok(ValidateCallbackResult::Invalid(
-            "Advisory ID required".to_string(),
-        ));
+        return Ok(ValidateCallbackResult::Invalid("Advisory ID required".to_string()));
     }
 
     if advisory.title.is_empty() {
-        return Ok(ValidateCallbackResult::Invalid(
-            "Title required".to_string(),
-        ));
+        return Ok(ValidateCallbackResult::Invalid("Title required".to_string()));
     }
 
     if advisory.description.is_empty() {
-        return Ok(ValidateCallbackResult::Invalid(
-            "Description required".to_string(),
-        ));
+        return Ok(ValidateCallbackResult::Invalid("Description required".to_string()));
     }
 
     Ok(ValidateCallbackResult::Valid)
 }
 
 /// Validate personal context
-pub fn validate_personal_context(
-    context: &PersonalContext,
-) -> ExternResult<ValidateCallbackResult> {
+pub fn validate_personal_context(context: &PersonalContext) -> ExternResult<ValidateCallbackResult> {
     if context.context_id.is_empty() {
-        return Ok(ValidateCallbackResult::Invalid(
-            "Context ID required".to_string(),
-        ));
+        return Ok(ValidateCallbackResult::Invalid("Context ID required".to_string()));
     }
 
     if context.home_region.country.is_empty() {
-        return Ok(ValidateCallbackResult::Invalid(
-            "Home region required".to_string(),
-        ));
+        return Ok(ValidateCallbackResult::Invalid("Home region required".to_string()));
     }
 
     Ok(ValidateCallbackResult::Valid)

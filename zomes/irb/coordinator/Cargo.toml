@@ -1,0 +1,13 @@
+[package]
+name = "irb"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+name = "irb"
+
+[dependencies]
+hdk = { workspace = true }
+serde = { workspace = true }
+irb_integrity = { path = "../integrity" }

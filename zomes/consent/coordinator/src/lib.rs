@@ -1,19 +1,18 @@
 //! Consent Coordinator Zome
-//!
+//! 
 //! Provides extern functions for consent management,
 //! access control, and audit logging.
 
-use consent_integrity::*;
 use hdk::prelude::*;
+use consent_integrity::*;
 
 /// Create a new consent directive
 #[hdk_extern]
 pub fn create_consent(consent: Consent) -> ExternResult<Record> {
     let consent_hash = create_entry(&EntryTypes::Consent(consent.clone()))?;
-    let record = get(consent_hash.clone(), GetOptions::default())?.ok_or(wasm_error!(
-        WasmErrorInner::Guest("Could not find consent".to_string())
-    ))?;
-
+    let record = get(consent_hash.clone(), GetOptions::default())?
+        .ok_or(wasm_error!(WasmErrorInner::Guest("Could not find consent".to_string())))?;
+    
     // Link to patient
     create_link(
         consent.patient_hash.clone(),
@@ -21,24 +20,26 @@ pub fn create_consent(consent: Consent) -> ExternResult<Record> {
         LinkTypes::PatientToConsents,
         (),
     )?;
-
+    
     // Link to active consents
     if matches!(consent.status, ConsentStatus::Active) {
         let active_anchor = anchor_hash("active_consents")?;
-        create_link(active_anchor, consent_hash, LinkTypes::ActiveConsents, ())?;
+        create_link(
+            active_anchor,
+            consent_hash,
+            LinkTypes::ActiveConsents,
+            (),
+        )?;
     }
-
+    
     Ok(record)
 }
 
 /// Get patient's consents
 #[hdk_extern]
 pub fn get_patient_consents(patient_hash: ActionHash) -> ExternResult<Vec<Record>> {
-    let links = get_links(
-        LinkQuery::try_new(patient_hash, LinkTypes::PatientToConsents)?,
-        GetStrategy::default(),
-    )?;
-
+    let links = get_links(LinkQuery::try_new(patient_hash, LinkTypes::PatientToConsents)?, GetStrategy::default())?;
+    
     let mut consents = Vec::new();
     for link in links {
         if let Some(hash) = link.target.into_action_hash() {
@@ -47,7 +48,7 @@ pub fn get_patient_consents(patient_hash: ActionHash) -> ExternResult<Vec<Record
             }
         }
     }
-
+    
     Ok(consents)
 }
 
@@ -55,7 +56,7 @@ pub fn get_patient_consents(patient_hash: ActionHash) -> ExternResult<Vec<Record
 #[hdk_extern]
 pub fn get_active_consents(patient_hash: ActionHash) -> ExternResult<Vec<Record>> {
     let all_consents = get_patient_consents(patient_hash)?;
-
+    
     let active: Vec<Record> = all_consents
         .into_iter()
         .filter(|record| {
@@ -66,31 +67,28 @@ pub fn get_active_consents(patient_hash: ActionHash) -> ExternResult<Vec<Record>
             }
         })
         .collect();
-
+    
     Ok(active)
 }
 
 /// Revoke a consent
 #[hdk_extern]
 pub fn revoke_consent(input: RevokeConsentInput) -> ExternResult<Record> {
-    let record = get(input.consent_hash.clone(), GetOptions::default())?.ok_or(wasm_error!(
-        WasmErrorInner::Guest("Consent not found".to_string())
-    ))?;
-
+    let record = get(input.consent_hash.clone(), GetOptions::default())?
+        .ok_or(wasm_error!(WasmErrorInner::Guest("Consent not found".to_string())))?;
+    
     let mut consent: Consent = record
         .entry()
         .to_app_option()
         .map_err(|e| wasm_error!(WasmErrorInner::Guest(e.to_string())))?
-        .ok_or(wasm_error!(WasmErrorInner::Guest(
-            "Invalid consent".to_string()
-        )))?;
-
+        .ok_or(wasm_error!(WasmErrorInner::Guest("Invalid consent".to_string())))?;
+    
     consent.status = ConsentStatus::Revoked;
     consent.revoked_at = Some(sys_time()?);
     consent.revocation_reason = Some(input.reason);
-
+    
     let updated_hash = update_entry(input.consent_hash.clone(), &consent)?;
-
+    
     // Add to revoked consents
     let revoked_anchor = anchor_hash("revoked_consents")?;
     create_link(
@@ -99,10 +97,9 @@ pub fn revoke_consent(input: RevokeConsentInput) -> ExternResult<Record> {
         LinkTypes::RevokedConsents,
         (),
     )?;
-
-    get(updated_hash, GetOptions::default())?.ok_or(wasm_error!(WasmErrorInner::Guest(
-        "Could not find updated consent".to_string()
-    )))
+    
+    get(updated_hash, GetOptions::default())?
+        .ok_or(wasm_error!(WasmErrorInner::Guest("Could not find updated consent".to_string())))
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -128,11 +125,9 @@ pub fn check_authorization(input: AuthorizationCheckInput) -> ExternResult<Autho
 
             if grantee_matches {
                 // Check if data category is covered
-                let category_covered = consent
-                    .scope
-                    .data_categories
-                    .iter()
-                    .any(|cat| matches!(cat, DataCategory::All) || *cat == input.data_category);
+                let category_covered = consent.scope.data_categories.iter().any(|cat| {
+                    matches!(cat, DataCategory::All) || *cat == input.data_category
+                });
 
                 // Check if not excluded
                 let not_excluded = !consent.scope.exclusions.contains(&input.data_category);
@@ -199,17 +194,16 @@ pub struct AuthorizationResult {
 #[hdk_extern]
 pub fn create_access_request(request: DataAccessRequest) -> ExternResult<Record> {
     let request_hash = create_entry(&EntryTypes::DataAccessRequest(request.clone()))?;
-    let record = get(request_hash.clone(), GetOptions::default())?.ok_or(wasm_error!(
-        WasmErrorInner::Guest("Could not find request".to_string())
-    ))?;
-
+    let record = get(request_hash.clone(), GetOptions::default())?
+        .ok_or(wasm_error!(WasmErrorInner::Guest("Could not find request".to_string())))?;
+    
     create_link(
         request.patient_hash,
         request_hash,
         LinkTypes::PatientToAccessRequests,
         (),
     )?;
-
+    
     Ok(record)
 }
 
@@ -217,17 +211,16 @@ pub fn create_access_request(request: DataAccessRequest) -> ExternResult<Record>
 #[hdk_extern]
 pub fn log_data_access(log: DataAccessLog) -> ExternResult<Record> {
     let log_hash = create_entry(&EntryTypes::DataAccessLog(log.clone()))?;
-    let record = get(log_hash.clone(), GetOptions::default())?.ok_or(wasm_error!(
-        WasmErrorInner::Guest("Could not find log".to_string())
-    ))?;
-
+    let record = get(log_hash.clone(), GetOptions::default())?
+        .ok_or(wasm_error!(WasmErrorInner::Guest("Could not find log".to_string())))?;
+    
     create_link(
         log.patient_hash,
         log_hash,
         LinkTypes::PatientToAccessLogs,
         (),
     )?;
-
+    
     Ok(record)
 }
 
@@ -236,7 +229,7 @@ pub fn log_data_access(log: DataAccessLog) -> ExternResult<Record> {
 pub fn get_access_logs(patient_hash: ActionHash) -> ExternResult<Vec<Record>> {
     let links = get_links(
         LinkQuery::try_new(patient_hash, LinkTypes::PatientToAccessLogs)?,
-        GetStrategy::default(),
+        GetStrategy::default()
     )?;
 
     let mut logs = Vec::new();
@@ -350,17 +343,16 @@ pub fn create_access_denied_log(entry: AccessDeniedLogEntry) -> ExternResult<Act
 #[hdk_extern]
 pub fn record_emergency_access(emergency: EmergencyAccess) -> ExternResult<Record> {
     let emergency_hash = create_entry(&EntryTypes::EmergencyAccess(emergency.clone()))?;
-    let record = get(emergency_hash.clone(), GetOptions::default())?.ok_or(wasm_error!(
-        WasmErrorInner::Guest("Could not find emergency access".to_string())
-    ))?;
-
+    let record = get(emergency_hash.clone(), GetOptions::default())?
+        .ok_or(wasm_error!(WasmErrorInner::Guest("Could not find emergency access".to_string())))?;
+    
     create_link(
         emergency.patient_hash,
         emergency_hash,
         LinkTypes::PatientToEmergencyAccess,
         (),
     )?;
-
+    
     Ok(record)
 }
 
@@ -368,28 +360,24 @@ pub fn record_emergency_access(emergency: EmergencyAccess) -> ExternResult<Recor
 #[hdk_extern]
 pub fn create_authorization_document(doc: AuthorizationDocument) -> ExternResult<Record> {
     let doc_hash = create_entry(&EntryTypes::AuthorizationDocument(doc.clone()))?;
-    let record = get(doc_hash.clone(), GetOptions::default())?.ok_or(wasm_error!(
-        WasmErrorInner::Guest("Could not find document".to_string())
-    ))?;
-
+    let record = get(doc_hash.clone(), GetOptions::default())?
+        .ok_or(wasm_error!(WasmErrorInner::Guest("Could not find document".to_string())))?;
+    
     create_link(
         doc.patient_hash,
         doc_hash,
         LinkTypes::PatientToDocuments,
         (),
     )?;
-
+    
     Ok(record)
 }
 
 /// Get patient's authorization documents
 #[hdk_extern]
 pub fn get_authorization_documents(patient_hash: ActionHash) -> ExternResult<Vec<Record>> {
-    let links = get_links(
-        LinkQuery::try_new(patient_hash, LinkTypes::PatientToDocuments)?,
-        GetStrategy::default(),
-    )?;
-
+    let links = get_links(LinkQuery::try_new(patient_hash, LinkTypes::PatientToDocuments)?, GetStrategy::default())?;
+    
     let mut docs = Vec::new();
     for link in links {
         if let Some(hash) = link.target.into_action_hash() {
@@ -398,7 +386,7 @@ pub fn get_authorization_documents(patient_hash: ActionHash) -> ExternResult<Vec
             }
         }
     }
-
+    
     Ok(docs)
 }
 
@@ -410,12 +398,7 @@ pub fn get_access_logs_by_date(input: DateRangeInput) -> ExternResult<Vec<Record
     let filtered: Vec<Record> = all_logs
         .into_iter()
         .filter(|record| {
-            if let Some(log) = record
-                .entry()
-                .to_app_option::<DataAccessLog>()
-                .ok()
-                .flatten()
-            {
+            if let Some(log) = record.entry().to_app_option::<DataAccessLog>().ok().flatten() {
                 log.accessed_at >= input.start_date && log.accessed_at <= input.end_date
             } else {
                 false
@@ -441,12 +424,7 @@ pub fn get_access_logs_by_accessor(input: AccessorLogsInput) -> ExternResult<Vec
     let filtered: Vec<Record> = all_logs
         .into_iter()
         .filter(|record| {
-            if let Some(log) = record
-                .entry()
-                .to_app_option::<DataAccessLog>()
-                .ok()
-                .flatten()
-            {
+            if let Some(log) = record.entry().to_app_option::<DataAccessLog>().ok().flatten() {
                 log.accessor == input.accessor
             } else {
                 false
@@ -466,10 +444,7 @@ pub struct AccessorLogsInput {
 /// Get all emergency access events (break-glass audit)
 #[hdk_extern]
 pub fn get_emergency_access_events(patient_hash: ActionHash) -> ExternResult<Vec<Record>> {
-    let links = get_links(
-        LinkQuery::try_new(patient_hash, LinkTypes::PatientToEmergencyAccess)?,
-        GetStrategy::default(),
-    )?;
+    let links = get_links(LinkQuery::try_new(patient_hash, LinkTypes::PatientToEmergencyAccess)?, GetStrategy::default())?;
 
     let mut events = Vec::new();
     for link in links {
@@ -494,18 +469,11 @@ pub fn generate_disclosure_report(input: DisclosureReportInput) -> ExternResult<
 
     let mut disclosures = Vec::new();
     for record in logs {
-        if let Some(log) = record
-            .entry()
-            .to_app_option::<DataAccessLog>()
-            .ok()
-            .flatten()
-        {
+        if let Some(log) = record.entry().to_app_option::<DataAccessLog>().ok().flatten() {
             disclosures.push(DisclosureEntry {
                 accessed_at: log.accessed_at,
                 accessor: log.accessor,
-                data_categories: log
-                    .data_categories_accessed
-                    .iter()
+                data_categories: log.data_categories_accessed.iter()
                     .map(|c| format!("{:?}", c))
                     .collect(),
                 access_reason: log.access_reason.clone(),
@@ -593,9 +561,8 @@ pub struct ConsentViewInput {
 #[hdk_extern]
 pub fn update_consent(input: UpdateConsentInput) -> ExternResult<Record> {
     let updated_hash = update_entry(input.original_hash.clone(), &input.updated_consent)?;
-    let record = get(updated_hash.clone(), GetOptions::default())?.ok_or(wasm_error!(
-        WasmErrorInner::Guest("Could not find updated consent".to_string())
-    ))?;
+    let record = get(updated_hash.clone(), GetOptions::default())?
+        .ok_or(wasm_error!(WasmErrorInner::Guest("Could not find updated consent".to_string())))?;
 
     // Create audit trail link
     create_link(
@@ -617,10 +584,7 @@ pub struct UpdateConsentInput {
 /// Get consent history (all versions for audit trail)
 #[hdk_extern]
 pub fn get_consent_history(consent_hash: ActionHash) -> ExternResult<Vec<Record>> {
-    let links = get_links(
-        LinkQuery::try_new(consent_hash.clone(), LinkTypes::ConsentUpdates)?,
-        GetStrategy::default(),
-    )?;
+    let links = get_links(LinkQuery::try_new(consent_hash.clone(), LinkTypes::ConsentUpdates)?, GetStrategy::default())?;
 
     let mut history = Vec::new();
 
@@ -659,9 +623,8 @@ fn anchor_hash(anchor_text: &str) -> ExternResult<EntryHash> {
 #[hdk_extern]
 pub fn create_delegation(delegation: DelegationGrant) -> ExternResult<Record> {
     let delegation_hash = create_entry(&EntryTypes::DelegationGrant(delegation.clone()))?;
-    let record = get(delegation_hash.clone(), GetOptions::default())?.ok_or(wasm_error!(
-        WasmErrorInner::Guest("Could not find delegation".to_string())
-    ))?;
+    let record = get(delegation_hash.clone(), GetOptions::default())?
+        .ok_or(wasm_error!(WasmErrorInner::Guest("Could not find delegation".to_string())))?;
 
     // Link to patient
     create_link(
@@ -699,7 +662,7 @@ pub fn create_delegation(delegation: DelegationGrant) -> ExternResult<Record> {
 pub fn get_patient_delegations(patient_hash: ActionHash) -> ExternResult<Vec<Record>> {
     let links = get_links(
         LinkQuery::try_new(patient_hash, LinkTypes::PatientToDelegations)?,
-        GetStrategy::default(),
+        GetStrategy::default()
     )?;
 
     let mut delegations = Vec::new();
@@ -722,12 +685,7 @@ pub fn get_active_delegations(patient_hash: ActionHash) -> ExternResult<Vec<Reco
     let active: Vec<Record> = all_delegations
         .into_iter()
         .filter(|record| {
-            if let Some(delegation) = record
-                .entry()
-                .to_app_option::<DelegationGrant>()
-                .ok()
-                .flatten()
-            {
+            if let Some(delegation) = record.entry().to_app_option::<DelegationGrant>().ok().flatten() {
                 matches!(delegation.status, DelegationStatus::Active)
             } else {
                 false
@@ -741,17 +699,14 @@ pub fn get_active_delegations(patient_hash: ActionHash) -> ExternResult<Vec<Reco
 /// Revoke a delegation
 #[hdk_extern]
 pub fn revoke_delegation(input: RevokeDelegationInput) -> ExternResult<Record> {
-    let record = get(input.delegation_hash.clone(), GetOptions::default())?.ok_or(wasm_error!(
-        WasmErrorInner::Guest("Delegation not found".to_string())
-    ))?;
+    let record = get(input.delegation_hash.clone(), GetOptions::default())?
+        .ok_or(wasm_error!(WasmErrorInner::Guest("Delegation not found".to_string())))?;
 
     let mut delegation: DelegationGrant = record
         .entry()
         .to_app_option()
         .map_err(|e| wasm_error!(WasmErrorInner::Guest(e.to_string())))?
-        .ok_or(wasm_error!(WasmErrorInner::Guest(
-            "Invalid delegation".to_string()
-        )))?;
+        .ok_or(wasm_error!(WasmErrorInner::Guest("Invalid delegation".to_string())))?;
 
     delegation.status = DelegationStatus::Revoked;
     delegation.revoked_at = Some(sys_time()?);
@@ -759,9 +714,8 @@ pub fn revoke_delegation(input: RevokeDelegationInput) -> ExternResult<Record> {
 
     let updated_hash = update_entry(input.delegation_hash, &delegation)?;
 
-    get(updated_hash, GetOptions::default())?.ok_or(wasm_error!(WasmErrorInner::Guest(
-        "Could not find updated delegation".to_string()
-    )))
+    get(updated_hash, GetOptions::default())?
+        .ok_or(wasm_error!(WasmErrorInner::Guest("Could not find updated delegation".to_string())))
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -772,27 +726,19 @@ pub struct RevokeDelegationInput {
 
 /// Check if delegate has authorization for patient
 #[hdk_extern]
-pub fn check_delegation_authorization(
-    input: DelegationAuthInput,
-) -> ExternResult<DelegationAuthResult> {
+pub fn check_delegation_authorization(input: DelegationAuthInput) -> ExternResult<DelegationAuthResult> {
     let delegations = get_active_delegations(input.patient_hash.clone())?;
 
     for record in delegations {
-        if let Some(delegation) = record
-            .entry()
-            .to_app_option::<DelegationGrant>()
-            .ok()
-            .flatten()
-        {
+        if let Some(delegation) = record.entry().to_app_option::<DelegationGrant>().ok().flatten() {
             if delegation.delegate == input.delegate {
                 // Check if permission is granted
                 let permission_granted = delegation.permissions.contains(&input.permission);
 
                 // Check if data category is covered
-                let category_covered = delegation
-                    .data_scope
-                    .iter()
-                    .any(|cat| matches!(cat, DataCategory::All) || *cat == input.data_category);
+                let category_covered = delegation.data_scope.iter().any(|cat| {
+                    matches!(cat, DataCategory::All) || *cat == input.data_category
+                });
 
                 // Check if not excluded
                 let not_excluded = !delegation.exclusions.contains(&input.data_category);
@@ -841,7 +787,7 @@ pub fn get_my_delegations(_: ()) -> ExternResult<Vec<Record>> {
 
     let links = get_links(
         LinkQuery::try_new(delegate_anchor, LinkTypes::DelegateToDelegations)?,
-        GetStrategy::default(),
+        GetStrategy::default()
     )?;
 
     let mut delegations = Vec::new();
@@ -849,12 +795,7 @@ pub fn get_my_delegations(_: ()) -> ExternResult<Vec<Record>> {
         if let Some(hash) = link.target.into_action_hash() {
             if let Some(record) = get(hash, GetOptions::default())? {
                 // Only include active delegations
-                if let Some(delegation) = record
-                    .entry()
-                    .to_app_option::<DelegationGrant>()
-                    .ok()
-                    .flatten()
-                {
+                if let Some(delegation) = record.entry().to_app_option::<DelegationGrant>().ok().flatten() {
                     if matches!(delegation.status, DelegationStatus::Active) {
                         delegations.push(record);
                     }
@@ -874,9 +815,8 @@ pub fn get_my_delegations(_: ()) -> ExternResult<Vec<Record>> {
 #[hdk_extern]
 pub fn create_access_notification(notification: AccessNotification) -> ExternResult<Record> {
     let notification_hash = create_entry(&EntryTypes::AccessNotification(notification.clone()))?;
-    let record = get(notification_hash.clone(), GetOptions::default())?.ok_or(wasm_error!(
-        WasmErrorInner::Guest("Could not find notification".to_string())
-    ))?;
+    let record = get(notification_hash.clone(), GetOptions::default())?
+        .ok_or(wasm_error!(WasmErrorInner::Guest("Could not find notification".to_string())))?;
 
     // Link to patient
     create_link(
@@ -904,11 +844,8 @@ pub fn create_access_notification(notification: AccessNotification) -> ExternRes
 #[hdk_extern]
 pub fn get_patient_notifications(input: GetNotificationsInput) -> ExternResult<Vec<Record>> {
     let links = get_links(
-        LinkQuery::try_new(
-            input.patient_hash.clone(),
-            LinkTypes::PatientToNotifications,
-        )?,
-        GetStrategy::default(),
+        LinkQuery::try_new(input.patient_hash.clone(), LinkTypes::PatientToNotifications)?,
+        GetStrategy::default()
     )?;
 
     let mut notifications = Vec::new();
@@ -922,36 +859,24 @@ pub fn get_patient_notifications(input: GetNotificationsInput) -> ExternResult<V
 
     // Filter by unread only if requested
     if input.unread_only {
-        notifications.retain(|record| {
-                if let Some(n) = record
-                    .entry()
-                    .to_app_option::<AccessNotification>()
-                    .ok()
-                    .flatten()
-                {
+        notifications = notifications
+            .into_iter()
+            .filter(|record| {
+                if let Some(n) = record.entry().to_app_option::<AccessNotification>().ok().flatten() {
                     !n.viewed
                 } else {
                     false
                 }
-            });
+            })
+            .collect();
     }
 
     // Sort by accessed_at descending (most recent first)
     notifications.sort_by(|a, b| {
-        let time_a = a
-            .entry()
-            .to_app_option::<AccessNotification>()
-            .ok()
-            .flatten()
-            .map(|n| n.accessed_at.as_micros())
-            .unwrap_or(0);
-        let time_b = b
-            .entry()
-            .to_app_option::<AccessNotification>()
-            .ok()
-            .flatten()
-            .map(|n| n.accessed_at.as_micros())
-            .unwrap_or(0);
+        let time_a = a.entry().to_app_option::<AccessNotification>().ok().flatten()
+            .map(|n| n.accessed_at.as_micros()).unwrap_or(0);
+        let time_b = b.entry().to_app_option::<AccessNotification>().ok().flatten()
+            .map(|n| n.accessed_at.as_micros()).unwrap_or(0);
         time_b.cmp(&time_a) // Descending
     });
 
@@ -973,26 +898,22 @@ pub struct GetNotificationsInput {
 /// Mark notification as viewed
 #[hdk_extern]
 pub fn mark_notification_viewed(notification_hash: ActionHash) -> ExternResult<Record> {
-    let record = get(notification_hash.clone(), GetOptions::default())?.ok_or(wasm_error!(
-        WasmErrorInner::Guest("Notification not found".to_string())
-    ))?;
+    let record = get(notification_hash.clone(), GetOptions::default())?
+        .ok_or(wasm_error!(WasmErrorInner::Guest("Notification not found".to_string())))?;
 
     let mut notification: AccessNotification = record
         .entry()
         .to_app_option()
         .map_err(|e| wasm_error!(WasmErrorInner::Guest(e.to_string())))?
-        .ok_or(wasm_error!(WasmErrorInner::Guest(
-            "Invalid notification".to_string()
-        )))?;
+        .ok_or(wasm_error!(WasmErrorInner::Guest("Invalid notification".to_string())))?;
 
     notification.viewed = true;
     notification.viewed_at = Some(sys_time()?);
 
     let updated_hash = update_entry(notification_hash, &notification)?;
 
-    get(updated_hash, GetOptions::default())?.ok_or(wasm_error!(WasmErrorInner::Guest(
-        "Could not find updated notification".to_string()
-    )))
+    get(updated_hash, GetOptions::default())?
+        .ok_or(wasm_error!(WasmErrorInner::Guest("Could not find updated notification".to_string())))
 }
 
 /// Get unread notification count
@@ -1002,7 +923,7 @@ pub fn get_unread_notification_count(patient_hash: ActionHash) -> ExternResult<u
 
     let links = get_links(
         LinkQuery::try_new(unread_anchor, LinkTypes::UnreadNotifications)?,
-        GetStrategy::default(),
+        GetStrategy::default()
     )?;
 
     Ok(links.len() as u32)
@@ -1012,9 +933,8 @@ pub fn get_unread_notification_count(patient_hash: ActionHash) -> ExternResult<u
 #[hdk_extern]
 pub fn set_notification_preferences(prefs: NotificationPreferences) -> ExternResult<Record> {
     let prefs_hash = create_entry(&EntryTypes::NotificationPreferences(prefs.clone()))?;
-    let record = get(prefs_hash.clone(), GetOptions::default())?.ok_or(wasm_error!(
-        WasmErrorInner::Guest("Could not find preferences".to_string())
-    ))?;
+    let record = get(prefs_hash.clone(), GetOptions::default())?
+        .ok_or(wasm_error!(WasmErrorInner::Guest("Could not find preferences".to_string())))?;
 
     // Link to patient (will have multiple over time, get latest)
     create_link(
@@ -1029,12 +949,10 @@ pub fn set_notification_preferences(prefs: NotificationPreferences) -> ExternRes
 
 /// Get patient's notification preferences
 #[hdk_extern]
-pub fn get_notification_preferences(
-    patient_hash: ActionHash,
-) -> ExternResult<Option<NotificationPreferences>> {
+pub fn get_notification_preferences(patient_hash: ActionHash) -> ExternResult<Option<NotificationPreferences>> {
     let links = get_links(
         LinkQuery::try_new(patient_hash, LinkTypes::PatientToNotificationPreferences)?,
-        GetStrategy::default(),
+        GetStrategy::default()
     )?;
 
     // Get the most recent preferences
@@ -1043,12 +961,7 @@ pub fn get_notification_preferences(
     for link in links {
         if let Some(hash) = link.target.into_action_hash() {
             if let Some(record) = get(hash, GetOptions::default())? {
-                if let Some(prefs) = record
-                    .entry()
-                    .to_app_option::<NotificationPreferences>()
-                    .ok()
-                    .flatten()
-                {
+                if let Some(prefs) = record.entry().to_app_option::<NotificationPreferences>().ok().flatten() {
                     match &latest {
                         None => latest = Some((prefs.updated_at, prefs)),
                         Some((ts, _)) if prefs.updated_at > *ts => {
@@ -1068,9 +981,8 @@ pub fn get_notification_preferences(
 #[hdk_extern]
 pub fn create_notification_digest(digest: NotificationDigest) -> ExternResult<Record> {
     let digest_hash = create_entry(&EntryTypes::NotificationDigest(digest.clone()))?;
-    let record = get(digest_hash.clone(), GetOptions::default())?.ok_or(wasm_error!(
-        WasmErrorInner::Guest("Could not find digest".to_string())
-    ))?;
+    let record = get(digest_hash.clone(), GetOptions::default())?
+        .ok_or(wasm_error!(WasmErrorInner::Guest("Could not find digest".to_string())))?;
 
     create_link(
         digest.patient_hash,
@@ -1085,29 +997,24 @@ pub fn create_notification_digest(digest: NotificationDigest) -> ExternResult<Re
 /// Generate plain-language summary for notification
 #[hdk_extern]
 pub fn generate_notification_summary(input: GenerateSummaryInput) -> ExternResult<String> {
-    let categories: Vec<String> = input
-        .data_categories
-        .iter()
-        .map(|c| {
-            match c {
-                DataCategory::Demographics => "basic information",
-                DataCategory::Allergies => "allergy information",
-                DataCategory::Medications => "medications",
-                DataCategory::Diagnoses => "diagnoses",
-                DataCategory::Procedures => "procedures",
-                DataCategory::LabResults => "lab results",
-                DataCategory::ImagingStudies => "imaging studies",
-                DataCategory::VitalSigns => "vital signs",
-                DataCategory::Immunizations => "immunizations",
-                DataCategory::MentalHealth => "mental health records",
-                DataCategory::SubstanceAbuse => "substance abuse records",
-                DataCategory::SexualHealth => "sexual health records",
-                DataCategory::GeneticData => "genetic data",
-                DataCategory::FinancialData => "billing information",
-                DataCategory::All => "all records",
-            }
-            .to_string()
-        })
+    let categories: Vec<String> = input.data_categories.iter()
+        .map(|c| match c {
+            DataCategory::Demographics => "basic information",
+            DataCategory::Allergies => "allergy information",
+            DataCategory::Medications => "medications",
+            DataCategory::Diagnoses => "diagnoses",
+            DataCategory::Procedures => "procedures",
+            DataCategory::LabResults => "lab results",
+            DataCategory::ImagingStudies => "imaging studies",
+            DataCategory::VitalSigns => "vital signs",
+            DataCategory::Immunizations => "immunizations",
+            DataCategory::MentalHealth => "mental health records",
+            DataCategory::SubstanceAbuse => "substance abuse records",
+            DataCategory::SexualHealth => "sexual health records",
+            DataCategory::GeneticData => "genetic data",
+            DataCategory::FinancialData => "billing information",
+            DataCategory::All => "all records",
+        }.to_string())
         .collect();
 
     let categories_text = if categories.len() == 1 {
@@ -1116,7 +1023,7 @@ pub fn generate_notification_summary(input: GenerateSummaryInput) -> ExternResul
         format!("{} and {}", categories[0], categories[1])
     } else {
         let last = categories.last().unwrap();
-        let others = &categories[..categories.len() - 1];
+        let others = &categories[..categories.len()-1];
         format!("{}, and {}", others.join(", "), last)
     };
 
@@ -1126,7 +1033,10 @@ pub fn generate_notification_summary(input: GenerateSummaryInput) -> ExternResul
             input.accessor_name, categories_text
         )
     } else {
-        format!("{} viewed your {}", input.accessor_name, categories_text)
+        format!(
+            "{} viewed your {}",
+            input.accessor_name, categories_text
+        )
     };
 
     Ok(summary)
@@ -1147,14 +1057,18 @@ pub struct GenerateSummaryInput {
 #[hdk_extern]
 pub fn create_care_team_template(template: CareTeamTemplate) -> ExternResult<Record> {
     let template_hash = create_entry(&EntryTypes::CareTeamTemplate(template.clone()))?;
-    let record = get(template_hash.clone(), GetOptions::default())?.ok_or(wasm_error!(
-        WasmErrorInner::Guest("Could not find template".to_string())
-    ))?;
+    let record = get(template_hash.clone(), GetOptions::default())?
+        .ok_or(wasm_error!(WasmErrorInner::Guest("Could not find template".to_string())))?;
 
     // Link to system templates anchor if it's a system template
     if matches!(template.template_type, TemplateType::System) {
         let system_anchor = anchor_hash("system_templates")?;
-        create_link(system_anchor, template_hash, LinkTypes::SystemTemplates, ())?;
+        create_link(
+            system_anchor,
+            template_hash,
+            LinkTypes::SystemTemplates,
+            (),
+        )?;
     }
 
     Ok(record)
@@ -1167,19 +1081,14 @@ pub fn get_system_templates(_: ()) -> ExternResult<Vec<Record>> {
 
     let links = get_links(
         LinkQuery::try_new(system_anchor, LinkTypes::SystemTemplates)?,
-        GetStrategy::default(),
+        GetStrategy::default()
     )?;
 
     let mut templates = Vec::new();
     for link in links {
         if let Some(hash) = link.target.into_action_hash() {
             if let Some(record) = get(hash, GetOptions::default())? {
-                if let Some(template) = record
-                    .entry()
-                    .to_app_option::<CareTeamTemplate>()
-                    .ok()
-                    .flatten()
-                {
+                if let Some(template) = record.entry().to_app_option::<CareTeamTemplate>().ok().flatten() {
                     if template.active {
                         templates.push(record);
                     }
@@ -1392,17 +1301,14 @@ pub fn initialize_system_templates(_: ()) -> ExternResult<Vec<ActionHash>> {
 #[hdk_extern]
 pub fn create_care_team_from_template(input: CreateCareTeamInput) -> ExternResult<Record> {
     // Get the template
-    let template_record = get(input.template_hash.clone(), GetOptions::default())?.ok_or(
-        wasm_error!(WasmErrorInner::Guest("Template not found".to_string())),
-    )?;
+    let template_record = get(input.template_hash.clone(), GetOptions::default())?
+        .ok_or(wasm_error!(WasmErrorInner::Guest("Template not found".to_string())))?;
 
     let template: CareTeamTemplate = template_record
         .entry()
         .to_app_option()
         .map_err(|e| wasm_error!(WasmErrorInner::Guest(e.to_string())))?
-        .ok_or(wasm_error!(WasmErrorInner::Guest(
-            "Invalid template".to_string()
-        )))?;
+        .ok_or(wasm_error!(WasmErrorInner::Guest("Invalid template".to_string())))?;
 
     // Calculate expiration
     let expires_at = template.default_duration_days.map(|days| {
@@ -1420,9 +1326,7 @@ pub fn create_care_team_from_template(input: CreateCareTeamInput) -> ExternResul
         members: input.members,
         permissions: template.permissions,
         data_categories: template.data_categories,
-        exclusions: input
-            .additional_exclusions
-            .unwrap_or(template.default_exclusions),
+        exclusions: input.additional_exclusions.unwrap_or(template.default_exclusions),
         purpose: template.purpose,
         status: CareTeamStatus::Active,
         created_at: sys_time()?,
@@ -1431,9 +1335,8 @@ pub fn create_care_team_from_template(input: CreateCareTeamInput) -> ExternResul
     };
 
     let team_hash = create_entry(&EntryTypes::CareTeam(care_team.clone()))?;
-    let record = get(team_hash.clone(), GetOptions::default())?.ok_or(wasm_error!(
-        WasmErrorInner::Guest("Could not find care team".to_string())
-    ))?;
+    let record = get(team_hash.clone(), GetOptions::default())?
+        .ok_or(wasm_error!(WasmErrorInner::Guest("Could not find care team".to_string())))?;
 
     // Link to patient
     create_link(
@@ -1452,11 +1355,13 @@ pub fn create_care_team_from_template(input: CreateCareTeamInput) -> ExternResul
     )?;
 
     // Link to active care teams
-    let active_anchor = hash_entry(&Anchor(format!(
-        "active_care_teams:{:?}",
-        input.patient_hash
-    )))?;
-    create_link(active_anchor, team_hash, LinkTypes::ActiveCareTeams, ())?;
+    let active_anchor = hash_entry(&Anchor(format!("active_care_teams:{:?}", input.patient_hash)))?;
+    create_link(
+        active_anchor,
+        team_hash,
+        LinkTypes::ActiveCareTeams,
+        (),
+    )?;
 
     Ok(record)
 }
@@ -1477,7 +1382,7 @@ pub struct CreateCareTeamInput {
 pub fn get_patient_care_teams(patient_hash: ActionHash) -> ExternResult<Vec<Record>> {
     let links = get_links(
         LinkQuery::try_new(patient_hash, LinkTypes::PatientToCareTeams)?,
-        GetStrategy::default(),
+        GetStrategy::default()
     )?;
 
     let mut teams = Vec::new();
@@ -1514,25 +1419,21 @@ pub fn get_active_care_teams(patient_hash: ActionHash) -> ExternResult<Vec<Recor
 /// Add member to care team
 #[hdk_extern]
 pub fn add_care_team_member(input: AddMemberInput) -> ExternResult<Record> {
-    let record = get(input.team_hash.clone(), GetOptions::default())?.ok_or(wasm_error!(
-        WasmErrorInner::Guest("Care team not found".to_string())
-    ))?;
+    let record = get(input.team_hash.clone(), GetOptions::default())?
+        .ok_or(wasm_error!(WasmErrorInner::Guest("Care team not found".to_string())))?;
 
     let mut team: CareTeam = record
         .entry()
         .to_app_option()
         .map_err(|e| wasm_error!(WasmErrorInner::Guest(e.to_string())))?
-        .ok_or(wasm_error!(WasmErrorInner::Guest(
-            "Invalid care team".to_string()
-        )))?;
+        .ok_or(wasm_error!(WasmErrorInner::Guest("Invalid care team".to_string())))?;
 
     team.members.push(input.member);
 
     let updated_hash = update_entry(input.team_hash, &team)?;
 
-    get(updated_hash, GetOptions::default())?.ok_or(wasm_error!(WasmErrorInner::Guest(
-        "Could not find updated care team".to_string()
-    )))
+    get(updated_hash, GetOptions::default())?
+        .ok_or(wasm_error!(WasmErrorInner::Guest("Could not find updated care team".to_string())))
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -1544,17 +1445,14 @@ pub struct AddMemberInput {
 /// Remove member from care team
 #[hdk_extern]
 pub fn remove_care_team_member(input: RemoveMemberInput) -> ExternResult<Record> {
-    let record = get(input.team_hash.clone(), GetOptions::default())?.ok_or(wasm_error!(
-        WasmErrorInner::Guest("Care team not found".to_string())
-    ))?;
+    let record = get(input.team_hash.clone(), GetOptions::default())?
+        .ok_or(wasm_error!(WasmErrorInner::Guest("Care team not found".to_string())))?;
 
     let mut team: CareTeam = record
         .entry()
         .to_app_option()
         .map_err(|e| wasm_error!(WasmErrorInner::Guest(e.to_string())))?
-        .ok_or(wasm_error!(WasmErrorInner::Guest(
-            "Invalid care team".to_string()
-        )))?;
+        .ok_or(wasm_error!(WasmErrorInner::Guest("Invalid care team".to_string())))?;
 
     // Mark member as inactive instead of removing (for audit trail)
     for member in &mut team.members {
@@ -1565,9 +1463,7 @@ pub fn remove_care_team_member(input: RemoveMemberInput) -> ExternResult<Record>
             (CareTeamMemberType::Agent(a1), CareTeamMemberType::Agent(a2)) if a1 == a2 => {
                 member.active = false;
             }
-            (CareTeamMemberType::Organization(o1), CareTeamMemberType::Organization(o2))
-                if o1 == o2 =>
-            {
+            (CareTeamMemberType::Organization(o1), CareTeamMemberType::Organization(o2)) if o1 == o2 => {
                 member.active = false;
             }
             _ => {}
@@ -1576,9 +1472,8 @@ pub fn remove_care_team_member(input: RemoveMemberInput) -> ExternResult<Record>
 
     let updated_hash = update_entry(input.team_hash, &team)?;
 
-    get(updated_hash, GetOptions::default())?.ok_or(wasm_error!(WasmErrorInner::Guest(
-        "Could not find updated care team".to_string()
-    )))
+    get(updated_hash, GetOptions::default())?
+        .ok_or(wasm_error!(WasmErrorInner::Guest("Could not find updated care team".to_string())))
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -1590,25 +1485,21 @@ pub struct RemoveMemberInput {
 /// Dissolve a care team
 #[hdk_extern]
 pub fn dissolve_care_team(team_hash: ActionHash) -> ExternResult<Record> {
-    let record = get(team_hash.clone(), GetOptions::default())?.ok_or(wasm_error!(
-        WasmErrorInner::Guest("Care team not found".to_string())
-    ))?;
+    let record = get(team_hash.clone(), GetOptions::default())?
+        .ok_or(wasm_error!(WasmErrorInner::Guest("Care team not found".to_string())))?;
 
     let mut team: CareTeam = record
         .entry()
         .to_app_option()
         .map_err(|e| wasm_error!(WasmErrorInner::Guest(e.to_string())))?
-        .ok_or(wasm_error!(WasmErrorInner::Guest(
-            "Invalid care team".to_string()
-        )))?;
+        .ok_or(wasm_error!(WasmErrorInner::Guest("Invalid care team".to_string())))?;
 
     team.status = CareTeamStatus::Dissolved;
 
     let updated_hash = update_entry(team_hash, &team)?;
 
-    get(updated_hash, GetOptions::default())?.ok_or(wasm_error!(WasmErrorInner::Guest(
-        "Could not find updated care team".to_string()
-    )))
+    get(updated_hash, GetOptions::default())?
+        .ok_or(wasm_error!(WasmErrorInner::Guest("Could not find updated care team".to_string())))
 }
 
 /// Check if a member has care team authorization
@@ -1617,12 +1508,7 @@ pub fn check_care_team_authorization(input: CareTeamAuthInput) -> ExternResult<C
     let teams = get_active_care_teams(input.patient_hash.clone())?;
 
     for team_record in teams {
-        if let Some(team) = team_record
-            .entry()
-            .to_app_option::<CareTeam>()
-            .ok()
-            .flatten()
-        {
+        if let Some(team) = team_record.entry().to_app_option::<CareTeam>().ok().flatten() {
             // Check if member is in this team
             for member in &team.members {
                 if !member.active {
@@ -1630,14 +1516,9 @@ pub fn check_care_team_authorization(input: CareTeamAuthInput) -> ExternResult<C
                 }
 
                 let is_member = match (&member.member, &input.member) {
-                    (CareTeamMemberType::Provider(h1), CareTeamMemberType::Provider(h2)) => {
-                        h1 == h2
-                    }
+                    (CareTeamMemberType::Provider(h1), CareTeamMemberType::Provider(h2)) => h1 == h2,
                     (CareTeamMemberType::Agent(a1), CareTeamMemberType::Agent(a2)) => a1 == a2,
-                    (
-                        CareTeamMemberType::Organization(o1),
-                        CareTeamMemberType::Organization(o2),
-                    ) => o1 == o2,
+                    (CareTeamMemberType::Organization(o1), CareTeamMemberType::Organization(o2)) => o1 == o2,
                     _ => false,
                 };
 
@@ -1646,10 +1527,9 @@ pub fn check_care_team_authorization(input: CareTeamAuthInput) -> ExternResult<C
                     let permission_granted = team.permissions.contains(&input.permission);
 
                     // Check data category
-                    let category_covered = team
-                        .data_categories
-                        .iter()
-                        .any(|cat| matches!(cat, DataCategory::All) || *cat == input.data_category);
+                    let category_covered = team.data_categories.iter().any(|cat| {
+                        matches!(cat, DataCategory::All) || *cat == input.data_category
+                    });
 
                     // Check not excluded
                     let not_excluded = !team.exclusions.contains(&input.data_category);
@@ -1726,8 +1606,7 @@ pub struct ZkVerificationAuditLog {
 #[hdk_extern]
 pub fn log_zk_proof_generation(input: ZkProofAuditLog) -> ExternResult<Record> {
     // Convert string categories to DataCategory enum
-    let data_categories: Vec<DataCategory> = input
-        .data_categories_used
+    let data_categories: Vec<DataCategory> = input.data_categories_used
         .iter()
         .map(|cat| string_to_data_category(cat))
         .collect();
@@ -1737,13 +1616,10 @@ pub fn log_zk_proof_generation(input: ZkProofAuditLog) -> ExternResult<Record> {
         log_id: input.log_id,
         patient_hash: input.patient_hash.clone(),
         accessor: agent_info()?.agent_initial_pubkey, // Self-access for proof generation
-        access_type: DataPermission::Read,            // Proof generation reads data
+        access_type: DataPermission::Read, // Proof generation reads data
         data_categories_accessed: data_categories,
         consent_hash: None, // Self-access doesn't require consent
-        access_reason: format!(
-            "ZK Proof Generation: {} (Proof ID: {})",
-            input.proof_type, input.proof_id
-        ),
+        access_reason: format!("ZK Proof Generation: {} (Proof ID: {})", input.proof_type, input.proof_id),
         accessed_at: Timestamp::from_micros(input.generated_at),
         access_location: Some("zkhealth-zome".to_string()),
         emergency_override: false,
@@ -1751,9 +1627,8 @@ pub fn log_zk_proof_generation(input: ZkProofAuditLog) -> ExternResult<Record> {
     };
 
     let log_hash = create_entry(&EntryTypes::DataAccessLog(log.clone()))?;
-    let record = get(log_hash.clone(), GetOptions::default())?.ok_or(wasm_error!(
-        WasmErrorInner::Guest("Could not find audit log".to_string())
-    ))?;
+    let record = get(log_hash.clone(), GetOptions::default())?
+        .ok_or(wasm_error!(WasmErrorInner::Guest("Could not find audit log".to_string())))?;
 
     // Link to patient's audit logs
     create_link(
@@ -1776,16 +1651,12 @@ pub fn log_zk_proof_verification(input: ZkVerificationAuditLog) -> ExternResult<
         patient_hash: input.patient_hash.clone(),
         accessor: input.verifier.clone(),
         access_type: DataPermission::Read, // Verification is a form of read
-        data_categories_accessed: vec![],  // No actual data accessed during verification
-        consent_hash: None,                // ZK proofs don't require consent to verify
+        data_categories_accessed: vec![], // No actual data accessed during verification
+        consent_hash: None, // ZK proofs don't require consent to verify
         access_reason: format!(
             "ZK Proof Verification: {} (Result: {})",
             input.proof_id,
-            if input.verification_result {
-                "Verified"
-            } else {
-                "Failed"
-            }
+            if input.verification_result { "Verified" } else { "Failed" }
         ),
         accessed_at: Timestamp::from_micros(input.verified_at),
         access_location: Some("zkhealth-verification".to_string()),
@@ -1794,9 +1665,8 @@ pub fn log_zk_proof_verification(input: ZkVerificationAuditLog) -> ExternResult<
     };
 
     let log_hash = create_entry(&EntryTypes::DataAccessLog(log.clone()))?;
-    let record = get(log_hash.clone(), GetOptions::default())?.ok_or(wasm_error!(
-        WasmErrorInner::Guest("Could not find audit log".to_string())
-    ))?;
+    let record = get(log_hash.clone(), GetOptions::default())?
+        .ok_or(wasm_error!(WasmErrorInner::Guest("Could not find audit log".to_string())))?;
 
     // Link to patient's audit logs
     create_link(
@@ -1843,12 +1713,7 @@ pub fn get_zk_proof_audit_logs(patient_hash: ActionHash) -> ExternResult<Vec<Rec
         if let Some(hash) = link.target.into_action_hash() {
             if let Some(record) = get(hash, GetOptions::default())? {
                 // Filter for ZK proof logs
-                if let Some(log) = record
-                    .entry()
-                    .to_app_option::<DataAccessLog>()
-                    .ok()
-                    .flatten()
-                {
+                if let Some(log) = record.entry().to_app_option::<DataAccessLog>().ok().flatten() {
                     if log.access_reason.starts_with("ZK Proof") {
                         zk_logs.push(record);
                     }

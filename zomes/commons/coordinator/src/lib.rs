@@ -16,12 +16,12 @@
 //! The key guarantee: "It is mathematically impossible to re-identify patients"
 //! is enforced through budget exhaustion - no more queries when budget depleted.
 
-use commons_integrity::*;
 use hdk::prelude::*;
+use commons_integrity::*;
 use mycelix_health_shared::dp_core::{
-    gaussian::GaussianMechanism,
     laplace::LaplaceMechanism,
-    validation::{validate_delta, validate_epsilon, validate_sensitivity},
+    gaussian::GaussianMechanism,
+    validation::{validate_epsilon, validate_sensitivity, validate_delta},
 };
 
 // ==================== DATA POOLS ====================
@@ -32,9 +32,8 @@ pub fn create_data_pool(pool: DataPool) -> ExternResult<Record> {
     validate_data_pool(&pool)?;
 
     let pool_hash = create_entry(&EntryTypes::DataPool(pool.clone()))?;
-    let record = get(pool_hash.clone(), GetOptions::default())?.ok_or(wasm_error!(
-        WasmErrorInner::Guest("Could not find pool".to_string())
-    ))?;
+    let record = get(pool_hash.clone(), GetOptions::default())?
+        .ok_or(wasm_error!(WasmErrorInner::Guest("Could not find pool".to_string())))?;
 
     // Link to active pools
     let active_anchor = anchor_hash("active_data_pools")?;
@@ -77,25 +76,21 @@ pub fn get_active_data_pools(_: ()) -> ExternResult<Vec<Record>> {
 /// Update pool status
 #[hdk_extern]
 pub fn update_pool_status(input: UpdatePoolStatusInput) -> ExternResult<Record> {
-    let record = get(input.pool_hash.clone(), GetOptions::default())?.ok_or(wasm_error!(
-        WasmErrorInner::Guest("Pool not found".to_string())
-    ))?;
+    let record = get(input.pool_hash.clone(), GetOptions::default())?
+        .ok_or(wasm_error!(WasmErrorInner::Guest("Pool not found".to_string())))?;
 
     let mut pool: DataPool = record
         .entry()
         .to_app_option()
         .map_err(|e| wasm_error!(WasmErrorInner::Guest(e.to_string())))?
-        .ok_or(wasm_error!(WasmErrorInner::Guest(
-            "Invalid pool".to_string()
-        )))?;
+        .ok_or(wasm_error!(WasmErrorInner::Guest("Invalid pool".to_string())))?;
 
     pool.status = input.new_status;
 
     let updated_hash = update_entry(input.pool_hash, &pool)?;
 
-    get(updated_hash, GetOptions::default())?.ok_or(wasm_error!(WasmErrorInner::Guest(
-        "Could not find updated pool".to_string()
-    )))
+    get(updated_hash, GetOptions::default())?
+        .ok_or(wasm_error!(WasmErrorInner::Guest("Could not find updated pool".to_string())))
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -112,40 +107,36 @@ pub fn submit_contribution(contribution: PrivacyContribution) -> ExternResult<Re
     validate_privacy_contribution(&contribution)?;
 
     // Verify pool exists and is active
-    let pool_record = get(contribution.pool_hash.clone(), GetOptions::default())?.ok_or(
-        wasm_error!(WasmErrorInner::Guest("Pool not found".to_string())),
-    )?;
+    let pool_record = get(contribution.pool_hash.clone(), GetOptions::default())?
+        .ok_or(wasm_error!(WasmErrorInner::Guest("Pool not found".to_string())))?;
 
     let pool: DataPool = pool_record
         .entry()
         .to_app_option()
         .map_err(|e| wasm_error!(WasmErrorInner::Guest(e.to_string())))?
-        .ok_or(wasm_error!(WasmErrorInner::Guest(
-            "Invalid pool".to_string()
-        )))?;
+        .ok_or(wasm_error!(WasmErrorInner::Guest("Invalid pool".to_string())))?;
 
     if !matches!(pool.status, PoolStatus::Active) {
-        return Err(wasm_error!(WasmErrorInner::Guest(
-            "Pool is not accepting contributions".to_string()
-        )));
+        return Err(wasm_error!(WasmErrorInner::Guest("Pool is not accepting contributions".to_string())));
     }
 
     // Check privacy budget using formal DP tracking
     let budget = get_or_create_budget(&contribution.contributor, &contribution.pool_hash)?;
     let remaining = budget.total_epsilon - budget.consumed_epsilon;
     if contribution.budget_consumed > remaining {
-        return Err(wasm_error!(WasmErrorInner::Guest(format!(
-            "Insufficient privacy budget: need ε={:.4}, have ε={:.4}. \
+        return Err(wasm_error!(WasmErrorInner::Guest(
+            format!(
+                "Insufficient privacy budget: need ε={:.4}, have ε={:.4}. \
                  Privacy guarantees cannot be maintained.",
-            contribution.budget_consumed, remaining
-        ))));
+                contribution.budget_consumed, remaining
+            )
+        )));
     }
 
     // Create contribution
     let contrib_hash = create_entry(&EntryTypes::PrivacyContribution(contribution.clone()))?;
-    let record = get(contrib_hash.clone(), GetOptions::default())?.ok_or(wasm_error!(
-        WasmErrorInner::Guest("Could not find contribution".to_string())
-    ))?;
+    let record = get(contrib_hash.clone(), GetOptions::default())?
+        .ok_or(wasm_error!(WasmErrorInner::Guest("Could not find contribution".to_string())))?;
 
     // Link to pool
     create_link(
@@ -169,12 +160,7 @@ pub fn submit_contribution(contribution: PrivacyContribution) -> ExternResult<Re
     update_entry(contribution.pool_hash.clone(), &updated_pool)?;
 
     // Update privacy budget (actually consumes the budget now!)
-    update_privacy_budget(
-        &contribution.contributor,
-        &contribution.pool_hash,
-        contribution.budget_consumed,
-        0.0,
-    )?;
+    update_privacy_budget(&contribution.contributor, &contribution.pool_hash, contribution.budget_consumed, 0.0)?;
 
     Ok(record)
 }
@@ -227,37 +213,30 @@ pub fn submit_query(query: AggregateQuery) -> ExternResult<Record> {
     validate_aggregate_query(&query)?;
 
     // Verify pool exists
-    let pool_record = get(query.pool_hash.clone(), GetOptions::default())?.ok_or(wasm_error!(
-        WasmErrorInner::Guest("Pool not found".to_string())
-    ))?;
+    let pool_record = get(query.pool_hash.clone(), GetOptions::default())?
+        .ok_or(wasm_error!(WasmErrorInner::Guest("Pool not found".to_string())))?;
 
     let pool: DataPool = pool_record
         .entry()
         .to_app_option()
         .map_err(|e| wasm_error!(WasmErrorInner::Guest(e.to_string())))?
-        .ok_or(wasm_error!(WasmErrorInner::Guest(
-            "Invalid pool".to_string()
-        )))?;
+        .ok_or(wasm_error!(WasmErrorInner::Guest("Invalid pool".to_string())))?;
 
     // Check query permissions
     if !check_query_permissions(&pool.query_permissions, &query.purpose, &query.requester) {
-        return Err(wasm_error!(WasmErrorInner::Guest(
-            "Query not permitted for this purpose".to_string()
-        )));
+        return Err(wasm_error!(WasmErrorInner::Guest("Query not permitted for this purpose".to_string())));
     }
 
     // Check minimum contributors
     if pool.contributor_count < pool.min_contributors {
-        return Err(wasm_error!(WasmErrorInner::Guest(format!(
-            "Pool needs {} contributors, has {}",
-            pool.min_contributors, pool.contributor_count
-        ))));
+        return Err(wasm_error!(WasmErrorInner::Guest(
+            format!("Pool needs {} contributors, has {}", pool.min_contributors, pool.contributor_count)
+        )));
     }
 
     let query_hash = create_entry(&EntryTypes::AggregateQuery(query.clone()))?;
-    let record = get(query_hash.clone(), GetOptions::default())?.ok_or(wasm_error!(
-        WasmErrorInner::Guest("Could not find query".to_string())
-    ))?;
+    let record = get(query_hash.clone(), GetOptions::default())?
+        .ok_or(wasm_error!(WasmErrorInner::Guest("Could not find query".to_string())))?;
 
     // Link to pool
     create_link(query.pool_hash, query_hash, LinkTypes::PoolToQueries, ())?;
@@ -268,36 +247,28 @@ pub fn submit_query(query: AggregateQuery) -> ExternResult<Record> {
 /// Execute an approved query and generate DP result
 #[hdk_extern]
 pub fn execute_query(query_hash: ActionHash) -> ExternResult<Record> {
-    let query_record = get(query_hash.clone(), GetOptions::default())?.ok_or(wasm_error!(
-        WasmErrorInner::Guest("Query not found".to_string())
-    ))?;
+    let query_record = get(query_hash.clone(), GetOptions::default())?
+        .ok_or(wasm_error!(WasmErrorInner::Guest("Query not found".to_string())))?;
 
     let mut query: AggregateQuery = query_record
         .entry()
         .to_app_option()
         .map_err(|e| wasm_error!(WasmErrorInner::Guest(e.to_string())))?
-        .ok_or(wasm_error!(WasmErrorInner::Guest(
-            "Invalid query".to_string()
-        )))?;
+        .ok_or(wasm_error!(WasmErrorInner::Guest("Invalid query".to_string())))?;
 
     if !matches!(query.status, QueryStatus::Approved) {
-        return Err(wasm_error!(WasmErrorInner::Guest(
-            "Query must be approved first".to_string()
-        )));
+        return Err(wasm_error!(WasmErrorInner::Guest("Query must be approved first".to_string())));
     }
 
     // Get pool for privacy parameters
-    let pool_record = get(query.pool_hash.clone(), GetOptions::default())?.ok_or(wasm_error!(
-        WasmErrorInner::Guest("Pool not found".to_string())
-    ))?;
+    let pool_record = get(query.pool_hash.clone(), GetOptions::default())?
+        .ok_or(wasm_error!(WasmErrorInner::Guest("Pool not found".to_string())))?;
 
     let pool: DataPool = pool_record
         .entry()
         .to_app_option()
         .map_err(|e| wasm_error!(WasmErrorInner::Guest(e.to_string())))?
-        .ok_or(wasm_error!(WasmErrorInner::Guest(
-            "Invalid pool".to_string()
-        )))?;
+        .ok_or(wasm_error!(WasmErrorInner::Guest("Invalid pool".to_string())))?;
 
     // Get all contributions
     let contributions = get_pool_contributions(query.pool_hash.clone())?;
@@ -327,17 +298,11 @@ pub fn execute_query(query_hash: ActionHash) -> ExternResult<Record> {
     };
 
     let result_hash = create_entry(&EntryTypes::QueryResult(result.clone()))?;
-    let result_record = get(result_hash.clone(), GetOptions::default())?.ok_or(wasm_error!(
-        WasmErrorInner::Guest("Could not find result".to_string())
-    ))?;
+    let result_record = get(result_hash.clone(), GetOptions::default())?
+        .ok_or(wasm_error!(WasmErrorInner::Guest("Could not find result".to_string())))?;
 
     // Link result to query
-    create_link(
-        query_hash.clone(),
-        result_hash,
-        LinkTypes::QueryToResults,
-        (),
-    )?;
+    create_link(query_hash.clone(), result_hash, LinkTypes::QueryToResults, ())?;
 
     // Update query status
     query.status = QueryStatus::Completed;
@@ -375,9 +340,8 @@ pub fn create_proposal(proposal: GovernanceProposal) -> ExternResult<Record> {
     validate_governance_proposal(&proposal)?;
 
     let proposal_hash = create_entry(&EntryTypes::GovernanceProposal(proposal.clone()))?;
-    let record = get(proposal_hash.clone(), GetOptions::default())?.ok_or(wasm_error!(
-        WasmErrorInner::Guest("Could not find proposal".to_string())
-    ))?;
+    let record = get(proposal_hash.clone(), GetOptions::default())?
+        .ok_or(wasm_error!(WasmErrorInner::Guest("Could not find proposal".to_string())))?;
 
     // Link to active proposals
     let anchor = anchor_hash("active_proposals")?;
@@ -392,45 +356,32 @@ pub fn cast_vote(vote: GovernanceVote) -> ExternResult<Record> {
     validate_governance_vote(&vote)?;
 
     // Verify proposal exists and is active
-    let proposal_record = get(vote.proposal_hash.clone(), GetOptions::default())?.ok_or(
-        wasm_error!(WasmErrorInner::Guest("Proposal not found".to_string())),
-    )?;
+    let proposal_record = get(vote.proposal_hash.clone(), GetOptions::default())?
+        .ok_or(wasm_error!(WasmErrorInner::Guest("Proposal not found".to_string())))?;
 
     let mut proposal: GovernanceProposal = proposal_record
         .entry()
         .to_app_option()
         .map_err(|e| wasm_error!(WasmErrorInner::Guest(e.to_string())))?
-        .ok_or(wasm_error!(WasmErrorInner::Guest(
-            "Invalid proposal".to_string()
-        )))?;
+        .ok_or(wasm_error!(WasmErrorInner::Guest("Invalid proposal".to_string())))?;
 
     if !matches!(proposal.status, ProposalStatus::Active) {
-        return Err(wasm_error!(WasmErrorInner::Guest(
-            "Proposal is not active".to_string()
-        )));
+        return Err(wasm_error!(WasmErrorInner::Guest("Proposal is not active".to_string())));
     }
 
     // Check voting period
     let now = sys_time()?.as_micros() as i64;
     if now < proposal.voting_start || now > proposal.voting_end {
-        return Err(wasm_error!(WasmErrorInner::Guest(
-            "Outside voting period".to_string()
-        )));
+        return Err(wasm_error!(WasmErrorInner::Guest("Outside voting period".to_string())));
     }
 
     // Create vote
     let vote_hash = create_entry(&EntryTypes::GovernanceVote(vote.clone()))?;
-    let record = get(vote_hash.clone(), GetOptions::default())?.ok_or(wasm_error!(
-        WasmErrorInner::Guest("Could not find vote".to_string())
-    ))?;
+    let record = get(vote_hash.clone(), GetOptions::default())?
+        .ok_or(wasm_error!(WasmErrorInner::Guest("Could not find vote".to_string())))?;
 
     // Link vote to proposal
-    create_link(
-        vote.proposal_hash.clone(),
-        vote_hash,
-        LinkTypes::ProposalToVotes,
-        (),
-    )?;
+    create_link(vote.proposal_hash.clone(), vote_hash, LinkTypes::ProposalToVotes, ())?;
 
     // Update proposal vote counts
     match vote.vote {
@@ -457,12 +408,7 @@ pub fn get_active_proposals(_: ()) -> ExternResult<Vec<Record>> {
     for link in links {
         if let Some(hash) = link.target.into_action_hash() {
             if let Some(record) = get(hash, GetOptions::default())? {
-                if let Some(proposal) = record
-                    .entry()
-                    .to_app_option::<GovernanceProposal>()
-                    .ok()
-                    .flatten()
-                {
+                if let Some(proposal) = record.entry().to_app_option::<GovernanceProposal>().ok().flatten() {
                     if matches!(proposal.status, ProposalStatus::Active) {
                         proposals.push(record);
                     }
@@ -477,23 +423,18 @@ pub fn get_active_proposals(_: ()) -> ExternResult<Vec<Record>> {
 /// Finalize a proposal (check if passed)
 #[hdk_extern]
 pub fn finalize_proposal(proposal_hash: ActionHash) -> ExternResult<Record> {
-    let record = get(proposal_hash.clone(), GetOptions::default())?.ok_or(wasm_error!(
-        WasmErrorInner::Guest("Proposal not found".to_string())
-    ))?;
+    let record = get(proposal_hash.clone(), GetOptions::default())?
+        .ok_or(wasm_error!(WasmErrorInner::Guest("Proposal not found".to_string())))?;
 
     let mut proposal: GovernanceProposal = record
         .entry()
         .to_app_option()
         .map_err(|e| wasm_error!(WasmErrorInner::Guest(e.to_string())))?
-        .ok_or(wasm_error!(WasmErrorInner::Guest(
-            "Invalid proposal".to_string()
-        )))?;
+        .ok_or(wasm_error!(WasmErrorInner::Guest("Invalid proposal".to_string())))?;
 
     let now = sys_time()?.as_micros() as i64;
     if now <= proposal.voting_end {
-        return Err(wasm_error!(WasmErrorInner::Guest(
-            "Voting period not ended".to_string()
-        )));
+        return Err(wasm_error!(WasmErrorInner::Guest("Voting period not ended".to_string())));
     }
 
     // Calculate result
@@ -511,9 +452,8 @@ pub fn finalize_proposal(proposal_hash: ActionHash) -> ExternResult<Record> {
 
     let updated_hash = update_entry(proposal_hash, &proposal)?;
 
-    get(updated_hash, GetOptions::default())?.ok_or(wasm_error!(WasmErrorInner::Guest(
-        "Could not find updated proposal".to_string()
-    )))
+    get(updated_hash, GetOptions::default())?
+        .ok_or(wasm_error!(WasmErrorInner::Guest("Could not find updated proposal".to_string())))
 }
 
 // ==================== COLLECTIVE INSIGHTS ====================
@@ -522,17 +462,11 @@ pub fn finalize_proposal(proposal_hash: ActionHash) -> ExternResult<Record> {
 #[hdk_extern]
 pub fn create_insight(insight: CollectiveInsight) -> ExternResult<Record> {
     let insight_hash = create_entry(&EntryTypes::CollectiveInsight(insight.clone()))?;
-    let record = get(insight_hash.clone(), GetOptions::default())?.ok_or(wasm_error!(
-        WasmErrorInner::Guest("Could not find insight".to_string())
-    ))?;
+    let record = get(insight_hash.clone(), GetOptions::default())?
+        .ok_or(wasm_error!(WasmErrorInner::Guest("Could not find insight".to_string())))?;
 
     // Link to pool
-    create_link(
-        insight.pool_hash,
-        insight_hash,
-        LinkTypes::PoolToInsights,
-        (),
-    )?;
+    create_link(insight.pool_hash, insight_hash, LinkTypes::PoolToInsights, ())?;
 
     Ok(record)
 }
@@ -620,8 +554,8 @@ pub fn check_query_budget(input: CheckBudgetInput) -> ExternResult<BudgetCheckRe
     let remaining_delta = budget.total_delta - budget.consumed_delta;
 
     let has_sufficient_epsilon = remaining_epsilon >= input.required_epsilon;
-    let has_sufficient_delta =
-        input.required_delta == 0.0 || remaining_delta >= input.required_delta;
+    let has_sufficient_delta = input.required_delta == 0.0 ||
+                                remaining_delta >= input.required_delta;
     let can_execute = has_sufficient_epsilon && has_sufficient_delta;
 
     Ok(BudgetCheckResponse {
@@ -630,16 +564,8 @@ pub fn check_query_budget(input: CheckBudgetInput) -> ExternResult<BudgetCheckRe
         remaining_delta,
         required_epsilon: input.required_epsilon,
         required_delta: input.required_delta,
-        shortfall_epsilon: if has_sufficient_epsilon {
-            0.0
-        } else {
-            input.required_epsilon - remaining_epsilon
-        },
-        shortfall_delta: if has_sufficient_delta {
-            0.0
-        } else {
-            input.required_delta - remaining_delta
-        },
+        shortfall_epsilon: if has_sufficient_epsilon { 0.0 } else { input.required_epsilon - remaining_epsilon },
+        shortfall_delta: if has_sufficient_delta { 0.0 } else { input.required_delta - remaining_delta },
     })
 }
 
@@ -665,11 +591,7 @@ pub struct BudgetCheckResponse {
 // ==================== HELPER FUNCTIONS ====================
 
 /// Check query permissions
-fn check_query_permissions(
-    perms: &QueryPermissions,
-    purpose: &QueryPurpose,
-    requester: &AgentPubKey,
-) -> bool {
+fn check_query_permissions(perms: &QueryPermissions, purpose: &QueryPurpose, requester: &AgentPubKey) -> bool {
     if perms.approved_entities.contains(requester) {
         return true;
     }
@@ -687,10 +609,7 @@ fn check_query_permissions(
 ///
 /// This function properly retrieves existing budget entries using links,
 /// or creates a new one if none exists.
-fn get_or_create_budget(
-    patient_hash: &ActionHash,
-    pool_hash: &ActionHash,
-) -> ExternResult<BudgetLedgerEntry> {
+fn get_or_create_budget(patient_hash: &ActionHash, pool_hash: &ActionHash) -> ExternResult<BudgetLedgerEntry> {
     // Create a deterministic anchor for this patient-pool combination
     let budget_anchor = create_budget_anchor(patient_hash, pool_hash)?;
 
@@ -704,12 +623,7 @@ fn get_or_create_budget(
     for link in links {
         if let Some(hash) = link.target.into_action_hash() {
             if let Some(record) = get(hash, GetOptions::default())? {
-                if let Some(entry) = record
-                    .entry()
-                    .to_app_option::<BudgetLedgerEntry>()
-                    .ok()
-                    .flatten()
-                {
+                if let Some(entry) = record.entry().to_app_option::<BudgetLedgerEntry>().ok().flatten() {
                     // Check if budget period has expired and needs renewal
                     let now = sys_time()?.as_micros() as i64;
                     if let Some(period_end) = entry.period_end {
@@ -759,10 +673,7 @@ fn get_or_create_budget(
 }
 
 /// Create a deterministic anchor hash for patient-pool budget lookup
-fn create_budget_anchor(
-    patient_hash: &ActionHash,
-    pool_hash: &ActionHash,
-) -> ExternResult<EntryHash> {
+fn create_budget_anchor(patient_hash: &ActionHash, pool_hash: &ActionHash) -> ExternResult<EntryHash> {
     // Combine patient and pool hashes for deterministic anchor
     let mut anchor_data = Vec::new();
     anchor_data.extend_from_slice(b"budget_anchor:");
@@ -874,8 +785,8 @@ fn check_budget_available(
     let epsilon_remaining = budget.total_epsilon - budget.consumed_epsilon;
     let delta_remaining = budget.total_delta - budget.consumed_delta;
 
-    Ok(epsilon_remaining >= epsilon_required
-        && (delta_required == 0.0 || delta_remaining >= delta_required))
+    Ok(epsilon_remaining >= epsilon_required &&
+       (delta_required == 0.0 || delta_remaining >= delta_required))
 }
 
 /// Hex encoding module for budget anchor
@@ -908,12 +819,7 @@ fn compute_dp_result(
     let mut count = 0u32;
 
     for record in contributions {
-        if let Some(contrib) = record
-            .entry()
-            .to_app_option::<PrivacyContribution>()
-            .ok()
-            .flatten()
-        {
+        if let Some(contrib) = record.entry().to_app_option::<PrivacyContribution>().ok().flatten() {
             for agg in &contrib.local_aggregates {
                 // Check if this aggregate matches the query
                 if spec.categories.contains(&agg.category) {
@@ -984,8 +890,7 @@ fn compute_dp_result(
             LaplaceMechanism::std_dev(params.sensitivity_bound, params.epsilon).ok()
         }
         NoiseMechanism::Gaussian => {
-            GaussianMechanism::compute_sigma(params.sensitivity_bound, params.epsilon, params.delta)
-                .ok()
+            GaussianMechanism::compute_sigma(params.sensitivity_bound, params.epsilon, params.delta).ok()
         }
         _ => Some(params.sensitivity_bound / params.epsilon),
     };
@@ -1022,12 +927,7 @@ fn compute_dp_result_with_budget(
     // Get all unique contributors
     let mut contributor_hashes: Vec<ActionHash> = Vec::new();
     for record in contributions {
-        if let Some(contrib) = record
-            .entry()
-            .to_app_option::<PrivacyContribution>()
-            .ok()
-            .flatten()
-        {
+        if let Some(contrib) = record.entry().to_app_option::<PrivacyContribution>().ok().flatten() {
             if !contributor_hashes.contains(&contrib.contributor) {
                 contributor_hashes.push(contrib.contributor.clone());
             }
@@ -1043,7 +943,9 @@ fn compute_dp_result_with_budget(
     // Check budget for ALL contributors before proceeding
     for contributor in &contributor_hashes {
         if !check_budget_available(contributor, pool_hash, params.epsilon, delta)? {
-            return Err(wasm_error!(WasmErrorInner::Guest("Insufficient privacy budget for contributor. Query would exceed privacy guarantees.".to_string())));
+            return Err(wasm_error!(WasmErrorInner::Guest(format!(
+                "Insufficient privacy budget for contributor. Query would exceed privacy guarantees."
+            ))));
         }
     }
 

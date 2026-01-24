@@ -699,59 +699,41 @@ pub enum ConfidenceLevel {
 /// Validate data pool
 pub fn validate_data_pool(pool: &DataPool) -> ExternResult<ValidateCallbackResult> {
     if pool.pool_id.is_empty() {
-        return Ok(ValidateCallbackResult::Invalid(
-            "Pool ID required".to_string(),
-        ));
+        return Ok(ValidateCallbackResult::Invalid("Pool ID required".to_string()));
     }
 
     if pool.name.is_empty() {
-        return Ok(ValidateCallbackResult::Invalid(
-            "Pool name required".to_string(),
-        ));
+        return Ok(ValidateCallbackResult::Invalid("Pool name required".to_string()));
     }
 
     // Validate privacy parameters
     if pool.privacy_params.epsilon <= 0.0 {
-        return Ok(ValidateCallbackResult::Invalid(
-            "Epsilon must be positive".to_string(),
-        ));
+        return Ok(ValidateCallbackResult::Invalid("Epsilon must be positive".to_string()));
     }
 
     if pool.privacy_params.delta < 0.0 || pool.privacy_params.delta >= 1.0 {
-        return Ok(ValidateCallbackResult::Invalid(
-            "Delta must be in [0, 1)".to_string(),
-        ));
+        return Ok(ValidateCallbackResult::Invalid("Delta must be in [0, 1)".to_string()));
     }
 
     if pool.min_contributors < 10 {
-        return Ok(ValidateCallbackResult::Invalid(
-            "Minimum 10 contributors required for privacy".to_string(),
-        ));
+        return Ok(ValidateCallbackResult::Invalid("Minimum 10 contributors required for privacy".to_string()));
     }
 
     Ok(ValidateCallbackResult::Valid)
 }
 
 /// Validate privacy contribution
-pub fn validate_privacy_contribution(
-    contrib: &PrivacyContribution,
-) -> ExternResult<ValidateCallbackResult> {
+pub fn validate_privacy_contribution(contrib: &PrivacyContribution) -> ExternResult<ValidateCallbackResult> {
     if contrib.contribution_id.is_empty() {
-        return Ok(ValidateCallbackResult::Invalid(
-            "Contribution ID required".to_string(),
-        ));
+        return Ok(ValidateCallbackResult::Invalid("Contribution ID required".to_string()));
     }
 
     if contrib.local_aggregates.is_empty() {
-        return Ok(ValidateCallbackResult::Invalid(
-            "At least one aggregate required".to_string(),
-        ));
+        return Ok(ValidateCallbackResult::Invalid("At least one aggregate required".to_string()));
     }
 
     if contrib.budget_consumed <= 0.0 {
-        return Ok(ValidateCallbackResult::Invalid(
-            "Budget consumed must be positive".to_string(),
-        ));
+        return Ok(ValidateCallbackResult::Invalid("Budget consumed must be positive".to_string()));
     }
 
     Ok(ValidateCallbackResult::Valid)
@@ -760,52 +742,36 @@ pub fn validate_privacy_contribution(
 /// Validate aggregate query
 pub fn validate_aggregate_query(query: &AggregateQuery) -> ExternResult<ValidateCallbackResult> {
     if query.query_id.is_empty() {
-        return Ok(ValidateCallbackResult::Invalid(
-            "Query ID required".to_string(),
-        ));
+        return Ok(ValidateCallbackResult::Invalid("Query ID required".to_string()));
     }
 
     if query.organization.is_empty() {
-        return Ok(ValidateCallbackResult::Invalid(
-            "Organization required".to_string(),
-        ));
+        return Ok(ValidateCallbackResult::Invalid("Organization required".to_string()));
     }
 
     if query.requested_epsilon <= 0.0 {
-        return Ok(ValidateCallbackResult::Invalid(
-            "Requested epsilon must be positive".to_string(),
-        ));
+        return Ok(ValidateCallbackResult::Invalid("Requested epsilon must be positive".to_string()));
     }
 
     Ok(ValidateCallbackResult::Valid)
 }
 
 /// Validate governance proposal
-pub fn validate_governance_proposal(
-    proposal: &GovernanceProposal,
-) -> ExternResult<ValidateCallbackResult> {
+pub fn validate_governance_proposal(proposal: &GovernanceProposal) -> ExternResult<ValidateCallbackResult> {
     if proposal.proposal_id.is_empty() {
-        return Ok(ValidateCallbackResult::Invalid(
-            "Proposal ID required".to_string(),
-        ));
+        return Ok(ValidateCallbackResult::Invalid("Proposal ID required".to_string()));
     }
 
     if proposal.description.is_empty() {
-        return Ok(ValidateCallbackResult::Invalid(
-            "Description required".to_string(),
-        ));
+        return Ok(ValidateCallbackResult::Invalid("Description required".to_string()));
     }
 
     if proposal.voting_end <= proposal.voting_start {
-        return Ok(ValidateCallbackResult::Invalid(
-            "Voting end must be after start".to_string(),
-        ));
+        return Ok(ValidateCallbackResult::Invalid("Voting end must be after start".to_string()));
     }
 
     if proposal.approval_threshold <= 0.0 || proposal.approval_threshold > 1.0 {
-        return Ok(ValidateCallbackResult::Invalid(
-            "Approval threshold must be in (0, 1]".to_string(),
-        ));
+        return Ok(ValidateCallbackResult::Invalid("Approval threshold must be in (0, 1]".to_string()));
     }
 
     Ok(ValidateCallbackResult::Valid)
@@ -814,76 +780,76 @@ pub fn validate_governance_proposal(
 /// Validate governance vote
 pub fn validate_governance_vote(vote: &GovernanceVote) -> ExternResult<ValidateCallbackResult> {
     if vote.weight == 0 {
-        return Ok(ValidateCallbackResult::Invalid(
-            "Vote weight must be positive".to_string(),
-        ));
+        return Ok(ValidateCallbackResult::Invalid("Vote weight must be positive".to_string()));
     }
 
     Ok(ValidateCallbackResult::Valid)
 }
 
 /// Validate budget ledger entry
-pub fn validate_budget_ledger_entry(
-    entry: &BudgetLedgerEntry,
-) -> ExternResult<ValidateCallbackResult> {
+pub fn validate_budget_ledger_entry(entry: &BudgetLedgerEntry) -> ExternResult<ValidateCallbackResult> {
     // Epsilon must be positive
     if entry.total_epsilon <= 0.0 {
         return Ok(ValidateCallbackResult::Invalid(
-            "Total epsilon must be positive".to_string(),
+            "Total epsilon must be positive".to_string()
         ));
     }
 
     // Consumed cannot exceed total
     if entry.consumed_epsilon > entry.total_epsilon {
-        return Ok(ValidateCallbackResult::Invalid(format!(
-            "Consumed epsilon ({}) cannot exceed total ({})",
-            entry.consumed_epsilon, entry.total_epsilon
-        )));
+        return Ok(ValidateCallbackResult::Invalid(
+            format!(
+                "Consumed epsilon ({}) cannot exceed total ({})",
+                entry.consumed_epsilon, entry.total_epsilon
+            )
+        ));
     }
 
     // Consumed must be non-negative
     if entry.consumed_epsilon < 0.0 {
         return Ok(ValidateCallbackResult::Invalid(
-            "Consumed epsilon must be non-negative".to_string(),
+            "Consumed epsilon must be non-negative".to_string()
         ));
     }
 
     // Delta constraints
     if entry.total_delta < 0.0 || entry.total_delta >= 1.0 {
         return Ok(ValidateCallbackResult::Invalid(
-            "Total delta must be in [0, 1)".to_string(),
+            "Total delta must be in [0, 1)".to_string()
         ));
     }
 
     if entry.consumed_delta < 0.0 {
         return Ok(ValidateCallbackResult::Invalid(
-            "Consumed delta must be non-negative".to_string(),
+            "Consumed delta must be non-negative".to_string()
         ));
     }
 
     if entry.consumed_delta > entry.total_delta && entry.total_delta > 0.0 {
-        return Ok(ValidateCallbackResult::Invalid(format!(
-            "Consumed delta ({}) cannot exceed total ({})",
-            entry.consumed_delta, entry.total_delta
-        )));
+        return Ok(ValidateCallbackResult::Invalid(
+            format!(
+                "Consumed delta ({}) cannot exceed total ({})",
+                entry.consumed_delta, entry.total_delta
+            )
+        ));
     }
 
     // Query count must match epsilon history length
     if entry.query_count as usize != entry.epsilon_history.len() {
-        return Ok(ValidateCallbackResult::Invalid(format!(
-            "Query count ({}) must match epsilon history length ({})",
-            entry.query_count,
-            entry.epsilon_history.len()
-        )));
+        return Ok(ValidateCallbackResult::Invalid(
+            format!(
+                "Query count ({}) must match epsilon history length ({})",
+                entry.query_count, entry.epsilon_history.len()
+            )
+        ));
     }
 
     // All epsilon values in history must be positive
     for (i, eps) in entry.epsilon_history.iter().enumerate() {
         if *eps <= 0.0 {
-            return Ok(ValidateCallbackResult::Invalid(format!(
-                "Epsilon value at index {} must be positive",
-                i
-            )));
+            return Ok(ValidateCallbackResult::Invalid(
+                format!("Epsilon value at index {} must be positive", i)
+            ));
         }
     }
 
@@ -891,7 +857,7 @@ pub fn validate_budget_ledger_entry(
     if let BudgetCompositionMethod::Advanced { delta_prime } = entry.composition_method {
         if delta_prime <= 0.0 || delta_prime >= 1.0 {
             return Ok(ValidateCallbackResult::Invalid(
-                "Advanced composition delta_prime must be in (0, 1)".to_string(),
+                "Advanced composition delta_prime must be in (0, 1)".to_string()
             ));
         }
     }

@@ -1,5 +1,5 @@
 //! Prescription Management Integrity Zome
-//!
+//! 
 //! Defines entry types for prescriptions, medication orders,
 //! refills, and pharmacy interactions with RxNorm alignment.
 
@@ -279,12 +279,13 @@ fn validate_prescription(rx: &Prescription) -> ExternResult<ValidateCallbackResu
         ));
     }
     // Controlled substances must have DEA number
-    if rx.schedule.is_some() && rx.schedule != Some(DrugSchedule::NotControlled)
-        && rx.dea_number.is_none() {
+    if rx.schedule.is_some() && rx.schedule != Some(DrugSchedule::NotControlled) {
+        if rx.dea_number.is_none() {
             return Ok(ValidateCallbackResult::Invalid(
                 "DEA number required for controlled substances".to_string(),
             ));
         }
+    }
     Ok(ValidateCallbackResult::Valid)
 }
 

@@ -36,15 +36,19 @@ fn proof_type_to_data_categories(proof_type: &HealthProofType) -> Vec<String> {
         HealthProofType::ConditionAbsence => vec!["Diagnoses".to_string()],
 
         // Employment physical requires vitals and diagnoses
-        HealthProofType::EmploymentPhysical => {
-            vec!["VitalSigns".to_string(), "Diagnoses".to_string()]
-        }
+        HealthProofType::EmploymentPhysical => vec![
+            "VitalSigns".to_string(),
+            "Diagnoses".to_string(),
+        ],
 
         // Substance screening uses lab results
         HealthProofType::SubstanceScreening => vec!["LabResults".to_string()],
 
         // Lab threshold proofs (BMI, blood type, etc.) use lab/vital data
-        HealthProofType::LabThreshold => vec!["LabResults".to_string(), "VitalSigns".to_string()],
+        HealthProofType::LabThreshold => vec![
+            "LabResults".to_string(),
+            "VitalSigns".to_string(),
+        ],
 
         // Allergy status checks allergy records
         HealthProofType::AllergyStatus => vec!["Allergies".to_string()],
@@ -53,9 +57,10 @@ fn proof_type_to_data_categories(proof_type: &HealthProofType) -> Vec<String> {
         HealthProofType::MedicationStatus => vec!["Medications".to_string()],
 
         // Organ donor compatibility requires extensive lab work
-        HealthProofType::OrganDonorCompatibility => {
-            vec!["LabResults".to_string(), "Diagnoses".to_string()]
-        }
+        HealthProofType::OrganDonorCompatibility => vec![
+            "LabResults".to_string(),
+            "Diagnoses".to_string(),
+        ],
 
         // Clinical trial eligibility needs comprehensive review
         HealthProofType::ClinicalTrialEligibility => vec![
@@ -65,20 +70,25 @@ fn proof_type_to_data_categories(proof_type: &HealthProofType) -> Vec<String> {
         ],
 
         // Physical capability for sports/fitness
-        HealthProofType::PhysicalCapability => {
-            vec!["VitalSigns".to_string(), "Diagnoses".to_string()]
-        }
+        HealthProofType::PhysicalCapability => vec![
+            "VitalSigns".to_string(),
+            "Diagnoses".to_string(),
+        ],
 
         // Mental health clearance uses mental health records
         HealthProofType::MentalHealthClearance => vec!["MentalHealth".to_string()],
 
         // Travel health clearance checks immunizations and conditions
-        HealthProofType::TravelHealthClearance => {
-            vec!["Immunizations".to_string(), "Diagnoses".to_string()]
-        }
+        HealthProofType::TravelHealthClearance => vec![
+            "Immunizations".to_string(),
+            "Diagnoses".to_string(),
+        ],
 
         // General health uses all basic metrics
-        HealthProofType::GeneralHealth => vec!["VitalSigns".to_string(), "Diagnoses".to_string()],
+        HealthProofType::GeneralHealth => vec![
+            "VitalSigns".to_string(),
+            "Diagnoses".to_string(),
+        ],
 
         // Custom proofs may access anything - log broadly
         HealthProofType::Custom(_) => vec!["All".to_string()],
@@ -184,9 +194,8 @@ pub fn generate_health_proof(proof: HealthProof) -> ExternResult<Record> {
     validate_health_proof(&proof)?;
 
     let proof_hash = create_entry(&EntryTypes::HealthProof(proof.clone()))?;
-    let record = get(proof_hash.clone(), GetOptions::default())?.ok_or(wasm_error!(
-        WasmErrorInner::Guest("Could not find proof".to_string())
-    ))?;
+    let record = get(proof_hash.clone(), GetOptions::default())?
+        .ok_or(wasm_error!(WasmErrorInner::Guest("Could not find proof".to_string())))?;
 
     // Link to patient
     create_link(
@@ -198,7 +207,12 @@ pub fn generate_health_proof(proof: HealthProof) -> ExternResult<Record> {
 
     // Link to completed proofs anchor
     let anchor = anchor_hash("completed_proofs")?;
-    create_link(anchor, proof_hash, LinkTypes::CompletedProofs, ())?;
+    create_link(
+        anchor,
+        proof_hash,
+        LinkTypes::CompletedProofs,
+        (),
+    )?;
 
     // ==================== CONSENT INTEGRATION ====================
     // Log proof generation to consent zome for HIPAA audit trail
@@ -251,17 +265,14 @@ pub fn get_valid_proofs(patient_hash: ActionHash) -> ExternResult<Vec<Record>> {
 /// Revoke a health proof
 #[hdk_extern]
 pub fn revoke_proof(input: RevokeProofInput) -> ExternResult<Record> {
-    let record = get(input.proof_hash.clone(), GetOptions::default())?.ok_or(wasm_error!(
-        WasmErrorInner::Guest("Proof not found".to_string())
-    ))?;
+    let record = get(input.proof_hash.clone(), GetOptions::default())?
+        .ok_or(wasm_error!(WasmErrorInner::Guest("Proof not found".to_string())))?;
 
     let mut proof: HealthProof = record
         .entry()
         .to_app_option()
         .map_err(|e| wasm_error!(WasmErrorInner::Guest(e.to_string())))?
-        .ok_or(wasm_error!(WasmErrorInner::Guest(
-            "Invalid proof".to_string()
-        )))?;
+        .ok_or(wasm_error!(WasmErrorInner::Guest("Invalid proof".to_string())))?;
 
     // Verify caller is the patient who owns this proof
     let _caller = agent_info()?.agent_initial_pubkey;
@@ -272,9 +283,8 @@ pub fn revoke_proof(input: RevokeProofInput) -> ExternResult<Record> {
 
     let updated_hash = update_entry(input.proof_hash, &proof)?;
 
-    get(updated_hash, GetOptions::default())?.ok_or(wasm_error!(WasmErrorInner::Guest(
-        "Could not find updated proof".to_string()
-    )))
+    get(updated_hash, GetOptions::default())?
+        .ok_or(wasm_error!(WasmErrorInner::Guest("Could not find updated proof".to_string())))
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -291,9 +301,8 @@ pub fn create_proof_request(request: ProofRequest) -> ExternResult<Record> {
     validate_proof_request(&request)?;
 
     let request_hash = create_entry(&EntryTypes::ProofRequest(request.clone()))?;
-    let record = get(request_hash.clone(), GetOptions::default())?.ok_or(wasm_error!(
-        WasmErrorInner::Guest("Could not find request".to_string())
-    ))?;
+    let record = get(request_hash.clone(), GetOptions::default())?
+        .ok_or(wasm_error!(WasmErrorInner::Guest("Could not find request".to_string())))?;
 
     // Link to patient
     create_link(
@@ -314,7 +323,12 @@ pub fn create_proof_request(request: ProofRequest) -> ExternResult<Record> {
 
     // Link to active requests
     let anchor = anchor_hash("active_requests")?;
-    create_link(anchor, request_hash, LinkTypes::ActiveRequests, ())?;
+    create_link(
+        anchor,
+        request_hash,
+        LinkTypes::ActiveRequests,
+        (),
+    )?;
 
     Ok(record)
 }
@@ -333,12 +347,7 @@ pub fn get_pending_requests(patient_hash: ActionHash) -> ExternResult<Vec<Record
     for link in links {
         if let Some(hash) = link.target.into_action_hash() {
             if let Some(record) = get(hash, GetOptions::default())? {
-                if let Some(req) = record
-                    .entry()
-                    .to_app_option::<ProofRequest>()
-                    .ok()
-                    .flatten()
-                {
+                if let Some(req) = record.entry().to_app_option::<ProofRequest>().ok().flatten() {
                     if matches!(req.status, ProofRequestStatus::Pending) && req.expires_at > now {
                         pending.push(record);
                     }
@@ -353,17 +362,14 @@ pub fn get_pending_requests(patient_hash: ActionHash) -> ExternResult<Vec<Record
 /// Respond to a proof request
 #[hdk_extern]
 pub fn respond_to_request(input: RespondToRequestInput) -> ExternResult<Record> {
-    let record = get(input.request_hash.clone(), GetOptions::default())?.ok_or(wasm_error!(
-        WasmErrorInner::Guest("Request not found".to_string())
-    ))?;
+    let record = get(input.request_hash.clone(), GetOptions::default())?
+        .ok_or(wasm_error!(WasmErrorInner::Guest("Request not found".to_string())))?;
 
     let mut request: ProofRequest = record
         .entry()
         .to_app_option()
         .map_err(|e| wasm_error!(WasmErrorInner::Guest(e.to_string())))?
-        .ok_or(wasm_error!(WasmErrorInner::Guest(
-            "Invalid request".to_string()
-        )))?;
+        .ok_or(wasm_error!(WasmErrorInner::Guest("Invalid request".to_string())))?;
 
     // Determine status before moving proof_hash
     let has_proof = input.proof_hash.is_some();
@@ -379,11 +385,7 @@ pub fn respond_to_request(input: RespondToRequestInput) -> ExternResult<Record> 
 
     let response = PatientResponse {
         consents: input.accept,
-        decline_reason: if input.accept {
-            None
-        } else {
-            input.decline_reason
-        },
+        decline_reason: if input.accept { None } else { input.decline_reason },
         proof_hash: input.proof_hash,
         responded_at: sys_time()?.as_micros() as i64,
     };
@@ -393,9 +395,8 @@ pub fn respond_to_request(input: RespondToRequestInput) -> ExternResult<Record> 
 
     let updated_hash = update_entry(input.request_hash, &request)?;
 
-    get(updated_hash, GetOptions::default())?.ok_or(wasm_error!(WasmErrorInner::Guest(
-        "Could not find updated request".to_string()
-    )))
+    get(updated_hash, GetOptions::default())?
+        .ok_or(wasm_error!(WasmErrorInner::Guest("Could not find updated request".to_string())))
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -411,17 +412,14 @@ pub struct RespondToRequestInput {
 /// Verify a health proof
 #[hdk_extern]
 pub fn verify_health_proof(input: VerifyProofInput) -> ExternResult<Record> {
-    let proof_record = get(input.proof_hash.clone(), GetOptions::default())?.ok_or(wasm_error!(
-        WasmErrorInner::Guest("Proof not found".to_string())
-    ))?;
+    let proof_record = get(input.proof_hash.clone(), GetOptions::default())?
+        .ok_or(wasm_error!(WasmErrorInner::Guest("Proof not found".to_string())))?;
 
     let proof: HealthProof = proof_record
         .entry()
         .to_app_option()
         .map_err(|e| wasm_error!(WasmErrorInner::Guest(e.to_string())))?
-        .ok_or(wasm_error!(WasmErrorInner::Guest(
-            "Invalid proof".to_string()
-        )))?;
+        .ok_or(wasm_error!(WasmErrorInner::Guest("Invalid proof".to_string())))?;
 
     let now = sys_time()?.as_micros() as i64;
     let start_time = sys_time()?.as_millis();
@@ -431,11 +429,11 @@ pub fn verify_health_proof(input: VerifyProofInput) -> ExternResult<Record> {
     let within_validity = proof.valid_from <= now && proof.valid_until > now;
     let not_revoked = !proof.revoked;
     let attestations_verified = verify_attestations(&proof.attestations);
-    let data_recency_ok = (now - proof.public_inputs.data_timestamp)
-        < (input.max_data_age_days.unwrap_or(365) as i64 * 24 * 60 * 60 * 1_000_000);
+    let data_recency_ok = (now - proof.public_inputs.data_timestamp) <
+        (input.max_data_age_days.unwrap_or(365) as i64 * 24 * 60 * 60 * 1_000_000);
 
-    let verified =
-        crypto_valid && within_validity && not_revoked && attestations_verified && data_recency_ok;
+    let verified = crypto_valid && within_validity && not_revoked &&
+                   attestations_verified && data_recency_ok;
 
     let end_time = sys_time()?.as_millis();
 
@@ -466,9 +464,8 @@ pub fn verify_health_proof(input: VerifyProofInput) -> ExternResult<Record> {
     };
 
     let ver_hash = create_entry(&EntryTypes::VerificationResult(verification.clone()))?;
-    let ver_record = get(ver_hash.clone(), GetOptions::default())?.ok_or(wasm_error!(
-        WasmErrorInner::Guest("Could not find verification".to_string())
-    ))?;
+    let ver_record = get(ver_hash.clone(), GetOptions::default())?
+        .ok_or(wasm_error!(WasmErrorInner::Guest("Could not find verification".to_string())))?;
 
     // Link verification to proof
     create_link(
@@ -505,9 +502,10 @@ fn verify_zkstark_proof(proof: &HealthProof) -> bool {
 fn verify_attestations(attestations: &[HealthAttestation]) -> bool {
     // Simulation: Verify attestations have signatures
     // Real implementation would verify cryptographic signatures
-    attestations
-        .iter()
-        .all(|a| !a.signature.is_empty() && a.attested_at > 0)
+    attestations.iter().all(|a| {
+        !a.signature.is_empty() &&
+        a.attested_at > 0
+    })
 }
 
 /// Get verification history for a proof
@@ -538,13 +536,17 @@ pub fn register_attestor(attestor: TrustedAttestor) -> ExternResult<Record> {
     validate_trusted_attestor(&attestor)?;
 
     let attestor_hash = create_entry(&EntryTypes::TrustedAttestor(attestor.clone()))?;
-    let record = get(attestor_hash.clone(), GetOptions::default())?.ok_or(wasm_error!(
-        WasmErrorInner::Guest("Could not find attestor".to_string())
-    ))?;
+    let record = get(attestor_hash.clone(), GetOptions::default())?
+        .ok_or(wasm_error!(WasmErrorInner::Guest("Could not find attestor".to_string())))?;
 
     // Link to trusted attestors anchor
     let anchor = anchor_hash("trusted_attestors")?;
-    create_link(anchor, attestor_hash, LinkTypes::TrustedAttestors, ())?;
+    create_link(
+        anchor,
+        attestor_hash,
+        LinkTypes::TrustedAttestors,
+        (),
+    )?;
 
     Ok(record)
 }
@@ -562,12 +564,7 @@ pub fn get_trusted_attestors(_: ()) -> ExternResult<Vec<Record>> {
     for link in links {
         if let Some(hash) = link.target.into_action_hash() {
             if let Some(record) = get(hash, GetOptions::default())? {
-                if let Some(attestor) = record
-                    .entry()
-                    .to_app_option::<TrustedAttestor>()
-                    .ok()
-                    .flatten()
-                {
+                if let Some(attestor) = record.entry().to_app_option::<TrustedAttestor>().ok().flatten() {
                     if attestor.active {
                         attestors.push(record);
                     }
@@ -587,12 +584,7 @@ pub fn get_attestors_by_type(credential_type: AttestorCredentialType) -> ExternR
     let filtered: Vec<Record> = all_attestors
         .into_iter()
         .filter(|record| {
-            if let Some(attestor) = record
-                .entry()
-                .to_app_option::<TrustedAttestor>()
-                .ok()
-                .flatten()
-            {
+            if let Some(attestor) = record.entry().to_app_option::<TrustedAttestor>().ok().flatten() {
                 attestor.credential_type == credential_type
             } else {
                 false
@@ -611,9 +603,8 @@ pub fn create_proof_template(template: ProofTemplate) -> ExternResult<Record> {
     validate_proof_template(&template)?;
 
     let template_hash = create_entry(&EntryTypes::ProofTemplate(template.clone()))?;
-    let record = get(template_hash.clone(), GetOptions::default())?.ok_or(wasm_error!(
-        WasmErrorInner::Guest("Could not find template".to_string())
-    ))?;
+    let record = get(template_hash.clone(), GetOptions::default())?
+        .ok_or(wasm_error!(WasmErrorInner::Guest("Could not find template".to_string())))?;
 
     Ok(record)
 }
@@ -758,9 +749,8 @@ pub fn set_proof_parameters(params: ProofParameters) -> ExternResult<Record> {
     validate_proof_parameters(&params)?;
 
     let params_hash = create_entry(&EntryTypes::ProofParameters(params.clone()))?;
-    let record = get(params_hash.clone(), GetOptions::default())?.ok_or(wasm_error!(
-        WasmErrorInner::Guest("Could not find parameters".to_string())
-    ))?;
+    let record = get(params_hash.clone(), GetOptions::default())?
+        .ok_or(wasm_error!(WasmErrorInner::Guest("Could not find parameters".to_string())))?;
 
     // Link to patient
     create_link(
@@ -833,20 +823,14 @@ pub struct GetProofByIdInput {
 #[hdk_extern]
 pub fn is_proof_type_allowed(input: CheckProofTypeInput) -> ExternResult<bool> {
     if let Some(record) = get_proof_parameters(input.patient_hash)? {
-        if let Some(params) = record
-            .entry()
-            .to_app_option::<ProofParameters>()
-            .ok()
-            .flatten()
-        {
+        if let Some(params) = record.entry().to_app_option::<ProofParameters>().ok().flatten() {
             // If explicitly refused, not allowed
             if params.refused_proof_types.contains(&input.proof_type) {
                 return Ok(false);
             }
             // If allowed list is non-empty, must be in it
-            if !params.allowed_proof_types.is_empty()
-                && !params.allowed_proof_types.contains(&input.proof_type)
-            {
+            if !params.allowed_proof_types.is_empty() &&
+               !params.allowed_proof_types.contains(&input.proof_type) {
                 return Ok(false);
             }
         }

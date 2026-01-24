@@ -435,34 +435,24 @@ pub struct ProofParameters {
 /// Validate a health proof
 pub fn validate_health_proof(proof: &HealthProof) -> ExternResult<ValidateCallbackResult> {
     if proof.proof_id.is_empty() {
-        return Ok(ValidateCallbackResult::Invalid(
-            "Proof ID required".to_string(),
-        ));
+        return Ok(ValidateCallbackResult::Invalid("Proof ID required".to_string()));
     }
 
     if proof.claim.is_empty() {
-        return Ok(ValidateCallbackResult::Invalid(
-            "Claim required".to_string(),
-        ));
+        return Ok(ValidateCallbackResult::Invalid("Claim required".to_string()));
     }
 
     if proof.proof_bytes.is_empty() {
-        return Ok(ValidateCallbackResult::Invalid(
-            "Proof bytes required".to_string(),
-        ));
+        return Ok(ValidateCallbackResult::Invalid("Proof bytes required".to_string()));
     }
 
     if proof.valid_until <= proof.valid_from {
-        return Ok(ValidateCallbackResult::Invalid(
-            "Valid until must be after valid from".to_string(),
-        ));
+        return Ok(ValidateCallbackResult::Invalid("Valid until must be after valid from".to_string()));
     }
 
     // Verify proof size is reasonable (typical zkSTARK ~75KB)
     if proof.proof_bytes.len() > 500_000 {
-        return Ok(ValidateCallbackResult::Invalid(
-            "Proof size exceeds maximum".to_string(),
-        ));
+        return Ok(ValidateCallbackResult::Invalid("Proof size exceeds maximum".to_string()));
     }
 
     Ok(ValidateCallbackResult::Valid)
@@ -471,52 +461,36 @@ pub fn validate_health_proof(proof: &HealthProof) -> ExternResult<ValidateCallba
 /// Validate a proof request
 pub fn validate_proof_request(request: &ProofRequest) -> ExternResult<ValidateCallbackResult> {
     if request.request_id.is_empty() {
-        return Ok(ValidateCallbackResult::Invalid(
-            "Request ID required".to_string(),
-        ));
+        return Ok(ValidateCallbackResult::Invalid("Request ID required".to_string()));
     }
 
     if request.verifier_name.is_empty() {
-        return Ok(ValidateCallbackResult::Invalid(
-            "Verifier name required".to_string(),
-        ));
+        return Ok(ValidateCallbackResult::Invalid("Verifier name required".to_string()));
     }
 
     if request.description.is_empty() {
-        return Ok(ValidateCallbackResult::Invalid(
-            "Description required".to_string(),
-        ));
+        return Ok(ValidateCallbackResult::Invalid("Description required".to_string()));
     }
 
     if request.expires_at <= request.requested_at {
-        return Ok(ValidateCallbackResult::Invalid(
-            "Expiry must be after request time".to_string(),
-        ));
+        return Ok(ValidateCallbackResult::Invalid("Expiry must be after request time".to_string()));
     }
 
     Ok(ValidateCallbackResult::Valid)
 }
 
 /// Validate a trusted attestor
-pub fn validate_trusted_attestor(
-    attestor: &TrustedAttestor,
-) -> ExternResult<ValidateCallbackResult> {
+pub fn validate_trusted_attestor(attestor: &TrustedAttestor) -> ExternResult<ValidateCallbackResult> {
     if attestor.attestor_id.is_empty() {
-        return Ok(ValidateCallbackResult::Invalid(
-            "Attestor ID required".to_string(),
-        ));
+        return Ok(ValidateCallbackResult::Invalid("Attestor ID required".to_string()));
     }
 
     if attestor.name.is_empty() {
-        return Ok(ValidateCallbackResult::Invalid(
-            "Attestor name required".to_string(),
-        ));
+        return Ok(ValidateCallbackResult::Invalid("Attestor name required".to_string()));
     }
 
     if attestor.trust_score < 0.0 || attestor.trust_score > 1.0 {
-        return Ok(ValidateCallbackResult::Invalid(
-            "Trust score must be between 0 and 1".to_string(),
-        ));
+        return Ok(ValidateCallbackResult::Invalid("Trust score must be between 0 and 1".to_string()));
     }
 
     Ok(ValidateCallbackResult::Valid)
@@ -525,27 +499,19 @@ pub fn validate_trusted_attestor(
 /// Validate a proof template
 pub fn validate_proof_template(template: &ProofTemplate) -> ExternResult<ValidateCallbackResult> {
     if template.template_id.is_empty() {
-        return Ok(ValidateCallbackResult::Invalid(
-            "Template ID required".to_string(),
-        ));
+        return Ok(ValidateCallbackResult::Invalid("Template ID required".to_string()));
     }
 
     if template.name.is_empty() {
-        return Ok(ValidateCallbackResult::Invalid(
-            "Template name required".to_string(),
-        ));
+        return Ok(ValidateCallbackResult::Invalid("Template name required".to_string()));
     }
 
     if template.circuit_id.is_empty() {
-        return Ok(ValidateCallbackResult::Invalid(
-            "Circuit ID required".to_string(),
-        ));
+        return Ok(ValidateCallbackResult::Invalid("Circuit ID required".to_string()));
     }
 
     if template.default_validity_days == 0 {
-        return Ok(ValidateCallbackResult::Invalid(
-            "Validity days must be positive".to_string(),
-        ));
+        return Ok(ValidateCallbackResult::Invalid("Validity days must be positive".to_string()));
     }
 
     Ok(ValidateCallbackResult::Valid)
@@ -554,22 +520,21 @@ pub fn validate_proof_template(template: &ProofTemplate) -> ExternResult<Validat
 /// Validate proof parameters
 pub fn validate_proof_parameters(params: &ProofParameters) -> ExternResult<ValidateCallbackResult> {
     if params.default_validity_days == 0 {
-        return Ok(ValidateCallbackResult::Invalid(
-            "Default validity days must be positive".to_string(),
-        ));
+        return Ok(ValidateCallbackResult::Invalid("Default validity days must be positive".to_string()));
     }
 
     // Cannot refuse and allow same proof type
     for refused in &params.refused_proof_types {
         if params.allowed_proof_types.contains(refused) {
             return Ok(ValidateCallbackResult::Invalid(
-                "Cannot both allow and refuse same proof type".to_string(),
+                "Cannot both allow and refuse same proof type".to_string()
             ));
         }
     }
 
     Ok(ValidateCallbackResult::Valid)
 }
+
 
 // ==================== ZKSTARK INTEGRATION TYPES ====================
 

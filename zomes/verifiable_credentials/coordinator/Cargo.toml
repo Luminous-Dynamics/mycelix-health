@@ -1,0 +1,13 @@
+[package]
+name = "verifiable_credentials"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+name = "verifiable_credentials"
+
+[dependencies]
+hdk = { workspace = true }
+serde = { workspace = true }
+verifiable_credentials_integrity = { path = "../integrity" }

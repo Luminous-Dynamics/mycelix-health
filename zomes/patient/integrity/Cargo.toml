@@ -13,8 +13,7 @@ holochain_serialized_bytes = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 # Force getrandom feature unification for WASM builds
-# Explicitly enable wasm_js feature to ensure it's enabled even for transitive deps
-getrandom = { workspace = true, features = ["wasm_js"] }
+getrandom = { workspace = true }
 
 [features]
 default = []

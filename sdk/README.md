@@ -7,7 +7,11 @@ TypeScript SDK for Mycelix-Health Holochain hApp with built-in differential priv
 - **Type-Safe API** - All types mirror Rust structs exactly
 - **Privacy Budget Management** - Client-side "Fuel Gauge" for tracking DP budget
 - **Safety Interlocks** - Automatic "Check Budget → Validate → Query" enforcement
-- **Full Zome Coverage** - Clients for Patient, Consent, Commons, and Trials zomes
+- **Comprehensive Zome Coverage** - Clients for all 12 zomes:
+  - **Core**: Patient, Consent, Commons, Trials
+  - **Phase 3**: FHIR Mapping, CDS, Provider Directory, Telehealth
+  - **Phase 4**: SDOH, Mental Health, Chronic Care, Pediatric
+- **Accessibility Support** - WCAG 2.1 compliant with screen reader utilities
 
 ## Installation
 
@@ -94,10 +98,21 @@ const client = await AppWebsocket.connect({ url: new URL('ws://localhost:8888') 
 const health = MycelixHealthClient.fromClient(client);
 
 // Access zome clients
-health.patients   // PatientClient
-health.consent    // ConsentClient
-health.commons    // CommonsClient
-health.trials     // TrialsClient
+// Core
+health.patients       // PatientClient
+health.consent        // ConsentClient
+health.commons        // CommonsClient
+health.trials         // TrialsClient
+// Phase 3 - Clinical Integration
+health.fhirMapping    // FhirMappingClient
+health.cds            // CdsClient
+health.providerDirectory  // ProviderDirectoryClient
+health.telehealth     // TelehealthClient
+// Phase 4 - Equity & Access
+health.sdoh           // SdohClient
+health.mentalHealth   // MentalHealthClient
+health.chronicCare    // ChronicCareClient
+health.pediatric      // PediatricClient
 ```
 
 ### PatientClient
@@ -245,6 +260,223 @@ await health.trials.reportAdverseEvent({
 });
 ```
 
+### Phase 4 - Equity & Access Zomes
+
+#### SdohClient
+
+Social Determinants of Health screening and interventions.
+
+```typescript
+import { ScreeningInstrument, RiskLevel, SdohDomain } from '@mycelix/health-sdk';
+
+// Create SDOH screening
+const screening = await health.sdoh.createScreening({
+  patientHash,
+  instrument: ScreeningInstrument.PRAPARE,
+  responses: [
+    { questionId: 'food_1', questionText: 'Food insecurity', response: 'yes', riskIndicated: true },
+  ],
+});
+
+// Get patient's SDOH summary
+const summary = await health.sdoh.getPatientSdohSummary(patientHash);
+console.log(`Overall risk: ${summary.overallRiskLevel}`);
+console.log(`Domains at risk: ${summary.domainsAtRisk.join(', ')}`);
+
+// Create an intervention referral
+const intervention = await health.sdoh.createIntervention({
+  screeningHash,
+  patientHash,
+  resourceHash,
+  notes: 'Referred to food pantry',
+});
+```
+
+#### MentalHealthClient
+
+Mental health screening, safety plans, and 42 CFR Part 2 consent.
+
+```typescript
+import { MentalHealthInstrument, CrisisLevel, Part2ConsentType } from '@mycelix/health-sdk';
+
+// Create PHQ-9 screening
+const screening = await health.mentalHealth.createScreening({
+  patientHash,
+  instrument: MentalHealthInstrument.PHQ9,
+  responses: [
+    ['q1', 2], ['q2', 1], ['q3', 0], // ... all 9 questions
+  ],
+});
+
+// Create a safety plan
+const safetyPlan = await health.mentalHealth.createSafetyPlan({
+  patientHash,
+  warningSigns: ['Feeling hopeless', 'Isolating from friends'],
+  internalCopingStrategies: ['Deep breathing', 'Going for a walk'],
+  peopleForDistraction: [{ name: 'Friend', phone: '555-1234' }],
+  professionalsToContact: [{ name: 'Therapist', phone: '555-5678' }],
+  crisisLine988: true,
+  reasonsForLiving: ['Family', 'Pets'],
+});
+
+// 42 CFR Part 2 consent for substance abuse records
+const part2Consent = await health.mentalHealth.createPart2Consent({
+  patientHash,
+  consentType: Part2ConsentType.GeneralDisclosure,
+  disclosingProgram: 'Recovery Center',
+  recipientName: 'Primary Care Provider',
+  purpose: 'Coordinate care',
+  substancesCovered: ['Alcohol', 'Opioids'],
+});
+```
+
+#### ChronicCareClient
+
+Chronic disease management for diabetes, heart failure, COPD, and CKD.
+
+```typescript
+import { DiabetesType, NYHAClass, AlertSeverity } from '@mycelix/health-sdk';
+
+// Enroll patient in chronic care program
+const enrollment = await health.chronicCare.enrollPatient({
+  patientHash,
+  condition: { type: 'Diabetes', data: DiabetesType.Type2 },
+  diagnosisDate: Date.now() * 1000,
+  primaryProviderHash: providerHash,
+});
+
+// Create care plan
+const carePlan = await health.chronicCare.createCarePlan({
+  enrollmentHash,
+  patientHash,
+  condition: { type: 'Diabetes', data: DiabetesType.Type2 },
+  goals: [{ goalId: 'hba1c', description: 'Reduce HbA1c to 7%', targetValue: '7' }],
+  medications: ['Metformin 500mg twice daily'],
+  selfManagementTasks: ['Check blood sugar daily', 'Log meals'],
+  nextReviewDate: Date.now() * 1000 + 90 * 24 * 60 * 60 * 1000000, // 90 days
+});
+
+// Record diabetes metrics
+await health.chronicCare.recordDiabetesMetrics({
+  patientHash,
+  measurementDate: Date.now() * 1000,
+  fastingGlucose: 120,
+  hba1c: 7.2,
+  hypoglycemicEvents: 0,
+  hyperglycemicEvents: 1,
+});
+
+// Check medication adherence
+const adherence = await health.chronicCare.getAdherenceRate({
+  patientHash,
+  medicationName: 'Metformin',
+});
+console.log(`Adherence: ${(adherence.adherenceRate * 100).toFixed(1)}%`);
+```
+
+#### PediatricClient
+
+Pediatric care including growth, immunizations, and developmental milestones.
+
+```typescript
+import { VaccineType, DevelopmentalDomain, MilestoneStatus } from '@mycelix/health-sdk';
+
+// Record growth measurement
+const growth = await health.pediatric.recordGrowth({
+  patientHash,
+  ageMonths: 12,
+  weightKg: 9.5,
+  heightCm: 75,
+  headCircumferenceCm: 46,
+});
+
+// Calculate percentiles
+const percentiles = await health.pediatric.calculateGrowthPercentiles({
+  ageMonths: 12,
+  sex: 'female',
+  weightKg: 9.5,
+  heightCm: 75,
+  headCircumferenceCm: 46,
+});
+console.log(`Weight: ${percentiles.weightPercentile}th percentile`);
+
+// Record immunization
+await health.pediatric.recordImmunization({
+  patientHash,
+  vaccineType: VaccineType.DTaP,
+  vaccineName: 'DTaP (Diphtheria, Tetanus, Pertussis)',
+  lotNumber: 'LOT123',
+  expirationDate: Date.now() * 1000 + 365 * 24 * 60 * 60 * 1000000,
+  doseNumber: 2,
+  dosesInSeries: 5,
+  administeredAt: 'Right thigh',
+  visGiven: true,
+});
+
+// Check immunization status
+const status = await health.pediatric.getImmunizationStatus({
+  patientHash,
+  ageMonths: 12,
+});
+console.log(`Up to date: ${status.upToDate}`);
+console.log(`Missing: ${status.missingVaccines.join(', ')}`);
+
+// Record developmental milestone
+await health.pediatric.recordMilestone({
+  patientHash,
+  ageMonths: 12,
+  domain: DevelopmentalDomain.GrossMotor,
+  milestoneName: 'Walks with support',
+  expectedAgeMonths: 12,
+  status: MilestoneStatus.Achieved,
+  referralMade: false,
+});
+```
+
+### Accessibility Support
+
+WCAG 2.1 compliant utilities for building accessible healthcare UIs.
+
+```typescript
+import {
+  formatPatientForScreenReader,
+  formatPrivacyBudgetForScreenReader,
+  checkContrast,
+  getRiskLevelLabel,
+  ReadingLevel,
+  formatMedicalTermForScreenReader,
+} from '@mycelix/health-sdk/accessibility';
+
+// Format patient for screen reader
+const patient = await health.patients.getPatient(hash);
+const accessible = formatPatientForScreenReader(patient);
+console.log(accessible.ariaLabel); // "Patient John Doe"
+console.log(accessible.summary); // Brief description
+
+// Get accessible risk labels
+const risk = getRiskLevelLabel('HighRisk');
+// { label: 'High risk, intervention recommended', ariaLive: 'assertive' }
+
+// Check color contrast for WCAG compliance
+const contrast = checkContrast('#000000', '#FFFFFF');
+console.log(`Ratio: ${contrast.ratio.toFixed(2)}:1`);
+console.log(`Passes AA: ${contrast.passesAA}`);
+console.log(`Passes AAA: ${contrast.passesAAA}`);
+
+// Format medical terms at appropriate reading level
+const term = formatMedicalTermForScreenReader(
+  'hypertension',
+  'I10',
+  ReadingLevel.Elementary
+);
+// "high blood pressure"
+
+// Privacy budget for screen readers
+const budgetInfo = formatPrivacyBudgetForScreenReader(1.5, 10.0);
+console.log(budgetInfo.ariaLabel); // "Privacy budget: 15% remaining..."
+console.log(budgetInfo.explanation); // User-friendly explanation
+```
+
 ### PrivacyBudgetManager
 
 Client-side budget tracking and validation utilities.
@@ -331,15 +563,83 @@ import type {
   DpQueryParams,
   DpQueryResult,
 
-  // Enums
+  // Core Enums
   ConsentScope,
   TrialPhase,
   TrialStatus,
   GovernanceModel,
   NoiseMechanism,
 
-  // Config
-  MycelixHealthConfig,
+  // SDOH types
+  SdohScreening,
+  SdohIntervention,
+  CommunityResource,
+} from '@mycelix/health-sdk';
+
+// SDOH enums
+import {
+  ScreeningInstrument,
+  SdohDomain,
+  SdohCategory,
+  RiskLevel,
+  InterventionStatus,
+  ResourceType,
+} from '@mycelix/health-sdk';
+
+// Mental Health types & enums
+import type {
+  MentalHealthScreening,
+  SafetyPlan,
+  Part2Consent,
+} from '@mycelix/health-sdk';
+
+import {
+  MentalHealthInstrument,
+  Severity,
+  CrisisLevel,
+  TreatmentModality,
+  SafetyPlanStatus,
+  SubstanceCategory,
+  Part2ConsentType,
+} from '@mycelix/health-sdk';
+
+// Chronic Care types & enums
+import type {
+  ChronicDiseaseEnrollment,
+  ChronicCarePlan,
+  DiabetesMetrics,
+  HeartFailureMetrics,
+  COPDMetrics,
+} from '@mycelix/health-sdk';
+
+import {
+  DiabetesType,
+  NYHAClass,
+  GOLDStage,
+  CKDStage,
+  AlertSeverity,
+} from '@mycelix/health-sdk';
+
+// Pediatric types & enums
+import type {
+  GrowthMeasurement,
+  ImmunizationRecord,
+  DevelopmentalMilestone,
+  WellChildVisit,
+} from '@mycelix/health-sdk';
+
+import {
+  VaccineType,
+  ImmunizationStatus,
+  DevelopmentalDomain,
+  MilestoneStatus,
+  FeedingType,
+} from '@mycelix/health-sdk';
+
+// Accessibility types
+import {
+  ReadingLevel,
+  HealthStatusCategory,
 } from '@mycelix/health-sdk';
 ```
 
@@ -348,40 +648,6 @@ import type {
 - Node.js 18+
 - Holochain conductor running with mycelix-health hApp installed
 - `@holochain/client` ^0.18.0
-
-## Development
-
-```bash
-# Install dependencies
-npm install
-
-# Run tests
-npm test
-
-# Build
-npm run build
-
-# Type check
-npm run typecheck
-```
-
-## Publishing
-
-The SDK is published to npm automatically when a GitHub release is created, or can be triggered manually.
-
-To publish manually:
-
-```bash
-# Ensure you're logged into npm
-npm login
-
-# Build and test
-npm run build
-npm test
-
-# Publish (scoped package requires --access public)
-npm publish --access public
-```
 
 ## License
 

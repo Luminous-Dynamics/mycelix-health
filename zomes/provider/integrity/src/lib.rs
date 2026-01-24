@@ -1,5 +1,5 @@
 //! Healthcare Provider Credentials and Licensing Integrity Zome
-//!
+//! 
 //! Defines entry types for healthcare providers, credentials,
 //! licenses, and specializations with verification tracking.
 
@@ -297,9 +297,7 @@ fn validate_certification(cert: &BoardCertification) -> ExternResult<ValidateCal
     Ok(ValidateCallbackResult::Valid)
 }
 
-fn validate_relationship(
-    _rel: &ProviderPatientRelationship,
-) -> ExternResult<ValidateCallbackResult> {
+fn validate_relationship(_rel: &ProviderPatientRelationship) -> ExternResult<ValidateCallbackResult> {
     // Relationship validation - hashes must exist (checked at runtime)
     Ok(ValidateCallbackResult::Valid)
 }

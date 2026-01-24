@@ -1,0 +1,20 @@
+[package]
+name = "telehealth"
+version = "0.1.0"
+edition = "2021"
+description = "Telehealth session coordinator zome - virtual visits, scheduling, session management"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+hdk = { workspace = true }
+holochain_serialized_bytes = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+getrandom = { workspace = true }
+telehealth_integrity = { path = "../integrity" }
+mycelix-health-shared = { path = "../../shared" }
+
+[features]
+default = []

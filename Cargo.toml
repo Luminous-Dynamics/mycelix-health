@@ -36,6 +36,46 @@ members = [
     # Universal Health Moment
     "zomes/moment/integrity",
     "zomes/moment/coordinator",
+    # Clinical Integration (Phase 3)
+    "zomes/fhir_mapping/integrity",
+    "zomes/fhir_mapping/coordinator",
+    "zomes/cds/integrity",
+    "zomes/cds/coordinator",
+    "zomes/provider_directory/integrity",
+    "zomes/provider_directory/coordinator",
+    "zomes/telehealth/integrity",
+    "zomes/telehealth/coordinator",
+    # Equity & Access (Phase 4)
+    "zomes/sdoh/integrity",
+    "zomes/sdoh/coordinator",
+    "zomes/mental_health/integrity",
+    "zomes/mental_health/coordinator",
+    "zomes/chronic_care/integrity",
+    "zomes/chronic_care/coordinator",
+    "zomes/pediatric/integrity",
+    "zomes/pediatric/coordinator",
+    # Advanced Research (Phase 5)
+    "zomes/research_commons/integrity",
+    "zomes/research_commons/coordinator",
+    "zomes/trial_matching/integrity",
+    "zomes/trial_matching/coordinator",
+    "zomes/irb/integrity",
+    "zomes/irb/coordinator",
+    "zomes/federated_learning/integrity",
+    "zomes/federated_learning/coordinator",
+    "zomes/population_health/integrity",
+    "zomes/population_health/coordinator",
+    # Global Scale (Phase 6)
+    "zomes/ips/integrity",
+    "zomes/ips/coordinator",
+    "zomes/i18n/integrity",
+    "zomes/i18n/coordinator",
+    "zomes/disaster_response/integrity",
+    "zomes/disaster_response/coordinator",
+    "zomes/verifiable_credentials/integrity",
+    "zomes/verifiable_credentials/coordinator",
+    "zomes/mobile_support/integrity",
+    "zomes/mobile_support/coordinator",
 ]
 
 # Tests are separate - run with: cargo test -p mycelix-health-tests

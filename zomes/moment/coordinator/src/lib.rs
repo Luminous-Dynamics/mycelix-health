@@ -34,16 +34,10 @@ pub fn create_health_moment(input: CreateHealthMomentInput) -> ExternResult<Reco
 
     // Link to region
     let region_anchor = anchor_for_region(&input.region)?;
-    create_link(
-        region_anchor,
-        action_hash.clone(),
-        LinkTypes::RegionToMoments,
-        (),
-    )?;
+    create_link(region_anchor, action_hash.clone(), LinkTypes::RegionToMoments, ())?;
 
-    let record = get(action_hash, GetOptions::default())?.ok_or(wasm_error!(
-        WasmErrorInner::Guest("Could not retrieve created moment".to_string())
-    ))?;
+    let record = get(action_hash, GetOptions::default())?
+        .ok_or(wasm_error!(WasmErrorInner::Guest("Could not retrieve created moment".to_string())))?;
 
     Ok(record)
 }
@@ -53,8 +47,7 @@ pub fn create_health_moment(input: CreateHealthMomentInput) -> ExternResult<Reco
 pub fn get_health_moment(region: RegionIdentifier) -> ExternResult<Option<HealthMoment>> {
     let region_anchor = anchor_for_region(&region)?;
     let links = get_links(
-        LinkQuery::try_new(region_anchor, LinkTypes::RegionToMoments)?,
-        GetStrategy::default(),
+        LinkQuery::try_new(region_anchor, LinkTypes::RegionToMoments)?, GetStrategy::default()
     )?;
 
     // Get the most recent moment
@@ -62,17 +55,12 @@ pub fn get_health_moment(region: RegionIdentifier) -> ExternResult<Option<Health
     let mut latest_timestamp: i64 = 0;
 
     for link in links {
-        if let Some(record) = get(
-            ActionHash::try_from(link.target).map_err(|_| {
-                wasm_error!(WasmErrorInner::Guest("Invalid link target".to_string()))
-            })?,
-            GetOptions::default(),
-        )? {
-            if let Some(moment) = record
-                .entry()
-                .to_app_option::<HealthMoment>()
-                .map_err(|e| wasm_error!(WasmErrorInner::Guest(e.to_string())))?
-            {
+        if let Some(record) = get(ActionHash::try_from(link.target).map_err(|_| {
+            wasm_error!(WasmErrorInner::Guest("Invalid link target".to_string()))
+        })?, GetOptions::default())? {
+            if let Some(moment) = record.entry().to_app_option::<HealthMoment>().map_err(|e| {
+                wasm_error!(WasmErrorInner::Guest(e.to_string()))
+            })? {
                 if moment.timestamp > latest_timestamp {
                     latest_timestamp = moment.timestamp;
                     latest_moment = Some(moment);
@@ -89,15 +77,11 @@ pub fn get_health_moment(region: RegionIdentifier) -> ExternResult<Option<Health
 pub fn get_personalized_moment(context_hash: ActionHash) -> ExternResult<PersonalizedMoment> {
     // Get personal context
     let context = get(context_hash.clone(), GetOptions::default())?
-        .ok_or(wasm_error!(WasmErrorInner::Guest(
-            "Personal context not found".to_string()
-        )))?
+        .ok_or(wasm_error!(WasmErrorInner::Guest("Personal context not found".to_string())))?
         .entry()
         .to_app_option::<PersonalContext>()
         .map_err(|e| wasm_error!(WasmErrorInner::Guest(e.to_string())))?
-        .ok_or(wasm_error!(WasmErrorInner::Guest(
-            "Could not deserialize context".to_string()
-        )))?;
+        .ok_or(wasm_error!(WasmErrorInner::Guest("Could not deserialize context".to_string())))?;
 
     // Get current moment for their region
     let moment = get_health_moment(context.home_region.clone())?;
@@ -106,12 +90,11 @@ pub fn get_personalized_moment(context_hash: ActionHash) -> ExternResult<Persona
     let advisories = get_active_advisories_for_region(context.home_region.clone())?;
 
     // Filter advisories based on personal risk factors and age
-    let relevant_advisories: Vec<HealthAdvisory> = advisories
-        .into_iter()
+    let relevant_advisories: Vec<HealthAdvisory> = advisories.into_iter()
         .filter(|a| {
             // Include if affects their age group or is for all
-            a.affected_groups.contains(&context.age_group)
-                || a.affected_groups.contains(&AgeGroup::All)
+            a.affected_groups.contains(&context.age_group) ||
+            a.affected_groups.contains(&AgeGroup::All)
         })
         .collect();
 
@@ -119,18 +102,16 @@ pub fn get_personalized_moment(context_hash: ActionHash) -> ExternResult<Persona
     let recommendations = get_recommendations_for_region(context.home_region.clone())?;
 
     // Filter recommendations
-    let relevant_recommendations: Vec<WellnessRecommendation> = recommendations
-        .into_iter()
+    let relevant_recommendations: Vec<WellnessRecommendation> = recommendations.into_iter()
         .filter(|r| {
-            r.target_ages.contains(&context.age_group) || r.target_ages.contains(&AgeGroup::All)
+            r.target_ages.contains(&context.age_group) ||
+            r.target_ages.contains(&AgeGroup::All)
         })
         .filter(|r| {
             // Include if matches their conditions or is general prevention
-            r.applicable_conditions.is_empty()
-                || r.applicable_conditions
-                    .iter()
-                    .any(|c| context.relevant_conditions.contains(c))
-                || r.category == RecommendationCategory::Prevention
+            r.applicable_conditions.is_empty() ||
+            r.applicable_conditions.iter().any(|c| context.relevant_conditions.contains(c)) ||
+            r.category == RecommendationCategory::Prevention
         })
         .collect();
 
@@ -162,50 +143,37 @@ pub fn create_seasonal_pattern(input: CreateSeasonalPatternInput) -> ExternResul
 
     // Link to season anchor
     let season_anchor = anchor_for_season(&input.season)?;
-    create_link(
-        season_anchor,
-        action_hash.clone(),
-        LinkTypes::SeasonToPatterns,
-        (),
-    )?;
+    create_link(season_anchor, action_hash.clone(), LinkTypes::SeasonToPatterns, ())?;
 
-    let record = get(action_hash, GetOptions::default())?.ok_or(wasm_error!(
-        WasmErrorInner::Guest("Could not retrieve created pattern".to_string())
-    ))?;
+    let record = get(action_hash, GetOptions::default())?
+        .ok_or(wasm_error!(WasmErrorInner::Guest("Could not retrieve created pattern".to_string())))?;
 
     Ok(record)
 }
 
 /// Get seasonal patterns for a region
 #[hdk_extern]
-pub fn get_seasonal_patterns(
-    input: GetSeasonalPatternsInput,
-) -> ExternResult<Vec<SeasonalPattern>> {
+pub fn get_seasonal_patterns(input: GetSeasonalPatternsInput) -> ExternResult<Vec<SeasonalPattern>> {
     let season_anchor = anchor_for_season(&input.season)?;
     let links = get_links(
-        LinkQuery::try_new(season_anchor, LinkTypes::SeasonToPatterns)?,
-        GetStrategy::default(),
+        LinkQuery::try_new(season_anchor, LinkTypes::SeasonToPatterns)?, GetStrategy::default()
     )?;
 
     let mut patterns = Vec::new();
 
     for link in links {
-        if let Some(record) = get(
-            ActionHash::try_from(link.target).map_err(|_| {
-                wasm_error!(WasmErrorInner::Guest("Invalid link target".to_string()))
-            })?,
-            GetOptions::default(),
-        )? {
-            if let Some(pattern) = record
-                .entry()
-                .to_app_option::<SeasonalPattern>()
-                .map_err(|e| wasm_error!(WasmErrorInner::Guest(e.to_string())))?
-            {
+        if let Some(record) = get(ActionHash::try_from(link.target).map_err(|_| {
+            wasm_error!(WasmErrorInner::Guest("Invalid link target".to_string()))
+        })?, GetOptions::default())? {
+            if let Some(pattern) = record.entry().to_app_option::<SeasonalPattern>().map_err(|e| {
+                wasm_error!(WasmErrorInner::Guest(e.to_string()))
+            })? {
                 // Filter by region if specified
-                if pattern.region.country == input.region.country
-                    && (input.region.state.is_none() || pattern.region.state == input.region.state) {
+                if pattern.region.country == input.region.country {
+                    if input.region.state.is_none() || pattern.region.state == input.region.state {
                         patterns.push(pattern);
                     }
+                }
             }
         }
     }
@@ -220,8 +188,7 @@ pub fn get_seasonal_patterns(
 pub fn record_environmental_factor(input: RecordEnvironmentalInput) -> ExternResult<Record> {
     let factor_type_clone = input.factor_type.clone();
     let impact = determine_impact(&factor_type_clone, input.current_value);
-    let recommendations =
-        generate_environmental_recommendations(&factor_type_clone, input.current_value);
+    let recommendations = generate_environmental_recommendations(&factor_type_clone, input.current_value);
 
     let factor = EnvironmentalFactor {
         factor_id: generate_factor_id(&input.region, &factor_type_clone),
@@ -238,57 +205,40 @@ pub fn record_environmental_factor(input: RecordEnvironmentalInput) -> ExternRes
     let action_hash = create_entry(EntryTypes::EnvironmentalFactor(factor))?;
 
     // If impact is unhealthy or worse, create alert link
-    if matches!(
-        input.impact,
-        QualityImpact::UnhealthyForSensitive
-            | QualityImpact::Unhealthy
-            | QualityImpact::VeryUnhealthy
-            | QualityImpact::Hazardous
-    ) {
+    if matches!(input.impact, QualityImpact::UnhealthyForSensitive |
+                             QualityImpact::Unhealthy |
+                             QualityImpact::VeryUnhealthy |
+                             QualityImpact::Hazardous) {
         let alert_anchor = anchor_for_environmental_alerts()?;
-        create_link(
-            alert_anchor,
-            action_hash.clone(),
-            LinkTypes::EnvironmentalAlerts,
-            (),
-        )?;
+        create_link(alert_anchor, action_hash.clone(), LinkTypes::EnvironmentalAlerts, ())?;
     }
 
-    let record = get(action_hash, GetOptions::default())?.ok_or(wasm_error!(
-        WasmErrorInner::Guest("Could not retrieve created factor".to_string())
-    ))?;
+    let record = get(action_hash, GetOptions::default())?
+        .ok_or(wasm_error!(WasmErrorInner::Guest("Could not retrieve created factor".to_string())))?;
 
     Ok(record)
 }
 
 /// Get current environmental factors for a region
 #[hdk_extern]
-pub fn get_environmental_factors(
-    region: RegionIdentifier,
-) -> ExternResult<Vec<EnvironmentalFactor>> {
+pub fn get_environmental_factors(region: RegionIdentifier) -> ExternResult<Vec<EnvironmentalFactor>> {
     // For now, return factors from environmental alerts
     // In production, would have region-specific queries
     let alert_anchor = anchor_for_environmental_alerts()?;
     let links = get_links(
-        LinkQuery::try_new(alert_anchor, LinkTypes::EnvironmentalAlerts)?,
-        GetStrategy::default(),
+        LinkQuery::try_new(alert_anchor, LinkTypes::EnvironmentalAlerts)?, GetStrategy::default()
     )?;
 
     let cutoff = sys_time()?.as_micros() as i64 - (24 * 60 * 60 * 1_000_000); // Last 24 hours
     let mut factors = Vec::new();
 
     for link in links {
-        if let Some(record) = get(
-            ActionHash::try_from(link.target).map_err(|_| {
-                wasm_error!(WasmErrorInner::Guest("Invalid link target".to_string()))
-            })?,
-            GetOptions::default(),
-        )? {
-            if let Some(factor) = record
-                .entry()
-                .to_app_option::<EnvironmentalFactor>()
-                .map_err(|e| wasm_error!(WasmErrorInner::Guest(e.to_string())))?
-            {
+        if let Some(record) = get(ActionHash::try_from(link.target).map_err(|_| {
+            wasm_error!(WasmErrorInner::Guest("Invalid link target".to_string()))
+        })?, GetOptions::default())? {
+            if let Some(factor) = record.entry().to_app_option::<EnvironmentalFactor>().map_err(|e| {
+                wasm_error!(WasmErrorInner::Guest(e.to_string()))
+            })? {
                 if factor.region.country == region.country && factor.recorded_at > cutoff {
                     factors.push(factor);
                 }
@@ -319,16 +269,10 @@ pub fn update_community_pulse(input: UpdateCommunityPulseInput) -> ExternResult<
 
     // Link to region
     let region_anchor = anchor_for_region(&input.region)?;
-    create_link(
-        region_anchor,
-        action_hash.clone(),
-        LinkTypes::RegionToMoments,
-        (),
-    )?;
+    create_link(region_anchor, action_hash.clone(), LinkTypes::RegionToMoments, ())?;
 
-    let record = get(action_hash, GetOptions::default())?.ok_or(wasm_error!(
-        WasmErrorInner::Guest("Could not retrieve created pulse".to_string())
-    ))?;
+    let record = get(action_hash, GetOptions::default())?
+        .ok_or(wasm_error!(WasmErrorInner::Guest("Could not retrieve created pulse".to_string())))?;
 
     Ok(record)
 }
@@ -338,25 +282,19 @@ pub fn update_community_pulse(input: UpdateCommunityPulseInput) -> ExternResult<
 pub fn get_community_pulse(region: RegionIdentifier) -> ExternResult<Option<CommunityPulse>> {
     let region_anchor = anchor_for_region(&region)?;
     let links = get_links(
-        LinkQuery::try_new(region_anchor, LinkTypes::RegionToMoments)?,
-        GetStrategy::default(),
+        LinkQuery::try_new(region_anchor, LinkTypes::RegionToMoments)?, GetStrategy::default()
     )?;
 
     let mut latest_pulse: Option<CommunityPulse> = None;
     let mut latest_timestamp: i64 = 0;
 
     for link in links {
-        if let Some(record) = get(
-            ActionHash::try_from(link.target).map_err(|_| {
-                wasm_error!(WasmErrorInner::Guest("Invalid link target".to_string()))
-            })?,
-            GetOptions::default(),
-        )? {
-            if let Some(pulse) = record
-                .entry()
-                .to_app_option::<CommunityPulse>()
-                .map_err(|e| wasm_error!(WasmErrorInner::Guest(e.to_string())))?
-            {
+        if let Some(record) = get(ActionHash::try_from(link.target).map_err(|_| {
+            wasm_error!(WasmErrorInner::Guest("Invalid link target".to_string()))
+        })?, GetOptions::default())? {
+            if let Some(pulse) = record.entry().to_app_option::<CommunityPulse>().map_err(|e| {
+                wasm_error!(WasmErrorInner::Guest(e.to_string()))
+            })? {
                 if pulse.timestamp > latest_timestamp {
                     latest_timestamp = pulse.timestamp;
                     latest_pulse = Some(pulse);
@@ -392,16 +330,10 @@ pub fn issue_health_advisory(input: IssueAdvisoryInput) -> ExternResult<Record> 
 
     // Link to active advisories
     let active_anchor = anchor_for_active_advisories()?;
-    create_link(
-        active_anchor,
-        action_hash.clone(),
-        LinkTypes::ActiveAdvisories,
-        (),
-    )?;
+    create_link(active_anchor, action_hash.clone(), LinkTypes::ActiveAdvisories, ())?;
 
-    let record = get(action_hash, GetOptions::default())?.ok_or(wasm_error!(
-        WasmErrorInner::Guest("Could not retrieve created advisory".to_string())
-    ))?;
+    let record = get(action_hash, GetOptions::default())?
+        .ok_or(wasm_error!(WasmErrorInner::Guest("Could not retrieve created advisory".to_string())))?;
 
     Ok(record)
 }
@@ -415,30 +347,24 @@ pub fn get_active_advisories(region: RegionIdentifier) -> ExternResult<Vec<Healt
 fn get_active_advisories_for_region(region: RegionIdentifier) -> ExternResult<Vec<HealthAdvisory>> {
     let active_anchor = anchor_for_active_advisories()?;
     let links = get_links(
-        LinkQuery::try_new(active_anchor, LinkTypes::ActiveAdvisories)?,
-        GetStrategy::default(),
+        LinkQuery::try_new(active_anchor, LinkTypes::ActiveAdvisories)?, GetStrategy::default()
     )?;
 
     let now = sys_time()?.as_micros() as i64;
     let mut advisories = Vec::new();
 
     for link in links {
-        if let Some(record) = get(
-            ActionHash::try_from(link.target).map_err(|_| {
-                wasm_error!(WasmErrorInner::Guest("Invalid link target".to_string()))
-            })?,
-            GetOptions::default(),
-        )? {
-            if let Some(advisory) = record
-                .entry()
-                .to_app_option::<HealthAdvisory>()
-                .map_err(|e| wasm_error!(WasmErrorInner::Guest(e.to_string())))?
-            {
+        if let Some(record) = get(ActionHash::try_from(link.target).map_err(|_| {
+            wasm_error!(WasmErrorInner::Guest("Invalid link target".to_string()))
+        })?, GetOptions::default())? {
+            if let Some(advisory) = record.entry().to_app_option::<HealthAdvisory>().map_err(|e| {
+                wasm_error!(WasmErrorInner::Guest(e.to_string()))
+            })? {
                 // Check if active and not expired
                 if advisory.status == AdvisoryStatus::Active {
-                    let not_expired = advisory.expires_at.is_none_or(|exp| exp > now);
-                    let same_region = advisory.region.country == region.country
-                        && (region.state.is_none() || advisory.region.state == region.state);
+                    let not_expired = advisory.expires_at.map_or(true, |exp| exp > now);
+                    let same_region = advisory.region.country == region.country &&
+                        (region.state.is_none() || advisory.region.state == region.state);
 
                     if not_expired && same_region {
                         advisories.push(advisory);
@@ -457,25 +383,19 @@ fn get_active_advisories_for_region(region: RegionIdentifier) -> ExternResult<Ve
 /// Update advisory status
 #[hdk_extern]
 pub fn update_advisory_status(input: UpdateAdvisoryStatusInput) -> ExternResult<Record> {
-    let record = get(input.advisory_hash.clone(), GetOptions::default())?.ok_or(wasm_error!(
-        WasmErrorInner::Guest("Advisory not found".to_string())
-    ))?;
+    let record = get(input.advisory_hash.clone(), GetOptions::default())?
+        .ok_or(wasm_error!(WasmErrorInner::Guest("Advisory not found".to_string())))?;
 
-    let mut advisory = record
-        .entry()
-        .to_app_option::<HealthAdvisory>()
+    let mut advisory = record.entry().to_app_option::<HealthAdvisory>()
         .map_err(|e| wasm_error!(WasmErrorInner::Guest(e.to_string())))?
-        .ok_or(wasm_error!(WasmErrorInner::Guest(
-            "Could not deserialize advisory".to_string()
-        )))?;
+        .ok_or(wasm_error!(WasmErrorInner::Guest("Could not deserialize advisory".to_string())))?;
 
     advisory.status = input.new_status;
 
     let action_hash = update_entry(input.advisory_hash, EntryTypes::HealthAdvisory(advisory))?;
 
-    let updated_record = get(action_hash, GetOptions::default())?.ok_or(wasm_error!(
-        WasmErrorInner::Guest("Could not retrieve updated advisory".to_string())
-    ))?;
+    let updated_record = get(action_hash, GetOptions::default())?
+        .ok_or(wasm_error!(WasmErrorInner::Guest("Could not retrieve updated advisory".to_string())))?;
 
     Ok(updated_record)
 }
@@ -503,16 +423,10 @@ pub fn create_recommendation(input: CreateRecommendationInput) -> ExternResult<R
 
     // Link to region moments
     let region_anchor = anchor_for_region(&input.region)?;
-    create_link(
-        region_anchor,
-        action_hash.clone(),
-        LinkTypes::MomentToRecommendations,
-        (),
-    )?;
+    create_link(region_anchor, action_hash.clone(), LinkTypes::MomentToRecommendations, ())?;
 
-    let record = get(action_hash, GetOptions::default())?.ok_or(wasm_error!(
-        WasmErrorInner::Guest("Could not retrieve created recommendation".to_string())
-    ))?;
+    let record = get(action_hash, GetOptions::default())?
+        .ok_or(wasm_error!(WasmErrorInner::Guest("Could not retrieve created recommendation".to_string())))?;
 
     Ok(record)
 }
@@ -523,32 +437,24 @@ pub fn get_recommendations(region: RegionIdentifier) -> ExternResult<Vec<Wellnes
     get_recommendations_for_region(region)
 }
 
-fn get_recommendations_for_region(
-    region: RegionIdentifier,
-) -> ExternResult<Vec<WellnessRecommendation>> {
+fn get_recommendations_for_region(region: RegionIdentifier) -> ExternResult<Vec<WellnessRecommendation>> {
     let region_anchor = anchor_for_region(&region)?;
     let links = get_links(
-        LinkQuery::try_new(region_anchor, LinkTypes::MomentToRecommendations)?,
-        GetStrategy::default(),
+        LinkQuery::try_new(region_anchor, LinkTypes::MomentToRecommendations)?, GetStrategy::default()
     )?;
 
     let now = sys_time()?.as_micros() as i64;
     let mut recommendations = Vec::new();
 
     for link in links {
-        if let Some(record) = get(
-            ActionHash::try_from(link.target).map_err(|_| {
-                wasm_error!(WasmErrorInner::Guest("Invalid link target".to_string()))
-            })?,
-            GetOptions::default(),
-        )? {
-            if let Some(rec) = record
-                .entry()
-                .to_app_option::<WellnessRecommendation>()
-                .map_err(|e| wasm_error!(WasmErrorInner::Guest(e.to_string())))?
-            {
+        if let Some(record) = get(ActionHash::try_from(link.target).map_err(|_| {
+            wasm_error!(WasmErrorInner::Guest("Invalid link target".to_string()))
+        })?, GetOptions::default())? {
+            if let Some(rec) = record.entry().to_app_option::<WellnessRecommendation>().map_err(|e| {
+                wasm_error!(WasmErrorInner::Guest(e.to_string()))
+            })? {
                 // Check if still valid
-                let valid = rec.valid_until.is_none_or(|exp| exp > now);
+                let valid = rec.valid_until.map_or(true, |exp| exp > now);
                 if valid {
                     recommendations.push(rec);
                 }
@@ -584,16 +490,10 @@ pub fn create_personal_context(input: CreatePersonalContextInput) -> ExternResul
 
     // Link to personal contexts (private)
     let personal_anchor = anchor_for_personal_contexts()?;
-    create_link(
-        personal_anchor,
-        action_hash.clone(),
-        LinkTypes::PersonalContexts,
-        (),
-    )?;
+    create_link(personal_anchor, action_hash.clone(), LinkTypes::PersonalContexts, ())?;
 
-    let record = get(action_hash, GetOptions::default())?.ok_or(wasm_error!(
-        WasmErrorInner::Guest("Could not retrieve created context".to_string())
-    ))?;
+    let record = get(action_hash, GetOptions::default())?
+        .ok_or(wasm_error!(WasmErrorInner::Guest("Could not retrieve created context".to_string())))?;
 
     Ok(record)
 }
@@ -604,22 +504,16 @@ pub fn get_my_personal_context(_: ()) -> ExternResult<Option<PersonalContext>> {
     let my_pubkey = agent_info()?.agent_initial_pubkey;
     let personal_anchor = anchor_for_personal_contexts()?;
     let links = get_links(
-        LinkQuery::try_new(personal_anchor, LinkTypes::PersonalContexts)?,
-        GetStrategy::default(),
+        LinkQuery::try_new(personal_anchor, LinkTypes::PersonalContexts)?, GetStrategy::default()
     )?;
 
     for link in links {
-        if let Some(record) = get(
-            ActionHash::try_from(link.target).map_err(|_| {
-                wasm_error!(WasmErrorInner::Guest("Invalid link target".to_string()))
-            })?,
-            GetOptions::default(),
-        )? {
-            if let Some(context) = record
-                .entry()
-                .to_app_option::<PersonalContext>()
-                .map_err(|e| wasm_error!(WasmErrorInner::Guest(e.to_string())))?
-            {
+        if let Some(record) = get(ActionHash::try_from(link.target).map_err(|_| {
+            wasm_error!(WasmErrorInner::Guest("Invalid link target".to_string()))
+        })?, GetOptions::default())? {
+            if let Some(context) = record.entry().to_app_option::<PersonalContext>().map_err(|e| {
+                wasm_error!(WasmErrorInner::Guest(e.to_string()))
+            })? {
                 if context.agent_hash == my_pubkey {
                     return Ok(Some(context));
                 }
@@ -649,16 +543,10 @@ pub fn update_global_dashboard(input: UpdateGlobalDashboardInput) -> ExternResul
 
     // Link to global dashboards
     let global_anchor = anchor_for_global_dashboards()?;
-    create_link(
-        global_anchor,
-        action_hash.clone(),
-        LinkTypes::GlobalDashboards,
-        (),
-    )?;
+    create_link(global_anchor, action_hash.clone(), LinkTypes::GlobalDashboards, ())?;
 
-    let record = get(action_hash, GetOptions::default())?.ok_or(wasm_error!(
-        WasmErrorInner::Guest("Could not retrieve created dashboard".to_string())
-    ))?;
+    let record = get(action_hash, GetOptions::default())?
+        .ok_or(wasm_error!(WasmErrorInner::Guest("Could not retrieve created dashboard".to_string())))?;
 
     Ok(record)
 }
@@ -668,25 +556,19 @@ pub fn update_global_dashboard(input: UpdateGlobalDashboardInput) -> ExternResul
 pub fn get_global_dashboard(_: ()) -> ExternResult<Option<GlobalDashboard>> {
     let global_anchor = anchor_for_global_dashboards()?;
     let links = get_links(
-        LinkQuery::try_new(global_anchor, LinkTypes::GlobalDashboards)?,
-        GetStrategy::default(),
+        LinkQuery::try_new(global_anchor, LinkTypes::GlobalDashboards)?, GetStrategy::default()
     )?;
 
     let mut latest_dashboard: Option<GlobalDashboard> = None;
     let mut latest_timestamp: i64 = 0;
 
     for link in links {
-        if let Some(record) = get(
-            ActionHash::try_from(link.target).map_err(|_| {
-                wasm_error!(WasmErrorInner::Guest("Invalid link target".to_string()))
-            })?,
-            GetOptions::default(),
-        )? {
-            if let Some(dashboard) = record
-                .entry()
-                .to_app_option::<GlobalDashboard>()
-                .map_err(|e| wasm_error!(WasmErrorInner::Guest(e.to_string())))?
-            {
+        if let Some(record) = get(ActionHash::try_from(link.target).map_err(|_| {
+            wasm_error!(WasmErrorInner::Guest("Invalid link target".to_string()))
+        })?, GetOptions::default())? {
+            if let Some(dashboard) = record.entry().to_app_option::<GlobalDashboard>().map_err(|e| {
+                wasm_error!(WasmErrorInner::Guest(e.to_string()))
+            })? {
                 if dashboard.timestamp > latest_timestamp {
                     latest_timestamp = dashboard.timestamp;
                     latest_dashboard = Some(dashboard);
@@ -711,11 +593,8 @@ fn anchor_hash(anchor_text: &str) -> ExternResult<EntryHash> {
 }
 
 fn anchor_for_region(region: &RegionIdentifier) -> ExternResult<AnyLinkableHash> {
-    let anchor_str = format!(
-        "region:{}:{}",
-        region.country,
-        region.state.as_ref().unwrap_or(&"*".to_string())
-    );
+    let anchor_str = format!("region:{}:{}", region.country,
+        region.state.as_ref().unwrap_or(&"*".to_string()));
     Ok(AnyLinkableHash::from(anchor_hash(&anchor_str)?))
 }
 
@@ -743,54 +622,32 @@ fn anchor_for_global_dashboards() -> ExternResult<AnyLinkableHash> {
 fn determine_impact(factor_type: &EnvironmentalType, value: f64) -> QualityImpact {
     match factor_type {
         EnvironmentalType::AirQualityIndex => {
-            if value <= 50.0 {
-                QualityImpact::Good
-            } else if value <= 100.0 {
-                QualityImpact::Moderate
-            } else if value <= 150.0 {
-                QualityImpact::UnhealthyForSensitive
-            } else if value <= 200.0 {
-                QualityImpact::Unhealthy
-            } else if value <= 300.0 {
-                QualityImpact::VeryUnhealthy
-            } else {
-                QualityImpact::Hazardous
-            }
+            if value <= 50.0 { QualityImpact::Good }
+            else if value <= 100.0 { QualityImpact::Moderate }
+            else if value <= 150.0 { QualityImpact::UnhealthyForSensitive }
+            else if value <= 200.0 { QualityImpact::Unhealthy }
+            else if value <= 300.0 { QualityImpact::VeryUnhealthy }
+            else { QualityImpact::Hazardous }
         }
         EnvironmentalType::UVIndex => {
-            if value <= 2.0 {
-                QualityImpact::Good
-            } else if value <= 5.0 {
-                QualityImpact::Moderate
-            } else if value <= 7.0 {
-                QualityImpact::UnhealthyForSensitive
-            } else if value <= 10.0 {
-                QualityImpact::Unhealthy
-            } else {
-                QualityImpact::VeryUnhealthy
-            }
+            if value <= 2.0 { QualityImpact::Good }
+            else if value <= 5.0 { QualityImpact::Moderate }
+            else if value <= 7.0 { QualityImpact::UnhealthyForSensitive }
+            else if value <= 10.0 { QualityImpact::Unhealthy }
+            else { QualityImpact::VeryUnhealthy }
         }
         EnvironmentalType::PollenCount => {
-            if value <= 20.0 {
-                QualityImpact::Good
-            } else if value <= 80.0 {
-                QualityImpact::Moderate
-            } else if value <= 200.0 {
-                QualityImpact::UnhealthyForSensitive
-            } else if value <= 500.0 {
-                QualityImpact::Unhealthy
-            } else {
-                QualityImpact::VeryUnhealthy
-            }
+            if value <= 20.0 { QualityImpact::Good }
+            else if value <= 80.0 { QualityImpact::Moderate }
+            else if value <= 200.0 { QualityImpact::UnhealthyForSensitive }
+            else if value <= 500.0 { QualityImpact::Unhealthy }
+            else { QualityImpact::VeryUnhealthy }
         }
         _ => QualityImpact::Moderate,
     }
 }
 
-fn generate_environmental_recommendations(
-    factor_type: &EnvironmentalType,
-    value: f64,
-) -> Vec<String> {
+fn generate_environmental_recommendations(factor_type: &EnvironmentalType, value: f64) -> Vec<String> {
     let mut recs = Vec::new();
 
     match factor_type {
@@ -831,17 +688,11 @@ fn compute_personalized_risk(context: &PersonalContext) -> RiskLevel {
 
     let total_risk = base_risk + condition_risk + factor_risk;
 
-    if total_risk == 0 {
-        RiskLevel::Low
-    } else if total_risk <= 2 {
-        RiskLevel::Moderate
-    } else if total_risk <= 4 {
-        RiskLevel::Elevated
-    } else if total_risk <= 6 {
-        RiskLevel::High
-    } else {
-        RiskLevel::Severe
-    }
+    if total_risk == 0 { RiskLevel::Low }
+    else if total_risk <= 2 { RiskLevel::Moderate }
+    else if total_risk <= 4 { RiskLevel::Elevated }
+    else if total_risk <= 6 { RiskLevel::High }
+    else { RiskLevel::Severe }
 }
 
 fn severity_rank(severity: &AdvisorySeverity) -> u8 {
@@ -865,7 +716,7 @@ fn priority_rank(priority: &Priority) -> u8 {
 }
 
 fn get_timestamp_micros() -> i64 {
-    sys_time().map(|t| t.as_micros()).unwrap_or(0)
+    sys_time().map(|t| t.as_micros() as i64).unwrap_or(0)
 }
 
 fn generate_moment_id(region: &RegionIdentifier) -> String {
@@ -900,11 +751,7 @@ fn generate_recommendation_id() -> String {
 fn generate_context_id(agent: &AgentPubKey) -> String {
     let now = get_timestamp_micros();
     let agent_str = format!("{:?}", agent);
-    format!(
-        "CTX-{}-{}",
-        &agent_str[..8.min(agent_str.len())],
-        now % 10000
-    )
+    format!("CTX-{}-{}", &agent_str[..8.min(agent_str.len())], now % 10000)
 }
 
 fn generate_dashboard_id() -> String {

@@ -813,15 +813,11 @@ pub enum ModelUpdateReason {
 /// Validate a health twin
 pub fn validate_health_twin(twin: &HealthTwin) -> ExternResult<ValidateCallbackResult> {
     if twin.twin_id.is_empty() {
-        return Ok(ValidateCallbackResult::Invalid(
-            "Twin ID required".to_string(),
-        ));
+        return Ok(ValidateCallbackResult::Invalid("Twin ID required".to_string()));
     }
 
     if twin.confidence < 0.0 || twin.confidence > 1.0 {
-        return Ok(ValidateCallbackResult::Invalid(
-            "Confidence must be between 0 and 1".to_string(),
-        ));
+        return Ok(ValidateCallbackResult::Invalid("Confidence must be between 0 and 1".to_string()));
     }
 
     Ok(ValidateCallbackResult::Valid)
@@ -830,21 +826,15 @@ pub fn validate_health_twin(twin: &HealthTwin) -> ExternResult<ValidateCallbackR
 /// Validate a simulation
 pub fn validate_simulation(sim: &Simulation) -> ExternResult<ValidateCallbackResult> {
     if sim.simulation_id.is_empty() {
-        return Ok(ValidateCallbackResult::Invalid(
-            "Simulation ID required".to_string(),
-        ));
+        return Ok(ValidateCallbackResult::Invalid("Simulation ID required".to_string()));
     }
 
     if sim.name.is_empty() {
-        return Ok(ValidateCallbackResult::Invalid(
-            "Simulation name required".to_string(),
-        ));
+        return Ok(ValidateCallbackResult::Invalid("Simulation name required".to_string()));
     }
 
     if sim.time_horizon_months == 0 {
-        return Ok(ValidateCallbackResult::Invalid(
-            "Time horizon must be positive".to_string(),
-        ));
+        return Ok(ValidateCallbackResult::Invalid("Time horizon must be positive".to_string()));
     }
 
     Ok(ValidateCallbackResult::Valid)
@@ -853,23 +843,18 @@ pub fn validate_simulation(sim: &Simulation) -> ExternResult<ValidateCallbackRes
 /// Validate a prediction
 pub fn validate_prediction(pred: &Prediction) -> ExternResult<ValidateCallbackResult> {
     if pred.prediction_id.is_empty() {
-        return Ok(ValidateCallbackResult::Invalid(
-            "Prediction ID required".to_string(),
-        ));
+        return Ok(ValidateCallbackResult::Invalid("Prediction ID required".to_string()));
     }
 
     if pred.target.is_empty() {
-        return Ok(ValidateCallbackResult::Invalid(
-            "Prediction target required".to_string(),
-        ));
+        return Ok(ValidateCallbackResult::Invalid("Prediction target required".to_string()));
     }
 
     // Confidence interval should be ordered
     if pred.confidence_interval.0 > pred.confidence_interval.1 {
-        return Ok(ValidateCallbackResult::Invalid(
-            "Invalid confidence interval".to_string(),
-        ));
+        return Ok(ValidateCallbackResult::Invalid("Invalid confidence interval".to_string()));
     }
 
     Ok(ValidateCallbackResult::Valid)
 }
+

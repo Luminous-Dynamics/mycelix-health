@@ -1,0 +1,13 @@
+[package]
+name = "ips"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+name = "ips"
+
+[dependencies]
+hdk = { workspace = true }
+serde = { workspace = true }
+ips_integrity = { path = "../integrity" }
