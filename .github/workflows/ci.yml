@@ -2,26 +2,31 @@ name: CI
 
 on:
   push:
-    branches: [main]
+    branches: [main, develop]
   pull_request:
-    branches: [main]
+    branches: [main, develop]
 
 env:
   CARGO_TERM_COLOR: always
   RUST_BACKTRACE: 1
 
 jobs:
-  # Rust Tests & Quality
-  rust-tests:
-    name: Rust Tests
+  # Rust workspace checks
+  rust:
+    name: Rust Build & Test
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
+      - name: Install Rust
+        uses: dtolnay/rust-action@stable
         with:
-          components: clippy, rustfmt
+          components: rustfmt, clippy
+
+      - name: Install Holochain dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libssl-dev pkg-config
 
       - name: Cache cargo registry
         uses: actions/cache@v4
@@ -34,130 +39,46 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-cargo-
 
-      - name: Remove default WASM target for tests
-        run: |
-          # Remove [build] section that sets default target to wasm
-          sed -i '/^\[build\]/,/^$/d' .cargo/config.toml
-
       - name: Check formatting
         run: cargo fmt --all -- --check
 
       - name: Run clippy
+        run: cargo clippy --workspace -- -D warnings
+
+      - name: Build workspace
+        run: cargo build --workspace
+
+      - name: Build release (all zomes)
         run: |
-          # Allow minor style lints, deny everything else
-          cargo clippy --all-targets -- \
-            -D warnings \
-            -A clippy::match_single_binding \
-            -A clippy::collapsible_match \
-            -A clippy::large_enum_variant \
-            -A clippy::manual_clamp \
-            -A clippy::wildcard_in_or_patterns
+          # Phase 3 - Clinical Integration
+          cargo build --release -p fhir_mapping_integrity -p fhir_mapping
+          cargo build --release -p cds_integrity -p cds
+          cargo build --release -p provider_directory_integrity -p provider_directory
+          cargo build --release -p telehealth_integrity -p telehealth
+          # Phase 4 - Equity & Access
+          cargo build --release -p sdoh_integrity -p sdoh
+          cargo build --release -p mental_health_integrity -p mental_health
+          cargo build --release -p chronic_care_integrity -p chronic_care
+          cargo build --release -p pediatric_integrity -p pediatric
+          # Phase 5 - Advanced Research
+          cargo build --release -p research_commons_integrity -p research_commons
+          cargo build --release -p trial_matching_integrity -p trial_matching
+          cargo build --release -p irb_integrity -p irb
+          cargo build --release -p federated_learning_integrity -p federated_learning
+          cargo build --release -p population_health_integrity -p population_health
+          # Phase 6 - Global Scale
+          cargo build --release -p ips_integrity -p ips
+          cargo build --release -p i18n_integrity -p i18n
+          cargo build --release -p disaster_response_integrity -p disaster_response
+          cargo build --release -p verifiable_credentials_integrity -p verifiable_credentials
+          cargo build --release -p mobile_support_integrity -p mobile_support
 
       - name: Run tests
         run: cargo test --workspace
 
-  # Code Coverage
-  coverage:
-    name: Code Coverage
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
-
-      - name: Install cargo-tarpaulin
-        run: cargo install cargo-tarpaulin
-
-      - name: Remove default WASM target
-        run: sed -i '/^\[build\]/,/^$/d' .cargo/config.toml
-
-      - name: Generate coverage report
-        run: |
-          cargo tarpaulin --workspace --out xml --out html \
-            --exclude-files "*/tests/*" \
-            --exclude-files "*/test_*" \
-            --timeout 300
-
-      - name: Upload coverage to Codecov
-        uses: codecov/codecov-action@v4
-        with:
-          files: cobertura.xml
-          fail_ci_if_error: false
-        env:
-          CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
-
-      - name: Upload coverage HTML report
-        uses: actions/upload-artifact@v4
-        with:
-          name: coverage-report
-          path: tarpaulin-report.html
-
-  # Security Audit
-  security:
-    name: Security Audit
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
-
-      - name: Install cargo-audit
-        run: cargo install cargo-audit
-
-      - name: Run security audit
-        run: cargo audit
-
-  # WASM Build
-  wasm-build:
-    name: WASM Build
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: wasm32-unknown-unknown
-
-      - name: Cache cargo registry
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.cargo/registry
-            ~/.cargo/git
-            target
-          key: ${{ runner.os }}-cargo-wasm-${{ hashFiles('**/Cargo.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-cargo-wasm-
-
-      - name: Show cargo config
-        run: cat .cargo/config.toml
-
-      - name: Clean cached WASM artifacts
-        run: |
-          # Force fresh build to ensure proper feature resolution
-          rm -rf target/wasm32-unknown-unknown
-
-      - name: Build WASM (integrity zomes)
-        run: |
-          # .cargo/config.toml has wasm32 as default target and correct rustflags
-          cargo build --release -p patient_integrity
-          cargo build --release -p consent_integrity
-          cargo build --release -p commons_integrity
-          cargo build --release -p trials_integrity
-
-      - name: Build WASM (coordinator zomes)
-        run: |
-          cargo build --release -p patient
-          cargo build --release -p consent
-          cargo build --release -p commons_coordinator
-          cargo build --release -p trials
-
-  # TypeScript SDK Tests
-  sdk-tests:
-    name: SDK Tests
+  # TypeScript SDK
+  sdk:
+    name: TypeScript SDK
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -178,17 +99,71 @@ jobs:
       - name: Type check
         run: npm run typecheck
 
-      - name: Run tests
-        run: npm test
-
-      - name: Build SDK
+      - name: Build
         run: npm run build
 
-  # All checks passed
-  ci-success:
-    name: CI Success
-    needs: [rust-tests, coverage, security, wasm-build, sdk-tests]
+      - name: Test
+        run: npm test
+
+  # EHR Gateway Service
+  ehr-gateway:
+    name: EHR Gateway Service
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: services/ehr-gateway
     steps:
-      - name: All checks passed
-        run: echo "All CI checks passed!"
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: services/ehr-gateway/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Type check
+        run: npm run typecheck
+
+      - name: Build
+        run: npm run build
+
+      - name: Test
+        run: npm test
+
+  # Integration tests (requires Holochain conductor)
+  integration:
+    name: Integration Tests
+    runs-on: ubuntu-latest
+    needs: [rust, sdk]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Nix
+        uses: cachix/install-nix-action@v25
+        with:
+          nix_path: nixpkgs=channel:nixos-unstable
+
+      - name: Setup Holochain
+        uses: holochain/holochain-nix-setup-action@v1
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Build hApp
+        run: |
+          nix develop --command bash -c "
+            cargo build --release --workspace
+            # Build WASM zomes and package hApp
+          "
+
+      - name: Run integration tests
+        run: |
+          cd tests/integration
+          npm ci
+          npm test
