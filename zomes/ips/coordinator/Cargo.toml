@@ -9,5 +9,6 @@ name = "ips"
 
 [dependencies]
 hdk = { workspace = true }
+holochain_serialized_bytes = { workspace = true }
 serde = { workspace = true }
 ips_integrity = { path = "../integrity" }

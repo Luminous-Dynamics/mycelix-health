@@ -219,3 +219,177 @@ export type {
   ImmunizationStatusOutput,
   DevelopmentalSummary,
 } from './pediatric';
+
+// Research Commons (Phase 5 - Advanced Research)
+export { ResearchCommonsClient } from './research-commons';
+export {
+  DatasetAccessLevel,
+  LicenseType,
+  DataQualityScore,
+  AccessRequestStatus,
+} from './research-commons';
+export type {
+  DatasetMetadata,
+  ResearchDataset,
+  DataUseAgreement,
+  ContributionCredit,
+  CreateDatasetInput,
+  RequestAccessInput,
+  ApproveAccessInput,
+} from './research-commons';
+
+// Trial Matching (Phase 5 - Advanced Research)
+export { TrialMatchingClient } from './trial-matching';
+export type {
+  TrialEligibilityCriteria,
+  PatientProfile,
+  TrialPreferences,
+  MatchResult,
+  TrialRecommendation,
+  CreatePatientProfileInput,
+  FindMatchesInput,
+} from './trial-matching';
+
+// IRB (Phase 5 - Advanced Research)
+export { IrbClient } from './irb';
+export {
+  ProtocolStatus,
+  ReviewType,
+  ReviewerRole,
+  VoteType,
+} from './irb';
+export type {
+  ProtocolSubmission,
+  IrbMember,
+  ProtocolReview,
+  IrbMeeting,
+  CreateProtocolInput,
+  SubmitReviewInput,
+} from './irb';
+
+// Federated Learning (Phase 5 - Advanced Research)
+export { FederatedLearningClient } from './federated-learning';
+export {
+  ProjectStatus,
+  RoundStatus,
+  AggregationMethod,
+} from './federated-learning';
+export type {
+  ModelArchitecture,
+  FederatedProject,
+  TrainingRound,
+  ModelUpdate,
+  AggregatedModel,
+  CreateProjectInput as CreateFederatedProjectInput,
+  SubmitUpdateInput,
+  AggregateUpdatesInput,
+} from './federated-learning';
+
+// Population Health (Phase 5 - Advanced Research)
+export { PopulationHealthClient } from './population-health';
+export {
+  SurveillanceType,
+  AlertLevel,
+  ReportingFrequency,
+} from './population-health';
+export type {
+  SurveillanceIndicator,
+  PopulationMetric,
+  HealthAlert as PopulationHealthAlert,
+  PopulationTrend,
+  CommunityHealthProfile,
+  CreateIndicatorInput,
+  RecordMetricInput,
+  GetTrendsInput,
+} from './population-health';
+
+// IPS - International Patient Summary (Phase 6 - Global Scale)
+export { IpsClient } from './ips';
+export { IpsStatus } from './ips';
+export type {
+  IpsMedication,
+  IpsAllergy,
+  IpsCondition,
+  IpsProcedure,
+  IpsImmunization,
+  InternationalPatientSummary,
+  IpsExport,
+  CreateIpsInput,
+  UpdateIpsInput,
+} from './ips';
+
+// i18n - Internationalization (Phase 6 - Global Scale)
+export { I18nClient } from './i18n';
+export type {
+  LocalizedTerm,
+  TranslationMemory,
+  GlossaryEntry,
+  SupportedLocale,
+  GetMedicalTermInput,
+  AddLocalizedTermInput,
+  TranslateInput,
+  AddTranslationMemoryInput,
+  AddGlossaryEntryInput,
+} from './i18n';
+
+// Disaster Response (Phase 6 - Global Scale)
+export { DisasterResponseClient } from './disaster-response';
+export {
+  DisasterType,
+  DisasterStatus,
+  ResourceType as DisasterResourceType,
+  ResourceStatus,
+  TriageCategory,
+} from './disaster-response';
+export type {
+  DisasterDeclaration,
+  EmergencyResource,
+  ResourceRequest,
+  MassTriageRecord,
+  EvacuationOrder,
+  DeclareDisasterInput,
+  RegisterResourceInput,
+  RequestResourcesInput,
+  RecordTriageInput,
+} from './disaster-response';
+
+// Verifiable Credentials (Phase 6 - Global Scale)
+export { VerifiableCredentialsClient } from './verifiable-credentials';
+export {
+  CredentialType,
+  CredentialStatus,
+  ProofType,
+} from './verifiable-credentials';
+export type {
+  VerifiableCredential,
+  VerifiablePresentation,
+  CredentialSchema,
+  SchemaProperty,
+  RevocationEntry,
+  TrustRelationship,
+  IssueCredentialInput,
+  CreatePresentationInput,
+  VerifyCredentialInput,
+  VerificationResult,
+} from './verifiable-credentials';
+
+// Mobile Support (Phase 6 - Global Scale)
+export { MobileSupportClient } from './mobile-support';
+export {
+  SyncStatus,
+  ConflictResolution,
+  DataPriority,
+} from './mobile-support';
+export type {
+  SyncQueue,
+  SyncItem,
+  SyncConflict,
+  OfflineCache,
+  DeviceRegistration,
+  BandwidthProfile,
+  RegisterDeviceInput,
+  QueueSyncItemInput,
+  CacheDataInput,
+  SetBandwidthProfileInput,
+  SyncResult,
+} from './mobile-support';

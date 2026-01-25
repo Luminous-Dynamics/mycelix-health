@@ -203,9 +203,7 @@ pub fn create_population_statistic(input: CreateStatisticInput) -> ExternResult<
 #[hdk_extern]
 pub fn get_region_statistics(region_id: String) -> ExternResult<Vec<Record>> {
     let anchor = anchor_hash(&format!("region_{}", region_id))?;
-    let links = get_links(
-        GetLinksInputBuilder::try_new(anchor, LinkTypes::StatisticsByRegion)?.build(),
-    )?;
+    let links = get_links(LinkQuery::try_new(anchor, LinkTypes::StatisticsByRegion)?, GetStrategy::default())?;
 
     let mut records = Vec::new();
     for link in links {
@@ -223,9 +221,7 @@ pub fn get_region_statistics(region_id: String) -> ExternResult<Vec<Record>> {
 #[hdk_extern]
 pub fn get_condition_statistics(condition_code: String) -> ExternResult<Vec<Record>> {
     let anchor = anchor_hash(&format!("condition_{}", condition_code))?;
-    let links = get_links(
-        GetLinksInputBuilder::try_new(anchor, LinkTypes::StatisticsByCondition)?.build(),
-    )?;
+    let links = get_links(LinkQuery::try_new(anchor, LinkTypes::StatisticsByCondition)?, GetStrategy::default())?;
 
     let mut records = Vec::new();
     for link in links {
@@ -278,9 +274,7 @@ pub fn create_health_indicator(input: CreateIndicatorInput) -> ExternResult<Acti
 #[hdk_extern]
 pub fn get_region_indicators(region_id: String) -> ExternResult<Vec<Record>> {
     let anchor = anchor_hash(&format!("indicators_{}", region_id))?;
-    let links = get_links(
-        GetLinksInputBuilder::try_new(anchor, LinkTypes::IndicatorsByRegion)?.build(),
-    )?;
+    let links = get_links(LinkQuery::try_new(anchor, LinkTypes::IndicatorsByRegion)?, GetStrategy::default())?;
 
     let mut records = Vec::new();
     for link in links {
@@ -377,9 +371,7 @@ pub fn create_surveillance_report(input: CreateSurveillanceInput) -> ExternResul
 #[hdk_extern]
 pub fn get_condition_surveillance(condition_code: String) -> ExternResult<Vec<Record>> {
     let anchor = anchor_hash(&format!("surveillance_{}", condition_code))?;
-    let links = get_links(
-        GetLinksInputBuilder::try_new(anchor, LinkTypes::SurveillanceByCondition)?.build(),
-    )?;
+    let links = get_links(LinkQuery::try_new(anchor, LinkTypes::SurveillanceByCondition)?, GetStrategy::default())?;
 
     let mut records = Vec::new();
     for link in links {
@@ -444,9 +436,7 @@ pub fn create_public_health_alert(input: CreateAlertInput) -> ExternResult<Actio
 #[hdk_extern]
 pub fn get_active_alerts(_: ()) -> ExternResult<Vec<Record>> {
     let anchor = anchor_hash("active_alerts")?;
-    let links = get_links(
-        GetLinksInputBuilder::try_new(anchor, LinkTypes::ActiveAlerts)?.build(),
-    )?;
+    let links = get_links(LinkQuery::try_new(anchor, LinkTypes::ActiveAlerts)?, GetStrategy::default())?;
 
     let now = sys_time()?;
     let mut records = Vec::new();
@@ -543,9 +533,7 @@ pub fn create_disparity_analysis(input: CreateDisparityInput) -> ExternResult<Ac
 #[hdk_extern]
 pub fn get_disparity_analyses(_: ()) -> ExternResult<Vec<Record>> {
     let anchor = anchor_hash("disparity_analyses")?;
-    let links = get_links(
-        GetLinksInputBuilder::try_new(anchor, LinkTypes::DisparityAnalyses)?.build(),
-    )?;
+    let links = get_links(LinkQuery::try_new(anchor, LinkTypes::DisparityAnalyses)?, GetStrategy::default())?;
 
     let mut records = Vec::new();
     for link in links {
@@ -607,9 +595,7 @@ pub fn create_quality_indicator(input: CreateQualityInput) -> ExternResult<Actio
 #[hdk_extern]
 pub fn get_region_quality(region_id: String) -> ExternResult<Vec<Record>> {
     let anchor = anchor_hash(&format!("quality_{}", region_id))?;
-    let links = get_links(
-        GetLinksInputBuilder::try_new(anchor, LinkTypes::QualityByRegion)?.build(),
-    )?;
+    let links = get_links(LinkQuery::try_new(anchor, LinkTypes::QualityByRegion)?, GetStrategy::default())?;
 
     let mut records = Vec::new();
     for link in links {
@@ -662,9 +648,7 @@ pub fn get_my_contributions(_: ()) -> ExternResult<Vec<Record>> {
     let agent = agent_info()?.agent_initial_pubkey;
     let source_hash = ActionHash::from_raw_36(agent.get_raw_36().to_vec());
 
-    let links = get_links(
-        GetLinksInputBuilder::try_new(source_hash, LinkTypes::ContributionsBySource)?.build(),
-    )?;
+    let links = get_links(LinkQuery::try_new(source_hash, LinkTypes::ContributionsBySource)?, GetStrategy::default())?;
 
     let mut records = Vec::new();
     for link in links {
@@ -679,13 +663,12 @@ pub fn get_my_contributions(_: ()) -> ExternResult<Vec<Record>> {
 }
 
 // Helper function to create anchor hash
+/// Anchor for linking entries
+#[hdk_entry_helper]
+#[derive(Clone, PartialEq)]
+pub struct Anchor(pub String);
+
 fn anchor_hash(anchor: &str) -> ExternResult<AnyLinkableHash> {
-    let anchor_bytes = anchor.as_bytes().to_vec();
-    Ok(AnyLinkableHash::from(
-        EntryHash::from_raw_36(
-            hdk::hash::hash_keccak256(anchor_bytes)
-                .map_err(|e| wasm_error!(WasmErrorInner::Guest(e.to_string())))?[..36]
-                .to_vec(),
-        ),
-    ))
+    let anchor = Anchor(anchor.to_string());
+    Ok(hash_entry(&anchor)?.into())
 }

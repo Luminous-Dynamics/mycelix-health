@@ -182,9 +182,7 @@ pub fn generate_ips(input: GenerateIpsInput) -> ExternResult<ActionHash> {
 /// Get all IPS documents for a patient
 #[hdk_extern]
 pub fn get_patient_ips_documents(patient_hash: ActionHash) -> ExternResult<Vec<Record>> {
-    let links = get_links(
-        GetLinksInputBuilder::try_new(patient_hash, LinkTypes::PatientToIps)?.build(),
-    )?;
+    let links = get_links(LinkQuery::try_new(patient_hash, LinkTypes::PatientToIps)?, GetStrategy::default())?;
 
     let mut records = Vec::new();
     for link in links {
@@ -201,7 +199,7 @@ pub fn get_patient_ips_documents(patient_hash: ActionHash) -> ExternResult<Vec<R
 /// Finalize and sign an IPS document
 #[hdk_extern]
 pub fn finalize_ips(ips_hash: ActionHash) -> ExternResult<ActionHash> {
-    let now = sys_time()?;
+    let _now = sys_time()?;
 
     let record = get(ips_hash.clone(), GetOptions::default())?
         .ok_or(wasm_error!(WasmErrorInner::Guest("IPS not found".to_string())))?;
@@ -264,9 +262,7 @@ pub fn add_ips_allergy(input: AddAllergyInput) -> ExternResult<ActionHash> {
 /// Get allergies for an IPS
 #[hdk_extern]
 pub fn get_ips_allergies(ips_hash: ActionHash) -> ExternResult<Vec<Record>> {
-    let links = get_links(
-        GetLinksInputBuilder::try_new(ips_hash, LinkTypes::IpsToAllergies)?.build(),
-    )?;
+    let links = get_links(LinkQuery::try_new(ips_hash, LinkTypes::IpsToAllergies)?, GetStrategy::default())?;
 
     let mut records = Vec::new();
     for link in links {
@@ -315,9 +311,7 @@ pub fn add_ips_medication(input: AddMedicationInput) -> ExternResult<ActionHash>
 /// Get medications for an IPS
 #[hdk_extern]
 pub fn get_ips_medications(ips_hash: ActionHash) -> ExternResult<Vec<Record>> {
-    let links = get_links(
-        GetLinksInputBuilder::try_new(ips_hash, LinkTypes::IpsToMedications)?.build(),
-    )?;
+    let links = get_links(LinkQuery::try_new(ips_hash, LinkTypes::IpsToMedications)?, GetStrategy::default())?;
 
     let mut records = Vec::new();
     for link in links {
@@ -367,9 +361,7 @@ pub fn add_ips_problem(input: AddProblemInput) -> ExternResult<ActionHash> {
 /// Get problems for an IPS
 #[hdk_extern]
 pub fn get_ips_problems(ips_hash: ActionHash) -> ExternResult<Vec<Record>> {
-    let links = get_links(
-        GetLinksInputBuilder::try_new(ips_hash, LinkTypes::IpsToProblems)?.build(),
-    )?;
+    let links = get_links(LinkQuery::try_new(ips_hash, LinkTypes::IpsToProblems)?, GetStrategy::default())?;
 
     let mut records = Vec::new();
     for link in links {
@@ -418,9 +410,7 @@ pub fn add_ips_immunization(input: AddImmunizationInput) -> ExternResult<ActionH
 /// Get immunizations for an IPS
 #[hdk_extern]
 pub fn get_ips_immunizations(ips_hash: ActionHash) -> ExternResult<Vec<Record>> {
-    let links = get_links(
-        GetLinksInputBuilder::try_new(ips_hash, LinkTypes::IpsToImmunizations)?.build(),
-    )?;
+    let links = get_links(LinkQuery::try_new(ips_hash, LinkTypes::IpsToImmunizations)?, GetStrategy::default())?;
 
     let mut records = Vec::new();
     for link in links {
@@ -500,9 +490,7 @@ pub fn share_ips(input: ShareIpsInput) -> ExternResult<ActionHash> {
 /// Get share records for an IPS
 #[hdk_extern]
 pub fn get_ips_shares(ips_hash: ActionHash) -> ExternResult<Vec<Record>> {
-    let links = get_links(
-        GetLinksInputBuilder::try_new(ips_hash, LinkTypes::IpsToShares)?.build(),
-    )?;
+    let links = get_links(LinkQuery::try_new(ips_hash, LinkTypes::IpsToShares)?, GetStrategy::default())?;
 
     let mut records = Vec::new();
     for link in links {
@@ -562,9 +550,7 @@ pub fn translate_ips(input: TranslateIpsInput) -> ExternResult<ActionHash> {
 /// Get translations for an IPS
 #[hdk_extern]
 pub fn get_ips_translations(ips_hash: ActionHash) -> ExternResult<Vec<Record>> {
-    let links = get_links(
-        GetLinksInputBuilder::try_new(ips_hash, LinkTypes::IpsToTranslations)?.build(),
-    )?;
+    let links = get_links(LinkQuery::try_new(ips_hash, LinkTypes::IpsToTranslations)?, GetStrategy::default())?;
 
     let mut records = Vec::new();
     for link in links {
@@ -595,15 +581,14 @@ pub fn export_ips_fhir(ips_hash: ActionHash) -> ExternResult<String> {
 
 // Helper functions
 
+/// Anchor for linking entries
+#[hdk_entry_helper]
+#[derive(Clone, PartialEq)]
+pub struct Anchor(pub String);
+
 fn anchor_hash(anchor: &str) -> ExternResult<AnyLinkableHash> {
-    let anchor_bytes = anchor.as_bytes().to_vec();
-    Ok(AnyLinkableHash::from(
-        EntryHash::from_raw_36(
-            hdk::hash::hash_keccak256(anchor_bytes)
-                .map_err(|e| wasm_error!(WasmErrorInner::Guest(e.to_string())))?[..36]
-                .to_vec(),
-        ),
-    ))
+    let anchor = Anchor(anchor.to_string());
+    Ok(hash_entry(&anchor)?.into())
 }
 
 fn generate_empty_fhir_bundle(patient_hash: &ActionHash, language: &str) -> ExternResult<String> {

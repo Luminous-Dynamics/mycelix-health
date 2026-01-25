@@ -9,5 +9,6 @@ name = "disaster_response"
 
 [dependencies]
 hdk = { workspace = true }
+holochain_serialized_bytes = { workspace = true }
 serde = { workspace = true }
 disaster_response_integrity = { path = "../integrity" }

@@ -7,7 +7,6 @@ name = "advocate_coordinator"
 version = "0.1.0"
 dependencies = [
  "advocate_integrity",
- "getrandom",
  "hdk",
  "holochain_serialized_bytes",
  "serde",
@@ -125,12 +124,36 @@ checksum = "1fd0f2584146f6f2ef48085050886acf353beff7305ebd1ae69500e27c67f64b"
 
 [[package]]
 name = "cc"
-version = "1.2.53"
+version = "1.2.54"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "755d2fce177175ffca841e9a06afdb2c4ab0f593d53b4dee48147dfaade85932"
+checksum = "6354c81bbfd62d9cfa9cb3c773c2b7b2a3a482d569de977fd0e961f6e7c00583"
 dependencies = [
  "find-msvc-tools",
  "shlex",
+]
+
+[[package]]
+name = "cds"
+version = "0.1.0"
+dependencies = [
+ "cds_integrity",
+ "getrandom",
+ "hdk",
+ "holochain_serialized_bytes",
+ "mycelix-health-shared",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "cds_integrity"
+version = "0.1.0"
+dependencies = [
+ "getrandom",
+ "hdi",
+ "holochain_serialized_bytes",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]
@@ -138,6 +161,29 @@ name = "cfg-if"
 version = "1.0.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9330f8b2ff13f34540b44e946ef35111825727b38d33286ef986142615121801"
+
+[[package]]
+name = "chronic_care"
+version = "0.1.0"
+dependencies = [
+ "chronic_care_integrity",
+ "getrandom",
+ "hdk",
+ "holochain_serialized_bytes",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "chronic_care_integrity"
+version = "0.1.0"
+dependencies = [
+ "getrandom",
+ "hdi",
+ "holochain_serialized_bytes",
+ "serde",
+ "serde_json",
+]
 
 [[package]]
 name = "chrono"
@@ -165,7 +211,6 @@ name = "commons_coordinator"
 version = "0.1.0"
 dependencies = [
  "commons_integrity",
- "getrandom",
  "hdk",
  "holochain_serialized_bytes",
  "mycelix-health-shared",
@@ -178,7 +223,6 @@ dependencies = [
 name = "commons_integrity"
 version = "0.1.0"
 dependencies = [
- "getrandom",
  "hdi",
  "holochain_serialized_bytes",
  "serde",
@@ -190,7 +234,6 @@ name = "consent"
 version = "0.1.0"
 dependencies = [
  "consent_integrity",
- "getrandom",
  "hdk",
  "holochain_serialized_bytes",
  "patient_integrity",
@@ -337,11 +380,29 @@ dependencies = [
 ]
 
 [[package]]
+name = "disaster_response"
+version = "0.1.0"
+dependencies = [
+ "disaster_response_integrity",
+ "hdk",
+ "holochain_serialized_bytes",
+ "serde",
+]
+
+[[package]]
+name = "disaster_response_integrity"
+version = "0.1.0"
+dependencies = [
+ "hdi",
+ "holochain_serialized_bytes",
+ "serde",
+]
+
+[[package]]
 name = "dividends_coordinator"
 version = "0.1.0"
 dependencies = [
  "dividends_integrity",
- "getrandom",
  "hdk",
  "holochain_serialized_bytes",
  "serde",
@@ -387,6 +448,49 @@ name = "fastrand"
 version = "2.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "37909eebbb50d72f9059c3b6d82c0463f2ff062c9e95845c43a6c9c0355411be"
+
+[[package]]
+name = "federated_learning"
+version = "0.1.0"
+dependencies = [
+ "federated_learning_integrity",
+ "hdk",
+ "holochain_serialized_bytes",
+ "serde",
+]
+
+[[package]]
+name = "federated_learning_integrity"
+version = "0.1.0"
+dependencies = [
+ "hdi",
+ "holochain_serialized_bytes",
+ "serde",
+]
+
+[[package]]
+name = "fhir_mapping"
+version = "0.1.0"
+dependencies = [
+ "fhir_mapping_integrity",
+ "getrandom",
+ "hdk",
+ "holochain_serialized_bytes",
+ "mycelix-health-shared",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "fhir_mapping_integrity"
+version = "0.1.0"
+dependencies = [
+ "getrandom",
+ "hdi",
+ "holochain_serialized_bytes",
+ "serde",
+ "serde_json",
+]
 
 [[package]]
 name = "find-msvc-tools"
@@ -578,7 +682,6 @@ name = "health_bridge"
 version = "0.1.0"
 dependencies = [
  "bridge_integrity",
- "getrandom",
  "hdk",
  "holochain_serialized_bytes",
  "patient_integrity",
@@ -749,6 +852,25 @@ dependencies = [
 ]
 
 [[package]]
+name = "i18n"
+version = "0.1.0"
+dependencies = [
+ "hdk",
+ "holochain_serialized_bytes",
+ "i18n_integrity",
+ "serde",
+]
+
+[[package]]
+name = "i18n_integrity"
+version = "0.1.0"
+dependencies = [
+ "hdi",
+ "holochain_serialized_bytes",
+ "serde",
+]
+
+[[package]]
 name = "iana-time-zone"
 version = "0.1.64"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -782,7 +904,6 @@ checksum = "b9e0384b61958566e926dc50660321d12159025e767c18e043daf26b70104c39"
 name = "immunity_coordinator"
 version = "0.1.0"
 dependencies = [
- "getrandom",
  "hdk",
  "holochain_serialized_bytes",
  "immunity_integrity",
@@ -794,7 +915,6 @@ dependencies = [
 name = "immunity_integrity"
 version = "0.1.0"
 dependencies = [
- "getrandom",
  "hdi",
  "holochain_serialized_bytes",
  "serde",
@@ -815,7 +935,6 @@ dependencies = [
 name = "insurance"
 version = "0.1.0"
 dependencies = [
- "getrandom",
  "hdk",
  "holochain_serialized_bytes",
  "insurance_integrity",
@@ -833,6 +952,44 @@ dependencies = [
  "holochain_serialized_bytes",
  "serde",
  "serde_json",
+]
+
+[[package]]
+name = "ips"
+version = "0.1.0"
+dependencies = [
+ "hdk",
+ "holochain_serialized_bytes",
+ "ips_integrity",
+ "serde",
+]
+
+[[package]]
+name = "ips_integrity"
+version = "0.1.0"
+dependencies = [
+ "hdi",
+ "holochain_serialized_bytes",
+ "serde",
+]
+
+[[package]]
+name = "irb"
+version = "0.1.0"
+dependencies = [
+ "hdk",
+ "holochain_serialized_bytes",
+ "irb_integrity",
+ "serde",
+]
+
+[[package]]
+name = "irb_integrity"
+version = "0.1.0"
+dependencies = [
+ "hdi",
+ "holochain_serialized_bytes",
+ "serde",
 ]
 
 [[package]]
@@ -876,10 +1033,51 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f52b00d39961fc5b2736ea853c9cc86238e165017a493d1d5c8eac6bdc4cc273"
 
 [[package]]
-name = "moment_coordinator"
+name = "mental_health"
 version = "0.1.0"
 dependencies = [
  "getrandom",
+ "hdk",
+ "holochain_serialized_bytes",
+ "mental_health_integrity",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "mental_health_integrity"
+version = "0.1.0"
+dependencies = [
+ "getrandom",
+ "hdi",
+ "holochain_serialized_bytes",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "mobile_support"
+version = "0.1.0"
+dependencies = [
+ "hdk",
+ "holochain_serialized_bytes",
+ "mobile_support_integrity",
+ "serde",
+]
+
+[[package]]
+name = "mobile_support_integrity"
+version = "0.1.0"
+dependencies = [
+ "hdi",
+ "holochain_serialized_bytes",
+ "serde",
+]
+
+[[package]]
+name = "moment_coordinator"
+version = "0.1.0"
+dependencies = [
  "hdk",
  "holochain_serialized_bytes",
  "moment_integrity",
@@ -891,7 +1089,6 @@ dependencies = [
 name = "moment_integrity"
 version = "0.1.0"
 dependencies = [
- "getrandom",
  "hdi",
  "holochain_serialized_bytes",
  "serde",
@@ -966,6 +1163,29 @@ dependencies = [
 ]
 
 [[package]]
+name = "pediatric"
+version = "0.1.0"
+dependencies = [
+ "getrandom",
+ "hdk",
+ "holochain_serialized_bytes",
+ "pediatric_integrity",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "pediatric_integrity"
+version = "0.1.0"
+dependencies = [
+ "getrandom",
+ "hdi",
+ "holochain_serialized_bytes",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "pin-project-lite"
 version = "0.2.16"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -976,6 +1196,25 @@ name = "pin-utils"
 version = "0.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8b870d8c151b6f2fb93e84a13146138f05d02ed11c7e7c54f8826aaaf7c9f184"
+
+[[package]]
+name = "population_health"
+version = "0.1.0"
+dependencies = [
+ "hdk",
+ "holochain_serialized_bytes",
+ "population_health_integrity",
+ "serde",
+]
+
+[[package]]
+name = "population_health_integrity"
+version = "0.1.0"
+dependencies = [
+ "hdi",
+ "holochain_serialized_bytes",
+ "serde",
+]
 
 [[package]]
 name = "ppv-lite86"
@@ -1068,10 +1307,33 @@ dependencies = [
 name = "provider"
 version = "0.1.0"
 dependencies = [
- "getrandom",
  "hdk",
  "holochain_serialized_bytes",
  "provider_integrity",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "provider_directory"
+version = "0.1.0"
+dependencies = [
+ "getrandom",
+ "hdk",
+ "holochain_serialized_bytes",
+ "mycelix-health-shared",
+ "provider_directory_integrity",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "provider_directory_integrity"
+version = "0.1.0"
+dependencies = [
+ "getrandom",
+ "hdi",
+ "holochain_serialized_bytes",
  "serde",
  "serde_json",
 ]
@@ -1179,6 +1441,25 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7a2d987857b319362043e95f5353c0535c1f58eec5336fdfcf626430af7def58"
 
 [[package]]
+name = "research_commons"
+version = "0.1.0"
+dependencies = [
+ "hdk",
+ "holochain_serialized_bytes",
+ "research_commons_integrity",
+ "serde",
+]
+
+[[package]]
+name = "research_commons_integrity"
+version = "0.1.0"
+dependencies = [
+ "hdi",
+ "holochain_serialized_bytes",
+ "serde",
+]
+
+[[package]]
 name = "rmp"
 version = "0.8.15"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1243,6 +1524,29 @@ name = "ryu"
 version = "1.0.22"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a50f4cf475b65d88e057964e0e9bb1f0aa9bbb2036dc65c64596b42932536984"
+
+[[package]]
+name = "sdoh"
+version = "0.1.0"
+dependencies = [
+ "getrandom",
+ "hdk",
+ "holochain_serialized_bytes",
+ "sdoh_integrity",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "sdoh_integrity"
+version = "0.1.0"
+dependencies = [
+ "getrandom",
+ "hdi",
+ "holochain_serialized_bytes",
+ "serde",
+ "serde_json",
+]
 
 [[package]]
 name = "semver"
@@ -1376,6 +1680,30 @@ dependencies = [
 ]
 
 [[package]]
+name = "telehealth"
+version = "0.1.0"
+dependencies = [
+ "getrandom",
+ "hdk",
+ "holochain_serialized_bytes",
+ "mycelix-health-shared",
+ "serde",
+ "serde_json",
+ "telehealth_integrity",
+]
+
+[[package]]
+name = "telehealth_integrity"
+version = "0.1.0"
+dependencies = [
+ "getrandom",
+ "hdi",
+ "holochain_serialized_bytes",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "tempfile"
 version = "3.24.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1441,11 +1769,29 @@ dependencies = [
 ]
 
 [[package]]
+name = "trial_matching"
+version = "0.1.0"
+dependencies = [
+ "hdk",
+ "holochain_serialized_bytes",
+ "serde",
+ "trial_matching_integrity",
+]
+
+[[package]]
+name = "trial_matching_integrity"
+version = "0.1.0"
+dependencies = [
+ "hdi",
+ "holochain_serialized_bytes",
+ "serde",
+]
+
+[[package]]
 name = "trials"
 version = "0.1.0"
 dependencies = [
  "consent_integrity",
- "getrandom",
  "hdk",
  "holochain_serialized_bytes",
  "patient_integrity",
@@ -1469,7 +1815,6 @@ dependencies = [
 name = "twin_coordinator"
 version = "0.1.0"
 dependencies = [
- "getrandom",
  "hdk",
  "holochain_serialized_bytes",
  "serde",
@@ -1524,6 +1869,26 @@ name = "valuable"
 version = "0.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ba73ea9cf16a25df0c8caa16c51acb937d5712a8429db78a3ee29d5dcacd3a65"
+
+[[package]]
+name = "verifiable_credentials"
+version = "0.1.0"
+dependencies = [
+ "hdk",
+ "holochain_serialized_bytes",
+ "serde",
+ "serde_json",
+ "verifiable_credentials_integrity",
+]
+
+[[package]]
+name = "verifiable_credentials_integrity"
+version = "0.1.0"
+dependencies = [
+ "hdi",
+ "holochain_serialized_bytes",
+ "serde",
+]
 
 [[package]]
 name = "version_check"
@@ -1692,7 +2057,6 @@ dependencies = [
 name = "zkhealth_coordinator"
 version = "0.1.0"
 dependencies = [
- "getrandom",
  "hdk",
  "holochain_serialized_bytes",
  "serde",

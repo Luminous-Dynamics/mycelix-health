@@ -143,9 +143,7 @@ pub fn create_learning_project(input: CreateProjectInput) -> ExternResult<Action
 #[hdk_extern]
 pub fn get_all_projects(_: ()) -> ExternResult<Vec<Record>> {
     let anchor = anchor_hash("all_fl_projects")?;
-    let links = get_links(
-        GetLinksInputBuilder::try_new(anchor, LinkTypes::AllProjects)?.build(),
-    )?;
+    let links = get_links(LinkQuery::try_new(anchor, LinkTypes::AllProjects)?, GetStrategy::default())?;
 
     let mut records = Vec::new();
     for link in links {
@@ -166,9 +164,7 @@ pub fn get_active_projects(_: ()) -> ExternResult<Vec<Record>> {
 
     // Get recruiting projects
     let recruiting_anchor = anchor_hash("fl_status_recruiting")?;
-    let recruiting_links = get_links(
-        GetLinksInputBuilder::try_new(recruiting_anchor, LinkTypes::ProjectsByStatus)?.build(),
-    )?;
+    let recruiting_links = get_links(LinkQuery::try_new(recruiting_anchor, LinkTypes::ProjectsByStatus)?, GetStrategy::default())?;
 
     for link in recruiting_links {
         if let Some(hash) = link.target.into_action_hash() {
@@ -180,9 +176,7 @@ pub fn get_active_projects(_: ()) -> ExternResult<Vec<Record>> {
 
     // Get training projects
     let training_anchor = anchor_hash("fl_status_training")?;
-    let training_links = get_links(
-        GetLinksInputBuilder::try_new(training_anchor, LinkTypes::ProjectsByStatus)?.build(),
-    )?;
+    let training_links = get_links(LinkQuery::try_new(training_anchor, LinkTypes::ProjectsByStatus)?, GetStrategy::default())?;
 
     for link in training_links {
         if let Some(hash) = link.target.into_action_hash() {
@@ -233,9 +227,7 @@ pub fn join_project(input: JoinProjectInput) -> ExternResult<ActionHash> {
 /// Get participants for a project
 #[hdk_extern]
 pub fn get_project_participants(project_hash: ActionHash) -> ExternResult<Vec<Record>> {
-    let links = get_links(
-        GetLinksInputBuilder::try_new(project_hash, LinkTypes::ProjectToParticipants)?.build(),
-    )?;
+    let links = get_links(LinkQuery::try_new(project_hash, LinkTypes::ProjectToParticipants)?, GetStrategy::default())?;
 
     let mut records = Vec::new();
     for link in links {
@@ -325,9 +317,7 @@ pub fn start_training_round(input: StartRoundInput) -> ExternResult<ActionHash> 
 /// Get training rounds for a project
 #[hdk_extern]
 pub fn get_project_rounds(project_hash: ActionHash) -> ExternResult<Vec<Record>> {
-    let links = get_links(
-        GetLinksInputBuilder::try_new(project_hash, LinkTypes::ProjectToRounds)?.build(),
-    )?;
+    let links = get_links(LinkQuery::try_new(project_hash, LinkTypes::ProjectToRounds)?, GetStrategy::default())?;
 
     let mut records = Vec::new();
     for link in links {
@@ -389,9 +379,7 @@ pub fn submit_model_update(input: SubmitUpdateInput) -> ExternResult<ActionHash>
 /// Get updates for a training round
 #[hdk_extern]
 pub fn get_round_updates(round_hash: ActionHash) -> ExternResult<Vec<Record>> {
-    let links = get_links(
-        GetLinksInputBuilder::try_new(round_hash, LinkTypes::RoundToUpdates)?.build(),
-    )?;
+    let links = get_links(LinkQuery::try_new(round_hash, LinkTypes::RoundToUpdates)?, GetStrategy::default())?;
 
     let mut records = Vec::new();
     for link in links {
@@ -445,7 +433,7 @@ pub fn aggregate_updates(input: AggregateInput) -> ExternResult<ActionHash> {
         aggregation_method: input.aggregation_method,
         global_loss: input.global_loss,
         global_metrics: input.global_metrics,
-        previous_model_hash: Some(round.starting_model_hash),
+        previous_model_hash: Some(round.starting_model_hash.clone()),
         created_at: now,
     };
 
@@ -460,8 +448,9 @@ pub fn aggregate_updates(input: AggregateInput) -> ExternResult<ActionHash> {
     )?;
 
     // Link from project
+    let project_hash = round.project_hash.clone();
     create_link(
-        round.project_hash,
+        project_hash,
         action_hash.clone(),
         LinkTypes::ProjectToModels,
         (),
@@ -480,9 +469,7 @@ pub fn aggregate_updates(input: AggregateInput) -> ExternResult<ActionHash> {
 /// Get all models for a project
 #[hdk_extern]
 pub fn get_project_models(project_hash: ActionHash) -> ExternResult<Vec<Record>> {
-    let links = get_links(
-        GetLinksInputBuilder::try_new(project_hash, LinkTypes::ProjectToModels)?.build(),
-    )?;
+    let links = get_links(LinkQuery::try_new(project_hash, LinkTypes::ProjectToModels)?, GetStrategy::default())?;
 
     let mut records = Vec::new();
     for link in links {
@@ -532,9 +519,7 @@ pub fn evaluate_model(input: EvaluateModelInput) -> ExternResult<ActionHash> {
 /// Get evaluations for a model
 #[hdk_extern]
 pub fn get_model_evaluations(model_hash: ActionHash) -> ExternResult<Vec<Record>> {
-    let links = get_links(
-        GetLinksInputBuilder::try_new(model_hash, LinkTypes::ModelToEvaluations)?.build(),
-    )?;
+    let links = get_links(LinkQuery::try_new(model_hash, LinkTypes::ModelToEvaluations)?, GetStrategy::default())?;
 
     let mut records = Vec::new();
     for link in links {
@@ -588,9 +573,7 @@ pub fn get_my_budget(project_hash: ActionHash) -> ExternResult<Option<Record>> {
     let agent = agent_info()?.agent_initial_pubkey;
     let participant_hash = ActionHash::from_raw_36(agent.get_raw_36().to_vec());
 
-    let links = get_links(
-        GetLinksInputBuilder::try_new(participant_hash, LinkTypes::ParticipantToBudget)?.build(),
-    )?;
+    let links = get_links(LinkQuery::try_new(participant_hash, LinkTypes::ParticipantToBudget)?, GetStrategy::default())?;
 
     for link in links {
         if let Some(hash) = link.target.into_action_hash() {
@@ -613,15 +596,14 @@ pub fn get_my_budget(project_hash: ActionHash) -> ExternResult<Option<Record>> {
 
 // Helper functions
 
+/// Anchor for linking entries
+#[hdk_entry_helper]
+#[derive(Clone, PartialEq)]
+pub struct Anchor(pub String);
+
 fn anchor_hash(anchor: &str) -> ExternResult<AnyLinkableHash> {
-    let anchor_bytes = anchor.as_bytes().to_vec();
-    Ok(AnyLinkableHash::from(
-        EntryHash::from_raw_36(
-            hdk::hash::hash_keccak256(anchor_bytes)
-                .map_err(|e| wasm_error!(WasmErrorInner::Guest(e.to_string())))?[..36]
-                .to_vec(),
-        ),
-    ))
+    let anchor = Anchor(anchor.to_string());
+    Ok(hash_entry(&anchor)?.into())
 }
 
 fn check_and_update_project_status(project_hash: ActionHash) -> ExternResult<()> {

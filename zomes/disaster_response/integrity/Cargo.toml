@@ -9,4 +9,5 @@ name = "disaster_response_integrity"
 
 [dependencies]
 hdi = { workspace = true }
+holochain_serialized_bytes = { workspace = true }
 serde = { workspace = true }

@@ -9,5 +9,6 @@ name = "i18n"
 
 [dependencies]
 hdk = { workspace = true }
+holochain_serialized_bytes = { workspace = true }
 serde = { workspace = true }
 i18n_integrity = { path = "../integrity" }

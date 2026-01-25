@@ -6,23 +6,238 @@ integrity:
   origin_time: 1704067200000000
   properties: ~
   zomes:
+    # Core - Patient Management
+    - name: patient_integrity
+      bundled: "../../../target/wasm32-unknown-unknown/release/patient_integrity.wasm"
+    - name: provider_integrity
+      bundled: "../../../target/wasm32-unknown-unknown/release/provider_integrity.wasm"
     - name: records_integrity
       bundled: "../../../target/wasm32-unknown-unknown/release/records_integrity.wasm"
-    - name: credentials_integrity
-      bundled: "../../../target/wasm32-unknown-unknown/release/credentials_integrity.wasm"
-    - name: health_bridge_integrity
-      bundled: "../../../target/wasm32-unknown-unknown/release/health_bridge_integrity.wasm"
+    - name: prescriptions_integrity
+      bundled: "../../../target/wasm32-unknown-unknown/release/prescriptions_integrity.wasm"
+    - name: consent_integrity
+      bundled: "../../../target/wasm32-unknown-unknown/release/consent_integrity.wasm"
+    - name: trials_integrity
+      bundled: "../../../target/wasm32-unknown-unknown/release/trials_integrity.wasm"
+    - name: insurance_integrity
+      bundled: "../../../target/wasm32-unknown-unknown/release/insurance_integrity.wasm"
+    - name: bridge_integrity
+      bundled: "../../../target/wasm32-unknown-unknown/release/bridge_integrity.wasm"
+
+    # Revolutionary Features
+    - name: advocate_integrity
+      bundled: "../../../target/wasm32-unknown-unknown/release/advocate_integrity.wasm"
+    - name: zkhealth_integrity
+      bundled: "../../../target/wasm32-unknown-unknown/release/zkhealth_integrity.wasm"
+    - name: twin_integrity
+      bundled: "../../../target/wasm32-unknown-unknown/release/twin_integrity.wasm"
+    - name: dividends_integrity
+      bundled: "../../../target/wasm32-unknown-unknown/release/dividends_integrity.wasm"
+
+    # Health as a Commons
+    - name: commons_integrity
+      bundled: "../../../target/wasm32-unknown-unknown/release/commons_integrity.wasm"
+
+    # Collective Immunity
+    - name: immunity_integrity
+      bundled: "../../../target/wasm32-unknown-unknown/release/immunity_integrity.wasm"
+
+    # Universal Health Moment
+    - name: moment_integrity
+      bundled: "../../../target/wasm32-unknown-unknown/release/moment_integrity.wasm"
+
+    # Phase 3 - Clinical Integration
+    - name: fhir_mapping_integrity
+      bundled: "../../../target/wasm32-unknown-unknown/release/fhir_mapping_integrity.wasm"
+    - name: cds_integrity
+      bundled: "../../../target/wasm32-unknown-unknown/release/cds_integrity.wasm"
+    - name: provider_directory_integrity
+      bundled: "../../../target/wasm32-unknown-unknown/release/provider_directory_integrity.wasm"
+    - name: telehealth_integrity
+      bundled: "../../../target/wasm32-unknown-unknown/release/telehealth_integrity.wasm"
+
+    # Phase 4 - Equity & Access
+    - name: sdoh_integrity
+      bundled: "../../../target/wasm32-unknown-unknown/release/sdoh_integrity.wasm"
+    - name: mental_health_integrity
+      bundled: "../../../target/wasm32-unknown-unknown/release/mental_health_integrity.wasm"
+    - name: chronic_care_integrity
+      bundled: "../../../target/wasm32-unknown-unknown/release/chronic_care_integrity.wasm"
+    - name: pediatric_integrity
+      bundled: "../../../target/wasm32-unknown-unknown/release/pediatric_integrity.wasm"
+
+    # Phase 5 - Advanced Research
+    - name: research_commons_integrity
+      bundled: "../../../target/wasm32-unknown-unknown/release/research_commons_integrity.wasm"
+    - name: trial_matching_integrity
+      bundled: "../../../target/wasm32-unknown-unknown/release/trial_matching_integrity.wasm"
+    - name: irb_integrity
+      bundled: "../../../target/wasm32-unknown-unknown/release/irb_integrity.wasm"
+    - name: federated_learning_integrity
+      bundled: "../../../target/wasm32-unknown-unknown/release/federated_learning_integrity.wasm"
+    - name: population_health_integrity
+      bundled: "../../../target/wasm32-unknown-unknown/release/population_health_integrity.wasm"
+
+    # Phase 6 - Global Scale
+    - name: ips_integrity
+      bundled: "../../../target/wasm32-unknown-unknown/release/ips_integrity.wasm"
+    - name: i18n_integrity
+      bundled: "../../../target/wasm32-unknown-unknown/release/i18n_integrity.wasm"
+    - name: disaster_response_integrity
+      bundled: "../../../target/wasm32-unknown-unknown/release/disaster_response_integrity.wasm"
+    - name: verifiable_credentials_integrity
+      bundled: "../../../target/wasm32-unknown-unknown/release/verifiable_credentials_integrity.wasm"
+    - name: mobile_support_integrity
+      bundled: "../../../target/wasm32-unknown-unknown/release/mobile_support_integrity.wasm"
+
 coordinator:
   zomes:
+    # Core - Patient Management
+    - name: patient
+      bundled: "../../../target/wasm32-unknown-unknown/release/patient.wasm"
+      dependencies:
+        - name: patient_integrity
+    - name: provider
+      bundled: "../../../target/wasm32-unknown-unknown/release/provider.wasm"
+      dependencies:
+        - name: provider_integrity
     - name: records
       bundled: "../../../target/wasm32-unknown-unknown/release/records.wasm"
       dependencies:
         - name: records_integrity
-    - name: credentials
-      bundled: "../../../target/wasm32-unknown-unknown/release/credentials.wasm"
+    - name: prescriptions
+      bundled: "../../../target/wasm32-unknown-unknown/release/prescriptions.wasm"
       dependencies:
-        - name: credentials_integrity
+        - name: prescriptions_integrity
+    - name: consent
+      bundled: "../../../target/wasm32-unknown-unknown/release/consent.wasm"
+      dependencies:
+        - name: consent_integrity
+    - name: trials
+      bundled: "../../../target/wasm32-unknown-unknown/release/trials.wasm"
+      dependencies:
+        - name: trials_integrity
+    - name: insurance
+      bundled: "../../../target/wasm32-unknown-unknown/release/insurance.wasm"
+      dependencies:
+        - name: insurance_integrity
     - name: health_bridge
       bundled: "../../../target/wasm32-unknown-unknown/release/health_bridge.wasm"
       dependencies:
-        - name: health_bridge_integrity
+        - name: bridge_integrity
+
+    # Revolutionary Features
+    - name: advocate
+      bundled: "../../../target/wasm32-unknown-unknown/release/advocate_coordinator.wasm"
+      dependencies:
+        - name: advocate_integrity
+    - name: zkhealth
+      bundled: "../../../target/wasm32-unknown-unknown/release/zkhealth_coordinator.wasm"
+      dependencies:
+        - name: zkhealth_integrity
+    - name: twin
+      bundled: "../../../target/wasm32-unknown-unknown/release/twin_coordinator.wasm"
+      dependencies:
+        - name: twin_integrity
+    - name: dividends
+      bundled: "../../../target/wasm32-unknown-unknown/release/dividends_coordinator.wasm"
+      dependencies:
+        - name: dividends_integrity
+
+    # Health as a Commons
+    - name: commons
+      bundled: "../../../target/wasm32-unknown-unknown/release/commons_coordinator.wasm"
+      dependencies:
+        - name: commons_integrity
+
+    # Collective Immunity
+    - name: immunity
+      bundled: "../../../target/wasm32-unknown-unknown/release/immunity_coordinator.wasm"
+      dependencies:
+        - name: immunity_integrity
+
+    # Universal Health Moment
+    - name: moment
+      bundled: "../../../target/wasm32-unknown-unknown/release/moment_coordinator.wasm"
+      dependencies:
+        - name: moment_integrity
+
+    # Phase 3 - Clinical Integration
+    - name: fhir_mapping
+      bundled: "../../../target/wasm32-unknown-unknown/release/fhir_mapping.wasm"
+      dependencies:
+        - name: fhir_mapping_integrity
+    - name: cds
+      bundled: "../../../target/wasm32-unknown-unknown/release/cds.wasm"
+      dependencies:
+        - name: cds_integrity
+    - name: provider_directory
+      bundled: "../../../target/wasm32-unknown-unknown/release/provider_directory.wasm"
+      dependencies:
+        - name: provider_directory_integrity
+    - name: telehealth
+      bundled: "../../../target/wasm32-unknown-unknown/release/telehealth.wasm"
+      dependencies:
+        - name: telehealth_integrity
+
+    # Phase 4 - Equity & Access
+    - name: sdoh
+      bundled: "../../../target/wasm32-unknown-unknown/release/sdoh.wasm"
+      dependencies:
+        - name: sdoh_integrity
+    - name: mental_health
+      bundled: "../../../target/wasm32-unknown-unknown/release/mental_health.wasm"
+      dependencies:
+        - name: mental_health_integrity
+    - name: chronic_care
+      bundled: "../../../target/wasm32-unknown-unknown/release/chronic_care.wasm"
+      dependencies:
+        - name: chronic_care_integrity
+    - name: pediatric
+      bundled: "../../../target/wasm32-unknown-unknown/release/pediatric.wasm"
+      dependencies:
+        - name: pediatric_integrity
+
+    # Phase 5 - Advanced Research
+    - name: research_commons
+      bundled: "../../../target/wasm32-unknown-unknown/release/research_commons.wasm"
+      dependencies:
+        - name: research_commons_integrity
+    - name: trial_matching
+      bundled: "../../../target/wasm32-unknown-unknown/release/trial_matching.wasm"
+      dependencies:
+        - name: trial_matching_integrity
+    - name: irb
+      bundled: "../../../target/wasm32-unknown-unknown/release/irb.wasm"
+      dependencies:
+        - name: irb_integrity
+    - name: federated_learning
+      bundled: "../../../target/wasm32-unknown-unknown/release/federated_learning.wasm"
+      dependencies:
+        - name: federated_learning_integrity
+    - name: population_health
+      bundled: "../../../target/wasm32-unknown-unknown/release/population_health.wasm"
+      dependencies:
+        - name: population_health_integrity
+
+    # Phase 6 - Global Scale
+    - name: ips
+      bundled: "../../../target/wasm32-unknown-unknown/release/ips.wasm"
+      dependencies:
+        - name: ips_integrity
+    - name: i18n
+      bundled: "../../../target/wasm32-unknown-unknown/release/i18n.wasm"
+      dependencies:
+        - name: i18n_integrity
+    - name: disaster_response
+      bundled: "../../../target/wasm32-unknown-unknown/release/disaster_response.wasm"
+      dependencies:
+        - name: disaster_response_integrity
+    - name: verifiable_credentials
+      bundled: "../../../target/wasm32-unknown-unknown/release/verifiable_credentials.wasm"
+      dependencies:
+        - name: verifiable_credentials_integrity
+    - name: mobile_support
+      bundled: "../../../target/wasm32-unknown-unknown/release/mobile_support.wasm"
+      dependencies:
+        - name: mobile_support_integrity

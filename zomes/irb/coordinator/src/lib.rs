@@ -123,7 +123,7 @@ pub struct SubmitContinuingReviewInput {
 #[hdk_extern]
 pub fn create_protocol_submission(input: CreateProtocolInput) -> ExternResult<ActionHash> {
     let now = sys_time()?;
-    let agent = agent_info()?.agent_initial_pubkey;
+    let _agent = agent_info()?.agent_initial_pubkey;
 
     // Create member entry to get action hash for PI
     let pi_hash = create_entry(EntryTypes::IrbMember(IrbMember {
@@ -227,9 +227,7 @@ pub fn submit_protocol(input: SubmitProtocolInput) -> ExternResult<ActionHash> {
 #[hdk_extern]
 pub fn get_all_submissions(_: ()) -> ExternResult<Vec<Record>> {
     let anchor = anchor_hash("all_submissions")?;
-    let links = get_links(
-        GetLinksInputBuilder::try_new(anchor, LinkTypes::AllSubmissions)?.build(),
-    )?;
+    let links = get_links(LinkQuery::try_new(anchor, LinkTypes::AllSubmissions)?, GetStrategy::default())?;
 
     let mut records = Vec::new();
     for link in links {
@@ -247,9 +245,7 @@ pub fn get_all_submissions(_: ()) -> ExternResult<Vec<Record>> {
 #[hdk_extern]
 pub fn get_submissions_by_status(status: String) -> ExternResult<Vec<Record>> {
     let anchor = anchor_hash(&format!("status_{}", status.to_lowercase()))?;
-    let links = get_links(
-        GetLinksInputBuilder::try_new(anchor, LinkTypes::SubmissionsByStatus)?.build(),
-    )?;
+    let links = get_links(LinkQuery::try_new(anchor, LinkTypes::SubmissionsByStatus)?, GetStrategy::default())?;
 
     let mut records = Vec::new();
     for link in links {
@@ -307,9 +303,7 @@ pub fn register_irb_member(input: CreateMemberInput) -> ExternResult<ActionHash>
 #[hdk_extern]
 pub fn get_active_members(_: ()) -> ExternResult<Vec<Record>> {
     let anchor = anchor_hash("active_irb_members")?;
-    let links = get_links(
-        GetLinksInputBuilder::try_new(anchor, LinkTypes::ActiveMembers)?.build(),
-    )?;
+    let links = get_links(LinkQuery::try_new(anchor, LinkTypes::ActiveMembers)?, GetStrategy::default())?;
 
     let mut records = Vec::new();
     for link in links {
@@ -375,9 +369,7 @@ pub fn submit_review(input: CreateReviewInput) -> ExternResult<ActionHash> {
 /// Get reviews for a protocol
 #[hdk_extern]
 pub fn get_protocol_reviews(protocol_hash: ActionHash) -> ExternResult<Vec<Record>> {
-    let links = get_links(
-        GetLinksInputBuilder::try_new(protocol_hash, LinkTypes::ProtocolToReviews)?.build(),
-    )?;
+    let links = get_links(LinkQuery::try_new(protocol_hash, LinkTypes::ProtocolToReviews)?, GetStrategy::default())?;
 
     let mut records = Vec::new();
     for link in links {
@@ -539,9 +531,7 @@ pub fn submit_continuing_review(input: SubmitContinuingReviewInput) -> ExternRes
 /// Get continuing reviews for a protocol
 #[hdk_extern]
 pub fn get_continuing_reviews(protocol_hash: ActionHash) -> ExternResult<Vec<Record>> {
-    let links = get_links(
-        GetLinksInputBuilder::try_new(protocol_hash, LinkTypes::ProtocolToContinuingReviews)?.build(),
-    )?;
+    let links = get_links(LinkQuery::try_new(protocol_hash, LinkTypes::ProtocolToContinuingReviews)?, GetStrategy::default())?;
 
     let mut records = Vec::new();
     for link in links {
@@ -558,9 +548,7 @@ pub fn get_continuing_reviews(protocol_hash: ActionHash) -> ExternResult<Vec<Rec
 /// Get decision for a protocol
 #[hdk_extern]
 pub fn get_protocol_decision(protocol_hash: ActionHash) -> ExternResult<Option<Record>> {
-    let links = get_links(
-        GetLinksInputBuilder::try_new(protocol_hash, LinkTypes::ProtocolToDecisions)?.build(),
-    )?;
+    let links = get_links(LinkQuery::try_new(protocol_hash, LinkTypes::ProtocolToDecisions)?, GetStrategy::default())?;
 
     // Return most recent decision
     if let Some(link) = links.last() {
@@ -573,13 +561,12 @@ pub fn get_protocol_decision(protocol_hash: ActionHash) -> ExternResult<Option<R
 }
 
 // Helper function to create anchor hash
+/// Anchor for linking entries
+#[hdk_entry_helper]
+#[derive(Clone, PartialEq)]
+pub struct Anchor(pub String);
+
 fn anchor_hash(anchor: &str) -> ExternResult<AnyLinkableHash> {
-    let anchor_bytes = anchor.as_bytes().to_vec();
-    Ok(AnyLinkableHash::from(
-        EntryHash::from_raw_36(
-            hdk::hash::hash_keccak256(anchor_bytes)
-                .map_err(|e| wasm_error!(WasmErrorInner::Guest(e.to_string())))?[..36]
-                .to_vec(),
-        ),
-    ))
+    let anchor = Anchor(anchor.to_string());
+    Ok(hash_entry(&anchor)?.into())
 }

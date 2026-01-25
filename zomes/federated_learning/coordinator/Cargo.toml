@@ -9,5 +9,6 @@ name = "federated_learning"
 
 [dependencies]
 hdk = { workspace = true }
+holochain_serialized_bytes = { workspace = true }
 serde = { workspace = true }
 federated_learning_integrity = { path = "../integrity" }

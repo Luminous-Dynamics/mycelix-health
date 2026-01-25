@@ -220,7 +220,7 @@ pub fn approve_access_request(input: ApproveAccessInput) -> ExternResult<Record>
 
     agreement.status = AccessRequestStatus::Approved;
     agreement.approved_at = Some(sys_time()?);
-    agreement.approved_by = Some(agent_info()?.agent_initial_pubkey.into());
+    agreement.approved_by = Some(ActionHash::from_raw_36(agent_info()?.agent_initial_pubkey.get_raw_36().to_vec()));
     agreement.expires_at = input.expires_at;
     agreement.conditions = input.conditions;
 

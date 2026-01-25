@@ -110,6 +110,20 @@ pub struct RegisterShelterInput {
     pub operating_org: String,
 }
 
+/// Input for requesting resources
+#[derive(Serialize, Deserialize, Debug)]
+pub struct RequestResourcesInput {
+    pub disaster_hash: ActionHash,
+    pub requesting_org: String,
+    pub requesting_location: String,
+    pub resource_type: ResourceType,
+    pub resource_description: String,
+    pub quantity_needed: u32,
+    pub unit: String,
+    pub priority: u32,
+    pub justification: String,
+}
+
 /// Declare a new disaster
 #[hdk_extern]
 pub fn declare_disaster(input: DeclareDisasterInput) -> ExternResult<ActionHash> {
@@ -162,9 +176,7 @@ pub fn declare_disaster(input: DeclareDisasterInput) -> ExternResult<ActionHash>
 #[hdk_extern]
 pub fn get_active_disasters(_: ()) -> ExternResult<Vec<Record>> {
     let anchor = anchor_hash("active_disasters")?;
-    let links = get_links(
-        GetLinksInputBuilder::try_new(anchor, LinkTypes::ActiveDisasters)?.build(),
-    )?;
+    let links = get_links(LinkQuery::try_new(anchor, LinkTypes::ActiveDisasters)?, GetStrategy::default())?;
 
     let mut records = Vec::new();
     for link in links {
@@ -253,9 +265,7 @@ pub fn triage_patient(input: TriagePatientInput) -> ExternResult<ActionHash> {
 /// Get triage records for a disaster
 #[hdk_extern]
 pub fn get_disaster_triage(disaster_hash: ActionHash) -> ExternResult<Vec<Record>> {
-    let links = get_links(
-        GetLinksInputBuilder::try_new(disaster_hash, LinkTypes::DisasterToTriage)?.build(),
-    )?;
+    let links = get_links(LinkQuery::try_new(disaster_hash, LinkTypes::DisasterToTriage)?, GetStrategy::default())?;
 
     let mut records = Vec::new();
     for link in links {
@@ -306,9 +316,7 @@ pub fn register_resource(input: RegisterResourceInput) -> ExternResult<ActionHas
 /// Get resources for a disaster
 #[hdk_extern]
 pub fn get_disaster_resources(disaster_hash: ActionHash) -> ExternResult<Vec<Record>> {
-    let links = get_links(
-        GetLinksInputBuilder::try_new(disaster_hash, LinkTypes::DisasterToResources)?.build(),
-    )?;
+    let links = get_links(LinkQuery::try_new(disaster_hash, LinkTypes::DisasterToResources)?, GetStrategy::default())?;
 
     let mut records = Vec::new();
     for link in links {
@@ -451,9 +459,7 @@ pub fn request_emergency_access(input: RequestEmergencyAccessInput) -> ExternRes
 /// Get emergency access logs for patient
 #[hdk_extern]
 pub fn get_patient_emergency_access(patient_hash: ActionHash) -> ExternResult<Vec<Record>> {
-    let links = get_links(
-        GetLinksInputBuilder::try_new(patient_hash, LinkTypes::PatientToEmergencyAccess)?.build(),
-    )?;
+    let links = get_links(LinkQuery::try_new(patient_hash, LinkTypes::PatientToEmergencyAccess)?, GetStrategy::default())?;
 
     let mut records = Vec::new();
     for link in links {
@@ -507,9 +513,7 @@ pub fn register_shelter(input: RegisterShelterInput) -> ExternResult<ActionHash>
 /// Get shelters for a disaster
 #[hdk_extern]
 pub fn get_disaster_shelters(disaster_hash: ActionHash) -> ExternResult<Vec<Record>> {
-    let links = get_links(
-        GetLinksInputBuilder::try_new(disaster_hash, LinkTypes::DisasterToShelters)?.build(),
-    )?;
+    let links = get_links(LinkQuery::try_new(disaster_hash, LinkTypes::DisasterToShelters)?, GetStrategy::default())?;
 
     let mut records = Vec::new();
     for link in links {
@@ -525,30 +529,20 @@ pub fn get_disaster_shelters(disaster_hash: ActionHash) -> ExternResult<Vec<Reco
 
 /// Request resources
 #[hdk_extern]
-pub fn request_resources(
-    disaster_hash: ActionHash,
-    requesting_org: String,
-    requesting_location: String,
-    resource_type: ResourceType,
-    resource_description: String,
-    quantity_needed: u32,
-    unit: String,
-    priority: u32,
-    justification: String,
-) -> ExternResult<ActionHash> {
+pub fn request_resources(input: RequestResourcesInput) -> ExternResult<ActionHash> {
     let now = sys_time()?;
 
     let request = ResourceRequest {
         request_id: format!("req-{}", now.as_micros()),
-        disaster_hash: disaster_hash.clone(),
-        requesting_org,
-        requesting_location,
-        resource_type,
-        resource_description,
-        quantity_needed,
-        unit,
-        priority,
-        justification,
+        disaster_hash: input.disaster_hash.clone(),
+        requesting_org: input.requesting_org,
+        requesting_location: input.requesting_location,
+        resource_type: input.resource_type,
+        resource_description: input.resource_description,
+        quantity_needed: input.quantity_needed,
+        unit: input.unit,
+        priority: input.priority,
+        justification: input.justification,
         status: "pending".to_string(),
         approved_by: None,
         fulfilled_by: None,
@@ -559,7 +553,7 @@ pub fn request_resources(
     let action_hash = create_entry(EntryTypes::ResourceRequest(request))?;
 
     create_link(
-        disaster_hash,
+        input.disaster_hash,
         action_hash.clone(),
         LinkTypes::DisasterToRequests,
         (),
@@ -571,9 +565,7 @@ pub fn request_resources(
 /// Get resource requests for a disaster
 #[hdk_extern]
 pub fn get_resource_requests(disaster_hash: ActionHash) -> ExternResult<Vec<Record>> {
-    let links = get_links(
-        GetLinksInputBuilder::try_new(disaster_hash, LinkTypes::DisasterToRequests)?.build(),
-    )?;
+    let links = get_links(LinkQuery::try_new(disaster_hash, LinkTypes::DisasterToRequests)?, GetStrategy::default())?;
 
     let mut records = Vec::new();
     for link in links {
@@ -588,13 +580,12 @@ pub fn get_resource_requests(disaster_hash: ActionHash) -> ExternResult<Vec<Reco
 }
 
 // Helper function
+/// Anchor for linking entries
+#[hdk_entry_helper]
+#[derive(Clone, PartialEq)]
+pub struct Anchor(pub String);
+
 fn anchor_hash(anchor: &str) -> ExternResult<AnyLinkableHash> {
-    let anchor_bytes = anchor.as_bytes().to_vec();
-    Ok(AnyLinkableHash::from(
-        EntryHash::from_raw_36(
-            hdk::hash::hash_keccak256(anchor_bytes)
-                .map_err(|e| wasm_error!(WasmErrorInner::Guest(e.to_string())))?[..36]
-                .to_vec(),
-        ),
-    ))
+    let anchor = Anchor(anchor.to_string());
+    Ok(hash_entry(&anchor)?.into())
 }

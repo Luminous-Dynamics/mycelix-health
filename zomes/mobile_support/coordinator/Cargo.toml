@@ -9,5 +9,6 @@ name = "mobile_support"
 
 [dependencies]
 hdk = { workspace = true }
+holochain_serialized_bytes = { workspace = true }
 serde = { workspace = true }
 mobile_support_integrity = { path = "../integrity" }

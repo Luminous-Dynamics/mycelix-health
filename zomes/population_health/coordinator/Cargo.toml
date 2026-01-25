@@ -9,5 +9,6 @@ name = "population_health"
 
 [dependencies]
 hdk = { workspace = true }
+holochain_serialized_bytes = { workspace = true }
 serde = { workspace = true }
 population_health_integrity = { path = "../integrity" }

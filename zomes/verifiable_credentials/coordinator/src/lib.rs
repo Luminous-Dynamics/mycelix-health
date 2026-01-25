@@ -66,9 +66,7 @@ pub fn get_schema(action_hash: ActionHash) -> ExternResult<Option<Record>> {
 #[hdk_extern]
 pub fn get_all_schemas(_: ()) -> ExternResult<Vec<Record>> {
     let anchor = anchor(LinkTypes::AllSchemas, ALL_SCHEMAS_ANCHOR.to_string())?;
-    let links = get_links(
-        GetLinksInputBuilder::try_new(anchor, LinkTypes::AllSchemas)?.build(),
-    )?;
+    let links = get_links(LinkQuery::try_new(anchor, LinkTypes::AllSchemas)?, GetStrategy::default())?;
 
     let mut schemas = Vec::new();
     for link in links {
@@ -135,9 +133,7 @@ pub fn get_issuer(action_hash: ActionHash) -> ExternResult<Option<Record>> {
 #[hdk_extern]
 pub fn get_all_issuers(_: ()) -> ExternResult<Vec<Record>> {
     let anchor = anchor(LinkTypes::AllIssuers, ALL_ISSUERS_ANCHOR.to_string())?;
-    let links = get_links(
-        GetLinksInputBuilder::try_new(anchor, LinkTypes::AllIssuers)?.build(),
-    )?;
+    let links = get_links(LinkQuery::try_new(anchor, LinkTypes::AllIssuers)?, GetStrategy::default())?;
 
     let mut issuers = Vec::new();
     for link in links {
@@ -166,7 +162,7 @@ pub fn create_trust(input: CreateTrustInput) -> ExternResult<ActionHash> {
     let agent_info = agent_info()?;
 
     let trust = TrustEntry {
-        trustor_hash: ActionHash::from(agent_info.agent_initial_pubkey),
+        trustor_hash: ActionHash::from_raw_36(agent_info.agent_initial_pubkey.get_raw_36().to_vec()),
         trustee_hash: input.trustee_hash.clone(),
         trust_level: input.trust_level,
         trust_scope: input.trust_scope,
@@ -280,9 +276,7 @@ pub fn get_credential(action_hash: ActionHash) -> ExternResult<Option<Record>> {
 
 #[hdk_extern]
 pub fn get_credentials_by_issuer(issuer_hash: ActionHash) -> ExternResult<Vec<Record>> {
-    let links = get_links(
-        GetLinksInputBuilder::try_new(issuer_hash, LinkTypes::IssuerToCredentials)?.build(),
-    )?;
+    let links = get_links(LinkQuery::try_new(issuer_hash, LinkTypes::IssuerToCredentials)?, GetStrategy::default())?;
 
     let mut credentials = Vec::new();
     for link in links {
@@ -303,9 +297,7 @@ pub fn get_credentials_by_type(credential_type: CredentialType) -> ExternResult<
         format!("{:?}", credential_type),
     )?;
 
-    let links = get_links(
-        GetLinksInputBuilder::try_new(type_anchor, LinkTypes::CredentialsByType)?.build(),
-    )?;
+    let links = get_links(LinkQuery::try_new(type_anchor, LinkTypes::CredentialsByType)?, GetStrategy::default())?;
 
     let mut credentials = Vec::new();
     for link in links {
@@ -381,9 +373,7 @@ pub fn add_credential_to_wallet(input: AddCredentialToWalletInput) -> ExternResu
 
 #[hdk_extern]
 pub fn get_holder_credentials(holder_hash: ActionHash) -> ExternResult<Vec<Record>> {
-    let links = get_links(
-        GetLinksInputBuilder::try_new(holder_hash, LinkTypes::HolderToCredentials)?.build(),
-    )?;
+    let links = get_links(LinkQuery::try_new(holder_hash, LinkTypes::HolderToCredentials)?, GetStrategy::default())?;
 
     let mut credentials = Vec::new();
     for link in links {
@@ -569,8 +559,7 @@ pub fn verify_credential(input: VerifyCredentialInput) -> ExternResult<ActionHas
 #[hdk_extern]
 pub fn get_verification_records(credential_hash: ActionHash) -> ExternResult<Vec<Record>> {
     let links = get_links(
-        GetLinksInputBuilder::try_new(credential_hash, LinkTypes::CredentialToVerifications)?
-            .build(),
+        LinkQuery::try_new(credential_hash, LinkTypes::CredentialToVerifications)?, GetStrategy::default(),
     )?;
 
     let mut records = Vec::new();
@@ -645,7 +634,7 @@ pub fn revoke_credential(input: RevokeCredentialInput) -> ExternResult<ActionHas
         credential_hash: input.credential_hash.clone(),
         revocation_index: input.revocation_index,
         reason: input.reason,
-        revoked_by: ActionHash::from(agent_info.agent_initial_pubkey),
+        revoked_by: ActionHash::from_raw_36(agent_info.agent_initial_pubkey.get_raw_36().to_vec()),
         revoked_at: sys_time()?,
     };
 
@@ -664,9 +653,7 @@ pub fn revoke_credential(input: RevokeCredentialInput) -> ExternResult<ActionHas
 
 #[hdk_extern]
 pub fn check_revocation(credential_hash: ActionHash) -> ExternResult<bool> {
-    let links = get_links(
-        GetLinksInputBuilder::try_new(credential_hash, LinkTypes::CredentialToRevocation)?.build(),
-    )?;
+    let links = get_links(LinkQuery::try_new(credential_hash, LinkTypes::CredentialToRevocation)?, GetStrategy::default())?;
 
     Ok(!links.is_empty())
 }
@@ -896,7 +883,7 @@ pub fn issue_medical_license_credential(
 // Utility Functions
 // ============================================================================
 
-fn anchor(link_type: LinkTypes, anchor_text: String) -> ExternResult<EntryHash> {
+fn anchor(_link_type: LinkTypes, anchor_text: String) -> ExternResult<EntryHash> {
     let path = Path::from(anchor_text);
     path.path_entry_hash()
 }

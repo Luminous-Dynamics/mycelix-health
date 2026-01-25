@@ -1,14 +1,29 @@
 ---
 manifest_version: "1"
 name: mycelix-health
-description: Decentralized healthcare infrastructure for patient-controlled medical records
+description: |
+  Mycelix-Health: Complete Decentralized Healthcare Infrastructure
+
+  A comprehensive Holochain application for patient-controlled medical records,
+  clinical integration, health equity, advanced research, and global health data portability.
+
+  Features:
+  - Patient sovereignty over health data
+  - Differential privacy for population health
+  - FHIR R4 interoperability
+  - Clinical decision support
+  - Federated machine learning
+  - International Patient Summary (IPS)
+  - Verifiable health credentials
+  - Offline-first mobile support
+
 roles:
   - name: health
     provisioning:
       strategy: create
       deferred: false
     dna:
-      bundled: dna/health.dna
+      bundled: dnas/health/workdir/health.dna
       modifiers:
         network_seed: ~
         properties: ~

@@ -9,5 +9,6 @@ name = "research_commons"
 
 [dependencies]
 hdk = { workspace = true }
+holochain_serialized_bytes = { workspace = true }
 serde = { workspace = true }
 research_commons_integrity = { path = "../integrity" }

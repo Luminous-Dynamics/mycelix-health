@@ -98,7 +98,7 @@ chrono = "0.4"
 thiserror = "1.0"
 derive_more = "0.99"
 
-# WASM compatibility - Use 0.3 with wasm_js feature + rustflags in .cargo/config.toml
+# WASM compatibility (0.3+ uses "wasm_js" feature instead of "js")
 getrandom = { version = "0.3", features = ["wasm_js"] }
 
 [profile.dev]

@@ -57,6 +57,18 @@ import { SdohClient } from './zomes/sdoh';
 import { MentalHealthClient } from './zomes/mental-health';
 import { ChronicCareClient } from './zomes/chronic-care';
 import { PediatricClient } from './zomes/pediatric';
+// Phase 5 - Advanced Research
+import { ResearchCommonsClient } from './zomes/research-commons';
+import { TrialMatchingClient } from './zomes/trial-matching';
+import { IrbClient } from './zomes/irb';
+import { FederatedLearningClient } from './zomes/federated-learning';
+import { PopulationHealthClient } from './zomes/population-health';
+// Phase 6 - Global Scale
+import { IpsClient } from './zomes/ips';
+import { I18nClient } from './zomes/i18n';
+import { DisasterResponseClient } from './zomes/disaster-response';
+import { VerifiableCredentialsClient } from './zomes/verifiable-credentials';
+import { MobileSupportClient } from './zomes/mobile-support';
 import { HealthSdkError, HealthSdkErrorCode, DEFAULT_CONFIG } from './types';
 import type { MycelixHealthConfig } from './types';
 
@@ -161,6 +173,60 @@ export class MycelixHealthClient {
    */
   public readonly pediatric: PediatricClient;
 
+  // Phase 5 - Advanced Research
+
+  /**
+   * Research Commons (open datasets, data use agreements)
+   */
+  public readonly researchCommons: ResearchCommonsClient;
+
+  /**
+   * Trial Matching (AI-powered eligibility, recommendations)
+   */
+  public readonly trialMatching: TrialMatchingClient;
+
+  /**
+   * IRB (protocol submissions, ethical review)
+   */
+  public readonly irb: IrbClient;
+
+  /**
+   * Federated Learning (privacy-preserving ML)
+   */
+  public readonly federatedLearning: FederatedLearningClient;
+
+  /**
+   * Population Health (surveillance, community health)
+   */
+  public readonly populationHealth: PopulationHealthClient;
+
+  // Phase 6 - Global Scale
+
+  /**
+   * International Patient Summary (cross-border health data)
+   */
+  public readonly ips: IpsClient;
+
+  /**
+   * Internationalization (medical terminology translation)
+   */
+  public readonly i18n: I18nClient;
+
+  /**
+   * Disaster Response (emergency coordination)
+   */
+  public readonly disasterResponse: DisasterResponseClient;
+
+  /**
+   * Verifiable Credentials (W3C VC for health data)
+   */
+  public readonly verifiableCredentials: VerifiableCredentialsClient;
+
+  /**
+   * Mobile Support (offline-first sync)
+   */
+  public readonly mobileSupport: MobileSupportClient;
+
   /**
    * The underlying Holochain client
    */
@@ -195,6 +261,20 @@ export class MycelixHealthClient {
     this.mentalHealth = new MentalHealthClient(client, config.roleName);
     this.chronicCare = new ChronicCareClient(client, config.roleName);
     this.pediatric = new PediatricClient(client, config.roleName);
+
+    // Phase 5 - Advanced Research
+    this.researchCommons = new ResearchCommonsClient(client, config.roleName);
+    this.trialMatching = new TrialMatchingClient(client, config.roleName);
+    this.irb = new IrbClient(client, config.roleName);
+    this.federatedLearning = new FederatedLearningClient(client, config.roleName);
+    this.populationHealth = new PopulationHealthClient(client, config.roleName);
+
+    // Phase 6 - Global Scale
+    this.ips = new IpsClient(client, config.roleName);
+    this.i18n = new I18nClient(client, config.roleName);
+    this.disasterResponse = new DisasterResponseClient(client, config.roleName);
+    this.verifiableCredentials = new VerifiableCredentialsClient(client, config.roleName);
+    this.mobileSupport = new MobileSupportClient(client, config.roleName);
   }
 
   /**
@@ -323,6 +403,18 @@ export class MycelixHealthClient {
     mentalHealth: string[];
     chronicCare: string[];
     pediatric: string[];
+    // Phase 5 - Advanced Research
+    researchCommons: string[];
+    trialMatching: string[];
+    irb: string[];
+    federatedLearning: string[];
+    populationHealth: string[];
+    // Phase 6 - Global Scale
+    ips: string[];
+    i18n: string[];
+    disasterResponse: string[];
+    verifiableCredentials: string[];
+    mobileSupport: string[];
   } {
     return {
       patients: [
@@ -504,6 +596,145 @@ export class MycelixHealthClient {
         'getAdolescentAssessments',
         'createNewbornRecord',
         'getNewbornRecord',
+      ],
+      // Phase 5 - Advanced Research
+      researchCommons: [
+        'createDataset',
+        'getDataset',
+        'searchDatasets',
+        'listPublicDatasets',
+        'requestAccess',
+        'approveAccess',
+        'denyAccess',
+        'getPendingRequests',
+        'addContributionCredit',
+        'getDatasetCredits',
+      ],
+      trialMatching: [
+        'createPatientProfile',
+        'getPatientProfile',
+        'findMatches',
+        'getRecommendations',
+        'refreshRecommendations',
+        'checkEligibility',
+        'expressInterest',
+        'getInterestedPatients',
+      ],
+      irb: [
+        'createProtocol',
+        'getProtocol',
+        'submitForReview',
+        'getPendingProtocols',
+        'submitReview',
+        'getProtocolReviews',
+        'approveProtocol',
+        'rejectProtocol',
+        'requestRevisions',
+        'getMyProtocols',
+        'getMembers',
+      ],
+      federatedLearning: [
+        'createProject',
+        'getProject',
+        'listActiveProjects',
+        'joinProject',
+        'leaveProject',
+        'startRound',
+        'getCurrentRound',
+        'submitUpdate',
+        'getRoundUpdates',
+        'aggregateUpdates',
+        'getAggregatedModel',
+        'getProjectModels',
+        'getMyParticipation',
+      ],
+      populationHealth: [
+        'createIndicator',
+        'getIndicator',
+        'listIndicators',
+        'recordMetric',
+        'getMetrics',
+        'getCurrentAlerts',
+        'acknowledgeAlert',
+        'getTrends',
+        'getCommunityProfile',
+        'compareRegions',
+      ],
+      // Phase 6 - Global Scale
+      ips: [
+        'createIps',
+        'getIps',
+        'getPatientIps',
+        'updateIps',
+        'finalizeIps',
+        'exportIps',
+        'importIps',
+        'validateIps',
+        'getIpsHistory',
+      ],
+      i18n: [
+        'getMedicalTerm',
+        'addLocalizedTerm',
+        'verifyTranslation',
+        'translate',
+        'addTranslationMemory',
+        'getSuggestions',
+        'addGlossaryEntry',
+        'getGlossaryEntries',
+        'getSupportedLocales',
+        'getTerminologyCoverage',
+      ],
+      disasterResponse: [
+        'declareDisaster',
+        'getDisaster',
+        'getActiveDisasters',
+        'updateDisasterStatus',
+        'registerResource',
+        'getAvailableResources',
+        'requestResources',
+        'getPendingRequests',
+        'fulfillRequest',
+        'recordTriage',
+        'getTriageRecords',
+        'getTriageSummary',
+        'issueEvacuationOrder',
+        'getActiveEvacuationOrders',
+      ],
+      verifiableCredentials: [
+        'issueCredential',
+        'getCredential',
+        'getSubjectCredentials',
+        'getIssuedCredentials',
+        'revokeCredential',
+        'isRevoked',
+        'createPresentation',
+        'getPresentation',
+        'verifyCredential',
+        'verifyPresentation',
+        'registerSchema',
+        'getSchemas',
+        'establishTrust',
+        'getTrustedIssuers',
+      ],
+      mobileSupport: [
+        'registerDevice',
+        'getDevice',
+        'updateDevice',
+        'getMyDevices',
+        'queueSyncItem',
+        'getSyncQueue',
+        'getPendingItems',
+        'executeSync',
+        'markSynced',
+        'reportSyncFailure',
+        'getConflicts',
+        'resolveConflict',
+        'cacheData',
+        'getCachedData',
+        'clearExpiredCache',
+        'setBandwidthProfile',
+        'getBandwidthProfile',
+        'getSyncStats',
       ],
     };
   }

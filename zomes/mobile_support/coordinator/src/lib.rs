@@ -71,8 +71,7 @@ pub fn get_my_devices(_: ()) -> ExternResult<Vec<Record>> {
     let agent_info = agent_info()?;
 
     let links = get_links(
-        GetLinksInputBuilder::try_new(agent_info.agent_initial_pubkey, LinkTypes::AgentToDevices)?
-            .build(),
+        LinkQuery::try_new(agent_info.agent_initial_pubkey, LinkTypes::AgentToDevices)?, GetStrategy::default(),
     )?;
 
     let mut devices = Vec::new();
@@ -170,9 +169,7 @@ pub fn create_checkpoint(input: CreateCheckpointInput) -> ExternResult<ActionHas
 
 #[hdk_extern]
 pub fn get_latest_checkpoint(device_hash: ActionHash) -> ExternResult<Option<Record>> {
-    let links = get_links(
-        GetLinksInputBuilder::try_new(device_hash, LinkTypes::DeviceToCheckpoints)?.build(),
-    )?;
+    let links = get_links(LinkQuery::try_new(device_hash, LinkTypes::DeviceToCheckpoints)?, GetStrategy::default())?;
 
     // Get most recent checkpoint
     let mut latest: Option<(Timestamp, Record)> = None;
@@ -245,9 +242,7 @@ pub fn queue_sync(input: QueueSyncInput) -> ExternResult<ActionHash> {
 
 #[hdk_extern]
 pub fn get_pending_sync(device_hash: ActionHash) -> ExternResult<Vec<Record>> {
-    let links = get_links(
-        GetLinksInputBuilder::try_new(device_hash, LinkTypes::DeviceToQueue)?.build(),
-    )?;
+    let links = get_links(LinkQuery::try_new(device_hash, LinkTypes::DeviceToQueue)?, GetStrategy::default())?;
 
     let mut pending = Vec::new();
     for link in links {
@@ -396,9 +391,7 @@ pub fn resolve_conflict(input: ResolveConflictInput) -> ExternResult<ActionHash>
 
 #[hdk_extern]
 pub fn get_unresolved_conflicts(device_hash: ActionHash) -> ExternResult<Vec<Record>> {
-    let links = get_links(
-        GetLinksInputBuilder::try_new(device_hash, LinkTypes::DeviceToConflicts)?.build(),
-    )?;
+    let links = get_links(LinkQuery::try_new(device_hash, LinkTypes::DeviceToConflicts)?, GetStrategy::default())?;
 
     let mut conflicts = Vec::new();
     for link in links {
@@ -476,9 +469,7 @@ pub fn cache_entry(input: CacheEntryInput) -> ExternResult<ActionHash> {
 
 #[hdk_extern]
 pub fn get_cached_entries(device_hash: ActionHash) -> ExternResult<Vec<Record>> {
-    let links = get_links(
-        GetLinksInputBuilder::try_new(device_hash, LinkTypes::DeviceToCache)?.build(),
-    )?;
+    let links = get_links(LinkQuery::try_new(device_hash, LinkTypes::DeviceToCache)?, GetStrategy::default())?;
 
     let mut cached = Vec::new();
     let now = sys_time()?;
@@ -597,9 +588,7 @@ pub fn send_notification(input: SendNotificationInput) -> ExternResult<ActionHas
 
 #[hdk_extern]
 pub fn get_pending_notifications(device_hash: ActionHash) -> ExternResult<Vec<Record>> {
-    let links = get_links(
-        GetLinksInputBuilder::try_new(device_hash, LinkTypes::DeviceToNotifications)?.build(),
-    )?;
+    let links = get_links(LinkQuery::try_new(device_hash, LinkTypes::DeviceToNotifications)?, GetStrategy::default())?;
 
     let mut notifications = Vec::new();
     let now = sys_time()?;
@@ -794,8 +783,7 @@ pub fn create_emergency_snapshot(input: CreateEmergencySnapshotInput) -> ExternR
 #[hdk_extern]
 pub fn get_emergency_snapshot(patient_hash: ActionHash) -> ExternResult<Option<Record>> {
     let links = get_links(
-        GetLinksInputBuilder::try_new(patient_hash, LinkTypes::PatientToEmergencySnapshot)?
-            .build(),
+        LinkQuery::try_new(patient_hash, LinkTypes::PatientToEmergencySnapshot)?, GetStrategy::default(),
     )?;
 
     // Get most recent snapshot
@@ -874,7 +862,7 @@ pub fn record_bandwidth(input: RecordBandwidthInput) -> ExternResult<ActionHash>
 // Utility Functions
 // ============================================================================
 
-fn anchor(link_type: LinkTypes, anchor_text: String) -> ExternResult<EntryHash> {
+fn anchor(_link_type: LinkTypes, anchor_text: String) -> ExternResult<EntryHash> {
     let path = Path::from(anchor_text);
     path.path_entry_hash()
 }
