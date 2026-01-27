@@ -38,9 +38,8 @@
             name = "mycelix-health";
 
             buildInputs = with pkgs; [
-              # Holochain tooling
+              # Holochain tooling (use only what's available)
               holochainPkgs.holochain
-              holochainPkgs.hc
               holochainPkgs.lair-keystore
 
               # Rust toolchain with WASM
