@@ -85,6 +85,126 @@ impl DnaEncoder {
     pub fn encode_batch(&self, sequences: &[&str]) -> Vec<Result<EncodedSequence, HdcError>> {
         sequences.iter().map(|seq| self.encode_sequence(seq)).collect()
     }
+
+    /// Encode multiple sequences in parallel (requires "parallel" feature)
+    #[cfg(feature = "parallel")]
+    pub fn encode_batch_parallel(&self, sequences: &[&str]) -> Vec<Result<EncodedSequence, HdcError>> {
+        use rayon::prelude::*;
+        sequences.par_iter().map(|seq| self.encode_sequence(seq)).collect()
+    }
+
+    /// Encode a DNA sequence with pre-computed k-mer codebook for faster encoding
+    /// This is more efficient when encoding many sequences with the same parameters
+    pub fn encode_with_codebook(&self, sequence: &str, codebook: &KmerCodebook) -> Result<EncodedSequence, HdcError> {
+        let seq = sequence.to_uppercase();
+        let k = self.kmer_length as usize;
+
+        if seq.len() < k {
+            return Err(HdcError::SequenceTooShort {
+                length: seq.len(),
+                kmer_length: self.kmer_length,
+            });
+        }
+
+        // Validate sequence
+        for c in seq.chars() {
+            if !NUCLEOTIDES.contains(&c) {
+                return Err(HdcError::InvalidNucleotide(c));
+            }
+        }
+
+        let mut kmer_vectors: Vec<Hypervector> = Vec::new();
+        let mut kmer_count = 0u32;
+
+        for i in 0..=(seq.len() - k) {
+            let kmer = &seq[i..i + k];
+
+            // Look up pre-computed item vector
+            if let Some(item_vec) = codebook.get(kmer) {
+                // Permute by position
+                let position_vec = item_vec.permute(i);
+                kmer_vectors.push(position_vec);
+                kmer_count += 1;
+            }
+        }
+
+        if kmer_vectors.is_empty() {
+            return Err(HdcError::EmptyInput);
+        }
+
+        let refs: Vec<&Hypervector> = kmer_vectors.iter().collect();
+        let vector = bundle(&refs);
+
+        Ok(EncodedSequence {
+            vector,
+            kmer_count,
+            kmer_length: self.kmer_length,
+            sequence_length: seq.len(),
+        })
+    }
+
+    /// Create a k-mer codebook for fast encoding
+    pub fn create_codebook(&self) -> KmerCodebook {
+        KmerCodebook::new(&self.seed, self.kmer_length)
+    }
+}
+
+/// Pre-computed k-mer to hypervector mapping for fast encoding
+pub struct KmerCodebook {
+    vectors: std::collections::HashMap<String, Hypervector>,
+}
+
+impl KmerCodebook {
+    /// Generate all possible k-mer vectors
+    pub fn new(seed: &Seed, k: u8) -> Self {
+        let mut vectors = std::collections::HashMap::new();
+        let kmers = Self::generate_all_kmers(k as usize);
+
+        for kmer in kmers {
+            let vec = Hypervector::random(seed, &kmer);
+            vectors.insert(kmer, vec);
+        }
+
+        vectors.into()
+    }
+
+    fn generate_all_kmers(k: usize) -> Vec<String> {
+        if k == 0 {
+            return vec![String::new()];
+        }
+
+        let smaller = Self::generate_all_kmers(k - 1);
+        let mut result = Vec::with_capacity(4usize.pow(k as u32));
+
+        for base in NUCLEOTIDES {
+            for kmer in &smaller {
+                result.push(format!("{}{}", base, kmer));
+            }
+        }
+
+        result
+    }
+
+    /// Get the hypervector for a k-mer
+    pub fn get(&self, kmer: &str) -> Option<&Hypervector> {
+        self.vectors.get(kmer)
+    }
+
+    /// Number of k-mers in the codebook
+    pub fn len(&self) -> usize {
+        self.vectors.len()
+    }
+
+    /// Check if codebook is empty
+    pub fn is_empty(&self) -> bool {
+        self.vectors.is_empty()
+    }
+}
+
+impl From<std::collections::HashMap<String, Hypervector>> for KmerCodebook {
+    fn from(vectors: std::collections::HashMap<String, Hypervector>) -> Self {
+        Self { vectors }
+    }
 }
 
 /// Result of encoding a DNA sequence

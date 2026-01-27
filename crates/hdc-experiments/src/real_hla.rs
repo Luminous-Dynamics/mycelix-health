@@ -161,7 +161,10 @@ pub fn run_real_hla_experiment(
     let hla_files = [
         ("hla_a_nuc.fasta", "HLA-A"),
         ("hla_b_nuc.fasta", "HLA-B"),
+        ("hla_c_nuc.fasta", "HLA-C"),
         ("hla_drb1_nuc.fasta", "HLA-DRB1"),
+        ("hla_dqb1_nuc.fasta", "HLA-DQB1"),
+        ("hla_dpb1_nuc.fasta", "HLA-DPB1"),
     ];
 
     for (filename, locus_name) in &hla_files {

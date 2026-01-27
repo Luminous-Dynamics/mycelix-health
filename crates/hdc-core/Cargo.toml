@@ -5,19 +5,26 @@ edition = "2021"
 description = "Hyperdimensional Computing core library for genetic data encoding"
 license = "MIT"
 
-[features]
-default = ["std"]
-std = []
-# For WASM/Holochain builds - uses no external RNG, pure deterministic ops
-wasm = []
-
 [dependencies]
 serde = { version = "1.0", features = ["derive"] }
 # sha2 works in WASM
 sha2 = "0.10"
 rand = { version = "0.8", optional = true }
 rand_chacha = { version = "0.3", optional = true }
+rayon = { version = "1.8", optional = true }
+
+[features]
+default = ["std"]
+std = []
+parallel = ["rayon"]
+# For WASM/Holochain builds - uses no external RNG, pure deterministic ops
+wasm = []
 
 [dev-dependencies]
 rand = "0.8"
 rand_chacha = "0.3"
+criterion = "0.5"
+
+[[bench]]
+name = "encoding"
+harness = false
