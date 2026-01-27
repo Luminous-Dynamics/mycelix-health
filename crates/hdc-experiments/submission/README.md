@@ -23,9 +23,22 @@
 - [x] Discussion comparing to prior work
 - [x] Data availability statement
 - [x] Code availability (GitHub link)
-- [ ] Author contributions (to be added)
-- [ ] Competing interests declaration
-- [ ] Funding statement
+- [x] Author contributions
+- [x] Competing interests declaration
+- [x] Funding statement
+
+## Author Contributions
+
+- **Tristan Stoltz**: Conceptualization, methodology, software development, validation, writing
+- **Claude (AI Assistant)**: Code implementation, documentation, experimental analysis
+
+## Competing Interests
+
+The authors declare no competing interests.
+
+## Funding
+
+This work was conducted as part of the Mycelix-Health project. No external funding was received.
 
 ## Data Sources
 
@@ -43,6 +56,8 @@ https://github.com/Luminous-Dynamics/mycelix-health
 |------------|----------|---|
 | Taxonomy (COI) | 89.3% order classification | 272 sequences |
 | HLA (IMGT) | 100% locus classification | 300 alleles |
+| Privacy (attacks) | LOW risk membership inference | 100 sequences |
+| Performance | ~2.2µs similarity (SIMD) | 100K iterations |
 
 ## bioRxiv Submission Steps
 

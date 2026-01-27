@@ -36,3 +36,10 @@ coverage/
 
 # Build
 *.wasm
+
+# Experiment data files (large FASTA/VCF)
+crates/hdc-experiments/data/real/cyp/
+crates/hdc-experiments/data/real/hla/*.fasta
+*.vcf
+*.vcf.gz
+!test*.vcf
