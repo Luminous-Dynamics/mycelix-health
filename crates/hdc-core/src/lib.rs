@@ -32,6 +32,8 @@
 pub mod ops;
 pub mod encoding;
 pub mod similarity;
+pub mod vcf;
+pub mod confidence;
 
 // Re-export commonly used types for convenience
 pub use encoding::{
@@ -39,6 +41,8 @@ pub use encoding::{
     LocusWeightedHlaEncoder, LocusEncodedHla,
     AlleleHlaEncoder, AlleleEncodedHla,
 };
+pub use vcf::{VcfReader, VcfEncoder, Variant, Genotype, EncodedVcf};
+pub use confidence::{MatchConfidence, SimilarityWithConfidence};
 
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
