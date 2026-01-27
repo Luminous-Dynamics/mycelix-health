@@ -9,6 +9,7 @@ mod hla;
 mod fasta;
 mod real_taxonomy;
 mod real_hla;
+mod pharmacogenomics;
 
 use clap::{Parser, Subcommand};
 use colored::*;
@@ -131,6 +132,21 @@ enum Commands {
         output: PathBuf,
     },
 
+    /// Experiment 7: Pharmacogenomics validation with CYP450 genes
+    Pharmacogenomics {
+        /// Path to data directory containing cyp/ subfolder
+        #[arg(short, long)]
+        data_path: Option<PathBuf>,
+
+        /// K-mer length
+        #[arg(short, long, default_value = "6")]
+        kmer: u8,
+
+        /// Output directory
+        #[arg(short, long, default_value = "./results")]
+        output: PathBuf,
+    },
+
     /// Run all experiments
     All {
         /// Output directory
@@ -195,6 +211,12 @@ fn main() {
                 PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("data/real")
             });
             real_hla::run_real_hla_experiment(path, kmer, output);
+        }
+        Commands::Pharmacogenomics { data_path, kmer, output } => {
+            let path = data_path.unwrap_or_else(|| {
+                PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("data/real")
+            });
+            pharmacogenomics::run_pharmacogenomics_experiment(path, kmer, output);
         }
         Commands::All { output } => {
             println!("{}", "Running all experiments...".yellow().bold());
