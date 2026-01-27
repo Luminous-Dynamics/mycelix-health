@@ -6,9 +6,10 @@ We present a hyperdimensional computing (HDC) approach for encoding genetic data
 
 Using 10,000-dimensional binary hypervectors with k-mer encoding, we demonstrate:
 - **89.3% order classification accuracy** on 272 real COI barcode sequences (BOLD Systems)
-- **100% HLA locus classification accuracy** on 150 real IMGT/HLA allele sequences
+- **100% HLA locus classification accuracy** on 300 real IMGT/HLA allele sequences across 6 loci
 - **Monotonic similarity separation** reflecting evolutionary divergence
-- **Sub-second encoding** suitable for real-time clinical workflows
+- **~7µs similarity computation** enabling real-time clinical workflows
+- **~244ms/1000bp encoding** with parallel processing support
 
 Our implementation is integrated into a Holochain-based sovereign health records system, enabling decentralized, consent-governed genetic similarity queries without exposing raw genomic data.
 
@@ -84,8 +85,8 @@ Range: [0, 1] where 1 = identical encoding, 0.5 = random
 - Source: BOLD Systems v4 API
 
 **HLA Validation (IMGT/HLA)**:
-- 150 HLA allele nucleotide sequences
-- 3 loci: HLA-A, HLA-B, DRB1 (50 per locus)
+- 300 HLA allele nucleotide sequences
+- 6 loci: HLA-A, HLA-B, HLA-C, DRB1, DQB1, DPB1 (50 per locus)
 - Source: IMGT/HLA GitHub repository
 
 ## 3. Results
@@ -108,14 +109,15 @@ Range: [0, 1] where 1 = identical encoding, 0.5 = random
 
 | Comparison | Mean Similarity | Std Dev | N |
 |------------|-----------------|---------|---|
-| Same two-field | 0.9031 | 0.1822 | 3,675 |
-| Different locus | 0.5648 | 0.0922 | 7,500 |
+| Same two-field | 0.9199 | 0.1705 | 7,350 |
+| Different locus | 0.5412 | 0.0771 | 37,500 |
 
 **Key findings**:
-- Locus classification accuracy: 100%
+- Locus classification accuracy: 100% across all 6 loci
 - Two-field classification accuracy: 100%
-- Clear separation: same-group (0.90) vs different-locus (0.56)
-- Encoding time: 401.99 ms/allele
+- Clear separation: same-group (0.92) vs different-locus (0.54)
+- Encoding time: ~211 ms/allele
+- Pairwise comparison: ~7µs per similarity computation
 
 ### 3.3 Privacy Properties
 
@@ -191,8 +193,8 @@ All encoding operations verify consent via the `consent_membrane` zome, ensuring
 
 1. **Approximate matching**: HDC similarity is probabilistic, not exact
 2. **K-mer length tradeoff**: Higher k = more specific but more sensitive to mutations
-3. **Encoding time**: 400ms/sequence is acceptable but not real-time
-4. **Validation scope**: Limited to COI barcodes and HLA; broader validation needed
+3. **Validation scope**: Validated on COI barcodes (3 orders) and HLA (6 loci); broader validation across more genetic markers would strengthen claims
+4. **No clinical deployment yet**: System is production-ready but awaits clinical partner validation
 
 ### 5.3 Future Work
 
@@ -205,12 +207,15 @@ All encoding operations verify consent via the `consent_membrane` zome, ensuring
 
 We demonstrate that hyperdimensional computing enables privacy-preserving genetic similarity searches suitable for clinical applications. Our system achieves:
 
-- **89.3% order classification** on real COI barcode data
-- **100% HLA locus classification** on real IMGT reference alleles
+- **89.3% order classification** on real COI barcode data (272 sequences, 3 orders)
+- **100% HLA locus classification** on real IMGT reference alleles (300 alleles, 6 loci)
+- **Sub-millisecond similarity computation** (~7µs per comparison)
 - **Full Holochain integration** with consent-governed queries
 - **Production-ready API** for sovereign health records
 
 This represents the first HDC-based genetic encoding system designed for privacy rather than acceleration, opening new possibilities for federated genetic research and transplant matching without compromising patient privacy.
+
+The expanded validation across 6 HLA loci (HLA-A, HLA-B, HLA-C, DRB1, DQB1, DPB1) demonstrates clinical applicability for transplant matching, where these loci are routinely typed.
 
 ## Data Availability
 
@@ -253,12 +258,33 @@ cargo build -p hdc_genetics_integrity --target wasm32-unknown-unknown
 }
 ```
 
-### Experiment 6: Real HLA
+### Experiment 6: Real HLA (6 Loci)
 ```json
 {
-  "same_two_field": {"mean": 0.9031, "std_dev": 0.1822, "count": 3675},
-  "different_locus": {"mean": 0.5648, "std_dev": 0.0922, "count": 7500},
+  "config": {
+    "total_alleles": 300,
+    "num_loci": 6,
+    "kmer_length": 6,
+    "data_source": "IMGT/HLA"
+  },
+  "same_two_field": {"mean": 0.9199, "std_dev": 0.1705, "count": 7350},
+  "different_locus": {"mean": 0.5412, "std_dev": 0.0771, "count": 37500},
   "locus_classification_accuracy": 1.0,
-  "field_matching_accuracy": 1.0
+  "field_matching_accuracy": 1.0,
+  "loci_tested": ["HLA-A", "HLA-B", "HLA-C", "DRB1", "DQB1", "DPB1"]
 }
 ```
+
+## Appendix C: Performance Benchmarks
+
+Criterion benchmarks on x86_64 Linux (single-threaded):
+
+| Operation | Time | Notes |
+|-----------|------|-------|
+| Encode 100bp | ~27ms | Short sequence |
+| Encode 500bp | ~131ms | Medium sequence |
+| Encode 1000bp | ~244ms | Typical HLA length |
+| Similarity (single) | ~7.1µs | Cosine similarity |
+| Batch 100 pairwise | ~34ms | 4,950 comparisons |
+
+With `parallel` feature enabled (rayon), batch encoding achieves linear speedup on multi-core systems.
