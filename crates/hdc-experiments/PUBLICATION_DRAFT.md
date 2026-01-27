@@ -195,6 +195,7 @@ All encoding operations verify consent via the `consent_membrane` zome, ensuring
 2. **K-mer length tradeoff**: Higher k = more specific but more sensitive to mutations
 3. **Validation scope**: Validated on COI barcodes (3 orders) and HLA (6 loci); broader validation across more genetic markers would strengthen claims
 4. **No clinical deployment yet**: System is production-ready but awaits clinical partner validation
+5. **Pharmacogene family similarity**: Related genes (e.g., CYP450 family) show ~50% similarity even between different genes, limiting intra-family discrimination. Star allele variants (SNPs/indels) may require higher-resolution encoding
 
 ### 5.3 Future Work
 
