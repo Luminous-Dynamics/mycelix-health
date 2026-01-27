@@ -15,4 +15,4 @@ serde.workspace = true
 serde_json.workspace = true
 holochain_serialized_bytes.workspace = true
 # Shared HDC core library
-hdc-core = { path = "../../../../crates/hdc-core", default-features = false, features = ["wasm"] }
+hdc-core = { path = "../../../crates/hdc-core", default-features = false, features = ["wasm"] }
