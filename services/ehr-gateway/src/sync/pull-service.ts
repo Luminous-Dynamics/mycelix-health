@@ -2,7 +2,8 @@
  * Pull Service
  *
  * Handles pulling data from external EHR systems into Mycelix-Health.
- * Transforms FHIR resources to internal Holochain format.
+ * Fetches FHIR resources and ingests them as a bundle into Holochain
+ * using the fhir_bridge zome's ingest_bundle function.
  */
 
 import type { AppClient } from '@holochain/client';
@@ -15,7 +16,8 @@ import type {
   FhirMedicationRequest,
   FhirBundle,
   SyncResult,
-  SyncDirection,
+  IngestBundleInput,
+  IngestReport,
 } from '../types.js';
 
 export interface PullConfig {
@@ -23,22 +25,44 @@ export interface PullConfig {
   fhirAdapter: GenericFhirAdapter;
   batchSize?: number;
   maxConcurrent?: number;
-  transformers?: ResourceTransformers;
-}
-
-export interface ResourceTransformers {
-  patient?: (fhir: FhirPatient) => unknown;
-  observation?: (fhir: FhirObservation) => unknown;
-  condition?: (fhir: FhirCondition) => unknown;
-  medicationRequest?: (fhir: FhirMedicationRequest) => unknown;
+  /** Default source system identifier */
+  defaultSourceSystem?: string;
 }
 
 export interface PullOptions {
+  /** Which FHIR resource types to fetch */
   resourceTypes?: string[];
+  /** Only fetch resources modified since this date */
   since?: Date;
+  /** Patient ID in the EHR system */
   patientId?: string;
+  /** Include related resources */
   includeRelated?: boolean;
+  /** Override the source system identifier */
+  sourceSystem?: string;
 }
+
+export interface PullResult {
+  /** Individual sync results for each resource type fetch */
+  syncResults: SyncResult[];
+  /** The assembled FHIR bundle that was ingested */
+  bundle: FhirBundle;
+  /** Report from the Holochain ingest operation */
+  ingestReport: IngestReport;
+}
+
+/**
+ * Default resource types to fetch from EHR
+ */
+const DEFAULT_RESOURCE_TYPES = [
+  'Patient',
+  'Observation',
+  'Condition',
+  'MedicationRequest',
+  'AllergyIntolerance',
+  'Immunization',
+  'Procedure',
+];
 
 export class PullService {
   private config: PullConfig;
@@ -48,30 +72,47 @@ export class PullService {
     this.config = {
       batchSize: 100,
       maxConcurrent: 5,
+      defaultSourceSystem: 'unknown-ehr',
       ...config,
     };
   }
 
   /**
-   * Pull all data for a patient from EHR
+   * Pull all data for a patient from EHR and ingest into Holochain
+   *
+   * This method:
+   * 1. Fetches all requested resource types from the EHR
+   * 2. Assembles them into a single FHIR Bundle
+   * 3. Calls the fhir_bridge zome's ingest_bundle function
+   * 4. Returns the combined results
    */
   async pullPatientData(
     patientId: string,
     tokenInfo: TokenInfo,
     options: PullOptions = {}
-  ): Promise<SyncResult[]> {
+  ): Promise<PullResult> {
     this.syncResults = [];
 
-    const resourceTypes = options.resourceTypes || [
-      'Patient',
-      'Observation',
-      'Condition',
-      'MedicationRequest',
-    ];
+    const resourceTypes = options.resourceTypes || DEFAULT_RESOURCE_TYPES;
+    const sourceSystem = options.sourceSystem || this.config.defaultSourceSystem || 'unknown-ehr';
 
+    // Collect all resources into bundle entries
+    const bundleEntries: Array<{ fullUrl?: string; resource: unknown }> = [];
+
+    // Fetch each resource type and collect entries
     for (const resourceType of resourceTypes) {
       try {
-        await this.pullResourceType(patientId, resourceType, tokenInfo, options);
+        const entries = await this.fetchResourceType(patientId, resourceType, tokenInfo, options);
+        bundleEntries.push(...entries);
+
+        this.recordResult({
+          success: true,
+          resourceType,
+          resourceId: patientId,
+          direction: 'pull',
+          timestamp: new Date(),
+          errors: [],
+        });
       } catch (error) {
         this.recordResult({
           success: false,
@@ -84,297 +125,175 @@ export class PullService {
       }
     }
 
-    return this.syncResults;
+    // Build the complete FHIR Bundle
+    const bundle: FhirBundle = {
+      resourceType: 'Bundle',
+      id: `import-${Date.now()}`,
+      type: 'collection',
+      timestamp: new Date().toISOString(),
+      total: bundleEntries.length,
+      entry: bundleEntries,
+    };
+
+    // Ingest the bundle into Holochain
+    const ingestReport = await this.ingestBundle(bundle, sourceSystem);
+
+    return {
+      syncResults: this.syncResults,
+      bundle,
+      ingestReport,
+    };
   }
 
   /**
-   * Pull a specific resource type for a patient
+   * Ingest a pre-built FHIR Bundle directly into Holochain
+   *
+   * Use this when you already have a complete FHIR Bundle
+   * (e.g., from a webhook or direct import)
    */
-  private async pullResourceType(
+  async ingestBundle(bundle: FhirBundle, sourceSystem: string): Promise<IngestReport> {
+    const input: IngestBundleInput = {
+      bundle,
+      source_system: sourceSystem,
+    };
+
+    const result = await this.config.holochainClient.callZome({
+      cap_secret: undefined,
+      role_name: 'health',
+      zome_name: 'fhir_bridge',
+      fn_name: 'ingest_bundle',
+      payload: input,
+    });
+
+    return result as IngestReport;
+  }
+
+  /**
+   * Fetch a specific resource type for a patient from the EHR
+   */
+  private async fetchResourceType(
     patientId: string,
     resourceType: string,
     tokenInfo: TokenInfo,
     options: PullOptions
-  ): Promise<void> {
-    let bundle: FhirBundle;
+  ): Promise<Array<{ fullUrl?: string; resource: unknown }>> {
+    const entries: Array<{ fullUrl?: string; resource: unknown }> = [];
 
     switch (resourceType) {
-      case 'Patient':
+      case 'Patient': {
         const patient = await this.config.fhirAdapter.getPatient(patientId, tokenInfo);
-        await this.processPatient(patient);
+        entries.push({
+          fullUrl: `Patient/${patient.id}`,
+          resource: patient,
+        });
         break;
+      }
 
-      case 'Observation':
-        bundle = await this.config.fhirAdapter.getPatientObservations(patientId, tokenInfo);
-        await this.processBundleEntries(bundle, 'Observation', this.processObservation.bind(this));
+      case 'Observation': {
+        const bundle = await this.config.fhirAdapter.getPatientObservations(patientId, tokenInfo);
+        if (bundle.entry) {
+          for (const entry of bundle.entry) {
+            if (entry.resource?.resourceType === 'Observation') {
+              entries.push({
+                fullUrl: entry.fullUrl,
+                resource: entry.resource,
+              });
+            }
+          }
+        }
         break;
+      }
 
-      case 'Condition':
-        bundle = await this.config.fhirAdapter.getPatientConditions(patientId, tokenInfo);
-        await this.processBundleEntries(bundle, 'Condition', this.processCondition.bind(this));
+      case 'Condition': {
+        const bundle = await this.config.fhirAdapter.getPatientConditions(patientId, tokenInfo);
+        if (bundle.entry) {
+          for (const entry of bundle.entry) {
+            if (entry.resource?.resourceType === 'Condition') {
+              entries.push({
+                fullUrl: entry.fullUrl,
+                resource: entry.resource,
+              });
+            }
+          }
+        }
         break;
+      }
 
-      case 'MedicationRequest':
-        bundle = await this.config.fhirAdapter.getPatientMedications(patientId, tokenInfo);
-        await this.processBundleEntries(bundle, 'MedicationRequest', this.processMedication.bind(this));
+      case 'MedicationRequest': {
+        const bundle = await this.config.fhirAdapter.getPatientMedications(patientId, tokenInfo);
+        if (bundle.entry) {
+          for (const entry of bundle.entry) {
+            if (entry.resource?.resourceType === 'MedicationRequest' ||
+                entry.resource?.resourceType === 'MedicationStatement') {
+              entries.push({
+                fullUrl: entry.fullUrl,
+                resource: entry.resource,
+              });
+            }
+          }
+        }
         break;
+      }
+
+      case 'AllergyIntolerance': {
+        // Check if adapter supports allergies
+        if ('getPatientAllergies' in this.config.fhirAdapter) {
+          const bundle = await (this.config.fhirAdapter as any).getPatientAllergies(patientId, tokenInfo);
+          if (bundle.entry) {
+            for (const entry of bundle.entry) {
+              if (entry.resource?.resourceType === 'AllergyIntolerance') {
+                entries.push({
+                  fullUrl: entry.fullUrl,
+                  resource: entry.resource,
+                });
+              }
+            }
+          }
+        }
+        break;
+      }
+
+      case 'Immunization': {
+        // Check if adapter supports immunizations
+        if ('getPatientImmunizations' in this.config.fhirAdapter) {
+          const bundle = await (this.config.fhirAdapter as any).getPatientImmunizations(patientId, tokenInfo);
+          if (bundle.entry) {
+            for (const entry of bundle.entry) {
+              if (entry.resource?.resourceType === 'Immunization') {
+                entries.push({
+                  fullUrl: entry.fullUrl,
+                  resource: entry.resource,
+                });
+              }
+            }
+          }
+        }
+        break;
+      }
+
+      case 'Procedure': {
+        // Check if adapter supports procedures
+        if ('getPatientProcedures' in this.config.fhirAdapter) {
+          const bundle = await (this.config.fhirAdapter as any).getPatientProcedures(patientId, tokenInfo);
+          if (bundle.entry) {
+            for (const entry of bundle.entry) {
+              if (entry.resource?.resourceType === 'Procedure') {
+                entries.push({
+                  fullUrl: entry.fullUrl,
+                  resource: entry.resource,
+                });
+              }
+            }
+          }
+        }
+        break;
+      }
 
       default:
-        throw new Error(`Unsupported resource type: ${resourceType}`);
-    }
-  }
-
-  /**
-   * Process bundle entries with batching
-   */
-  private async processBundleEntries<T>(
-    bundle: FhirBundle,
-    resourceType: string,
-    processor: (resource: T) => Promise<void>
-  ): Promise<void> {
-    if (!bundle.entry) return;
-
-    const entries = bundle.entry.filter(e => e.resource?.resourceType === resourceType);
-    const batchSize = this.config.batchSize || 100;
-
-    for (let i = 0; i < entries.length; i += batchSize) {
-      const batch = entries.slice(i, i + batchSize);
-      await Promise.all(
-        batch.map(entry => processor(entry.resource as T))
-      );
-    }
-  }
-
-  /**
-   * Process a FHIR Patient resource
-   */
-  private async processPatient(patient: FhirPatient): Promise<void> {
-    try {
-      const transformed = this.transformPatient(patient);
-
-      // Store in Holochain via zome call
-      await this.config.holochainClient.callZome({
-        cap_secret: null,
-        role_name: 'health',
-        zome_name: 'fhir_mapping',
-        fn_name: 'import_fhir_patient',
-        payload: {
-          fhir_patient: patient,
-          internal_data: transformed,
-        },
-      });
-
-      this.recordResult({
-        success: true,
-        resourceType: 'Patient',
-        resourceId: patient.id || 'unknown',
-        direction: 'pull',
-        timestamp: new Date(),
-        errors: [],
-      });
-    } catch (error) {
-      this.recordResult({
-        success: false,
-        resourceType: 'Patient',
-        resourceId: patient.id || 'unknown',
-        direction: 'pull',
-        timestamp: new Date(),
-        errors: [(error as Error).message],
-      });
-    }
-  }
-
-  /**
-   * Process a FHIR Observation resource
-   */
-  private async processObservation(observation: FhirObservation): Promise<void> {
-    try {
-      const transformed = this.transformObservation(observation);
-
-      await this.config.holochainClient.callZome({
-        cap_secret: null,
-        role_name: 'health',
-        zome_name: 'fhir_mapping',
-        fn_name: 'import_fhir_observation',
-        payload: {
-          fhir_observation: observation,
-          internal_data: transformed,
-        },
-      });
-
-      this.recordResult({
-        success: true,
-        resourceType: 'Observation',
-        resourceId: observation.id || 'unknown',
-        direction: 'pull',
-        timestamp: new Date(),
-        errors: [],
-      });
-    } catch (error) {
-      this.recordResult({
-        success: false,
-        resourceType: 'Observation',
-        resourceId: observation.id || 'unknown',
-        direction: 'pull',
-        timestamp: new Date(),
-        errors: [(error as Error).message],
-      });
-    }
-  }
-
-  /**
-   * Process a FHIR Condition resource
-   */
-  private async processCondition(condition: FhirCondition): Promise<void> {
-    try {
-      const transformed = this.transformCondition(condition);
-
-      await this.config.holochainClient.callZome({
-        cap_secret: null,
-        role_name: 'health',
-        zome_name: 'fhir_mapping',
-        fn_name: 'import_fhir_condition',
-        payload: {
-          fhir_condition: condition,
-          internal_data: transformed,
-        },
-      });
-
-      this.recordResult({
-        success: true,
-        resourceType: 'Condition',
-        resourceId: condition.id || 'unknown',
-        direction: 'pull',
-        timestamp: new Date(),
-        errors: [],
-      });
-    } catch (error) {
-      this.recordResult({
-        success: false,
-        resourceType: 'Condition',
-        resourceId: condition.id || 'unknown',
-        direction: 'pull',
-        timestamp: new Date(),
-        errors: [(error as Error).message],
-      });
-    }
-  }
-
-  /**
-   * Process a FHIR MedicationRequest resource
-   */
-  private async processMedication(medication: FhirMedicationRequest): Promise<void> {
-    try {
-      const transformed = this.transformMedication(medication);
-
-      await this.config.holochainClient.callZome({
-        cap_secret: null,
-        role_name: 'health',
-        zome_name: 'fhir_mapping',
-        fn_name: 'import_fhir_medication',
-        payload: {
-          fhir_medication: medication,
-          internal_data: transformed,
-        },
-      });
-
-      this.recordResult({
-        success: true,
-        resourceType: 'MedicationRequest',
-        resourceId: medication.id || 'unknown',
-        direction: 'pull',
-        timestamp: new Date(),
-        errors: [],
-      });
-    } catch (error) {
-      this.recordResult({
-        success: false,
-        resourceType: 'MedicationRequest',
-        resourceId: medication.id || 'unknown',
-        direction: 'pull',
-        timestamp: new Date(),
-        errors: [(error as Error).message],
-      });
-    }
-  }
-
-  // Transformation functions
-
-  private transformPatient(patient: FhirPatient): unknown {
-    if (this.config.transformers?.patient) {
-      return this.config.transformers.patient(patient);
+        console.warn(`Unsupported resource type: ${resourceType}`);
     }
 
-    // Default transformation to internal format
-    const name = patient.name?.[0];
-    return {
-      first_name: name?.given?.join(' ') || '',
-      last_name: name?.family || '',
-      date_of_birth: patient.birthDate || '',
-      gender: patient.gender || 'unknown',
-      identifiers: patient.identifier?.map(id => ({
-        system: id.system,
-        value: id.value,
-      })) || [],
-      contact: {
-        phone: patient.telecom?.find(t => t.system === 'phone')?.value,
-        email: patient.telecom?.find(t => t.system === 'email')?.value,
-        address: patient.address?.[0],
-      },
-    };
-  }
-
-  private transformObservation(observation: FhirObservation): unknown {
-    if (this.config.transformers?.observation) {
-      return this.config.transformers.observation(observation);
-    }
-
-    return {
-      code: observation.code.coding?.[0]?.code || '',
-      code_system: observation.code.coding?.[0]?.system || '',
-      display: observation.code.coding?.[0]?.display || observation.code.text || '',
-      value: observation.valueQuantity?.value,
-      unit: observation.valueQuantity?.unit,
-      effective_date: observation.effectiveDateTime,
-      status: observation.status,
-      interpretation: observation.interpretation?.[0]?.coding?.[0]?.code,
-    };
-  }
-
-  private transformCondition(condition: FhirCondition): unknown {
-    if (this.config.transformers?.condition) {
-      return this.config.transformers.condition(condition);
-    }
-
-    return {
-      code: condition.code?.coding?.[0]?.code || '',
-      code_system: condition.code?.coding?.[0]?.system || '',
-      display: condition.code?.coding?.[0]?.display || condition.code?.text || '',
-      clinical_status: condition.clinicalStatus?.coding?.[0]?.code || 'unknown',
-      verification_status: condition.verificationStatus?.coding?.[0]?.code || 'unknown',
-      onset_date: condition.onsetDateTime,
-      recorded_date: condition.recordedDate,
-    };
-  }
-
-  private transformMedication(medication: FhirMedicationRequest): unknown {
-    if (this.config.transformers?.medicationRequest) {
-      return this.config.transformers.medicationRequest(medication);
-    }
-
-    const medicationCode = medication.medicationCodeableConcept;
-    const dosage = medication.dosageInstruction?.[0];
-
-    return {
-      code: medicationCode?.coding?.[0]?.code || '',
-      code_system: medicationCode?.coding?.[0]?.system || '',
-      display: medicationCode?.coding?.[0]?.display || medicationCode?.text || '',
-      status: medication.status,
-      intent: medication.intent,
-      dosage_text: dosage?.text,
-      route: dosage?.route?.coding?.[0]?.display,
-      authored_on: medication.authoredOn,
-    };
+    return entries;
   }
 
   /**
@@ -394,7 +313,12 @@ export class PullService {
   /**
    * Get summary of sync results
    */
-  getSummary(): { total: number; success: number; failed: number; byType: Record<string, { success: number; failed: number }> } {
+  getSummary(): {
+    total: number;
+    success: number;
+    failed: number;
+    byType: Record<string, { success: number; failed: number }>;
+  } {
     const summary = {
       total: this.syncResults.length,
       success: 0,
@@ -421,5 +345,31 @@ export class PullService {
     }
 
     return summary;
+  }
+
+  /**
+   * Create an empty IngestReport for error cases
+   */
+  static emptyIngestReport(sourceSystem: string): IngestReport {
+    return {
+      source_system: sourceSystem,
+      total_processed: 0,
+      patients_created: 0,
+      patients_updated: 0,
+      conditions_created: 0,
+      conditions_skipped: 0,
+      medications_created: 0,
+      medications_skipped: 0,
+      allergies_created: 0,
+      allergies_skipped: 0,
+      immunizations_created: 0,
+      immunizations_skipped: 0,
+      observations_created: 0,
+      observations_skipped: 0,
+      procedures_created: 0,
+      procedures_skipped: 0,
+      unknown_types: [],
+      parse_errors: [],
+    };
   }
 }

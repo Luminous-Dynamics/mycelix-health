@@ -1,0 +1,111 @@
+{
+  "source": "Compiled from NMDP/IMGT-HLA frequency data",
+  "population": "US European Caucasian (representative)",
+  "note": "Frequencies are approximate and for simulation purposes only",
+  "loci": {
+    "A": {
+      "alleles": [
+        {"name": "A*02:01", "frequency": 0.28},
+        {"name": "A*01:01", "frequency": 0.17},
+        {"name": "A*03:01", "frequency": 0.13},
+        {"name": "A*24:02", "frequency": 0.09},
+        {"name": "A*11:01", "frequency": 0.06},
+        {"name": "A*26:01", "frequency": 0.04},
+        {"name": "A*32:01", "frequency": 0.04},
+        {"name": "A*29:02", "frequency": 0.03},
+        {"name": "A*68:01", "frequency": 0.03},
+        {"name": "A*31:01", "frequency": 0.03},
+        {"name": "A*25:01", "frequency": 0.02},
+        {"name": "A*33:01", "frequency": 0.02},
+        {"name": "A*30:01", "frequency": 0.02},
+        {"name": "A*23:01", "frequency": 0.02},
+        {"name": "A*other", "frequency": 0.02}
+      ]
+    },
+    "B": {
+      "alleles": [
+        {"name": "B*07:02", "frequency": 0.13},
+        {"name": "B*08:01", "frequency": 0.11},
+        {"name": "B*44:02", "frequency": 0.08},
+        {"name": "B*35:01", "frequency": 0.06},
+        {"name": "B*44:03", "frequency": 0.05},
+        {"name": "B*51:01", "frequency": 0.05},
+        {"name": "B*15:01", "frequency": 0.05},
+        {"name": "B*40:01", "frequency": 0.04},
+        {"name": "B*18:01", "frequency": 0.04},
+        {"name": "B*57:01", "frequency": 0.03},
+        {"name": "B*27:05", "frequency": 0.03},
+        {"name": "B*14:02", "frequency": 0.03},
+        {"name": "B*38:01", "frequency": 0.03},
+        {"name": "B*55:01", "frequency": 0.02},
+        {"name": "B*13:02", "frequency": 0.02},
+        {"name": "B*49:01", "frequency": 0.02},
+        {"name": "B*37:01", "frequency": 0.02},
+        {"name": "B*52:01", "frequency": 0.02},
+        {"name": "B*other", "frequency": 0.17}
+      ]
+    },
+    "C": {
+      "alleles": [
+        {"name": "C*07:01", "frequency": 0.15},
+        {"name": "C*07:02", "frequency": 0.12},
+        {"name": "C*04:01", "frequency": 0.11},
+        {"name": "C*05:01", "frequency": 0.09},
+        {"name": "C*06:02", "frequency": 0.08},
+        {"name": "C*03:04", "frequency": 0.07},
+        {"name": "C*02:02", "frequency": 0.05},
+        {"name": "C*03:03", "frequency": 0.05},
+        {"name": "C*01:02", "frequency": 0.04},
+        {"name": "C*12:03", "frequency": 0.04},
+        {"name": "C*08:02", "frequency": 0.03},
+        {"name": "C*16:01", "frequency": 0.03},
+        {"name": "C*15:02", "frequency": 0.02},
+        {"name": "C*14:02", "frequency": 0.02},
+        {"name": "C*other", "frequency": 0.10}
+      ]
+    },
+    "DRB1": {
+      "alleles": [
+        {"name": "DRB1*07:01", "frequency": 0.13},
+        {"name": "DRB1*15:01", "frequency": 0.12},
+        {"name": "DRB1*03:01", "frequency": 0.11},
+        {"name": "DRB1*04:01", "frequency": 0.09},
+        {"name": "DRB1*01:01", "frequency": 0.08},
+        {"name": "DRB1*13:01", "frequency": 0.06},
+        {"name": "DRB1*11:01", "frequency": 0.05},
+        {"name": "DRB1*04:04", "frequency": 0.04},
+        {"name": "DRB1*13:02", "frequency": 0.04},
+        {"name": "DRB1*08:01", "frequency": 0.03},
+        {"name": "DRB1*14:01", "frequency": 0.03},
+        {"name": "DRB1*11:04", "frequency": 0.03},
+        {"name": "DRB1*04:07", "frequency": 0.02},
+        {"name": "DRB1*12:01", "frequency": 0.02},
+        {"name": "DRB1*16:01", "frequency": 0.02},
+        {"name": "DRB1*other", "frequency": 0.13}
+      ]
+    },
+    "DQB1": {
+      "alleles": [
+        {"name": "DQB1*03:01", "frequency": 0.18},
+        {"name": "DQB1*02:01", "frequency": 0.15},
+        {"name": "DQB1*06:02", "frequency": 0.12},
+        {"name": "DQB1*05:01", "frequency": 0.10},
+        {"name": "DQB1*03:02", "frequency": 0.09},
+        {"name": "DQB1*02:02", "frequency": 0.08},
+        {"name": "DQB1*06:03", "frequency": 0.06},
+        {"name": "DQB1*03:03", "frequency": 0.05},
+        {"name": "DQB1*04:02", "frequency": 0.04},
+        {"name": "DQB1*05:02", "frequency": 0.03},
+        {"name": "DQB1*06:04", "frequency": 0.02},
+        {"name": "DQB1*05:03", "frequency": 0.02},
+        {"name": "DQB1*other", "frequency": 0.06}
+      ]
+    }
+  },
+  "common_haplotypes": [
+    {"haplotype": ["A*01:01", "B*08:01", "C*07:01", "DRB1*03:01", "DQB1*02:01"], "frequency": 0.04, "note": "8.1 ancestral haplotype"},
+    {"haplotype": ["A*03:01", "B*07:02", "C*07:02", "DRB1*15:01", "DQB1*06:02"], "frequency": 0.03, "note": "Common European"},
+    {"haplotype": ["A*02:01", "B*44:02", "C*05:01", "DRB1*04:01", "DQB1*03:02"], "frequency": 0.02, "note": "Common European"},
+    {"haplotype": ["A*29:02", "B*44:03", "C*16:01", "DRB1*07:01", "DQB1*02:02"], "frequency": 0.02, "note": "Common European"}
+  ]
+}

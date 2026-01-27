@@ -151,7 +151,7 @@ export class PushService {
     medications: Array<{ internal_hash: ActionHash; fhir_id?: string }>;
   }> {
     const result = await this.config.holochainClient.callZome({
-      cap_secret: null,
+      cap_secret: undefined,
       role_name: 'health',
       zome_name: 'fhir_mapping',
       fn_name: 'get_patient_fhir_mappings',
@@ -207,7 +207,7 @@ export class PushService {
     try {
       // Get internal patient data
       const internalPatient = await this.config.holochainClient.callZome({
-        cap_secret: null,
+        cap_secret: undefined,
         role_name: 'health',
         zome_name: 'patient',
         fn_name: 'get_patient',
@@ -272,7 +272,7 @@ export class PushService {
   ): Promise<void> {
     // Get all observations for patient
     const observations = await this.config.holochainClient.callZome({
-      cap_secret: null,
+      cap_secret: undefined,
       role_name: 'health',
       zome_name: 'medical_records',
       fn_name: 'get_patient_observations',
@@ -353,7 +353,7 @@ export class PushService {
     options: PushOptions
   ): Promise<void> {
     const conditions = await this.config.holochainClient.callZome({
-      cap_secret: null,
+      cap_secret: undefined,
       role_name: 'health',
       zome_name: 'medical_records',
       fn_name: 'get_patient_conditions',
@@ -434,7 +434,7 @@ export class PushService {
     options: PushOptions
   ): Promise<void> {
     const medications = await this.config.holochainClient.callZome({
-      cap_secret: null,
+      cap_secret: undefined,
       role_name: 'health',
       zome_name: 'medical_records',
       fn_name: 'get_patient_medications',
@@ -647,7 +647,7 @@ export class PushService {
     fhirId: string
   ): Promise<void> {
     await this.config.holochainClient.callZome({
-      cap_secret: null,
+      cap_secret: undefined,
       role_name: 'health',
       zome_name: 'fhir_mapping',
       fn_name: 'update_fhir_mapping',

@@ -194,11 +194,14 @@ export class EhrGateway {
       connection.tokenManager.storeToken(tokenKey, refreshed);
     }
 
-    return connection.pullService.pullPatientData(
+    const result = await connection.pullService.pullPatientData(
       patientId,
       connection.tokenManager.getToken(tokenKey)!,
       options
     );
+
+    // Return just the sync results for backwards compatibility
+    return result.syncResults;
   }
 
   /**
@@ -335,7 +338,7 @@ export class EhrGateway {
   ): Promise<{ data: unknown; version: string } | null> {
     try {
       const result = await this.config.holochainClient.callZome({
-        cap_secret: null,
+        cap_secret: undefined,
         role_name: 'health',
         zome_name: 'fhir_mapping',
         fn_name: 'get_local_resource',

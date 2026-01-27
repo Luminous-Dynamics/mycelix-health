@@ -76,6 +76,12 @@ members = [
     "zomes/verifiable_credentials/coordinator",
     "zomes/mobile_support/integrity",
     "zomes/mobile_support/coordinator",
+    # HDC Genetics (Privacy-Preserving Genetic Similarity)
+    "zomes/hdc_genetics/integrity",
+    "zomes/hdc_genetics/coordinator",
+    # HDC Core Libraries (native target only)
+    "crates/hdc-core",
+    "crates/hdc-experiments",
 ]
 
 # Tests are separate - run with: cargo test -p mycelix-health-tests

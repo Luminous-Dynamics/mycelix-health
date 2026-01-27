@@ -264,3 +264,119 @@ export interface ConflictInfo {
   remoteData: unknown;
   conflictType: 'update' | 'delete' | 'create';
 }
+
+// ============================================================================
+// Holochain Zome Types - Aligned with fhir_bridge coordinator
+// ============================================================================
+
+/**
+ * Input for the ingest_bundle zome function
+ * Must match IngestBundleInput in the Rust zome
+ */
+export interface IngestBundleInput {
+  /** The raw FHIR bundle from the EHR */
+  bundle: FhirBundle;
+  /** Source system identifier (e.g., "epic-mychart") */
+  source_system: string;
+}
+
+/**
+ * Report returned from the ingest_bundle zome function
+ * Must match IngestReport in the Rust zome
+ */
+export interface IngestReport {
+  /** Source system that sent the data */
+  source_system: string;
+  /** Total number of resources processed */
+  total_processed: number;
+  /** Number of patients created */
+  patients_created: number;
+  /** Number of patients updated */
+  patients_updated: number;
+  /** Number of conditions created */
+  conditions_created: number;
+  /** Number of conditions skipped (duplicates) */
+  conditions_skipped: number;
+  /** Number of medications created */
+  medications_created: number;
+  /** Number of medications skipped (duplicates) */
+  medications_skipped: number;
+  /** Number of allergies created */
+  allergies_created: number;
+  /** Number of allergies skipped (duplicates) */
+  allergies_skipped: number;
+  /** Number of immunizations created */
+  immunizations_created: number;
+  /** Number of immunizations skipped */
+  immunizations_skipped: number;
+  /** Number of observations created */
+  observations_created: number;
+  /** Number of observations skipped */
+  observations_skipped: number;
+  /** Number of procedures created */
+  procedures_created: number;
+  /** Number of procedures skipped */
+  procedures_skipped: number;
+  /** List of unknown resource types encountered */
+  unknown_types: string[];
+  /** List of parse errors encountered */
+  parse_errors: string[];
+}
+
+/**
+ * Zod schema for IngestReport validation
+ */
+export const IngestReportSchema = z.object({
+  source_system: z.string(),
+  total_processed: z.number(),
+  patients_created: z.number(),
+  patients_updated: z.number(),
+  conditions_created: z.number(),
+  conditions_skipped: z.number(),
+  medications_created: z.number(),
+  medications_skipped: z.number(),
+  allergies_created: z.number(),
+  allergies_skipped: z.number(),
+  immunizations_created: z.number(),
+  immunizations_skipped: z.number(),
+  observations_created: z.number(),
+  observations_skipped: z.number(),
+  procedures_created: z.number(),
+  procedures_skipped: z.number(),
+  unknown_types: z.array(z.string()),
+  parse_errors: z.array(z.string()),
+});
+
+/**
+ * Input for exporting patient data as FHIR
+ */
+export interface ExportPatientInput {
+  patient_hash: string;
+  include_sections: string[];
+}
+
+/**
+ * Result from FHIR export operations
+ */
+export interface FhirExportResult {
+  bundle: string;
+  resource_count: number;
+  export_timestamp: number;
+}
+
+/**
+ * Sync job status for tracking async operations
+ */
+export type SyncJobStatus = 'pending' | 'running' | 'completed' | 'failed';
+
+export interface SyncJob {
+  id: string;
+  connectionId: string;
+  patientId: string;
+  status: SyncJobStatus;
+  startedAt: Date;
+  completedAt?: Date;
+  results?: SyncResult[];
+  ingestReport?: IngestReport;
+  error?: string;
+}
