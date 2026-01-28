@@ -95,7 +95,7 @@ pub fn add_dietary_restriction(restriction: DietaryRestriction) -> ExternResult<
     }
 
     let record = get(action_hash, GetOptions::default())?
-        .ok_or(wasm_error!(WasmErrorInner::Guest("Failed to get created restriction".into())))
+        .ok_or(wasm_error!(WasmErrorInner::Guest("Failed to get created restriction".into())))?;
 
     log_data_access(
         restriction.patient_hash,
@@ -283,6 +283,12 @@ pub fn get_all_interactions(_: ()) -> ExternResult<Vec<Record>> {
 /// Check food safety for a patient based on their medications
 #[hdk_extern]
 pub fn check_food_safety(input: CheckFoodSafetyInput) -> ExternResult<FoodSafetyResult> {
+    let auth = require_authorization(
+        input.patient_hash.clone(),
+        DataCategory::Medications,
+        Permission::Read,
+        false,
+    )?;
     let mut warnings = Vec::new();
     let mut contraindicated = Vec::new();
 
@@ -338,11 +344,22 @@ pub fn check_food_safety(input: CheckFoodSafetyInput) -> ExternResult<FoodSafety
         }
     }
 
-    Ok(FoodSafetyResult {
+    let result = FoodSafetyResult {
         safe: contraindicated.is_empty(),
         warnings,
         contraindicated,
-    })
+    };
+
+    log_data_access(
+        input.patient_hash,
+        vec![DataCategory::Medications],
+        Permission::Read,
+        auth.consent_hash,
+        auth.emergency_override,
+        None,
+    )?;
+
+    Ok(result)
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -373,8 +390,14 @@ pub struct FoodWarning {
 /// Get active nutrition goals for a patient
 #[hdk_extern]
 pub fn get_patient_goals(patient_hash: ActionHash) -> ExternResult<Vec<Record>> {
+    let auth = require_authorization(
+        patient_hash.clone(),
+        DataCategory::All,
+        Permission::Read,
+        false,
+    )?;
     let links = get_links(
-        LinkQuery::try_new(patient_hash, LinkTypes::PatientToGoals)?,
+        LinkQuery::try_new(patient_hash.clone(), LinkTypes::PatientToGoals)?,
         GetStrategy::default(),
     )?;
 
@@ -397,12 +420,29 @@ pub fn get_patient_goals(patient_hash: ActionHash) -> ExternResult<Vec<Record>> 
         }
     }
 
+    if !records.is_empty() {
+        log_data_access(
+            patient_hash,
+            vec![DataCategory::All],
+            Permission::Read,
+            auth.consent_hash,
+            auth.emergency_override,
+            None,
+        )?;
+    }
+
     Ok(records)
 }
 
 /// Create a nutrition goal
 #[hdk_extern]
 pub fn create_nutrition_goal(goal: NutritionGoal) -> ExternResult<Record> {
+    let auth = require_authorization(
+        goal.patient_hash.clone(),
+        DataCategory::All,
+        Permission::Write,
+        false,
+    )?;
     let action_hash = create_entry(&EntryTypes::NutritionGoal(goal.clone()))?;
 
     create_link(
@@ -412,17 +452,61 @@ pub fn create_nutrition_goal(goal: NutritionGoal) -> ExternResult<Record> {
         (),
     )?;
 
-    get(action_hash, GetOptions::default())?
-        .ok_or(wasm_error!(WasmErrorInner::Guest("Failed to get created goal".into())))
+    let record = get(action_hash, GetOptions::default())?
+        .ok_or(wasm_error!(WasmErrorInner::Guest("Failed to get created goal".into())))?;
+
+    log_data_access(
+        goal.patient_hash,
+        vec![DataCategory::All],
+        Permission::Write,
+        auth.consent_hash,
+        auth.emergency_override,
+        None,
+    )?;
+
+    Ok(record)
 }
 
 /// Update a nutrition goal
 #[hdk_extern]
 pub fn update_nutrition_goal(input: UpdateGoalInput) -> ExternResult<Record> {
-    update_entry(input.original_hash.clone(), &input.updated_goal)?;
+    let record = get(input.original_hash.clone(), GetOptions::default())?
+        .ok_or(wasm_error!(WasmErrorInner::Guest("Goal not found".into())))?;
 
-    get(input.original_hash, GetOptions::default())?
-        .ok_or(wasm_error!(WasmErrorInner::Guest("Failed to get updated goal".into())))
+    let existing: NutritionGoal = record
+        .entry()
+        .to_app_option()
+        .map_err(|e| wasm_error!(WasmErrorInner::Guest(e.to_string())))?
+        .ok_or(wasm_error!(WasmErrorInner::Guest("Invalid goal entry".into())))?;
+
+    if existing.patient_hash != input.updated_goal.patient_hash {
+        return Err(wasm_error!(WasmErrorInner::Guest(
+            "Cannot change patient_hash on a goal".into()
+        )));
+    }
+
+    let auth = require_authorization(
+        input.updated_goal.patient_hash.clone(),
+        DataCategory::All,
+        Permission::Write,
+        false,
+    )?;
+
+    let updated_hash = update_entry(input.original_hash, &input.updated_goal)?;
+
+    let updated_record = get(updated_hash, GetOptions::default())?
+        .ok_or(wasm_error!(WasmErrorInner::Guest("Failed to get updated goal".into())))?;
+
+    log_data_access(
+        input.updated_goal.patient_hash,
+        vec![DataCategory::All],
+        Permission::Write,
+        auth.consent_hash,
+        auth.emergency_override,
+        None,
+    )?;
+
+    Ok(updated_record)
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -438,6 +522,12 @@ pub struct UpdateGoalInput {
 /// Log a meal
 #[hdk_extern]
 pub fn log_meal(meal: MealLog) -> ExternResult<Record> {
+    let auth = require_authorization(
+        meal.patient_hash.clone(),
+        DataCategory::All,
+        Permission::Write,
+        false,
+    )?;
     let action_hash = create_entry(&EntryTypes::MealLog(meal.clone()))?;
 
     // Link from patient
@@ -448,15 +538,32 @@ pub fn log_meal(meal: MealLog) -> ExternResult<Record> {
         (),
     )?;
 
-    get(action_hash, GetOptions::default())?
-        .ok_or(wasm_error!(WasmErrorInner::Guest("Failed to get created meal log".into())))
+    let record = get(action_hash, GetOptions::default())?
+        .ok_or(wasm_error!(WasmErrorInner::Guest("Failed to get created meal log".into())))?;
+
+    log_data_access(
+        meal.patient_hash,
+        vec![DataCategory::All],
+        Permission::Write,
+        auth.consent_hash,
+        auth.emergency_override,
+        None,
+    )?;
+
+    Ok(record)
 }
 
 /// Get patient's meal logs for a date range
 #[hdk_extern]
 pub fn get_patient_meals(input: GetMealsInput) -> ExternResult<Vec<Record>> {
+    let auth = require_authorization(
+        input.patient_hash.clone(),
+        DataCategory::All,
+        Permission::Read,
+        false,
+    )?;
     let links = get_links(
-        LinkQuery::try_new(input.patient_hash, LinkTypes::PatientToMeals)?,
+        LinkQuery::try_new(input.patient_hash.clone(), LinkTypes::PatientToMeals)?,
         GetStrategy::default(),
     )?;
 
@@ -478,6 +585,17 @@ pub fn get_patient_meals(input: GetMealsInput) -> ExternResult<Vec<Record>> {
                 }
             }
         }
+    }
+
+    if !records.is_empty() {
+        log_data_access(
+            input.patient_hash,
+            vec![DataCategory::All],
+            Permission::Read,
+            auth.consent_hash,
+            auth.emergency_override,
+            None,
+        )?;
     }
 
     Ok(records)
@@ -609,8 +727,14 @@ pub struct GoalProgress {
 /// Get patient's active recommendations
 #[hdk_extern]
 pub fn get_patient_recommendations(patient_hash: ActionHash) -> ExternResult<Vec<Record>> {
+    let auth = require_authorization(
+        patient_hash.clone(),
+        DataCategory::All,
+        Permission::Read,
+        false,
+    )?;
     let links = get_links(
-        LinkQuery::try_new(patient_hash, LinkTypes::PatientToRecommendations)?,
+        LinkQuery::try_new(patient_hash.clone(), LinkTypes::PatientToRecommendations)?,
         GetStrategy::default(),
     )?;
 
@@ -639,12 +763,29 @@ pub fn get_patient_recommendations(patient_hash: ActionHash) -> ExternResult<Vec
         }
     }
 
+    if !records.is_empty() {
+        log_data_access(
+            patient_hash,
+            vec![DataCategory::All],
+            Permission::Read,
+            auth.consent_hash,
+            auth.emergency_override,
+            None,
+        )?;
+    }
+
     Ok(records)
 }
 
 /// Create a nutrition recommendation
 #[hdk_extern]
 pub fn create_recommendation(rec: NutritionRecommendation) -> ExternResult<Record> {
+    let auth = require_authorization(
+        rec.patient_hash.clone(),
+        DataCategory::All,
+        Permission::Write,
+        false,
+    )?;
     let action_hash = create_entry(&EntryTypes::NutritionRecommendation(rec.clone()))?;
 
     create_link(
@@ -654,8 +795,19 @@ pub fn create_recommendation(rec: NutritionRecommendation) -> ExternResult<Recor
         (),
     )?;
 
-    get(action_hash, GetOptions::default())?
-        .ok_or(wasm_error!(WasmErrorInner::Guest("Failed to get created recommendation".into())))
+    let record = get(action_hash, GetOptions::default())?
+        .ok_or(wasm_error!(WasmErrorInner::Guest("Failed to get created recommendation".into())))?;
+
+    log_data_access(
+        rec.patient_hash,
+        vec![DataCategory::All],
+        Permission::Write,
+        auth.consent_hash,
+        auth.emergency_override,
+        None,
+    )?;
+
+    Ok(record)
 }
 
 /// Acknowledge a recommendation
@@ -673,10 +825,28 @@ pub fn acknowledge_recommendation(rec_hash: ActionHash) -> ExternResult<Record> 
     rec.acknowledged = true;
     rec.acknowledged_at = Some(sys_time()?);
 
-    update_entry(rec_hash.clone(), &rec)?;
+    let auth = require_authorization(
+        rec.patient_hash.clone(),
+        DataCategory::All,
+        Permission::Write,
+        false,
+    )?;
 
-    get(rec_hash, GetOptions::default())?
-        .ok_or(wasm_error!(WasmErrorInner::Guest("Failed to get updated recommendation".into())))
+    let updated_hash = update_entry(rec_hash, &rec)?;
+
+    let updated_record = get(updated_hash, GetOptions::default())?
+        .ok_or(wasm_error!(WasmErrorInner::Guest("Failed to get updated recommendation".into())))?;
+
+    log_data_access(
+        rec.patient_hash,
+        vec![DataCategory::All],
+        Permission::Write,
+        auth.consent_hash,
+        auth.emergency_override,
+        None,
+    )?;
+
+    Ok(updated_record)
 }
 
 // ============================================================================
@@ -717,6 +887,12 @@ pub struct SdohNutritionRecommendationsOutput {
 pub fn generate_recommendations_from_sdoh(
     input: SdohFoodSecurityInput,
 ) -> ExternResult<SdohNutritionRecommendationsOutput> {
+    let auth = require_authorization(
+        input.patient_hash.clone(),
+        DataCategory::All,
+        Permission::Write,
+        false,
+    )?;
     let mut recommendations_created = 0;
     let mut recommendation_hashes = Vec::new();
     let now = sys_time()?;
@@ -913,6 +1089,17 @@ pub fn generate_recommendations_from_sdoh(
             recommendation_hashes.push(hash);
             recommendations_created += 1;
         }
+    }
+
+    if recommendations_created > 0 {
+        log_data_access(
+            input.patient_hash,
+            vec![DataCategory::All],
+            Permission::Write,
+            auth.consent_hash,
+            auth.emergency_override,
+            None,
+        )?;
     }
 
     Ok(SdohNutritionRecommendationsOutput {

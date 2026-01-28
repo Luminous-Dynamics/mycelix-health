@@ -532,7 +532,7 @@ pub fn get_patient_genetic_vectors(patient_hash: ActionHash) -> ExternResult<Vec
         false,
     )?;
     let links = get_links(
-        LinkQuery::try_new(patient_hash, LinkTypes::PatientToVectors)?,
+        LinkQuery::try_new(patient_hash.clone(), LinkTypes::PatientToVectors)?,
         GetStrategy::default(),
     )?;
 

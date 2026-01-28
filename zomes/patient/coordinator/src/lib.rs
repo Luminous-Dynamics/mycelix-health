@@ -222,6 +222,12 @@ pub fn search_patients_by_name(input: SearchPatientsInput) -> ExternResult<Vec<R
 /// 4. A PatientToIdentityLink link from patient to the identity link record
 #[hdk_extern]
 pub fn link_patient_to_identity(input: LinkIdentityInput) -> ExternResult<Record> {
+    let auth = require_authorization(
+        input.patient_hash.clone(),
+        DataCategory::Demographics,
+        Permission::Write,
+        false,
+    )?;
     let link = PatientIdentityLink {
         patient_hash: input.patient_hash.clone(),
         did: input.did.clone(),
@@ -256,10 +262,19 @@ pub fn link_patient_to_identity(input: LinkIdentityInput) -> ExternResult<Record
 
     // Link from Patient → IdentityLink record
     create_link(
-        input.patient_hash,
+        input.patient_hash.clone(),
         link_hash,
         LinkTypes::PatientToIdentityLink,
         (),
+    )?;
+
+    log_data_access(
+        input.patient_hash,
+        vec![DataCategory::Demographics],
+        Permission::Write,
+        auth.consent_hash,
+        auth.emergency_override,
+        None,
     )?;
 
     Ok(record)
@@ -353,6 +368,12 @@ pub struct PatientDIDInfo {
 /// Returns the patient's verified DID for cross-domain identity sharing
 #[hdk_extern]
 pub fn get_did_for_patient(input: GetDIDForPatientInput) -> ExternResult<Option<PatientDIDInfo>> {
+    let auth = require_authorization(
+        input.patient_hash.clone(),
+        DataCategory::Demographics,
+        Permission::Read,
+        false,
+    )?;
     // Get identity links for this patient
     let links = get_links(
         LinkQuery::try_new(input.patient_hash.clone(), LinkTypes::PatientToIdentityLink)?,
@@ -364,6 +385,14 @@ pub fn get_did_for_patient(input: GetDIDForPatientInput) -> ExternResult<Option<
         if let Some(link_hash) = link.target.into_action_hash() {
             if let Some(record) = get(link_hash, GetOptions::default())? {
                 if let Some(identity_link) = record.entry().to_app_option::<PatientIdentityLink>().ok().flatten() {
+                    log_data_access(
+                        input.patient_hash.clone(),
+                        vec![DataCategory::Demographics],
+                        Permission::Read,
+                        auth.consent_hash,
+                        auth.emergency_override,
+                        None,
+                    )?;
                     return Ok(Some(PatientDIDInfo {
                         patient_hash: input.patient_hash,
                         did: identity_link.did,
@@ -414,9 +443,24 @@ pub fn verify_did_patient_link(input: VerifyDIDPatientLinkInput) -> ExternResult
 /// Create patient health summary
 #[hdk_extern]
 pub fn create_health_summary(summary: PatientHealthSummary) -> ExternResult<Record> {
+    let auth = require_authorization(
+        summary.patient_hash.clone(),
+        DataCategory::All,
+        Permission::Write,
+        false,
+    )?;
     let summary_hash = create_entry(&EntryTypes::PatientHealthSummary(summary.clone()))?;
     let record = get(summary_hash, GetOptions::default())?
         .ok_or(wasm_error!(WasmErrorInner::Guest("Could not find health summary".to_string())))?;
+
+    log_data_access(
+        summary.patient_hash,
+        vec![DataCategory::All],
+        Permission::Write,
+        auth.consent_hash,
+        auth.emergency_override,
+        None,
+    )?;
     
     Ok(record)
 }

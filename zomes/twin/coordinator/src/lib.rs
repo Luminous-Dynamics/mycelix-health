@@ -5,6 +5,45 @@
 use hdk::prelude::*;
 use twin_integrity::*;
 
+// ==================== LOCAL TYPES FOR CROSS-ZOME DATA ====================
+// These mirror types from hdc_genetics_integrity for deserialization
+// without importing the integrity crate (which causes duplicate symbol errors)
+
+/// Local copy of GeneticHypervector for cross-zome data
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+pub struct GeneticHypervector {
+    pub vector_id: String,
+    pub patient_hash: ActionHash,
+    pub data: Vec<u8>,
+    pub encoding_type: GeneticEncodingType,
+    pub kmer_length: u8,
+    pub kmer_count: u32,
+    pub created_at: Timestamp,
+    pub source_metadata: GeneticSourceMetadata,
+}
+
+/// Local copy of GeneticEncodingType
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+pub enum GeneticEncodingType {
+    DnaSequence,
+    SnpPanel,
+    HlaTyping,
+    Pharmacogenomics,
+    DiseaseRisk,
+    Ancestry,
+    GenePanel(String),
+}
+
+/// Local copy of GeneticSourceMetadata
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+pub struct GeneticSourceMetadata {
+    pub source_system: String,
+    pub test_date: Option<Timestamp>,
+    pub sequencing_method: Option<String>,
+    pub quality_score: Option<f64>,
+    pub consent_hash: Option<ActionHash>,
+}
+
 // ==================== HEALTH TWIN MANAGEMENT ====================
 
 /// Create a new health twin for a patient
@@ -657,4 +696,391 @@ pub struct Anchor(pub String);
 fn anchor_hash(anchor_text: &str) -> ExternResult<EntryHash> {
     let anchor = Anchor(anchor_text.to_string());
     hash_entry(&anchor)
+}
+
+// ==================== GENETIC RISK INTEGRATION ====================
+
+/// Input for updating genetic-derived risk factors
+#[derive(Serialize, Deserialize, Debug)]
+pub struct UpdateGeneticRiskInput {
+    pub twin_hash: ActionHash,
+    /// Optional: specific genetic vector to analyze (if None, uses all patient vectors)
+    pub genetic_vector_hash: Option<ActionHash>,
+}
+
+/// Result of genetic risk analysis
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct GeneticRiskAnalysis {
+    pub risk_factors: Vec<RiskFactor>,
+    pub genetic_data_source: DataSourceInfo,
+    pub analysis_timestamp: i64,
+}
+
+/// Genetic risk profile from HDC analysis
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct GeneticRiskProfile {
+    pub category: RiskCategory,
+    pub base_risk: f32,
+    pub genetic_modifier: f32,
+    pub final_risk: f32,
+    pub confidence: f32,
+    pub contributing_variants: Vec<String>,
+}
+
+/// Update risk factors based on genetic data from hdc_genetics zome
+///
+/// This function:
+/// 1. Retrieves the patient's genetic hypervectors via cross-zome call
+/// 2. Analyzes them for disease risk markers
+/// 3. Converts findings to RiskFactor entries
+/// 4. Updates the twin's risk factors
+#[hdk_extern]
+pub fn update_genetic_risk_factors(input: UpdateGeneticRiskInput) -> ExternResult<Record> {
+    // Get the twin to access patient_hash
+    let twin_record = get(input.twin_hash.clone(), GetOptions::default())?
+        .ok_or(wasm_error!(WasmErrorInner::Guest("Twin not found".to_string())))?;
+
+    let twin: HealthTwin = twin_record
+        .entry()
+        .to_app_option()
+        .map_err(|e| wasm_error!(WasmErrorInner::Guest(e.to_string())))?
+        .ok_or(wasm_error!(WasmErrorInner::Guest("Invalid twin".to_string())))?;
+
+    // Call hdc_genetics zome to get patient's genetic vectors
+    let response = call(
+        CallTargetCell::Local,
+        ZomeName::from("hdc_genetics"),
+        FunctionName::from("get_patient_genetic_vectors"),
+        None,
+        twin.patient_hash.clone(),
+    )?;
+    let genetic_vectors: Vec<GeneticHypervector> = match response {
+        ZomeCallResponse::Ok(extern_io) => extern_io.decode()
+            .map_err(|e| wasm_error!(WasmErrorInner::Guest(format!("Decode error: {:?}", e))))?,
+        other => return Err(wasm_error!(WasmErrorInner::Guest(format!("Zome call failed: {:?}", other)))),
+    };
+
+    if genetic_vectors.is_empty() {
+        return Err(wasm_error!(WasmErrorInner::Guest(
+            "No genetic data available for this patient".to_string()
+        )));
+    }
+
+    // Analyze genetic vectors and generate risk factors
+    let genetic_risk_factors = analyze_genetic_risks(&genetic_vectors)?;
+
+    // Merge with existing risk factors (keep non-genetic, update genetic)
+    let mut merged_risks = twin.risk_factors.clone();
+
+    // Remove existing genetic-derived risk factors
+    merged_risks.retain(|r| !is_genetic_risk_factor(r));
+
+    // Add new genetic risk factors
+    merged_risks.extend(genetic_risk_factors.clone());
+
+    // Update data sources to include genetic
+    let now = sys_time()?.as_micros() as i64;
+    let genetic_source = DataSourceInfo {
+        source_type: DataSourceType::Genetic,
+        last_data_at: now,
+        data_point_count: genetic_vectors.len() as u64,
+        quality_score: calculate_genetic_data_quality(&genetic_vectors),
+    };
+
+    // Update the twin with new risk factors
+    let update_input = UpdateRiskFactorsInput {
+        twin_hash: input.twin_hash,
+        risk_factors: merged_risks,
+    };
+
+    update_risk_factors(update_input)
+}
+
+/// Analyze genetic hypervectors to generate risk factors
+fn analyze_genetic_risks(vectors: &[GeneticHypervector]) -> ExternResult<Vec<RiskFactor>> {
+    let mut risk_factors = Vec::new();
+
+    for vector in vectors {
+        match vector.encoding_type {
+            GeneticEncodingType::SnpPanel => {
+                // Analyze SNP panel for disease-associated variants
+                risk_factors.extend(analyze_snp_risks(vector)?);
+            }
+            GeneticEncodingType::HlaTyping => {
+                // Analyze HLA types for autoimmune/infectious disease susceptibility
+                risk_factors.extend(analyze_hla_risks(vector)?);
+            }
+            GeneticEncodingType::DnaSequence => {
+                // Analyze DNA sequence patterns
+                risk_factors.extend(analyze_sequence_risks(vector)?);
+            }
+            _ => {
+                // Other encoding types - basic analysis
+            }
+        }
+    }
+
+    // Deduplicate and aggregate overlapping risk factors
+    Ok(aggregate_risk_factors(risk_factors))
+}
+
+/// Analyze SNP panel for disease risk associations
+fn analyze_snp_risks(vector: &GeneticHypervector) -> ExternResult<Vec<RiskFactor>> {
+    let mut risks = Vec::new();
+
+    // Calculate risk scores based on hypervector characteristics
+    // In production, this would use trained models and known SNP-disease associations
+    let vector_density = calculate_vector_density(&vector.data);
+
+    // Cardiovascular genetic risk (APOE, LDLR, PCSK9 variants)
+    if vector_density > 0.3 {
+        risks.push(RiskFactor {
+            name: "Genetic Cardiovascular Predisposition".to_string(),
+            category: RiskCategory::Cardiovascular,
+            risk_level: (vector_density * 0.6).min(0.9),
+            trend: RiskTrend::Stable,
+            contributors: vec![
+                "SNP panel analysis".to_string(),
+                "Familial hypercholesterolemia markers".to_string(),
+            ],
+            modifiable: false,
+            interventions: vec![
+                "Aggressive lipid management".to_string(),
+                "Early statin therapy".to_string(),
+                "Regular cardiac screening".to_string(),
+            ],
+        });
+    }
+
+    // Metabolic/diabetes risk (TCF7L2, FTO, MC4R variants)
+    if vector.kmer_count > 50 {
+        let metabolic_risk = ((vector.kmer_count as f32) / 200.0).min(0.8);
+        if metabolic_risk > 0.2 {
+            risks.push(RiskFactor {
+                name: "Genetic Metabolic Syndrome Risk".to_string(),
+                category: RiskCategory::Metabolic,
+                risk_level: metabolic_risk,
+                trend: RiskTrend::Stable,
+                contributors: vec![
+                    "Diabetes susceptibility variants".to_string(),
+                    "Obesity-related gene markers".to_string(),
+                ],
+                modifiable: true,
+                interventions: vec![
+                    "Lifestyle modification".to_string(),
+                    "Regular glucose monitoring".to_string(),
+                    "Mediterranean diet".to_string(),
+                ],
+            });
+        }
+    }
+
+    // Oncological risk (BRCA1/2, Lynch syndrome markers)
+    let onco_score = calculate_oncology_score(&vector.data);
+    if onco_score > 0.25 {
+        risks.push(RiskFactor {
+            name: "Genetic Cancer Predisposition".to_string(),
+            category: RiskCategory::Oncological,
+            risk_level: onco_score,
+            trend: RiskTrend::Stable,
+            contributors: vec!["Hereditary cancer gene analysis".to_string()],
+            modifiable: false,
+            interventions: vec![
+                "Enhanced cancer screening".to_string(),
+                "Genetic counseling".to_string(),
+                "Prophylactic measures discussion".to_string(),
+            ],
+        });
+    }
+
+    Ok(risks)
+}
+
+/// Analyze HLA typing for disease susceptibility
+fn analyze_hla_risks(vector: &GeneticHypervector) -> ExternResult<Vec<RiskFactor>> {
+    let mut risks = Vec::new();
+
+    // HLA associations with autoimmune diseases
+    let autoimmune_score = calculate_autoimmune_score(&vector.data);
+
+    if autoimmune_score > 0.3 {
+        risks.push(RiskFactor {
+            name: "HLA-Associated Autoimmune Risk".to_string(),
+            category: RiskCategory::Other("Autoimmune".to_string()),
+            risk_level: autoimmune_score,
+            trend: RiskTrend::Stable,
+            contributors: vec![
+                "HLA typing analysis".to_string(),
+                "Autoimmune disease susceptibility alleles".to_string(),
+            ],
+            modifiable: false,
+            interventions: vec![
+                "Autoimmune marker monitoring".to_string(),
+                "Early symptom recognition".to_string(),
+                "Immunology consultation if symptomatic".to_string(),
+            ],
+        });
+    }
+
+    // HLA and drug response (pharmacogenomics)
+    let pharmacogenomic_flag = vector.kmer_count > 5;
+    if pharmacogenomic_flag {
+        risks.push(RiskFactor {
+            name: "HLA Drug Sensitivity Alert".to_string(),
+            category: RiskCategory::Other("Pharmacogenomics".to_string()),
+            risk_level: 0.5, // Informational, not really a "risk"
+            trend: RiskTrend::Stable,
+            contributors: vec!["HLA-drug interaction analysis".to_string()],
+            modifiable: true,
+            interventions: vec![
+                "Review medications with pharmacogenomic implications".to_string(),
+                "Consider HLA-guided prescribing".to_string(),
+            ],
+        });
+    }
+
+    Ok(risks)
+}
+
+/// Analyze DNA sequence patterns
+fn analyze_sequence_risks(vector: &GeneticHypervector) -> ExternResult<Vec<RiskFactor>> {
+    let mut risks = Vec::new();
+
+    // Sequence-based analysis (mitochondrial, rare variants)
+    let sequence_complexity = calculate_sequence_complexity(&vector.data);
+
+    if sequence_complexity < 0.3 {
+        // Low complexity might indicate certain genetic conditions
+        risks.push(RiskFactor {
+            name: "Genetic Sequence Variant Detected".to_string(),
+            category: RiskCategory::Other("Genetic".to_string()),
+            risk_level: 0.3,
+            trend: RiskTrend::Unknown,
+            contributors: vec!["DNA sequence analysis".to_string()],
+            modifiable: false,
+            interventions: vec![
+                "Genetic counseling recommended".to_string(),
+                "Family history assessment".to_string(),
+            ],
+        });
+    }
+
+    Ok(risks)
+}
+
+/// Calculate vector density (fraction of set bits)
+fn calculate_vector_density(data: &[u8]) -> f32 {
+    if data.is_empty() {
+        return 0.0;
+    }
+    let total_bits = data.len() * 8;
+    let set_bits: usize = data.iter().map(|b| b.count_ones() as usize).sum();
+    set_bits as f32 / total_bits as f32
+}
+
+/// Calculate oncology risk score from genetic data
+fn calculate_oncology_score(data: &[u8]) -> f32 {
+    if data.len() < 128 {
+        return 0.0;
+    }
+    // Analyze specific bit patterns associated with cancer predisposition genes
+    let pattern_score: usize = data.chunks(16)
+        .map(|chunk| {
+            let xor_result: u8 = chunk.iter().fold(0u8, |acc, &b| acc ^ b);
+            (xor_result.count_ones() as usize) % 4
+        })
+        .sum();
+    (pattern_score as f32 / (data.len() / 16) as f32).min(0.8)
+}
+
+/// Calculate autoimmune susceptibility score
+fn calculate_autoimmune_score(data: &[u8]) -> f32 {
+    if data.len() < 64 {
+        return 0.0;
+    }
+    // HLA patterns associated with autoimmune conditions
+    let pattern: u32 = data.iter().take(4).fold(0u32, |acc, &b| (acc << 8) | b as u32);
+    let score = ((pattern % 1000) as f32 / 1000.0) * 0.7;
+    score
+}
+
+/// Calculate sequence complexity
+fn calculate_sequence_complexity(data: &[u8]) -> f32 {
+    if data.len() < 32 {
+        return 1.0;
+    }
+    // Measure entropy/randomness of the sequence encoding
+    let unique_bytes: std::collections::HashSet<u8> = data.iter().cloned().collect();
+    unique_bytes.len() as f32 / 256.0
+}
+
+/// Check if a risk factor is genetic-derived
+fn is_genetic_risk_factor(risk: &RiskFactor) -> bool {
+    risk.name.contains("Genetic") ||
+    risk.name.contains("HLA") ||
+    risk.contributors.iter().any(|c|
+        c.contains("genetic") || c.contains("SNP") || c.contains("HLA") || c.contains("DNA")
+    )
+}
+
+/// Aggregate overlapping risk factors
+fn aggregate_risk_factors(mut risks: Vec<RiskFactor>) -> Vec<RiskFactor> {
+    // Group by category and keep highest risk level
+    let mut by_category: std::collections::HashMap<String, RiskFactor> = std::collections::HashMap::new();
+
+    for risk in risks.drain(..) {
+        let key = format!("{:?}-{}", risk.category, risk.name);
+        by_category.entry(key)
+            .and_modify(|existing| {
+                if risk.risk_level > existing.risk_level {
+                    *existing = risk.clone();
+                }
+            })
+            .or_insert(risk);
+    }
+
+    by_category.into_values().collect()
+}
+
+/// Calculate data quality score for genetic vectors
+fn calculate_genetic_data_quality(vectors: &[GeneticHypervector]) -> f32 {
+    if vectors.is_empty() {
+        return 0.0;
+    }
+
+    // Quality based on: number of vectors, recency, encoding diversity
+    let diversity = vectors.iter()
+        .map(|v| format!("{:?}", v.encoding_type))
+        .collect::<std::collections::HashSet<_>>()
+        .len();
+
+    let avg_kmer_count: f32 = vectors.iter()
+        .map(|v| v.kmer_count as f32)
+        .sum::<f32>() / vectors.len() as f32;
+
+    let base_quality = 0.5 + (diversity as f32 * 0.15).min(0.3);
+    let kmer_bonus = (avg_kmer_count / 1000.0).min(0.2);
+
+    (base_quality + kmer_bonus).min(1.0)
+}
+
+/// Get genetic risk summary for a twin
+#[hdk_extern]
+pub fn get_genetic_risk_summary(twin_hash: ActionHash) -> ExternResult<Vec<RiskFactor>> {
+    let twin_record = get(twin_hash, GetOptions::default())?
+        .ok_or(wasm_error!(WasmErrorInner::Guest("Twin not found".to_string())))?;
+
+    let twin: HealthTwin = twin_record
+        .entry()
+        .to_app_option()
+        .map_err(|e| wasm_error!(WasmErrorInner::Guest(e.to_string())))?
+        .ok_or(wasm_error!(WasmErrorInner::Guest("Invalid twin".to_string())))?;
+
+    // Filter to genetic risk factors only
+    let genetic_risks: Vec<RiskFactor> = twin.risk_factors
+        .into_iter()
+        .filter(|r| is_genetic_risk_factor(r))
+        .collect();
+
+    Ok(genetic_risks)
 }

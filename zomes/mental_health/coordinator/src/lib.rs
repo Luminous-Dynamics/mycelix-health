@@ -176,7 +176,7 @@ pub fn get_patient_screenings(patient_hash: ActionHash) -> ExternResult<Vec<Reco
         false,
     )?;
     let links = get_links(
-        LinkQuery::try_new(patient_hash, LinkTypes::PatientToScreenings)?, GetStrategy::default(),
+        LinkQuery::try_new(patient_hash.clone(), LinkTypes::PatientToScreenings)?, GetStrategy::default(),
     )?;
 
     let mut records = Vec::new();
@@ -278,7 +278,7 @@ pub fn get_mood_entries(patient_hash: ActionHash) -> ExternResult<Vec<Record>> {
         false,
     )?;
     let links = get_links(
-        LinkQuery::try_new(patient_hash, LinkTypes::PatientToMoodEntries)?, GetStrategy::default(),
+        LinkQuery::try_new(patient_hash.clone(), LinkTypes::PatientToMoodEntries)?, GetStrategy::default(),
     )?;
 
     let mut records = Vec::new();
@@ -385,7 +385,7 @@ pub fn get_safety_plan(patient_hash: ActionHash) -> ExternResult<Option<Record>>
         false,
     )?;
     let links = get_links(
-        LinkQuery::try_new(patient_hash, LinkTypes::PatientToSafetyPlan)?, GetStrategy::default(),
+        LinkQuery::try_new(patient_hash.clone(), LinkTypes::PatientToSafetyPlan)?, GetStrategy::default(),
     )?;
 
     // Get most recent
@@ -497,7 +497,7 @@ pub fn get_crisis_history(patient_hash: ActionHash) -> ExternResult<Vec<Record>>
         false,
     )?;
     let links = get_links(
-        LinkQuery::try_new(patient_hash, LinkTypes::PatientToCrisisEvents)?, GetStrategy::default(),
+        LinkQuery::try_new(patient_hash.clone(), LinkTypes::PatientToCrisisEvents)?, GetStrategy::default(),
     )?;
 
     let mut records = Vec::new();
@@ -636,7 +636,7 @@ pub fn get_part2_consents(patient_hash: ActionHash) -> ExternResult<Vec<Record>>
         false,
     )?;
     let links = get_links(
-        LinkQuery::try_new(patient_hash, LinkTypes::PatientToPart2Consents)?, GetStrategy::default(),
+        LinkQuery::try_new(patient_hash.clone(), LinkTypes::PatientToPart2Consents)?, GetStrategy::default(),
     )?;
 
     let mut records = Vec::new();
@@ -744,7 +744,7 @@ pub fn get_therapy_notes(patient_hash: ActionHash) -> ExternResult<Vec<Record>> 
         false,
     )?;
     let links = get_links(
-        LinkQuery::try_new(patient_hash, LinkTypes::PatientToTherapyNotes)?, GetStrategy::default(),
+        LinkQuery::try_new(patient_hash.clone(), LinkTypes::PatientToTherapyNotes)?, GetStrategy::default(),
     )?;
 
     let mut records = Vec::new();

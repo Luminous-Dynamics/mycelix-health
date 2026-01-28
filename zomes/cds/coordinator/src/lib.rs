@@ -170,6 +170,12 @@ pub struct CreateAlertInput {
 /// Create a clinical alert for a patient
 #[hdk_extern]
 pub fn create_clinical_alert(input: CreateAlertInput) -> ExternResult<Record> {
+    let auth = require_authorization(
+        input.patient_hash.clone(),
+        DataCategory::All,
+        Permission::Write,
+        false,
+    )?;
     let alert = ClinicalAlert {
         alert_id: format!("ALERT-{}", sys_time()?.as_micros()),
         patient_hash: input.patient_hash.clone(),
@@ -197,10 +203,19 @@ pub fn create_clinical_alert(input: CreateAlertInput) -> ExternResult<Record> {
 
     // Link from patient to alert
     create_link(
-        input.patient_hash,
+        input.patient_hash.clone(),
         hash,
         LinkTypes::PatientToAlerts,
         (),
+    )?;
+
+    log_data_access(
+        input.patient_hash,
+        vec![DataCategory::All],
+        Permission::Write,
+        auth.consent_hash,
+        auth.emergency_override,
+        None,
     )?;
 
     Ok(record)
@@ -279,6 +294,14 @@ pub fn acknowledge_alert(input: AcknowledgeAlertInput) -> ExternResult<Record> {
         .map_err(|e| wasm_error!(WasmErrorInner::Guest(e.to_string())))?
         .ok_or(wasm_error!(WasmErrorInner::Guest("Invalid alert entry".to_string())))?;
 
+    let patient_hash = alert.patient_hash.clone();
+    let auth = require_authorization(
+        patient_hash.clone(),
+        DataCategory::All,
+        Permission::Write,
+        false,
+    )?;
+
     alert.acknowledged = true;
     alert.acknowledged_by = Some(agent_info()?.agent_initial_pubkey);
     alert.acknowledged_at = Some(sys_time()?);
@@ -289,6 +312,15 @@ pub fn acknowledge_alert(input: AcknowledgeAlertInput) -> ExternResult<Record> {
         .ok_or(wasm_error!(WasmErrorInner::Guest("Could not find updated alert".to_string())))?;
 
     create_link(input.alert_hash, updated_hash, LinkTypes::AlertUpdates, ())?;
+
+    log_data_access(
+        patient_hash,
+        vec![DataCategory::All],
+        Permission::Write,
+        auth.consent_hash,
+        auth.emergency_override,
+        None,
+    )?;
 
     Ok(updated_record)
 }
@@ -312,6 +344,14 @@ pub fn resolve_alert(input: ResolveAlertInput) -> ExternResult<Record> {
         .map_err(|e| wasm_error!(WasmErrorInner::Guest(e.to_string())))?
         .ok_or(wasm_error!(WasmErrorInner::Guest("Invalid alert entry".to_string())))?;
 
+    let patient_hash = alert.patient_hash.clone();
+    let auth = require_authorization(
+        patient_hash.clone(),
+        DataCategory::All,
+        Permission::Write,
+        false,
+    )?;
+
     alert.resolved = true;
     alert.resolution_notes = Some(input.resolution_notes);
 
@@ -320,6 +360,15 @@ pub fn resolve_alert(input: ResolveAlertInput) -> ExternResult<Record> {
         .ok_or(wasm_error!(WasmErrorInner::Guest("Could not find updated alert".to_string())))?;
 
     create_link(input.alert_hash, updated_hash, LinkTypes::AlertUpdates, ())?;
+
+    log_data_access(
+        patient_hash,
+        vec![DataCategory::All],
+        Permission::Write,
+        auth.consent_hash,
+        auth.emergency_override,
+        None,
+    )?;
 
     Ok(updated_record)
 }
@@ -397,16 +446,31 @@ pub fn get_guidelines_for_condition(input: GetGuidelinesForConditionInput) -> Ex
 /// Create or update patient guideline status
 #[hdk_extern]
 pub fn update_patient_guideline_status(status: PatientGuidelineStatus) -> ExternResult<Record> {
+    let auth = require_authorization(
+        status.patient_hash.clone(),
+        DataCategory::All,
+        Permission::Write,
+        false,
+    )?;
     let hash = create_entry(&EntryTypes::PatientGuidelineStatus(status.clone()))?;
     let record = get(hash.clone(), GetOptions::default())?
         .ok_or(wasm_error!(WasmErrorInner::Guest("Could not find guideline status".to_string())))?;
 
     // Link from patient to guideline status
     create_link(
-        status.patient_hash,
+        status.patient_hash.clone(),
         hash,
         LinkTypes::PatientToGuidelineStatuses,
         (),
+    )?;
+
+    log_data_access(
+        status.patient_hash,
+        vec![DataCategory::All],
+        Permission::Write,
+        auth.consent_hash,
+        auth.emergency_override,
+        None,
     )?;
 
     Ok(record)
@@ -463,6 +527,12 @@ pub fn get_patient_guideline_statuses(input: GetPatientGuidelineStatusInput) -> 
 /// Perform a comprehensive interaction check for a patient
 #[hdk_extern]
 pub fn perform_interaction_check(request: InteractionCheckRequest) -> ExternResult<Record> {
+    let auth = require_authorization(
+        request.patient_hash.clone(),
+        DataCategory::Medications,
+        Permission::Write,
+        false,
+    )?;
     // Save the request (hash available for future use, e.g., linking request to response)
     let _request_hash = create_entry(&EntryTypes::InteractionCheckRequest(request.clone()))?;
 
@@ -505,10 +575,19 @@ pub fn perform_interaction_check(request: InteractionCheckRequest) -> ExternResu
 
     // Link from patient to interaction check
     create_link(
-        request.patient_hash,
+        request.patient_hash.clone(),
         response_hash,
         LinkTypes::PatientToInteractionChecks,
         (),
+    )?;
+
+    log_data_access(
+        request.patient_hash,
+        vec![DataCategory::Medications],
+        Permission::Write,
+        auth.consent_hash,
+        auth.emergency_override,
+        None,
     )?;
 
     Ok(response_record)

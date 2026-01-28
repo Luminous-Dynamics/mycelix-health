@@ -19,6 +19,12 @@ use mycelix_health_shared::{
 /// Create a FHIR Patient mapping from internal patient record
 #[hdk_extern]
 pub fn create_fhir_patient_mapping(mapping: FhirPatientMapping) -> ExternResult<Record> {
+    let auth = require_authorization(
+        mapping.internal_patient_hash.clone(),
+        DataCategory::Demographics,
+        Permission::Write,
+        false,
+    )?;
     let mapping_hash = create_entry(&EntryTypes::FhirPatientMapping(mapping.clone()))?;
     let record = get(mapping_hash.clone(), GetOptions::default())?
         .ok_or(wasm_error!(WasmErrorInner::Guest("Could not find newly created FHIR patient mapping".to_string())))?;
@@ -47,6 +53,15 @@ pub fn create_fhir_patient_mapping(mapping: FhirPatientMapping) -> ExternResult<
         mapping_hash,
         LinkTypes::AllFhirPatientMappings,
         (),
+    )?;
+
+    log_data_access(
+        mapping.internal_patient_hash,
+        vec![DataCategory::Demographics],
+        Permission::Write,
+        auth.consent_hash,
+        auth.emergency_override,
+        None,
     )?;
 
     Ok(record)
@@ -141,6 +156,12 @@ pub fn get_patient_fhir_mappings(input: GetPatientFhirMappingsInput) -> ExternRe
 /// Create a FHIR Observation mapping
 #[hdk_extern]
 pub fn create_fhir_observation_mapping(mapping: FhirObservationMapping) -> ExternResult<Record> {
+    let auth = require_authorization(
+        mapping.patient_hash.clone(),
+        DataCategory::LabResults,
+        Permission::Write,
+        false,
+    )?;
     let mapping_hash = create_entry(&EntryTypes::FhirObservationMapping(mapping.clone()))?;
     let record = get(mapping_hash.clone(), GetOptions::default())?
         .ok_or(wasm_error!(WasmErrorInner::Guest("Could not find newly created FHIR observation mapping".to_string())))?;
@@ -159,6 +180,15 @@ pub fn create_fhir_observation_mapping(mapping: FhirObservationMapping) -> Exter
         mapping_hash,
         LinkTypes::PatientToFhirMappings,
         (),
+    )?;
+
+    log_data_access(
+        mapping.patient_hash,
+        vec![DataCategory::LabResults],
+        Permission::Write,
+        auth.consent_hash,
+        auth.emergency_override,
+        None,
     )?;
 
     Ok(record)
@@ -199,6 +229,12 @@ pub fn get_fhir_observation_mapping(input: GetFhirMappingInput) -> ExternResult<
 /// Create a FHIR Condition mapping
 #[hdk_extern]
 pub fn create_fhir_condition_mapping(mapping: FhirConditionMapping) -> ExternResult<Record> {
+    let auth = require_authorization(
+        mapping.patient_hash.clone(),
+        DataCategory::Diagnoses,
+        Permission::Write,
+        false,
+    )?;
     let mapping_hash = create_entry(&EntryTypes::FhirConditionMapping(mapping.clone()))?;
     let record = get(mapping_hash.clone(), GetOptions::default())?
         .ok_or(wasm_error!(WasmErrorInner::Guest("Could not find newly created FHIR condition mapping".to_string())))?;
@@ -217,6 +253,15 @@ pub fn create_fhir_condition_mapping(mapping: FhirConditionMapping) -> ExternRes
         mapping_hash,
         LinkTypes::PatientToFhirMappings,
         (),
+    )?;
+
+    log_data_access(
+        mapping.patient_hash,
+        vec![DataCategory::Diagnoses],
+        Permission::Write,
+        auth.consent_hash,
+        auth.emergency_override,
+        None,
     )?;
 
     Ok(record)
@@ -257,6 +302,12 @@ pub fn get_fhir_condition_mapping(input: GetFhirMappingInput) -> ExternResult<Op
 /// Create a FHIR Medication mapping
 #[hdk_extern]
 pub fn create_fhir_medication_mapping(mapping: FhirMedicationMapping) -> ExternResult<Record> {
+    let auth = require_authorization(
+        mapping.patient_hash.clone(),
+        DataCategory::Medications,
+        Permission::Write,
+        false,
+    )?;
     let mapping_hash = create_entry(&EntryTypes::FhirMedicationMapping(mapping.clone()))?;
     let record = get(mapping_hash.clone(), GetOptions::default())?
         .ok_or(wasm_error!(WasmErrorInner::Guest("Could not find newly created FHIR medication mapping".to_string())))?;
@@ -275,6 +326,15 @@ pub fn create_fhir_medication_mapping(mapping: FhirMedicationMapping) -> ExternR
         mapping_hash,
         LinkTypes::PatientToFhirMappings,
         (),
+    )?;
+
+    log_data_access(
+        mapping.patient_hash,
+        vec![DataCategory::Medications],
+        Permission::Write,
+        auth.consent_hash,
+        auth.emergency_override,
+        None,
     )?;
 
     Ok(record)

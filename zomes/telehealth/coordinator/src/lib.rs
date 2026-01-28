@@ -21,6 +21,12 @@ use mycelix_health_shared::{
 /// Schedule a new telehealth session
 #[hdk_extern]
 pub fn schedule_telehealth_session(input: ScheduleSessionInput) -> ExternResult<Record> {
+    let auth = require_authorization(
+        input.patient_hash.clone(),
+        DataCategory::All,
+        Permission::Write,
+        false,
+    )?;
     let session = TelehealthSession {
         session_id: format!("TH-{}", sys_time()?.as_micros()),
         patient_hash: input.patient_hash.clone(),
@@ -68,6 +74,15 @@ pub fn schedule_telehealth_session(input: ScheduleSessionInput) -> ExternResult<
     // Link to upcoming sessions anchor (by date)
     let date_anchor = anchor_hash(&format!("sessions_{}", timestamp_to_date(input.scheduled_start)))?;
     create_link(date_anchor, hash, LinkTypes::UpcomingSessions, ())?;
+
+    log_data_access(
+        session.patient_hash,
+        vec![DataCategory::All],
+        Permission::Write,
+        auth.consent_hash,
+        auth.emergency_override,
+        None,
+    )?;
 
     Ok(record)
 }
@@ -126,6 +141,14 @@ pub fn start_session(session_hash: ActionHash) -> ExternResult<SessionDetails> {
         .map_err(|e| wasm_error!(WasmErrorInner::Guest(e.to_string())))?
         .ok_or(wasm_error!(WasmErrorInner::Guest("Invalid session entry".to_string())))?;
 
+    let patient_hash = session.patient_hash.clone();
+    let auth = require_authorization(
+        patient_hash.clone(),
+        DataCategory::All,
+        Permission::Write,
+        false,
+    )?;
+
     // Validate session can be started
     if session.status != SessionStatus::Scheduled && session.status != SessionStatus::PatientWaiting && session.status != SessionStatus::ProviderReady {
         return Err(wasm_error!(WasmErrorInner::Guest(
@@ -143,6 +166,15 @@ pub fn start_session(session_hash: ActionHash) -> ExternResult<SessionDetails> {
 
     let updated_hash = update_entry(session_hash.clone(), &session)?;
     create_link(session_hash.clone(), updated_hash.clone(), LinkTypes::SessionUpdates, ())?;
+
+    log_data_access(
+        patient_hash,
+        vec![DataCategory::All],
+        Permission::Write,
+        auth.consent_hash,
+        auth.emergency_override,
+        None,
+    )?;
 
     Ok(SessionDetails {
         session_hash: updated_hash,
@@ -175,6 +207,14 @@ pub fn end_session(input: EndSessionInput) -> ExternResult<Record> {
         .map_err(|e| wasm_error!(WasmErrorInner::Guest(e.to_string())))?
         .ok_or(wasm_error!(WasmErrorInner::Guest("Invalid session entry".to_string())))?;
 
+    let patient_hash = session.patient_hash.clone();
+    let auth = require_authorization(
+        patient_hash.clone(),
+        DataCategory::All,
+        Permission::Write,
+        false,
+    )?;
+
     // Validate session can be ended
     if session.status != SessionStatus::InProgress {
         return Err(wasm_error!(WasmErrorInner::Guest(
@@ -194,6 +234,15 @@ pub fn end_session(input: EndSessionInput) -> ExternResult<Record> {
         .ok_or(wasm_error!(WasmErrorInner::Guest("Could not find updated session".to_string())))?;
 
     create_link(input.session_hash, updated_hash, LinkTypes::SessionUpdates, ())?;
+
+    log_data_access(
+        patient_hash,
+        vec![DataCategory::All],
+        Permission::Write,
+        auth.consent_hash,
+        auth.emergency_override,
+        None,
+    )?;
 
     Ok(updated_record)
 }
@@ -217,6 +266,14 @@ pub fn cancel_session(input: CancelSessionInput) -> ExternResult<Record> {
         .map_err(|e| wasm_error!(WasmErrorInner::Guest(e.to_string())))?
         .ok_or(wasm_error!(WasmErrorInner::Guest("Invalid session entry".to_string())))?;
 
+    let patient_hash = session.patient_hash.clone();
+    let auth = require_authorization(
+        patient_hash.clone(),
+        DataCategory::All,
+        Permission::Write,
+        false,
+    )?;
+
     // Can only cancel scheduled or waiting sessions
     if session.status == SessionStatus::Completed || session.status == SessionStatus::InProgress {
         return Err(wasm_error!(WasmErrorInner::Guest(
@@ -233,6 +290,15 @@ pub fn cancel_session(input: CancelSessionInput) -> ExternResult<Record> {
         .ok_or(wasm_error!(WasmErrorInner::Guest("Could not find updated session".to_string())))?;
 
     create_link(input.session_hash, updated_hash, LinkTypes::SessionUpdates, ())?;
+
+    log_data_access(
+        patient_hash,
+        vec![DataCategory::All],
+        Permission::Write,
+        auth.consent_hash,
+        auth.emergency_override,
+        None,
+    )?;
 
     Ok(updated_record)
 }
@@ -252,6 +318,14 @@ pub fn join_waiting_room(session_hash: ActionHash) -> ExternResult<Record> {
         .to_app_option()
         .map_err(|e| wasm_error!(WasmErrorInner::Guest(e.to_string())))?
         .ok_or(wasm_error!(WasmErrorInner::Guest("Invalid session entry".to_string())))?;
+
+    let patient_hash = session.patient_hash.clone();
+    let auth = require_authorization(
+        patient_hash.clone(),
+        DataCategory::All,
+        Permission::Write,
+        false,
+    )?;
 
     // Update session status
     session.status = SessionStatus::PatientWaiting;
@@ -278,6 +352,15 @@ pub fn join_waiting_room(session_hash: ActionHash) -> ExternResult<Record> {
     create_link(session_hash.clone(), entry_hash, LinkTypes::SessionToWaitingRoom, ())?;
     create_link(session_hash, updated_session_hash, LinkTypes::SessionUpdates, ())?;
 
+    log_data_access(
+        patient_hash,
+        vec![DataCategory::All],
+        Permission::Write,
+        auth.consent_hash,
+        auth.emergency_override,
+        None,
+    )?;
+
     Ok(waiting_room_record)
 }
 
@@ -301,12 +384,30 @@ pub fn call_patient(session_hash: ActionHash) -> ExternResult<Record> {
         .map_err(|e| wasm_error!(WasmErrorInner::Guest(e.to_string())))?
         .ok_or(wasm_error!(WasmErrorInner::Guest("Invalid waiting room entry".to_string())))?;
 
+    let auth = require_authorization(
+        entry.patient_hash.clone(),
+        DataCategory::All,
+        Permission::Write,
+        false,
+    )?;
+
     entry.status = WaitingRoomStatus::BeingCalled;
     entry.called_at = Some(sys_time()?);
 
     let updated_hash = update_entry(entry_hash, &entry)?;
-    get(updated_hash, GetOptions::default())?
-        .ok_or(wasm_error!(WasmErrorInner::Guest("Could not find updated entry".to_string())))
+    let updated_record = get(updated_hash, GetOptions::default())?
+        .ok_or(wasm_error!(WasmErrorInner::Guest("Could not find updated entry".to_string())))?;
+
+    log_data_access(
+        entry.patient_hash,
+        vec![DataCategory::All],
+        Permission::Write,
+        auth.consent_hash,
+        auth.emergency_override,
+        None,
+    )?;
+
+    Ok(updated_record)
 }
 
 // ============================================================================
@@ -316,6 +417,24 @@ pub fn call_patient(session_hash: ActionHash) -> ExternResult<Record> {
 /// Create session documentation (SOAP note)
 #[hdk_extern]
 pub fn create_session_documentation(doc: SessionDocumentation) -> ExternResult<Record> {
+    // Authorize against the patient tied to the session
+    let session_record = get(doc.session_hash.clone(), GetOptions::default())?
+        .ok_or(wasm_error!(WasmErrorInner::Guest("Session not found".to_string())))?;
+
+    let session: TelehealthSession = session_record
+        .entry()
+        .to_app_option()
+        .map_err(|e| wasm_error!(WasmErrorInner::Guest(e.to_string())))?
+        .ok_or(wasm_error!(WasmErrorInner::Guest("Invalid session".to_string())))?;
+
+    let patient_hash = session.patient_hash;
+    let auth = require_authorization(
+        patient_hash.clone(),
+        DataCategory::All,
+        Permission::Write,
+        false,
+    )?;
+
     let hash = create_entry(&EntryTypes::SessionDocumentation(doc.clone()))?;
     let record = get(hash.clone(), GetOptions::default())?
         .ok_or(wasm_error!(WasmErrorInner::Guest("Could not find documentation".to_string())))?;
@@ -326,6 +445,15 @@ pub fn create_session_documentation(doc: SessionDocumentation) -> ExternResult<R
         hash,
         LinkTypes::SessionToDocumentation,
         (),
+    )?;
+
+    log_data_access(
+        patient_hash,
+        vec![DataCategory::All],
+        Permission::Write,
+        auth.consent_hash,
+        auth.emergency_override,
+        None,
     )?;
 
     Ok(record)
@@ -391,12 +519,41 @@ pub fn sign_documentation(doc_hash: ActionHash) -> ExternResult<Record> {
         .map_err(|e| wasm_error!(WasmErrorInner::Guest(e.to_string())))?
         .ok_or(wasm_error!(WasmErrorInner::Guest("Invalid documentation".to_string())))?;
 
+    // Authorize against the patient tied to the session
+    let session_record = get(doc.session_hash.clone(), GetOptions::default())?
+        .ok_or(wasm_error!(WasmErrorInner::Guest("Session not found".to_string())))?;
+
+    let session: TelehealthSession = session_record
+        .entry()
+        .to_app_option()
+        .map_err(|e| wasm_error!(WasmErrorInner::Guest(e.to_string())))?
+        .ok_or(wasm_error!(WasmErrorInner::Guest("Invalid session".to_string())))?;
+
+    let patient_hash = session.patient_hash;
+    let auth = require_authorization(
+        patient_hash.clone(),
+        DataCategory::All,
+        Permission::Write,
+        false,
+    )?;
+
     doc.signed = true;
     doc.signed_at = Some(sys_time()?);
 
     let updated_hash = update_entry(doc_hash, &doc)?;
-    get(updated_hash, GetOptions::default())?
-        .ok_or(wasm_error!(WasmErrorInner::Guest("Could not find signed documentation".to_string())))
+    let updated_record = get(updated_hash, GetOptions::default())?
+        .ok_or(wasm_error!(WasmErrorInner::Guest("Could not find signed documentation".to_string())))?;
+
+    log_data_access(
+        patient_hash,
+        vec![DataCategory::All],
+        Permission::Write,
+        auth.consent_hash,
+        auth.emergency_override,
+        None,
+    )?;
+
+    Ok(updated_record)
 }
 
 // ============================================================================
@@ -517,8 +674,20 @@ pub struct GetProviderSessionsInput {
 /// Get telehealth sessions for a provider
 #[hdk_extern]
 pub fn get_provider_sessions(input: GetProviderSessionsInput) -> ExternResult<Vec<Record>> {
+    // Only the provider themselves can list all of their sessions (contains patient PHI links).
+    let caller = agent_info()?.agent_initial_pubkey;
+    let provider_hash = input.provider_hash.clone();
+    let provider_record = get(provider_hash.clone(), GetOptions::default())?
+        .ok_or(wasm_error!(WasmErrorInner::Guest("Provider not found".to_string())))?;
+
+    if provider_record.action().author() != &caller {
+        return Err(wasm_error!(WasmErrorInner::Guest(
+            "Only the provider can list their sessions".to_string()
+        )));
+    }
+
     let links = get_links(
-        LinkQuery::try_new(input.provider_hash, LinkTypes::ProviderToSessions)?, GetStrategy::default())?;
+        LinkQuery::try_new(provider_hash, LinkTypes::ProviderToSessions)?, GetStrategy::default())?;
 
     let mut sessions = Vec::new();
     for link in links {
