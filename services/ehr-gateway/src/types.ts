@@ -285,8 +285,12 @@ export interface IngestBundleInput {
  * Must match IngestReport in the Rust zome
  */
 export interface IngestReport {
+  /** Unique report identifier */
+  report_id: string;
   /** Source system that sent the data */
   source_system: string;
+  /** Timestamp when ingestion occurred (microseconds since UNIX epoch) */
+  ingested_at: number;
   /** Total number of resources processed */
   total_processed: number;
   /** Number of patients created */
@@ -327,7 +331,9 @@ export interface IngestReport {
  * Zod schema for IngestReport validation
  */
 export const IngestReportSchema = z.object({
+  report_id: z.string(),
   source_system: z.string(),
+  ingested_at: z.number(),
   total_processed: z.number(),
   patients_created: z.number(),
   patients_updated: z.number(),

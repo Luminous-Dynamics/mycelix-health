@@ -49,6 +49,12 @@ integrity:
     # Phase 3 - Clinical Integration
     - name: fhir_mapping_integrity
       bundled: "../../../target/wasm32-unknown-unknown/release/fhir_mapping_integrity.wasm"
+    - name: fhir_bridge_integrity
+      bundled: "../../../target/wasm32-unknown-unknown/release/fhir_bridge_integrity.wasm"
+
+    # HDC Genetics - Privacy-Preserving Genetic Similarity
+    - name: hdc_genetics_integrity
+      bundled: "../../../target/wasm32-unknown-unknown/release/hdc_genetics_integrity.wasm"
     - name: cds_integrity
       bundled: "../../../target/wasm32-unknown-unknown/release/cds_integrity.wasm"
     - name: provider_directory_integrity
@@ -167,6 +173,17 @@ coordinator:
       bundled: "../../../target/wasm32-unknown-unknown/release/fhir_mapping.wasm"
       dependencies:
         - name: fhir_mapping_integrity
+    - name: fhir_bridge
+      bundled: "../../../target/wasm32-unknown-unknown/release/fhir_bridge.wasm"
+      dependencies:
+        - name: fhir_bridge_integrity
+        - name: fhir_mapping_integrity
+
+    # HDC Genetics - Privacy-Preserving Genetic Similarity
+    - name: hdc_genetics
+      bundled: "../../../target/wasm32-unknown-unknown/release/hdc_genetics.wasm"
+      dependencies:
+        - name: hdc_genetics_integrity
     - name: cds
       bundled: "../../../target/wasm32-unknown-unknown/release/cds.wasm"
       dependencies:

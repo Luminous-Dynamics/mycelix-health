@@ -289,6 +289,8 @@ pub struct InteractionCheckRequest {
     pub patient_hash: ActionHash,
     /// RxNorm codes of medications to check
     pub medication_rxnorm_codes: Vec<String>,
+    /// Patient's known allergies (allergen names/classes)
+    pub patient_allergies: Vec<String>,
     /// Include allergy cross-checks
     pub check_allergies: bool,
     /// Include duplicate therapy check
@@ -367,6 +369,193 @@ pub enum SafetyAssessment {
 }
 
 // ============================================================================
+// Pharmacogenomics Types (HDC-Enhanced)
+// ============================================================================
+
+/// Patient's pharmacogenomic profile with HDC-encoded variant data
+#[hdk_entry_helper]
+#[derive(Clone, PartialEq)]
+pub struct PharmacogenomicProfile {
+    /// Profile identifier
+    pub profile_id: String,
+    /// Patient this profile belongs to
+    pub patient_hash: ActionHash,
+    /// Gene variants with phenotype predictions
+    pub gene_variants: Vec<GeneVariant>,
+    /// HDC-encoded representation of genetic profile (for privacy-preserving matching)
+    /// This is the base64-encoded hypervector from hdc-core
+    pub hdc_encoded_profile: Option<String>,
+    /// HDC similarity threshold used for encoding
+    pub hdc_threshold: Option<f64>,
+    /// Source of genetic testing
+    pub testing_source: String,
+    /// Testing lab identifier
+    pub lab_identifier: Option<String>,
+    /// Date of genetic testing
+    pub test_date: Timestamp,
+    /// Last updated
+    pub last_updated: Timestamp,
+    /// Profile version for updates
+    pub version: u32,
+}
+
+/// Individual gene variant with phenotype
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+pub struct GeneVariant {
+    /// Gene symbol (e.g., "CYP2D6", "CYP2C19")
+    pub gene: String,
+    /// Star allele diplotype (e.g., "*1/*4", "*2/*3")
+    pub diplotype: String,
+    /// HDC-encoded variant signature (base64)
+    pub hdc_signature: Option<String>,
+    /// Predicted phenotype
+    pub phenotype: MetabolizerPhenotype,
+    /// Activity score if applicable
+    pub activity_score: Option<f64>,
+    /// Clinical implications
+    pub clinical_implications: Vec<String>,
+}
+
+/// Drug metabolizer phenotype categories per CPIC guidelines
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+pub enum MetabolizerPhenotype {
+    /// Extremely rapid drug metabolism
+    UltrarapidMetabolizer,
+    /// Faster than normal metabolism
+    RapidMetabolizer,
+    /// Normal drug metabolism
+    NormalMetabolizer,
+    /// Intermediate metabolizer status
+    IntermediateMetabolizer,
+    /// Significantly reduced metabolism
+    PoorMetabolizer,
+    /// Cannot be determined
+    Indeterminate,
+}
+
+/// Drug-gene interaction for pharmacogenomics
+#[hdk_entry_helper]
+#[derive(Clone, PartialEq)]
+pub struct DrugGeneInteraction {
+    /// Interaction identifier
+    pub interaction_id: String,
+    /// Drug RxNorm code
+    pub drug_rxnorm: String,
+    /// Drug name
+    pub drug_name: String,
+    /// Gene symbol
+    pub gene: String,
+    /// Affected phenotypes and their implications
+    pub phenotype_implications: Vec<PhenotypeImplication>,
+    /// CPIC evidence level
+    pub cpic_level: CpicLevel,
+    /// DPWG evidence level
+    pub dpwg_level: Option<String>,
+    /// Source guidelines
+    pub guideline_sources: Vec<String>,
+    /// Last reviewed
+    pub last_reviewed: Timestamp,
+    /// HDC vector for fast similarity lookup
+    pub hdc_drug_vector: Option<String>,
+}
+
+/// Implication for a specific phenotype
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+pub struct PhenotypeImplication {
+    /// Which phenotype this applies to
+    pub phenotype: MetabolizerPhenotype,
+    /// Dosing recommendation category
+    pub recommendation: DosingRecommendation,
+    /// Dosing adjustment percentage (e.g., 50 for "reduce by 50%")
+    pub dose_adjustment_percent: Option<i32>,
+    /// Alternative drugs to consider
+    pub alternatives: Vec<String>,
+    /// Clinical notes
+    pub clinical_notes: String,
+}
+
+/// Dosing recommendation categories
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+pub enum DosingRecommendation {
+    /// Use standard dosing
+    StandardDose,
+    /// Start with lower dose
+    ReducedDose,
+    /// Start with higher dose
+    IncreasedDose,
+    /// Use alternative drug
+    UseAlternative,
+    /// Avoid this drug
+    Avoid,
+    /// Requires therapeutic drug monitoring
+    MonitorClosely,
+    /// Insufficient evidence for recommendation
+    InsufficientEvidence,
+}
+
+/// CPIC evidence levels
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+pub enum CpicLevel {
+    /// Strong evidence, actionable PGx
+    A,
+    /// Moderate evidence, actionable PGx
+    B,
+    /// Weak evidence, likely actionable
+    C,
+    /// Informative only
+    D,
+}
+
+/// Pharmacogenomic check result
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+pub struct PharmacogenomicCheckResult {
+    /// Patient hash
+    pub patient_hash: ActionHash,
+    /// Drug checked
+    pub drug_rxnorm: String,
+    /// Drug name
+    pub drug_name: String,
+    /// Relevant gene findings
+    pub gene_findings: Vec<GeneDrugFinding>,
+    /// Overall recommendation
+    pub overall_recommendation: DosingRecommendation,
+    /// Summary message
+    pub summary: String,
+    /// Detailed recommendations
+    pub detailed_recommendations: Vec<String>,
+    /// Confidence in prediction (0.0-1.0)
+    pub confidence: f64,
+}
+
+/// Finding for a specific gene-drug pair
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+pub struct GeneDrugFinding {
+    /// Gene symbol
+    pub gene: String,
+    /// Patient's phenotype for this gene
+    pub patient_phenotype: MetabolizerPhenotype,
+    /// Impact on this drug
+    pub impact: DrugImpact,
+    /// Specific recommendation
+    pub recommendation: String,
+}
+
+/// Impact of genetic variant on drug
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+pub enum DrugImpact {
+    /// No significant impact
+    NoImpact,
+    /// Reduced efficacy
+    ReducedEfficacy,
+    /// Increased efficacy
+    IncreasedEfficacy,
+    /// Increased toxicity risk
+    IncreasedToxicity,
+    /// Both efficacy and toxicity affected
+    AlteredMetabolism,
+}
+
+// ============================================================================
 // Entry and Link Type Enums
 // ============================================================================
 
@@ -380,6 +569,8 @@ pub enum EntryTypes {
     PatientGuidelineStatus(PatientGuidelineStatus),
     InteractionCheckRequest(InteractionCheckRequest),
     InteractionCheckResponse(InteractionCheckResponse),
+    PharmacogenomicProfile(PharmacogenomicProfile),
+    DrugGeneInteraction(DrugGeneInteraction),
 }
 
 #[hdk_link_types]
@@ -402,6 +593,12 @@ pub enum LinkTypes {
     AllDrugInteractions,
     /// Alert updates
     AlertUpdates,
+    /// Patient to pharmacogenomic profile
+    PatientToPgxProfile,
+    /// Drug to gene interactions
+    DrugToGeneInteractions,
+    /// Gene to drug interactions
+    GeneToDrugInteractions,
 }
 
 // ============================================================================
@@ -430,6 +627,8 @@ fn validate_create_entry(entry: EntryTypes) -> ExternResult<ValidateCallbackResu
         EntryTypes::PatientGuidelineStatus(status) => validate_guideline_status(&status),
         EntryTypes::InteractionCheckRequest(request) => validate_interaction_request(&request),
         EntryTypes::InteractionCheckResponse(response) => validate_interaction_response(&response),
+        EntryTypes::PharmacogenomicProfile(profile) => validate_pgx_profile(&profile),
+        EntryTypes::DrugGeneInteraction(interaction) => validate_drug_gene_interaction(&interaction),
     }
 }
 
@@ -584,6 +783,70 @@ fn validate_interaction_response(response: &InteractionCheckResponse) -> ExternR
     Ok(ValidateCallbackResult::Valid)
 }
 
+fn validate_pgx_profile(profile: &PharmacogenomicProfile) -> ExternResult<ValidateCallbackResult> {
+    if profile.profile_id.is_empty() {
+        return Ok(ValidateCallbackResult::Invalid(
+            "Profile ID cannot be empty".to_string(),
+        ));
+    }
+
+    if profile.testing_source.is_empty() {
+        return Ok(ValidateCallbackResult::Invalid(
+            "Testing source is required".to_string(),
+        ));
+    }
+
+    if profile.gene_variants.is_empty() {
+        return Ok(ValidateCallbackResult::Invalid(
+            "At least one gene variant is required".to_string(),
+        ));
+    }
+
+    // Validate each gene variant
+    for variant in &profile.gene_variants {
+        if variant.gene.is_empty() {
+            return Ok(ValidateCallbackResult::Invalid(
+                "Gene symbol cannot be empty".to_string(),
+            ));
+        }
+        if variant.diplotype.is_empty() {
+            return Ok(ValidateCallbackResult::Invalid(
+                format!("Diplotype required for gene {}", variant.gene),
+            ));
+        }
+    }
+
+    Ok(ValidateCallbackResult::Valid)
+}
+
+fn validate_drug_gene_interaction(interaction: &DrugGeneInteraction) -> ExternResult<ValidateCallbackResult> {
+    if interaction.interaction_id.is_empty() {
+        return Ok(ValidateCallbackResult::Invalid(
+            "Interaction ID cannot be empty".to_string(),
+        ));
+    }
+
+    if interaction.drug_rxnorm.is_empty() {
+        return Ok(ValidateCallbackResult::Invalid(
+            "Drug RxNorm code is required".to_string(),
+        ));
+    }
+
+    if interaction.gene.is_empty() {
+        return Ok(ValidateCallbackResult::Invalid(
+            "Gene symbol is required".to_string(),
+        ));
+    }
+
+    if interaction.phenotype_implications.is_empty() {
+        return Ok(ValidateCallbackResult::Invalid(
+            "At least one phenotype implication is required".to_string(),
+        ));
+    }
+
+    Ok(ValidateCallbackResult::Valid)
+}
+
 fn validate_link(link_type: LinkTypes) -> ExternResult<ValidateCallbackResult> {
     match link_type {
         LinkTypes::PatientToAlerts => Ok(ValidateCallbackResult::Valid),
@@ -595,5 +858,8 @@ fn validate_link(link_type: LinkTypes) -> ExternResult<ValidateCallbackResult> {
         LinkTypes::AllActiveGuidelines => Ok(ValidateCallbackResult::Valid),
         LinkTypes::AllDrugInteractions => Ok(ValidateCallbackResult::Valid),
         LinkTypes::AlertUpdates => Ok(ValidateCallbackResult::Valid),
+        LinkTypes::PatientToPgxProfile => Ok(ValidateCallbackResult::Valid),
+        LinkTypes::DrugToGeneInteractions => Ok(ValidateCallbackResult::Valid),
+        LinkTypes::GeneToDrugInteractions => Ok(ValidateCallbackResult::Valid),
     }
 }

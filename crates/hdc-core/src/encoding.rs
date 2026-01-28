@@ -510,6 +510,219 @@ impl LearnedKmerCodebook {
     }
 }
 
+/// MLP Classifier for learned HDC
+///
+/// A simple two-layer neural network that classifies encoded sequences.
+/// Trained in Python and loaded for inference in Rust.
+///
+/// Architecture:
+/// - Input: encoded hypervector (16,384 bits → float via popcount)
+/// - Hidden: ReLU activation
+/// - Output: softmax for classification
+///
+/// # Example
+///
+/// ```ignore
+/// let classifier = LearnedClassifier::load("models/learned_6mers_mlp.json")?;
+/// let codebook = LearnedKmerCodebook::load("models/learned_6mers.json")?;
+/// let encoder = DnaEncoder::new(seed, 6);
+///
+/// let encoded = encoder.encode_with_learned_codebook("ACGTACGT", &codebook)?;
+/// let prediction = classifier.predict(&encoded.vector);
+/// println!("Class: {}, Confidence: {:.2}%", prediction.class, prediction.confidence * 100.0);
+/// ```
+#[cfg(feature = "learned")]
+pub struct LearnedClassifier {
+    /// First layer weights: (input_dim, hidden_dim)
+    w1: Vec<Vec<f32>>,
+    /// First layer bias: (hidden_dim,)
+    b1: Vec<f32>,
+    /// Second layer weights: (hidden_dim, output_dim)
+    w2: Vec<Vec<f32>>,
+    /// Second layer bias: (output_dim,)
+    b2: Vec<f32>,
+    /// Input dimension (should match embedding dimension)
+    input_dim: usize,
+    /// Hidden layer dimension
+    hidden_dim: usize,
+    /// Output dimension (number of classes)
+    output_dim: usize,
+}
+
+/// Serializable format for MLP classifier
+#[cfg(feature = "learned")]
+#[derive(serde::Deserialize, serde::Serialize)]
+struct LearnedClassifierFile {
+    input_dim: usize,
+    hidden_dim: usize,
+    output_dim: usize,
+    #[serde(rename = "W1")]
+    w1: Vec<Vec<f32>>,
+    b1: Vec<f32>,
+    #[serde(rename = "W2")]
+    w2: Vec<Vec<f32>>,
+    b2: Vec<f32>,
+}
+
+/// Classification result
+#[cfg(feature = "learned")]
+#[derive(Clone, Debug)]
+pub struct ClassificationResult {
+    /// Predicted class (0-indexed)
+    pub class: usize,
+    /// Confidence score (0.0 to 1.0)
+    pub confidence: f64,
+    /// Probabilities for each class
+    pub probabilities: Vec<f64>,
+}
+
+#[cfg(feature = "learned")]
+impl LearnedClassifier {
+    /// Load classifier from a JSON file
+    pub fn load<P: AsRef<std::path::Path>>(path: P) -> Result<Self, HdcError> {
+        let file = std::fs::File::open(path.as_ref()).map_err(|e| {
+            HdcError::IoError {
+                operation: "open",
+                message: format!("Failed to open classifier file: {}", e),
+            }
+        })?;
+
+        let reader = std::io::BufReader::new(file);
+        let data: LearnedClassifierFile = serde_json::from_reader(reader).map_err(|e| {
+            HdcError::IoError {
+                operation: "parse",
+                message: format!("Failed to parse classifier JSON: {}", e),
+            }
+        })?;
+
+        Ok(LearnedClassifier {
+            w1: data.w1,
+            b1: data.b1,
+            w2: data.w2,
+            b2: data.b2,
+            input_dim: data.input_dim,
+            hidden_dim: data.hidden_dim,
+            output_dim: data.output_dim,
+        })
+    }
+
+    /// Classify an encoded sequence
+    ///
+    /// The hypervector is converted to a float vector by counting set bits
+    /// in each chunk, normalized to [-1, 1] range.
+    pub fn predict(&self, vector: &Hypervector) -> ClassificationResult {
+        // Convert binary hypervector to float encoding
+        let input = self.hypervector_to_float(vector);
+
+        // Forward pass through MLP
+        let hidden = self.forward_layer(&input, &self.w1, &self.b1, true);
+        let logits = self.forward_layer(&hidden, &self.w2, &self.b2, false);
+
+        // Softmax
+        let probabilities = self.softmax(&logits);
+
+        // Find argmax
+        let (class, confidence) = probabilities
+            .iter()
+            .enumerate()
+            .max_by(|(_, a), (_, b)| a.partial_cmp(b).unwrap())
+            .map(|(i, &p)| (i, p))
+            .unwrap_or((0, 0.0));
+
+        ClassificationResult {
+            class,
+            confidence,
+            probabilities,
+        }
+    }
+
+    /// Batch prediction for multiple sequences
+    pub fn predict_batch(&self, vectors: &[&Hypervector]) -> Vec<ClassificationResult> {
+        vectors.iter().map(|v| self.predict(v)).collect()
+    }
+
+    /// Convert hypervector to float representation
+    fn hypervector_to_float(&self, vector: &Hypervector) -> Vec<f32> {
+        // We need to map the binary vector to the input dimension
+        // Strategy: chunk the hypervector and compute normalized popcount
+        let bytes = vector.as_bytes();
+        let bits_per_chunk = crate::HYPERVECTOR_DIM / self.input_dim;
+
+        let mut result = Vec::with_capacity(self.input_dim);
+
+        for chunk_idx in 0..self.input_dim {
+            let start_bit = chunk_idx * bits_per_chunk;
+            let mut popcount = 0;
+
+            for bit_offset in 0..bits_per_chunk {
+                let bit_idx = start_bit + bit_offset;
+                if bit_idx < crate::HYPERVECTOR_DIM {
+                    let byte_idx = bit_idx / 8;
+                    let bit_in_byte = bit_idx % 8;
+                    if bytes[byte_idx] & (1 << bit_in_byte) != 0 {
+                        popcount += 1;
+                    }
+                }
+            }
+
+            // Normalize to [-1, 1] range
+            let normalized = (2.0 * popcount as f32 / bits_per_chunk as f32) - 1.0;
+            result.push(normalized);
+        }
+
+        result
+    }
+
+    /// Forward pass through a single layer
+    fn forward_layer(
+        &self,
+        input: &[f32],
+        weights: &[Vec<f32>],
+        bias: &[f32],
+        apply_relu: bool,
+    ) -> Vec<f32> {
+        let out_dim = bias.len();
+        let mut output = vec![0.0f32; out_dim];
+
+        // Matrix multiply: output = input @ weights + bias
+        for (j, out_val) in output.iter_mut().enumerate() {
+            let mut sum = bias[j];
+            for (i, &inp) in input.iter().enumerate() {
+                if i < weights.len() && j < weights[i].len() {
+                    sum += inp * weights[i][j];
+                }
+            }
+
+            // Apply ReLU if requested
+            *out_val = if apply_relu { sum.max(0.0) } else { sum };
+        }
+
+        output
+    }
+
+    /// Softmax activation
+    fn softmax(&self, logits: &[f32]) -> Vec<f64> {
+        let max_logit = logits.iter().cloned().fold(f32::NEG_INFINITY, f32::max);
+        let exp_logits: Vec<f64> = logits
+            .iter()
+            .map(|&x| ((x - max_logit) as f64).exp())
+            .collect();
+        let sum: f64 = exp_logits.iter().sum();
+
+        exp_logits.iter().map(|&x| x / sum).collect()
+    }
+
+    /// Get input dimension
+    pub fn input_dim(&self) -> usize {
+        self.input_dim
+    }
+
+    /// Get number of output classes
+    pub fn num_classes(&self) -> usize {
+        self.output_dim
+    }
+}
+
 /// Result of encoding a DNA sequence
 #[derive(Clone, Debug)]
 pub struct EncodedSequence {
@@ -521,6 +734,151 @@ pub struct EncodedSequence {
     pub kmer_length: u8,
     /// Original sequence length
     pub sequence_length: usize,
+}
+
+/// Multi-scale DNA sequence encoder
+///
+/// Encodes sequences using multiple k-mer lengths simultaneously to capture
+/// both local and global patterns. Default scales are k=4 (local), k=6 (medium),
+/// and k=8 (global).
+///
+/// The multi-scale encoding:
+/// - k=4: Captures 256 possible 4-mers (local nucleotide patterns)
+/// - k=6: Captures 4096 possible 6-mers (medium-range motifs)
+/// - k=8: Captures 65536 possible 8-mers (longer motifs like TATA-box)
+///
+/// Encodings are combined by bundling (majority vote) the per-scale vectors.
+///
+/// # Example
+///
+/// ```
+/// use hdc_core::encoding::MultiScaleEncoder;
+/// use hdc_core::Seed;
+///
+/// let seed = Seed::from_string("multi-scale");
+/// let encoder = MultiScaleEncoder::new(seed);
+///
+/// let encoded = encoder.encode_sequence("ACGTACGTACGTACGTACGT").unwrap();
+/// println!("Multi-scale k-mers: {:?}", encoded.kmer_counts);
+/// ```
+pub struct MultiScaleEncoder {
+    seed: Seed,
+    /// K-mer lengths to use (default: [4, 6, 8])
+    scales: Vec<u8>,
+    /// Per-scale encoders
+    encoders: Vec<DnaEncoder>,
+}
+
+/// Result of multi-scale encoding
+#[derive(Clone, Debug)]
+pub struct MultiScaleEncodedSequence {
+    /// The combined hypervector
+    pub vector: Hypervector,
+    /// K-mer counts per scale
+    pub kmer_counts: Vec<(u8, u32)>,
+    /// Original sequence length
+    pub sequence_length: usize,
+    /// Per-scale vectors (for analysis)
+    pub scale_vectors: Vec<Hypervector>,
+}
+
+impl MultiScaleEncoder {
+    /// Create a new multi-scale encoder with default scales (4, 6, 8)
+    pub fn new(seed: Seed) -> Self {
+        Self::with_scales(seed, vec![4, 6, 8])
+    }
+
+    /// Create a multi-scale encoder with custom scales
+    pub fn with_scales(seed: Seed, scales: Vec<u8>) -> Self {
+        let encoders = scales
+            .iter()
+            .map(|&k| DnaEncoder::new(seed.clone(), k))
+            .collect();
+
+        MultiScaleEncoder {
+            seed,
+            scales,
+            encoders,
+        }
+    }
+
+    /// Encode a sequence using all scales
+    pub fn encode_sequence(&self, sequence: &str) -> Result<MultiScaleEncodedSequence, HdcError> {
+        let seq_len = sequence.len();
+        let mut scale_vectors = Vec::with_capacity(self.scales.len());
+        let mut kmer_counts = Vec::with_capacity(self.scales.len());
+
+        for (encoder, &k) in self.encoders.iter().zip(self.scales.iter()) {
+            // Skip scales that are too long for the sequence
+            if seq_len < k as usize {
+                continue;
+            }
+
+            match encoder.encode_sequence(sequence) {
+                Ok(encoded) => {
+                    scale_vectors.push(encoded.vector);
+                    kmer_counts.push((k, encoded.kmer_count));
+                }
+                Err(HdcError::SequenceTooShort { .. }) => {
+                    // Sequence too short for this scale, skip it
+                    continue;
+                }
+                Err(e) => return Err(e),
+            }
+        }
+
+        if scale_vectors.is_empty() {
+            return Err(HdcError::SequenceTooShort {
+                length: seq_len,
+                kmer_length: *self.scales.iter().min().unwrap_or(&4),
+            });
+        }
+
+        // Combine scale vectors by bundling (majority vote)
+        let refs: Vec<&Hypervector> = scale_vectors.iter().collect();
+        let combined = bundle(&refs);
+
+        Ok(MultiScaleEncodedSequence {
+            vector: combined,
+            kmer_counts,
+            sequence_length: seq_len,
+            scale_vectors,
+        })
+    }
+
+    /// Encode multiple sequences
+    pub fn encode_batch(&self, sequences: &[&str]) -> Vec<Result<MultiScaleEncodedSequence, HdcError>> {
+        sequences.iter().map(|seq| self.encode_sequence(seq)).collect()
+    }
+
+    /// Encode in parallel (requires "parallel" feature)
+    #[cfg(feature = "parallel")]
+    pub fn encode_batch_parallel(&self, sequences: &[&str]) -> Vec<Result<MultiScaleEncodedSequence, HdcError>> {
+        use rayon::prelude::*;
+        sequences.par_iter().map(|seq| self.encode_sequence(seq)).collect()
+    }
+
+    /// Get the scales used
+    pub fn scales(&self) -> &[u8] {
+        &self.scales
+    }
+}
+
+impl MultiScaleEncodedSequence {
+    /// Get similarity between two multi-scale encodings
+    pub fn similarity(&self, other: &Self) -> f64 {
+        self.vector.hamming_similarity(&other.vector)
+    }
+
+    /// Get per-scale similarities (for debugging/analysis)
+    pub fn per_scale_similarity(&self, other: &Self) -> Vec<(u8, f64)> {
+        self.kmer_counts
+            .iter()
+            .zip(self.scale_vectors.iter())
+            .zip(other.scale_vectors.iter())
+            .map(|(((k, _), v1), v2)| (*k, v1.hamming_similarity(v2)))
+            .collect()
+    }
 }
 
 /// HLA typing encoder for transplant matching

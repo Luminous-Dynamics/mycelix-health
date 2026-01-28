@@ -85,7 +85,7 @@ impl SimilarityWithConfidence {
         // Expected random similarity for binary vectors
         let random_mean = 0.5;
         // Standard deviation for random binary vectors
-        // SD = sqrt(p(1-p)/n) where p=0.5, n=10000
+        // SD = sqrt(p(1-p)/n) where p=0.5, n=HYPERVECTOR_DIM
         let random_std = (0.5 * 0.5 / HYPERVECTOR_DIM as f64).sqrt();
 
         // Z-score: how many standard deviations above random

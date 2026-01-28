@@ -541,29 +541,54 @@ pub fn perform_interaction_check(request: InteractionCheckRequest) -> ExternResu
         medication_rxnorm_codes: request.medication_rxnorm_codes.clone(),
     })?;
 
-    // Determine safety assessment
-    let safety_assessment = if drug_interactions.iter().any(|i| matches!(i.severity, InteractionSeverity::Contraindicated)) {
-        SafetyAssessment::Contraindicated
-    } else if drug_interactions.iter().any(|i| matches!(i.severity, InteractionSeverity::Major)) {
-        SafetyAssessment::HighRisk
-    } else if drug_interactions.iter().any(|i| matches!(i.severity, InteractionSeverity::Moderate)) {
-        SafetyAssessment::CautionRecommended
+    // Check drug-allergy conflicts if requested and allergies provided
+    let allergy_conflicts = if request.check_allergies && !request.patient_allergies.is_empty() {
+        check_allergy_conflicts(CheckAllergyConflictsInput {
+            medication_rxnorm_codes: request.medication_rxnorm_codes.clone(),
+            patient_allergies: request.patient_allergies.clone(),
+        })?
     } else {
-        SafetyAssessment::Safe
+        Vec::new()
     };
 
-    // Generate recommendations
+    // Check for duplicate therapies if requested
+    let duplicate_therapies = if request.check_duplicates {
+        check_duplicate_therapies(&request.medication_rxnorm_codes)?
+    } else {
+        Vec::new()
+    };
+
+    // Determine safety assessment based on all findings
+    let safety_assessment = determine_safety_assessment(
+        &drug_interactions,
+        &allergy_conflicts,
+        &duplicate_therapies,
+    );
+
+    // Generate recommendations from all findings
     let mut recommendations = Vec::new();
+
+    // Add drug interaction recommendations
     for interaction in &drug_interactions {
         recommendations.push(interaction.management.clone());
+    }
+
+    // Add allergy conflict recommendations
+    for conflict in &allergy_conflicts {
+        recommendations.push(conflict.recommendation.clone());
+    }
+
+    // Add duplicate therapy recommendations
+    for duplicate in &duplicate_therapies {
+        recommendations.push(duplicate.recommendation.clone());
     }
 
     let response = InteractionCheckResponse {
         request_id: request.request_id,
         patient_hash: request.patient_hash.clone(),
         drug_interactions,
-        allergy_conflicts: Vec::new(), // TODO: Implement allergy check integration
-        duplicate_therapies: Vec::new(), // TODO: Implement duplicate therapy check
+        allergy_conflicts,
+        duplicate_therapies,
         safety_assessment,
         recommendations,
         completed_at: sys_time()?,
@@ -591,4 +616,368 @@ pub fn perform_interaction_check(request: InteractionCheckRequest) -> ExternResu
     )?;
 
     Ok(response_record)
+}
+
+/// Determine overall safety assessment based on all findings
+fn determine_safety_assessment(
+    drug_interactions: &[FoundInteraction],
+    allergy_conflicts: &[FoundAllergyConflict],
+    duplicate_therapies: &[DuplicateTherapy],
+) -> SafetyAssessment {
+    // Check for contraindicated drug interactions
+    if drug_interactions.iter().any(|i| matches!(i.severity, InteractionSeverity::Contraindicated)) {
+        return SafetyAssessment::Contraindicated;
+    }
+
+    // Check for anaphylactic allergy risk (highest severity)
+    if allergy_conflicts.iter().any(|c| matches!(c.severity, AllergySeverity::Anaphylactic)) {
+        return SafetyAssessment::Contraindicated;
+    }
+
+    // Check for severe allergy risk
+    if allergy_conflicts.iter().any(|c| matches!(c.severity, AllergySeverity::Severe)) {
+        return SafetyAssessment::HighRisk;
+    }
+
+    // Check for major drug interactions
+    if drug_interactions.iter().any(|i| matches!(i.severity, InteractionSeverity::Major)) {
+        return SafetyAssessment::HighRisk;
+    }
+
+    // Check for moderate allergy risk
+    if allergy_conflicts.iter().any(|c| matches!(c.severity, AllergySeverity::Moderate)) {
+        return SafetyAssessment::CautionRecommended;
+    }
+
+    // Check for moderate drug interactions or any duplicate therapies
+    if drug_interactions.iter().any(|i| matches!(i.severity, InteractionSeverity::Moderate))
+        || !duplicate_therapies.is_empty()
+    {
+        return SafetyAssessment::CautionRecommended;
+    }
+
+    // Check for mild allergies or minor interactions
+    if allergy_conflicts.iter().any(|c| matches!(c.severity, AllergySeverity::Mild))
+        || drug_interactions.iter().any(|i| matches!(i.severity, InteractionSeverity::Minor))
+    {
+        return SafetyAssessment::CautionRecommended;
+    }
+
+    SafetyAssessment::Safe
+}
+
+// ============================================================================
+// Pharmacogenomics Functions
+// ============================================================================
+
+/// Input for creating a pharmacogenomic profile
+#[derive(Serialize, Deserialize, Debug)]
+pub struct CreatePgxProfileInput {
+    pub patient_hash: ActionHash,
+    pub gene_variants: Vec<GeneVariant>,
+    pub testing_source: String,
+    pub lab_identifier: Option<String>,
+    pub hdc_encoded_profile: Option<String>,
+}
+
+/// Create a pharmacogenomic profile for a patient
+#[hdk_extern]
+pub fn create_pgx_profile(input: CreatePgxProfileInput) -> ExternResult<Record> {
+    let auth = require_authorization(
+        input.patient_hash.clone(),
+        DataCategory::GeneticData,
+        Permission::Write,
+        false,
+    )?;
+
+    let now = sys_time()?;
+    let profile = PharmacogenomicProfile {
+        profile_id: format!("PGX-{}", now.as_micros()),
+        patient_hash: input.patient_hash.clone(),
+        gene_variants: input.gene_variants,
+        hdc_encoded_profile: input.hdc_encoded_profile,
+        hdc_threshold: Some(0.70), // Default similarity threshold
+        testing_source: input.testing_source,
+        lab_identifier: input.lab_identifier,
+        test_date: Timestamp::from_micros(now.as_micros() as i64),
+        last_updated: Timestamp::from_micros(now.as_micros() as i64),
+        version: 1,
+    };
+
+    let hash = create_entry(&EntryTypes::PharmacogenomicProfile(profile))?;
+    let record = get(hash.clone(), GetOptions::default())?
+        .ok_or(wasm_error!(WasmErrorInner::Guest("Could not find PGx profile".to_string())))?;
+
+    // Link from patient to profile
+    create_link(
+        input.patient_hash.clone(),
+        hash,
+        LinkTypes::PatientToPgxProfile,
+        (),
+    )?;
+
+    log_data_access(
+        input.patient_hash,
+        vec![DataCategory::GeneticData],
+        Permission::Write,
+        auth.consent_hash,
+        auth.emergency_override,
+        None,
+    )?;
+
+    Ok(record)
+}
+
+/// Input for getting patient's PGx profile
+#[derive(Serialize, Deserialize, Debug)]
+pub struct GetPgxProfileInput {
+    pub patient_hash: ActionHash,
+    pub is_emergency: bool,
+    pub emergency_reason: Option<String>,
+}
+
+/// Get patient's pharmacogenomic profile
+#[hdk_extern]
+pub fn get_pgx_profile(input: GetPgxProfileInput) -> ExternResult<Option<Record>> {
+    let auth = require_authorization(
+        input.patient_hash.clone(),
+        DataCategory::GeneticData,
+        Permission::Read,
+        input.is_emergency,
+    )?;
+
+    let links = get_links(
+        LinkQuery::try_new(input.patient_hash.clone(), LinkTypes::PatientToPgxProfile)?, GetStrategy::default())?;
+
+    let result = if let Some(link) = links.last() {
+        if let Some(hash) = link.target.clone().into_action_hash() {
+            get(hash, GetOptions::default())?
+        } else {
+            None
+        }
+    } else {
+        None
+    };
+
+    log_data_access(
+        input.patient_hash,
+        vec![DataCategory::GeneticData],
+        Permission::Read,
+        auth.consent_hash,
+        auth.emergency_override,
+        input.emergency_reason,
+    )?;
+
+    Ok(result)
+}
+
+/// Create a drug-gene interaction record
+#[hdk_extern]
+pub fn create_drug_gene_interaction(interaction: DrugGeneInteraction) -> ExternResult<Record> {
+    let hash = create_entry(&EntryTypes::DrugGeneInteraction(interaction.clone()))?;
+    let record = get(hash.clone(), GetOptions::default())?
+        .ok_or(wasm_error!(WasmErrorInner::Guest("Could not find drug-gene interaction".to_string())))?;
+
+    // Link from drug to interaction
+    let drug_anchor = anchor_hash(&format!("drug_pgx_{}", interaction.drug_rxnorm))?;
+    create_link(drug_anchor, hash.clone(), LinkTypes::DrugToGeneInteractions, ())?;
+
+    // Link from gene to interaction
+    let gene_anchor = anchor_hash(&format!("gene_{}", interaction.gene))?;
+    create_link(gene_anchor, hash, LinkTypes::GeneToDrugInteractions, ())?;
+
+    Ok(record)
+}
+
+/// Input for checking pharmacogenomic interactions
+#[derive(Serialize, Deserialize, Debug)]
+pub struct CheckPgxInteractionInput {
+    pub patient_hash: ActionHash,
+    pub drug_rxnorm: String,
+    pub drug_name: String,
+    pub is_emergency: bool,
+    pub emergency_reason: Option<String>,
+}
+
+/// Check pharmacogenomic implications for a drug and patient
+#[hdk_extern]
+pub fn check_pgx_interaction(input: CheckPgxInteractionInput) -> ExternResult<PharmacogenomicCheckResult> {
+    // Get patient's PGx profile
+    let profile_record = get_pgx_profile(GetPgxProfileInput {
+        patient_hash: input.patient_hash.clone(),
+        is_emergency: input.is_emergency,
+        emergency_reason: input.emergency_reason.clone(),
+    })?;
+
+    let profile = match profile_record {
+        Some(rec) => rec.entry().to_app_option::<PharmacogenomicProfile>().ok().flatten(),
+        None => None,
+    };
+
+    // If no profile, return "no data" result
+    if profile.is_none() {
+        return Ok(PharmacogenomicCheckResult {
+            patient_hash: input.patient_hash,
+            drug_rxnorm: input.drug_rxnorm,
+            drug_name: input.drug_name,
+            gene_findings: Vec::new(),
+            overall_recommendation: DosingRecommendation::InsufficientEvidence,
+            summary: "No pharmacogenomic profile available for this patient".to_string(),
+            detailed_recommendations: vec![
+                "Consider ordering pharmacogenomic testing".to_string(),
+                "Proceed with standard dosing while monitoring for adverse effects".to_string(),
+            ],
+            confidence: 0.0,
+        });
+    }
+
+    let profile = profile.unwrap();
+    let mut gene_findings = Vec::new();
+    let mut recommendations = Vec::new();
+    let mut worst_recommendation = DosingRecommendation::StandardDose;
+
+    // Look up drug-gene interactions for this drug
+    let drug_anchor = anchor_hash(&format!("drug_pgx_{}", input.drug_rxnorm))?;
+    let interaction_links = get_links(
+        LinkQuery::try_new(drug_anchor, LinkTypes::DrugToGeneInteractions)?, GetStrategy::default())?;
+
+    for link in interaction_links {
+        if let Some(hash) = link.target.into_action_hash() {
+            if let Some(record) = get(hash, GetOptions::default())? {
+                if let Some(interaction) = record.entry().to_app_option::<DrugGeneInteraction>().ok().flatten() {
+                    // Check if patient has this gene in their profile
+                    if let Some(patient_variant) = profile.gene_variants.iter().find(|v| v.gene == interaction.gene) {
+                        // Find the implication for patient's phenotype
+                        if let Some(implication) = interaction.phenotype_implications.iter()
+                            .find(|i| i.phenotype == patient_variant.phenotype)
+                        {
+                            let impact = match &implication.recommendation {
+                                DosingRecommendation::Avoid => DrugImpact::IncreasedToxicity,
+                                DosingRecommendation::ReducedDose => DrugImpact::AlteredMetabolism,
+                                DosingRecommendation::IncreasedDose => DrugImpact::ReducedEfficacy,
+                                DosingRecommendation::UseAlternative => DrugImpact::IncreasedToxicity,
+                                DosingRecommendation::MonitorClosely => DrugImpact::AlteredMetabolism,
+                                _ => DrugImpact::NoImpact,
+                            };
+
+                            gene_findings.push(GeneDrugFinding {
+                                gene: interaction.gene.clone(),
+                                patient_phenotype: patient_variant.phenotype.clone(),
+                                impact,
+                                recommendation: implication.clinical_notes.clone(),
+                            });
+
+                            recommendations.push(format!(
+                                "{}: {} - {}",
+                                interaction.gene,
+                                format!("{:?}", patient_variant.phenotype),
+                                implication.clinical_notes
+                            ));
+
+                            // Track worst recommendation
+                            worst_recommendation = worse_recommendation(
+                                worst_recommendation.clone(),
+                                implication.recommendation.clone(),
+                            );
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // Build summary
+    let summary = if gene_findings.is_empty() {
+        "No actionable pharmacogenomic interactions found for this drug".to_string()
+    } else {
+        format!(
+            "Found {} gene(s) affecting {} metabolism: {}",
+            gene_findings.len(),
+            input.drug_name,
+            gene_findings.iter().map(|f| f.gene.as_str()).collect::<Vec<_>>().join(", ")
+        )
+    };
+
+    // Calculate confidence based on findings and evidence level
+    let confidence = if gene_findings.is_empty() {
+        0.5 // Moderate confidence if no interactions found
+    } else {
+        0.85 // High confidence with PGx data
+    };
+
+    Ok(PharmacogenomicCheckResult {
+        patient_hash: input.patient_hash,
+        drug_rxnorm: input.drug_rxnorm,
+        drug_name: input.drug_name,
+        gene_findings,
+        overall_recommendation: worst_recommendation,
+        summary,
+        detailed_recommendations: recommendations,
+        confidence,
+    })
+}
+
+/// Helper to determine worse of two recommendations
+fn worse_recommendation(a: DosingRecommendation, b: DosingRecommendation) -> DosingRecommendation {
+    let severity = |r: &DosingRecommendation| match r {
+        DosingRecommendation::Avoid => 6,
+        DosingRecommendation::UseAlternative => 5,
+        DosingRecommendation::MonitorClosely => 4,
+        DosingRecommendation::ReducedDose => 3,
+        DosingRecommendation::IncreasedDose => 3,
+        DosingRecommendation::InsufficientEvidence => 2,
+        DosingRecommendation::StandardDose => 1,
+    };
+
+    if severity(&a) >= severity(&b) { a } else { b }
+}
+
+/// Check for duplicate therapies (medications in the same therapeutic class)
+fn check_duplicate_therapies(medication_rxnorm_codes: &[String]) -> ExternResult<Vec<DuplicateTherapy>> {
+    let mut duplicates = Vec::new();
+
+    // Define common therapeutic classes by RxNorm prefixes/patterns
+    // In production, this would use a comprehensive drug classification database
+    let therapy_classes: Vec<(&str, Vec<&str>, &str)> = vec![
+        // (class_name, [rxnorm_prefixes], recommendation)
+        ("ACE Inhibitors", vec!["198188", "261962", "308962"],
+         "Multiple ACE inhibitors detected. Consider reviewing for therapeutic duplication."),
+        ("Statins", vec!["617310", "617311", "617312"],
+         "Multiple statins detected. Combination statin therapy is generally not recommended."),
+        ("Beta Blockers", vec!["866511", "866924", "866427"],
+         "Multiple beta blockers detected. Review for therapeutic necessity."),
+        ("Proton Pump Inhibitors", vec!["283742", "311355", "261961"],
+         "Multiple PPIs detected. Generally only one PPI needed."),
+        ("NSAIDs", vec!["197803", "197804", "197805"],
+         "Multiple NSAIDs detected. Increases risk of GI bleeding and renal impairment."),
+        ("Benzodiazepines", vec!["197589", "197590", "197591"],
+         "Multiple benzodiazepines detected. Increases sedation and fall risk."),
+        ("Opioids", vec!["197696", "197697", "197698"],
+         "Multiple opioids detected. Review for appropriateness and overdose risk."),
+    ];
+
+    for (class_name, prefixes, recommendation) in therapy_classes {
+        let matching_drugs: Vec<&String> = medication_rxnorm_codes
+            .iter()
+            .filter(|code| prefixes.iter().any(|prefix| code.starts_with(prefix)))
+            .collect();
+
+        if matching_drugs.len() > 1 {
+            // Found duplicate therapy - create pairs
+            for i in 0..matching_drugs.len() {
+                for j in (i + 1)..matching_drugs.len() {
+                    duplicates.push(DuplicateTherapy {
+                        drug_a_rxnorm: matching_drugs[i].clone(),
+                        drug_a_name: format!("{} medication", class_name),
+                        drug_b_rxnorm: matching_drugs[j].clone(),
+                        drug_b_name: format!("{} medication", class_name),
+                        therapy_class: class_name.to_string(),
+                        recommendation: recommendation.to_string(),
+                    });
+                }
+            }
+        }
+    }
+
+    Ok(duplicates)
 }

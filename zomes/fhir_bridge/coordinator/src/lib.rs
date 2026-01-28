@@ -54,6 +54,10 @@ pub fn ingest_bundle(input: IngestBundleInput) -> ExternResult<IngestReport> {
         observations_skipped: 0,
         procedures_created: 0,
         procedures_skipped: 0,
+        diagnostic_reports_created: 0,
+        diagnostic_reports_skipped: 0,
+        care_plans_created: 0,
+        care_plans_skipped: 0,
         unknown_types: Vec::new(),
         parse_errors: Vec::new(),
     };
@@ -217,6 +221,30 @@ pub fn ingest_bundle(input: IngestBundleInput) -> ExternResult<IngestReport> {
                         }
                     }
                     Err(e) => report.parse_errors.push(format!("Procedure: {}", e)),
+                }
+            }
+            "DiagnosticReport" => {
+                match process_diagnostic_report(resource, &patient_hash, &input.source_system) {
+                    Ok(created) => {
+                        if created {
+                            report.diagnostic_reports_created += 1;
+                        } else {
+                            report.diagnostic_reports_skipped += 1;
+                        }
+                    }
+                    Err(e) => report.parse_errors.push(format!("DiagnosticReport: {}", e)),
+                }
+            }
+            "CarePlan" => {
+                match process_care_plan(resource, &patient_hash, &input.source_system) {
+                    Ok(created) => {
+                        if created {
+                            report.care_plans_created += 1;
+                        } else {
+                            report.care_plans_skipped += 1;
+                        }
+                    }
+                    Err(e) => report.parse_errors.push(format!("CarePlan: {}", e)),
                 }
             }
             _ => {
@@ -668,6 +696,174 @@ fn process_procedure(resource: &JsonValue, patient_hash: &ActionHash, source_sys
 
     create_resource_anchor(&source_key, "Procedure", &mapping_hash)?;
     Ok(true)
+}
+
+/// Process a DiagnosticReport resource
+/// DiagnosticReports represent lab results, imaging studies, pathology reports, etc.
+fn process_diagnostic_report(resource: &JsonValue, patient_hash: &ActionHash, source_system: &str) -> Result<bool, String> {
+    let fhir_id = get_resource_id(resource)
+        .ok_or("DiagnosticReport missing 'id' field")?;
+
+    let source_key = format!("{}:DiagnosticReport:{}", source_system, fhir_id);
+    if lookup_resource_anchor(&source_key).map_err(|e| e.to_string())?.is_some() {
+        return Ok(false);
+    }
+
+    // Extract diagnostic report data
+    let code = extract_coding(resource, "code");
+    let category = extract_category(resource);
+    let status = get_fhir_string(resource, "status");
+    let effective_datetime = get_fhir_string(resource, "effectiveDateTime")
+        .or_else(|| {
+            // Try effectivePeriod.start
+            resource.get("effectivePeriod")
+                .and_then(|p| p.get("start"))
+                .and_then(|s| s.as_str())
+                .map(|s| s.to_string())
+        });
+    let conclusion = get_fhir_string(resource, "conclusion");
+
+    // Build display text
+    let display = code.1.clone().or_else(|| {
+        conclusion.clone().map(|c| c.chars().take(100).collect())
+    });
+
+    // Store as observation mapping (DiagnosticReports are observation-like)
+    let mapping = FhirObservationMapping {
+        fhir_observation_id: format!("diagnostic-report-{}", fhir_id),
+        internal_record_hash: patient_hash.clone(),
+        patient_hash: patient_hash.clone(),
+        loinc_code: code.0.clone().unwrap_or_else(|| format!("diagnostic-report:{}", category.unwrap_or_default())),
+        display,
+        value: serde_json::to_string(resource).ok(),
+        unit: status, // Use unit field to store status
+        effective_datetime,
+        source_system: source_system.to_string(),
+        last_synced: sys_time().map_err(|e| e.to_string())?,
+        sync_status: SyncStatus::Synced,
+        sync_errors: Vec::new(),
+    };
+
+    let response = call(
+        CallTargetCell::Local,
+        ZomeName::from("fhir_mapping"),
+        FunctionName::from("create_fhir_observation_mapping"),
+        None,
+        &mapping,
+    ).map_err(|e| format!("Failed to create diagnostic report mapping: {}", e))?;
+
+    let mapping_hash: ActionHash = match response {
+        ZomeCallResponse::Ok(io) => {
+            let record: Record = io.decode()
+                .map_err(|e| format!("Failed to decode diagnostic report: {}", e))?;
+            record.action_address().clone()
+        }
+        _ => return Err("Failed to create diagnostic report mapping".to_string()),
+    };
+
+    create_resource_anchor(&source_key, "DiagnosticReport", &mapping_hash)?;
+    Ok(true)
+}
+
+/// Process a CarePlan resource
+/// CarePlans represent care plans, treatment plans, health maintenance plans
+fn process_care_plan(resource: &JsonValue, patient_hash: &ActionHash, source_system: &str) -> Result<bool, String> {
+    let fhir_id = get_resource_id(resource)
+        .ok_or("CarePlan missing 'id' field")?;
+
+    let source_key = format!("{}:CarePlan:{}", source_system, fhir_id);
+    if lookup_resource_anchor(&source_key).map_err(|e| e.to_string())?.is_some() {
+        return Ok(false);
+    }
+
+    // Extract care plan data
+    let title = get_fhir_string(resource, "title");
+    let description = get_fhir_string(resource, "description");
+    let status = get_fhir_string(resource, "status");
+    let intent = get_fhir_string(resource, "intent");
+    let category = extract_category(resource);
+
+    // Extract period
+    let period_start = resource.get("period")
+        .and_then(|p| p.get("start"))
+        .and_then(|s| s.as_str())
+        .map(|s| s.to_string());
+
+    // Extract activities summary
+    let activities_count = resource.get("activity")
+        .and_then(|a| a.as_array())
+        .map(|arr| arr.len())
+        .unwrap_or(0);
+
+    // Extract goals count
+    let goals_count = resource.get("goal")
+        .and_then(|g| g.as_array())
+        .map(|arr| arr.len())
+        .unwrap_or(0);
+
+    // Build display text
+    let display = title.clone()
+        .or_else(|| description.clone().map(|d| d.chars().take(100).collect()))
+        .or_else(|| category.clone().map(|c| format!("{} Care Plan", c)));
+
+    // Store as observation mapping (we store the full JSON for rich data)
+    let mapping = FhirObservationMapping {
+        fhir_observation_id: format!("care-plan-{}", fhir_id),
+        internal_record_hash: patient_hash.clone(),
+        patient_hash: patient_hash.clone(),
+        loinc_code: format!("care-plan:{}", category.unwrap_or_else(|| "general".to_string())),
+        display,
+        value: serde_json::to_string(resource).ok(),
+        unit: Some(format!("status:{} intent:{} activities:{} goals:{}",
+            status.unwrap_or_default(),
+            intent.unwrap_or_default(),
+            activities_count,
+            goals_count
+        )),
+        effective_datetime: period_start,
+        source_system: source_system.to_string(),
+        last_synced: sys_time().map_err(|e| e.to_string())?,
+        sync_status: SyncStatus::Synced,
+        sync_errors: Vec::new(),
+    };
+
+    let response = call(
+        CallTargetCell::Local,
+        ZomeName::from("fhir_mapping"),
+        FunctionName::from("create_fhir_observation_mapping"),
+        None,
+        &mapping,
+    ).map_err(|e| format!("Failed to create care plan mapping: {}", e))?;
+
+    let mapping_hash: ActionHash = match response {
+        ZomeCallResponse::Ok(io) => {
+            let record: Record = io.decode()
+                .map_err(|e| format!("Failed to decode care plan: {}", e))?;
+            record.action_address().clone()
+        }
+        _ => return Err("Failed to create care plan mapping".to_string()),
+    };
+
+    create_resource_anchor(&source_key, "CarePlan", &mapping_hash)?;
+    Ok(true)
+}
+
+/// Extract category from FHIR resource
+fn extract_category(resource: &JsonValue) -> Option<String> {
+    resource.get("category")
+        .and_then(|cats| cats.as_array())
+        .and_then(|arr| arr.first())
+        .and_then(|cat| {
+            // Try coding first
+            cat.get("coding")
+                .and_then(|c| c.as_array())
+                .and_then(|arr| arr.first())
+                .and_then(|coding| coding.get("display").or(coding.get("code")))
+                .and_then(|v| v.as_str())
+                .map(|s| s.to_string())
+                // Fall back to text
+                .or_else(|| cat.get("text").and_then(|t| t.as_str()).map(|s| s.to_string()))
+        })
 }
 
 // ============================================================================

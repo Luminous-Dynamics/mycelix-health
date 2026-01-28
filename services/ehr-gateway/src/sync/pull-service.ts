@@ -352,7 +352,9 @@ export class PullService {
    */
   static emptyIngestReport(sourceSystem: string): IngestReport {
     return {
+      report_id: `empty-${Date.now()}`,
       source_system: sourceSystem,
+      ingested_at: Date.now() * 1000, // Microseconds to match Holochain Timestamp
       total_processed: 0,
       patients_created: 0,
       patients_updated: 0,

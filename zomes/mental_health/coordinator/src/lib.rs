@@ -770,6 +770,398 @@ pub fn get_therapy_notes(patient_hash: ActionHash) -> ExternResult<Vec<Record>> 
     Ok(records)
 }
 
+// ============================================================================
+// Treatment Plan Functions
+// ============================================================================
+
+/// Input for creating a treatment plan
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct CreateTreatmentPlanInput {
+    pub patient_hash: ActionHash,
+    pub primary_diagnosis_icd10: String,
+    pub secondary_diagnoses: Vec<String>,
+    pub treatment_goals: Vec<TreatmentGoal>,
+    pub modalities: Vec<TreatmentModality>,
+    pub medications: Vec<PsychMedication>,
+    pub session_frequency: String,
+    pub estimated_duration: Option<String>,
+    pub crisis_plan_hash: Option<ActionHash>,
+    pub review_date: Timestamp,
+}
+
+/// Create a mental health treatment plan
+#[hdk_extern]
+pub fn create_treatment_plan(input: CreateTreatmentPlanInput) -> ExternResult<Record> {
+    let patient_hash = input.patient_hash.clone();
+    let auth = require_authorization(
+        patient_hash.clone(),
+        DataCategory::MentalHealth,
+        Permission::Write,
+        false,
+    )?;
+    let caller = agent_info()?.agent_initial_pubkey;
+    let now = sys_time()?;
+
+    let plan = MentalHealthTreatmentPlan {
+        patient_hash: patient_hash.clone(),
+        provider_hash: caller.clone(),
+        primary_diagnosis_icd10: input.primary_diagnosis_icd10,
+        secondary_diagnoses: input.secondary_diagnoses,
+        treatment_goals: input.treatment_goals,
+        modalities: input.modalities,
+        medications: input.medications,
+        session_frequency: input.session_frequency,
+        estimated_duration: input.estimated_duration,
+        crisis_plan_hash: input.crisis_plan_hash,
+        effective_date: now,
+        review_date: input.review_date,
+        status: "Active".to_string(),
+        created_at: now,
+        updated_at: now,
+    };
+
+    let action_hash = create_entry(&EntryTypes::MentalHealthTreatmentPlan(plan))?;
+
+    create_link(
+        patient_hash.clone(),
+        action_hash.clone(),
+        LinkTypes::PatientToTreatmentPlans,
+        (),
+    )?;
+
+    log_data_access(
+        patient_hash,
+        vec![DataCategory::MentalHealth],
+        Permission::Write,
+        auth.consent_hash,
+        auth.emergency_override,
+        None,
+    )?;
+
+    get(action_hash, GetOptions::default())?
+        .ok_or(wasm_error!(WasmErrorInner::Guest("Failed to get treatment plan".to_string())))
+}
+
+/// Get all treatment plans for a patient
+#[hdk_extern]
+pub fn get_treatment_plans(patient_hash: ActionHash) -> ExternResult<Vec<Record>> {
+    let auth = require_authorization(
+        patient_hash.clone(),
+        DataCategory::MentalHealth,
+        Permission::Read,
+        false,
+    )?;
+    let links = get_links(
+        LinkQuery::try_new(patient_hash.clone(), LinkTypes::PatientToTreatmentPlans)?, GetStrategy::default(),
+    )?;
+
+    let mut records = Vec::new();
+    for link in links {
+        if let Some(target) = link.target.into_action_hash() {
+            if let Some(record) = get(target, GetOptions::default())? {
+                records.push(record);
+            }
+        }
+    }
+
+    if !records.is_empty() {
+        log_data_access(
+            patient_hash,
+            vec![DataCategory::MentalHealth],
+            Permission::Read,
+            auth.consent_hash,
+            auth.emergency_override,
+            None,
+        )?;
+    }
+
+    Ok(records)
+}
+
+/// Get the active treatment plan for a patient
+#[hdk_extern]
+pub fn get_active_treatment_plan(patient_hash: ActionHash) -> ExternResult<Option<Record>> {
+    let plans = get_treatment_plans(patient_hash)?;
+
+    for record in plans {
+        if let Some(plan) = record.entry().to_app_option::<MentalHealthTreatmentPlan>().ok().flatten() {
+            if plan.status == "Active" {
+                return Ok(Some(record));
+            }
+        }
+    }
+
+    Ok(None)
+}
+
+/// Input for updating a treatment plan goal
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct UpdateTreatmentGoalInput {
+    pub plan_hash: ActionHash,
+    pub goal_id: String,
+    pub new_progress: String,
+    pub notes: Option<String>,
+}
+
+/// Update progress on a treatment plan goal
+#[hdk_extern]
+pub fn update_treatment_goal(input: UpdateTreatmentGoalInput) -> ExternResult<Record> {
+    let record = get(input.plan_hash.clone(), GetOptions::default())?
+        .ok_or(wasm_error!(WasmErrorInner::Guest("Treatment plan not found".to_string())))?;
+
+    let mut plan: MentalHealthTreatmentPlan = record
+        .entry()
+        .to_app_option()
+        .map_err(|e| wasm_error!(WasmErrorInner::Guest(e.to_string())))?
+        .ok_or(wasm_error!(WasmErrorInner::Guest("Invalid treatment plan".to_string())))?;
+
+    let auth = require_authorization(
+        plan.patient_hash.clone(),
+        DataCategory::MentalHealth,
+        Permission::Write,
+        false,
+    )?;
+
+    // Find and update the goal
+    let mut goal_found = false;
+    for goal in &mut plan.treatment_goals {
+        if goal.goal_id == input.goal_id {
+            goal.progress = input.new_progress;
+            goal_found = true;
+            break;
+        }
+    }
+
+    if !goal_found {
+        return Err(wasm_error!(WasmErrorInner::Guest(format!(
+            "Goal {} not found in treatment plan",
+            input.goal_id
+        ))));
+    }
+
+    plan.updated_at = sys_time()?;
+
+    let updated_hash = update_entry(input.plan_hash, &plan)?;
+
+    log_data_access(
+        plan.patient_hash,
+        vec![DataCategory::MentalHealth],
+        Permission::Write,
+        auth.consent_hash,
+        auth.emergency_override,
+        None,
+    )?;
+
+    get(updated_hash, GetOptions::default())?
+        .ok_or(wasm_error!(WasmErrorInner::Guest("Failed to get updated plan".to_string())))
+}
+
+/// Input for closing a treatment plan
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct CloseTreatmentPlanInput {
+    pub plan_hash: ActionHash,
+    pub reason: String,
+}
+
+/// Close a treatment plan
+#[hdk_extern]
+pub fn close_treatment_plan(input: CloseTreatmentPlanInput) -> ExternResult<Record> {
+    let record = get(input.plan_hash.clone(), GetOptions::default())?
+        .ok_or(wasm_error!(WasmErrorInner::Guest("Treatment plan not found".to_string())))?;
+
+    let mut plan: MentalHealthTreatmentPlan = record
+        .entry()
+        .to_app_option()
+        .map_err(|e| wasm_error!(WasmErrorInner::Guest(e.to_string())))?
+        .ok_or(wasm_error!(WasmErrorInner::Guest("Invalid treatment plan".to_string())))?;
+
+    let auth = require_authorization(
+        plan.patient_hash.clone(),
+        DataCategory::MentalHealth,
+        Permission::Write,
+        false,
+    )?;
+
+    plan.status = format!("Closed: {}", input.reason);
+    plan.updated_at = sys_time()?;
+
+    let updated_hash = update_entry(input.plan_hash, &plan)?;
+
+    log_data_access(
+        plan.patient_hash,
+        vec![DataCategory::MentalHealth],
+        Permission::Write,
+        auth.consent_hash,
+        auth.emergency_override,
+        None,
+    )?;
+
+    get(updated_hash, GetOptions::default())?
+        .ok_or(wasm_error!(WasmErrorInner::Guest("Failed to get closed plan".to_string())))
+}
+
+// ============================================================================
+// Mood Trend Analysis
+// ============================================================================
+
+/// Mood trend analysis result
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct MoodTrendAnalysis {
+    pub patient_hash: ActionHash,
+    pub period_days: u32,
+    pub entry_count: u32,
+    pub average_mood: f32,
+    pub average_anxiety: f32,
+    pub average_sleep_quality: f32,
+    pub average_energy: f32,
+    pub mood_trend: MoodTrendDirection,
+    pub common_triggers: Vec<String>,
+    pub common_coping_strategies: Vec<String>,
+    pub medication_adherence_rate: f32,
+}
+
+/// Mood trend direction
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub enum MoodTrendDirection {
+    Improving,
+    Stable,
+    Declining,
+    InsufficientData,
+}
+
+/// Calculate mood trend for a patient over a period
+#[hdk_extern]
+pub fn calculate_mood_trend(patient_hash: ActionHash) -> ExternResult<MoodTrendAnalysis> {
+    let auth = require_authorization(
+        patient_hash.clone(),
+        DataCategory::MentalHealth,
+        Permission::Read,
+        false,
+    )?;
+
+    let links = get_links(
+        LinkQuery::try_new(patient_hash.clone(), LinkTypes::PatientToMoodEntries)?, GetStrategy::default(),
+    )?;
+
+    let mut entries: Vec<MoodEntry> = Vec::new();
+    for link in links {
+        if let Some(target) = link.target.into_action_hash() {
+            if let Some(record) = get(target, GetOptions::default())? {
+                if let Some(entry) = record.entry().to_app_option::<MoodEntry>().ok().flatten() {
+                    entries.push(entry);
+                }
+            }
+        }
+    }
+
+    // Sort by date
+    entries.sort_by(|a, b| a.entry_date.cmp(&b.entry_date));
+
+    // Calculate analysis
+    let entry_count = entries.len() as u32;
+
+    if entry_count < 3 {
+        return Ok(MoodTrendAnalysis {
+            patient_hash,
+            period_days: 0,
+            entry_count,
+            average_mood: 0.0,
+            average_anxiety: 0.0,
+            average_sleep_quality: 0.0,
+            average_energy: 0.0,
+            mood_trend: MoodTrendDirection::InsufficientData,
+            common_triggers: Vec::new(),
+            common_coping_strategies: Vec::new(),
+            medication_adherence_rate: 0.0,
+        });
+    }
+
+    // Calculate averages
+    let total_mood: u32 = entries.iter().map(|e| e.mood_score as u32).sum();
+    let total_anxiety: u32 = entries.iter().map(|e| e.anxiety_score as u32).sum();
+    let total_sleep: u32 = entries.iter().map(|e| e.sleep_quality as u32).sum();
+    let total_energy: u32 = entries.iter().map(|e| e.energy_level as u32).sum();
+    let meds_taken: u32 = entries.iter().filter(|e| e.medications_taken).count() as u32;
+
+    let average_mood = total_mood as f32 / entry_count as f32;
+    let average_anxiety = total_anxiety as f32 / entry_count as f32;
+    let average_sleep_quality = total_sleep as f32 / entry_count as f32;
+    let average_energy = total_energy as f32 / entry_count as f32;
+    let medication_adherence_rate = meds_taken as f32 / entry_count as f32;
+
+    // Calculate trend (compare first half to second half)
+    let mid_point = entry_count / 2;
+    let first_half_mood: f32 = entries[..(mid_point as usize)]
+        .iter()
+        .map(|e| e.mood_score as f32)
+        .sum::<f32>() / mid_point as f32;
+    let second_half_mood: f32 = entries[(mid_point as usize)..]
+        .iter()
+        .map(|e| e.mood_score as f32)
+        .sum::<f32>() / (entry_count - mid_point) as f32;
+
+    let mood_trend = if second_half_mood > first_half_mood + 0.5 {
+        MoodTrendDirection::Improving
+    } else if second_half_mood < first_half_mood - 0.5 {
+        MoodTrendDirection::Declining
+    } else {
+        MoodTrendDirection::Stable
+    };
+
+    // Collect common triggers and coping strategies
+    let mut trigger_counts: std::collections::HashMap<String, u32> = std::collections::HashMap::new();
+    let mut coping_counts: std::collections::HashMap<String, u32> = std::collections::HashMap::new();
+
+    for entry in &entries {
+        for trigger in &entry.triggers {
+            *trigger_counts.entry(trigger.clone()).or_insert(0) += 1;
+        }
+        for strategy in &entry.coping_strategies_used {
+            *coping_counts.entry(strategy.clone()).or_insert(0) += 1;
+        }
+    }
+
+    let mut common_triggers: Vec<(String, u32)> = trigger_counts.into_iter().collect();
+    common_triggers.sort_by(|a, b| b.1.cmp(&a.1));
+    let common_triggers: Vec<String> = common_triggers.into_iter().take(5).map(|(t, _)| t).collect();
+
+    let mut common_coping: Vec<(String, u32)> = coping_counts.into_iter().collect();
+    common_coping.sort_by(|a, b| b.1.cmp(&a.1));
+    let common_coping_strategies: Vec<String> = common_coping.into_iter().take(5).map(|(s, _)| s).collect();
+
+    // Calculate period in days
+    let period_days = if !entries.is_empty() {
+        let first_date = entries.first().unwrap().entry_date.as_micros();
+        let last_date = entries.last().unwrap().entry_date.as_micros();
+        ((last_date - first_date) / (24 * 60 * 60 * 1_000_000)) as u32
+    } else {
+        0
+    };
+
+    log_data_access(
+        patient_hash.clone(),
+        vec![DataCategory::MentalHealth],
+        Permission::Read,
+        auth.consent_hash,
+        auth.emergency_override,
+        None,
+    )?;
+
+    Ok(MoodTrendAnalysis {
+        patient_hash,
+        period_days,
+        entry_count,
+        average_mood,
+        average_anxiety,
+        average_sleep_quality,
+        average_energy,
+        mood_trend,
+        common_triggers,
+        common_coping_strategies,
+        medication_adherence_rate,
+    })
+}
+
 /// Mental health summary for a patient
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct MentalHealthSummary {
@@ -795,6 +1187,18 @@ pub fn get_mental_health_summary(patient_hash: ActionHash) -> ExternResult<Menta
     let screenings = get_patient_screenings(patient_hash.clone())?;
     let safety_plan = get_safety_plan(patient_hash.clone())?;
     let crisis_events = get_crisis_history(patient_hash.clone())?;
+    let active_plan = get_active_treatment_plan(patient_hash.clone())?;
+
+    // Calculate mood trend
+    let mood_trend_analysis = calculate_mood_trend(patient_hash.clone()).ok();
+    let mood_trend = mood_trend_analysis.map(|analysis| {
+        match analysis.mood_trend {
+            MoodTrendDirection::Improving => "Improving".to_string(),
+            MoodTrendDirection::Stable => "Stable".to_string(),
+            MoodTrendDirection::Declining => "Declining".to_string(),
+            MoodTrendDirection::InsufficientData => "Insufficient data".to_string(),
+        }
+    });
 
     let mut latest_phq9: Option<(u32, Severity)> = None;
     let mut latest_gad7: Option<u32> = None;
@@ -820,8 +1224,8 @@ pub fn get_mental_health_summary(patient_hash: ActionHash) -> ExternResult<Menta
         latest_gad7_score: latest_gad7,
         has_active_safety_plan: safety_plan.is_some(),
         recent_crisis_events: crisis_events.len() as u32,
-        active_treatment_plan: false, // TODO: check treatment plans
-        mood_trend: None, // TODO: calculate from mood entries
+        active_treatment_plan: active_plan.is_some(),
+        mood_trend,
     };
 
     log_data_access(

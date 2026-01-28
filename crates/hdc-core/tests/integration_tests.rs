@@ -440,7 +440,7 @@ chr7	500	rs12248560	C	T	45	PASS	DP=70	GT	1/1
 
         // Encode to hypervector
         let encoded = encoder.encode_variants(&variants).unwrap();
-        assert_eq!(encoded.as_bytes().len(), 1250, "Should be 10,000 bits = 1,250 bytes");
+        assert_eq!(encoded.as_bytes().len(), hdc_core::HYPERVECTOR_BYTES, "Should be HYPERVECTOR_DIM bits");
 
         println!("VCF Pipeline: Parsed {} variants, encoded to {} bytes",
                  variants.len(), encoded.as_bytes().len());
@@ -662,8 +662,8 @@ mod stress_tests {
         let elapsed = start.elapsed();
 
         println!("Stress test: Encoded {} variants in {:?}", variants.len(), elapsed);
-        assert!(elapsed.as_millis() < 1000, "Should encode 1000 variants in < 1 second");
-        assert_eq!(encoded.as_bytes().len(), 1250);
+        assert!(elapsed.as_millis() < 2000, "Should encode 1000 variants in < 2 seconds");
+        assert_eq!(encoded.as_bytes().len(), hdc_core::HYPERVECTOR_BYTES);
     }
 
     /// Test similarity computation performance
@@ -692,6 +692,7 @@ mod stress_tests {
         println!("Similarity performance: {} comparisons in {:?} ({:.0} ops/sec)",
                  comparisons, elapsed, ops_per_sec);
 
-        assert!(ops_per_sec > 100_000.0, "Should achieve > 100K comparisons/sec");
+        // Adjusted for 16,384-bit vectors (larger than original 10,000)
+        assert!(ops_per_sec > 60_000.0, "Should achieve > 60K comparisons/sec");
     }
 }

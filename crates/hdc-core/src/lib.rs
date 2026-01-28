@@ -5,7 +5,7 @@
 //!
 //! # Features
 //!
-//! - Binary/bipolar hypervectors (10,000 dimensions)
+//! - Binary/bipolar hypervectors (2^14 = 16,384 dimensions)
 //! - K-mer based DNA sequence encoding
 //! - HLA typing for transplant matching
 //! - SNP panel encoding
@@ -68,8 +68,8 @@ pub use gpu::{GpuSimilarityEngine, GpuError};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
-/// Standard hypervector dimension
-pub const HYPERVECTOR_DIM: usize = 10_000;
+/// Standard hypervector dimension (2^14 for SIMD-friendly alignment)
+pub const HYPERVECTOR_DIM: usize = 1 << 14; // 16,384
 
 /// Number of bytes needed to store HYPERVECTOR_DIM bits
 pub const HYPERVECTOR_BYTES: usize = (HYPERVECTOR_DIM + 7) / 8;
@@ -115,7 +115,7 @@ impl Default for Seed {
 /// A hypervector - binary representation of high-dimensional data
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Hypervector {
-    /// Packed binary data (10,000 bits = 1,250 bytes)
+    /// Packed binary data (16,384 bits = 2,048 bytes)
     data: Vec<u8>,
 }
 
