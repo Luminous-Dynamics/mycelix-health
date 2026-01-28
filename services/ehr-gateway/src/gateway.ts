@@ -14,6 +14,7 @@ import { CernerAdapter, type CernerAdapterConfig } from './adapters/cerner.js';
 import { PullService, type PullConfig, type PullOptions } from './sync/pull-service.js';
 import { PushService, type PushConfig, type PushOptions } from './sync/push-service.js';
 import { ConflictResolver, type ConflictResolverConfig, type ConflictResolutionStrategy } from './sync/conflict-resolver.js';
+import { EhrCacheManager, type EhrCacheConfig, type CacheStats } from './cache.js';
 import type { EhrSystem, EhrEndpoint, SyncResult, SyncDirection, ConflictInfo } from './types.js';
 
 export interface EhrGatewayConfig {
@@ -21,6 +22,10 @@ export interface EhrGatewayConfig {
   defaultTimeout?: number;
   maxRetries?: number;
   conflictStrategy?: ConflictResolutionStrategy;
+  /** Cache configuration */
+  cache?: EhrCacheConfig;
+  /** Whether caching is enabled (default: true) */
+  enableCache?: boolean;
 }
 
 export interface ConnectionConfig {
@@ -43,12 +48,14 @@ export class EhrGateway {
   private config: EhrGatewayConfig;
   private connections: Map<string, ActiveConnection> = new Map();
   private conflictResolver: ConflictResolver;
+  private cacheManager: EhrCacheManager | null;
 
   constructor(config: EhrGatewayConfig) {
     this.config = {
       defaultTimeout: 30000,
       maxRetries: 3,
       conflictStrategy: 'most_recent',
+      enableCache: true,
       ...config,
     };
 
@@ -60,6 +67,11 @@ export class EhrGateway {
         preferRemoteFields: ['clinical_status', 'verification_status'],
       },
     });
+
+    // Initialize cache manager if enabled
+    this.cacheManager = this.config.enableCache
+      ? new EhrCacheManager(this.config.cache)
+      : null;
   }
 
   /**
@@ -127,6 +139,10 @@ export class EhrGateway {
    * Disconnect from an EHR system
    */
   disconnect(connectionId: string): void {
+    // Revoke cached tokens for this connection
+    if (this.cacheManager) {
+      this.cacheManager.tokens.revoke(connectionId);
+    }
     this.connections.delete(connectionId);
   }
 
@@ -154,19 +170,58 @@ export class EhrGateway {
     state: string
   ): Promise<TokenInfo> {
     const connection = this.getConnection(connectionId);
-    return connection.auth.exchangeCodeForTokens(
+    const tokenInfo = await connection.auth.exchangeCodeForTokens(
       connection.endpoint.baseUrl,
       code,
       state
     );
+
+    // Cache the token for faster subsequent access
+    if (this.cacheManager && tokenInfo) {
+      this.cacheManager.tokens.set(connectionId, {
+        accessToken: tokenInfo.accessToken,
+        refreshToken: tokenInfo.refreshToken,
+        expiresAt: tokenInfo.expiresAt?.getTime(),
+        scope: tokenInfo.scope?.join(' '),
+        tokenType: tokenInfo.tokenType,
+      });
+    }
+
+    return tokenInfo;
   }
 
   /**
    * Get active token for a connection
+   *
+   * Checks cache first for faster access, then falls back to token manager.
+   * Note: Cache is checked using connectionId, token manager uses a separate key.
    */
   getToken(connectionId: string, key: string): TokenInfo | null {
+    // Fall back to token manager (source of truth)
     const connection = this.getConnection(connectionId);
     return connection.tokenManager.getToken(key);
+  }
+
+  /**
+   * Get cached token for quick access
+   *
+   * Returns the cached token if available and valid, or null.
+   * Use this for quick checks without full token manager lookup.
+   */
+  getCachedToken(connectionId: string): { accessToken: string; expiresAt?: number } | null {
+    if (!this.cacheManager) {
+      return null;
+    }
+
+    const cached = this.cacheManager.tokens.get(connectionId);
+    if (!cached) {
+      return null;
+    }
+
+    return {
+      accessToken: cached.accessToken,
+      expiresAt: cached.expiresAt,
+    };
   }
 
   /**
@@ -464,5 +519,55 @@ export class EhrGateway {
    */
   getConflictStats(): ReturnType<ConflictResolver['getStatistics']> {
     return this.conflictResolver.getStatistics();
+  }
+
+  /**
+   * Get cache statistics
+   *
+   * Returns cache hit rates and other performance metrics.
+   */
+  getCacheStats(): {
+    enabled: boolean;
+    tokens: CacheStats | null;
+    resources: CacheStats | null;
+  } {
+    if (!this.cacheManager) {
+      return { enabled: false, tokens: null, resources: null };
+    }
+
+    const stats = this.cacheManager.getStats();
+    return {
+      enabled: true,
+      tokens: stats.tokens,
+      resources: stats.resources,
+    };
+  }
+
+  /**
+   * Get the cache manager for direct cache operations
+   *
+   * Returns null if caching is disabled.
+   */
+  getCache(): EhrCacheManager | null {
+    return this.cacheManager;
+  }
+
+  /**
+   * Clear all caches
+   */
+  clearCaches(): void {
+    if (this.cacheManager) {
+      this.cacheManager.clearAll();
+    }
+  }
+
+  /**
+   * Check if a valid cached token exists for a connection
+   */
+  hasValidCachedToken(connectionId: string): boolean {
+    if (!this.cacheManager) {
+      return false;
+    }
+    return this.cacheManager.tokens.hasValidToken(connectionId);
   }
 }

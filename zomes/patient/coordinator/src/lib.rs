@@ -11,11 +11,56 @@ use mycelix_health_shared::{
     require_authorization, require_admin_authorization,
     log_data_access,
     DataCategory, Permission, GetPatientInput,
+    validation::{validate_mrn, validate_confidence_score, ValidationResult},
 };
+
+/// Validate patient data before creation/update
+fn validate_patient(patient: &Patient) -> ValidationResult {
+    let mut result = ValidationResult::new();
+
+    // Validate MRN if provided
+    if let Some(ref mrn) = patient.mrn {
+        result.merge(validate_mrn(mrn));
+    }
+
+    // Validate MATL trust score (should be 0.0 - 1.0)
+    result.merge(validate_confidence_score(patient.matl_trust_score, "matl_trust_score"));
+
+    // Validate required fields are not empty
+    if patient.first_name.trim().is_empty() {
+        result.add_error("first_name", "First name is required", mycelix_health_shared::validation::ValidationErrorCode::Required);
+    }
+    if patient.last_name.trim().is_empty() {
+        result.add_error("last_name", "Last name is required", mycelix_health_shared::validation::ValidationErrorCode::Required);
+    }
+    if patient.patient_id.trim().is_empty() {
+        result.add_error("patient_id", "Patient ID is required", mycelix_health_shared::validation::ValidationErrorCode::Required);
+    }
+
+    // Validate date of birth format (YYYY-MM-DD)
+    if !patient.date_of_birth.is_empty() {
+        let dob_parts: Vec<&str> = patient.date_of_birth.split('-').collect();
+        if dob_parts.len() != 3 {
+            result.add_error("date_of_birth", "Date of birth must be in YYYY-MM-DD format", mycelix_health_shared::validation::ValidationErrorCode::InvalidFormat);
+        } else {
+            let year_ok = dob_parts[0].len() == 4 && dob_parts[0].chars().all(|c| c.is_ascii_digit());
+            let month_ok = dob_parts[1].len() == 2 && dob_parts[1].parse::<u8>().map(|m| m >= 1 && m <= 12).unwrap_or(false);
+            let day_ok = dob_parts[2].len() == 2 && dob_parts[2].parse::<u8>().map(|d| d >= 1 && d <= 31).unwrap_or(false);
+            if !year_ok || !month_ok || !day_ok {
+                result.add_error("date_of_birth", "Invalid date of birth", mycelix_health_shared::validation::ValidationErrorCode::InvalidFormat);
+            }
+        }
+    }
+
+    result
+}
 
 /// Create a new patient profile
 #[hdk_extern]
 pub fn create_patient(patient: Patient) -> ExternResult<Record> {
+    // Validate patient data
+    validate_patient(&patient).into_result()?;
+
     let patient_hash = create_entry(&EntryTypes::Patient(patient.clone()))?;
     let record = get(patient_hash.clone(), GetOptions::default())?
         .ok_or(wasm_error!(WasmErrorInner::Guest("Could not find newly created patient".to_string())))?;
@@ -78,6 +123,9 @@ pub struct UpdatePatientInput {
 /// Update an existing patient with consent-based access control
 #[hdk_extern]
 pub fn update_patient(input: UpdatePatientInput) -> ExternResult<Record> {
+    // Validate updated patient data
+    validate_patient(&input.updated_patient).into_result()?;
+
     // Require Write authorization before modifying PHI
     let auth = require_authorization(
         input.original_hash.clone(),

@@ -26,6 +26,22 @@ export { PullService, type PullConfig, type PullOptions, type PullResult } from 
 export { PushService, type PushConfig } from './sync/push-service.js';
 export { ConflictResolver, type ConflictResolution } from './sync/conflict-resolver.js';
 
+// Caching
+export {
+  Cache,
+  TokenCache,
+  MetadataCache,
+  ResourceCache,
+  EhrCacheManager,
+  type CacheConfig,
+  type CacheEntry,
+  type CacheStats,
+  type EhrCacheConfig,
+  type CachedToken,
+  type FhirResource,
+  type FhirCapabilityStatement,
+} from './cache.js';
+
 // Configuration
 export {
   loadServerConfig,

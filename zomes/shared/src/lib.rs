@@ -17,6 +17,8 @@ pub use types::*;
 pub use anchors::*;
 pub use encryption::*;
 pub use key_management::*;
+pub use validation::*;
+pub use batch::*;
 
 /// Formal Differential Privacy module
 ///
@@ -1238,6 +1240,521 @@ pub mod anchors {
     }
 }
 
+/// Input validation module - ensures data quality and security
+///
+/// Provides validators for:
+/// - Medical Record Numbers (MRN)
+/// - Decentralized Identifiers (DID)
+/// - Score ranges for instruments
+/// - Mental health screening responses
+pub mod validation {
+    use super::*;
+
+    /// Validation error with detailed context
+    #[derive(Clone, Debug, Serialize, Deserialize)]
+    pub struct ValidationError {
+        pub field: String,
+        pub message: String,
+        pub code: ValidationErrorCode,
+    }
+
+    /// Specific validation error codes for programmatic handling
+    #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+    pub enum ValidationErrorCode {
+        Required,
+        InvalidFormat,
+        OutOfRange,
+        TooLong,
+        TooShort,
+        InvalidCharacters,
+        DuplicateValue,
+        InvalidReference,
+    }
+
+    impl std::fmt::Display for ValidationError {
+        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            write!(f, "{}: {} ({:?})", self.field, self.message, self.code)
+        }
+    }
+
+    impl From<ValidationError> for WasmError {
+        fn from(err: ValidationError) -> Self {
+            wasm_error!(WasmErrorInner::Guest(format!("Validation error - {}", err)))
+        }
+    }
+
+    /// Validation result that can accumulate multiple errors
+    #[derive(Clone, Debug, Default)]
+    pub struct ValidationResult {
+        pub errors: Vec<ValidationError>,
+    }
+
+    impl ValidationResult {
+        pub fn new() -> Self {
+            Self { errors: Vec::new() }
+        }
+
+        pub fn add_error(&mut self, field: &str, message: &str, code: ValidationErrorCode) {
+            self.errors.push(ValidationError {
+                field: field.to_string(),
+                message: message.to_string(),
+                code,
+            });
+        }
+
+        pub fn is_valid(&self) -> bool {
+            self.errors.is_empty()
+        }
+
+        pub fn into_result(self) -> ExternResult<()> {
+            if self.is_valid() {
+                Ok(())
+            } else {
+                let messages: Vec<String> = self.errors.iter().map(|e| e.to_string()).collect();
+                Err(wasm_error!(WasmErrorInner::Guest(
+                    format!("Validation failed: {}", messages.join("; "))
+                )))
+            }
+        }
+
+        pub fn merge(&mut self, other: ValidationResult) {
+            self.errors.extend(other.errors);
+        }
+    }
+
+    /// Validate a Medical Record Number (MRN)
+    ///
+    /// MRN must be:
+    /// - 4-20 characters long
+    /// - Alphanumeric with optional hyphens
+    /// - Not empty
+    pub fn validate_mrn(mrn: &str) -> ValidationResult {
+        let mut result = ValidationResult::new();
+
+        if mrn.is_empty() {
+            result.add_error("mrn", "MRN is required", ValidationErrorCode::Required);
+            return result;
+        }
+
+        if mrn.len() < 4 {
+            result.add_error("mrn", "MRN must be at least 4 characters", ValidationErrorCode::TooShort);
+        }
+
+        if mrn.len() > 20 {
+            result.add_error("mrn", "MRN cannot exceed 20 characters", ValidationErrorCode::TooLong);
+        }
+
+        if !mrn.chars().all(|c| c.is_alphanumeric() || c == '-') {
+            result.add_error("mrn", "MRN can only contain letters, numbers, and hyphens", ValidationErrorCode::InvalidCharacters);
+        }
+
+        result
+    }
+
+    /// Validate a Decentralized Identifier (DID)
+    ///
+    /// DID must follow the format: did:method:specific-id
+    /// Supported methods: key, web, pkh, holo
+    pub fn validate_did(did: &str) -> ValidationResult {
+        let mut result = ValidationResult::new();
+
+        if did.is_empty() {
+            result.add_error("did", "DID is required", ValidationErrorCode::Required);
+            return result;
+        }
+
+        if !did.starts_with("did:") {
+            result.add_error("did", "DID must start with 'did:'", ValidationErrorCode::InvalidFormat);
+            return result;
+        }
+
+        let parts: Vec<&str> = did.splitn(3, ':').collect();
+        if parts.len() < 3 {
+            result.add_error("did", "DID must have format 'did:method:specific-id'", ValidationErrorCode::InvalidFormat);
+            return result;
+        }
+
+        let method = parts[1];
+        let valid_methods = ["key", "web", "pkh", "holo", "ethr", "ion"];
+        if !valid_methods.contains(&method) {
+            result.add_error("did", &format!("Unsupported DID method '{}'. Supported: {:?}", method, valid_methods), ValidationErrorCode::InvalidFormat);
+        }
+
+        let specific_id = parts[2];
+        if specific_id.is_empty() {
+            result.add_error("did", "DID specific identifier is required", ValidationErrorCode::Required);
+        }
+
+        if specific_id.len() > 256 {
+            result.add_error("did", "DID specific identifier too long", ValidationErrorCode::TooLong);
+        }
+
+        result
+    }
+
+    /// Validate a confidence score (0.0 - 1.0)
+    pub fn validate_confidence_score(score: f64, field_name: &str) -> ValidationResult {
+        let mut result = ValidationResult::new();
+
+        if score < 0.0 || score > 1.0 {
+            result.add_error(
+                field_name,
+                "Confidence score must be between 0.0 and 1.0",
+                ValidationErrorCode::OutOfRange,
+            );
+        }
+
+        if score.is_nan() {
+            result.add_error(field_name, "Confidence score cannot be NaN", ValidationErrorCode::InvalidFormat);
+        }
+
+        result
+    }
+
+    /// Validate a score within a specified range
+    pub fn validate_score_range(score: u32, min: u32, max: u32, field_name: &str) -> ValidationResult {
+        let mut result = ValidationResult::new();
+
+        if score < min || score > max {
+            result.add_error(
+                field_name,
+                &format!("Score must be between {} and {}, got {}", min, max, score),
+                ValidationErrorCode::OutOfRange,
+            );
+        }
+
+        result
+    }
+
+    /// Mental health instrument definitions with max scores
+    #[derive(Clone, Debug)]
+    pub struct InstrumentSpec {
+        pub name: &'static str,
+        pub max_item_score: u8,
+        pub num_questions: usize,
+        pub max_total_score: u32,
+    }
+
+    /// Get instrument specification
+    pub fn get_instrument_spec(instrument: &str) -> Option<InstrumentSpec> {
+        match instrument {
+            "PHQ9" => Some(InstrumentSpec {
+                name: "PHQ-9",
+                max_item_score: 3,
+                num_questions: 9,
+                max_total_score: 27,
+            }),
+            "GAD7" => Some(InstrumentSpec {
+                name: "GAD-7",
+                max_item_score: 3,
+                num_questions: 7,
+                max_total_score: 21,
+            }),
+            "PHQ2" => Some(InstrumentSpec {
+                name: "PHQ-2",
+                max_item_score: 3,
+                num_questions: 2,
+                max_total_score: 6,
+            }),
+            "AUDIT" => Some(InstrumentSpec {
+                name: "AUDIT",
+                max_item_score: 4,
+                num_questions: 10,
+                max_total_score: 40,
+            }),
+            "CSSRS" => Some(InstrumentSpec {
+                name: "C-SSRS",
+                max_item_score: 1, // Binary responses
+                num_questions: 6,
+                max_total_score: 6,
+            }),
+            _ => None,
+        }
+    }
+
+    /// Validate mental health screening responses
+    pub fn validate_screening_responses(
+        instrument: &str,
+        responses: &[(String, u8)],
+    ) -> ValidationResult {
+        let mut result = ValidationResult::new();
+
+        let spec = match get_instrument_spec(instrument) {
+            Some(s) => s,
+            None => {
+                // Unknown instrument - use generic validation
+                for (i, (_, score)) in responses.iter().enumerate() {
+                    if *score > 10 {
+                        result.add_error(
+                            &format!("responses[{}]", i),
+                            &format!("Response score {} exceeds maximum of 10", score),
+                            ValidationErrorCode::OutOfRange,
+                        );
+                    }
+                }
+                return result;
+            }
+        };
+
+        // Validate individual responses
+        for (i, (_, score)) in responses.iter().enumerate() {
+            if *score > spec.max_item_score {
+                result.add_error(
+                    &format!("responses[{}]", i),
+                    &format!(
+                        "Response score {} exceeds {} maximum of {}",
+                        score, spec.name, spec.max_item_score
+                    ),
+                    ValidationErrorCode::OutOfRange,
+                );
+            }
+        }
+
+        // Validate total score
+        let total: u32 = responses.iter().map(|(_, s)| *s as u32).sum();
+        if total > spec.max_total_score {
+            result.add_error(
+                "total_score",
+                &format!(
+                    "Total score {} exceeds {} maximum of {}",
+                    total, spec.name, spec.max_total_score
+                ),
+                ValidationErrorCode::OutOfRange,
+            );
+        }
+
+        result
+    }
+
+    /// Validate mood entry scores (all should be 0-10)
+    pub fn validate_mood_entry_scores(
+        mood_score: u8,
+        anxiety_score: u8,
+        sleep_quality: u8,
+        energy_level: u8,
+    ) -> ValidationResult {
+        let mut result = ValidationResult::new();
+
+        if mood_score > 10 {
+            result.add_error("mood_score", "Mood score must be 0-10", ValidationErrorCode::OutOfRange);
+        }
+        if anxiety_score > 10 {
+            result.add_error("anxiety_score", "Anxiety score must be 0-10", ValidationErrorCode::OutOfRange);
+        }
+        if sleep_quality > 10 {
+            result.add_error("sleep_quality", "Sleep quality must be 0-10", ValidationErrorCode::OutOfRange);
+        }
+        if energy_level > 10 {
+            result.add_error("energy_level", "Energy level must be 0-10", ValidationErrorCode::OutOfRange);
+        }
+
+        result
+    }
+
+    /// Validate sleep hours (0-24 range)
+    pub fn validate_sleep_hours(hours: Option<f32>) -> ValidationResult {
+        let mut result = ValidationResult::new();
+
+        if let Some(h) = hours {
+            if h < 0.0 || h > 24.0 {
+                result.add_error("sleep_hours", "Sleep hours must be between 0 and 24", ValidationErrorCode::OutOfRange);
+            }
+            if h.is_nan() {
+                result.add_error("sleep_hours", "Sleep hours cannot be NaN", ValidationErrorCode::InvalidFormat);
+            }
+        }
+
+        result
+    }
+
+    /// Validate FHIR resource ID format
+    pub fn validate_fhir_id(id: &str, resource_type: &str) -> ValidationResult {
+        let mut result = ValidationResult::new();
+
+        if id.is_empty() {
+            result.add_error("id", &format!("{} ID is required", resource_type), ValidationErrorCode::Required);
+            return result;
+        }
+
+        // FHIR IDs should be 1-64 characters, alphanumeric with hyphens and dots
+        if id.len() > 64 {
+            result.add_error("id", "FHIR ID cannot exceed 64 characters", ValidationErrorCode::TooLong);
+        }
+
+        if !id.chars().all(|c| c.is_alphanumeric() || c == '-' || c == '.') {
+            result.add_error("id", "FHIR ID can only contain alphanumeric characters, hyphens, and dots", ValidationErrorCode::InvalidCharacters);
+        }
+
+        result
+    }
+}
+
+/// Batch operations module - solves N+1 query patterns
+///
+/// Provides efficient batch fetching for common patterns:
+/// - Batch get records from multiple hashes
+/// - Paginated link fetching helpers
+pub mod batch {
+    use super::*;
+
+    /// Options for batch record fetching
+    #[derive(Clone, Debug, Default)]
+    pub struct BatchGetOptions {
+        /// Maximum number of records to fetch (0 = unlimited)
+        pub limit: usize,
+        /// Skip records that are deleted
+        pub skip_deleted: bool,
+    }
+
+    /// Result of a batch get operation
+    #[derive(Clone, Debug, Serialize, Deserialize)]
+    pub struct BatchGetResult {
+        /// Successfully fetched records
+        pub records: Vec<Record>,
+        /// Hashes that were not found (404)
+        pub not_found: Vec<ActionHash>,
+        /// Hashes that failed to fetch (errors)
+        pub errors: Vec<(ActionHash, String)>,
+        /// Total requested
+        pub total_requested: usize,
+        /// Successfully fetched count
+        pub success_count: usize,
+    }
+
+    impl BatchGetResult {
+        pub fn new(total_requested: usize) -> Self {
+            Self {
+                records: Vec::new(),
+                not_found: Vec::new(),
+                errors: Vec::new(),
+                total_requested,
+                success_count: 0,
+            }
+        }
+    }
+
+    /// Batch get records from multiple action hashes
+    ///
+    /// This is more efficient than individual get() calls in a loop
+    /// because it collects all results and handles errors gracefully.
+    ///
+    /// # Arguments
+    /// * `hashes` - Action hashes to fetch
+    /// * `options` - Batch get options
+    ///
+    /// # Returns
+    /// BatchGetResult with records, not_found, and errors
+    pub fn batch_get_records(
+        hashes: Vec<ActionHash>,
+        options: BatchGetOptions,
+    ) -> ExternResult<BatchGetResult> {
+        let total = hashes.len();
+        let mut result = BatchGetResult::new(total);
+
+        let limit = if options.limit == 0 { total } else { options.limit.min(total) };
+
+        for hash in hashes.into_iter().take(limit) {
+            match get(hash.clone(), GetOptions::default()) {
+                Ok(Some(record)) => {
+                    // Check if deleted
+                    if options.skip_deleted {
+                        if let Action::Delete(_) = record.action() {
+                            continue;
+                        }
+                    }
+                    result.records.push(record);
+                    result.success_count += 1;
+                }
+                Ok(None) => {
+                    result.not_found.push(hash);
+                }
+                Err(e) => {
+                    result.errors.push((hash, format!("{:?}", e)));
+                }
+            }
+        }
+
+        Ok(result)
+    }
+
+    /// Convert links to records with pagination
+    ///
+    /// Takes a list of links and returns paginated records.
+    /// Use this after getting links from your zome's link type.
+    ///
+    /// # Arguments
+    /// * `links` - Links to process
+    /// * `pagination` - Pagination parameters
+    ///
+    /// # Returns
+    /// PaginatedResult with the fetched records
+    pub fn links_to_records_paginated(
+        links: Vec<Link>,
+        pagination: &types::PaginationInput,
+    ) -> ExternResult<types::PaginatedResult<Record>> {
+        pagination.validate()?;
+
+        let total = links.len();
+
+        // Apply pagination
+        let paginated_links: Vec<_> = links
+            .into_iter()
+            .skip(pagination.offset)
+            .take(pagination.limit)
+            .collect();
+
+        // Extract target hashes
+        let hashes: Vec<ActionHash> = paginated_links
+            .iter()
+            .filter_map(|link| link.target.clone().into_action_hash())
+            .collect();
+
+        // Batch fetch records
+        let batch_result = batch_get_records(hashes, BatchGetOptions::default())?;
+
+        Ok(types::PaginatedResult::new(
+            batch_result.records,
+            total,
+            pagination,
+        ))
+    }
+
+    /// Get records from links (non-paginated helper)
+    ///
+    /// Converts a list of links to their target records.
+    pub fn links_to_records(links: Vec<Link>) -> ExternResult<Vec<Record>> {
+        let hashes: Vec<ActionHash> = links
+            .into_iter()
+            .filter_map(|link| link.target.into_action_hash())
+            .collect();
+
+        let batch_result = batch_get_records(hashes, BatchGetOptions::default())?;
+        Ok(batch_result.records)
+    }
+
+    /// Get the most recent N records from links
+    ///
+    /// Useful for "recent activity" views.
+    /// Links are sorted by timestamp (newest first).
+    pub fn links_to_recent_records(
+        mut links: Vec<Link>,
+        count: usize,
+    ) -> ExternResult<Vec<Record>> {
+        // Sort by timestamp (newest first)
+        links.sort_by(|a, b| b.timestamp.cmp(&a.timestamp));
+
+        // Take only the requested count
+        let hashes: Vec<ActionHash> = links
+            .into_iter()
+            .take(count)
+            .filter_map(|link| link.target.into_action_hash())
+            .collect();
+
+        let batch_result = batch_get_records(hashes, BatchGetOptions::default())?;
+        Ok(batch_result.records)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1281,5 +1798,248 @@ mod tests {
     fn test_data_category_display() {
         assert_eq!(format!("{}", DataCategory::Demographics), "Demographics");
         assert_eq!(format!("{}", DataCategory::LabResults), "LabResults");
+    }
+
+    // ============== Validation Module Tests ==============
+
+    #[test]
+    fn test_validate_mrn_valid() {
+        let result = validation::validate_mrn("MRN-12345");
+        assert!(result.is_valid());
+
+        let result = validation::validate_mrn("ABC123");
+        assert!(result.is_valid());
+
+        let result = validation::validate_mrn("1234");
+        assert!(result.is_valid());
+    }
+
+    #[test]
+    fn test_validate_mrn_invalid() {
+        // Too short
+        let result = validation::validate_mrn("AB");
+        assert!(!result.is_valid());
+        assert!(result.errors.iter().any(|e| e.code == validation::ValidationErrorCode::TooShort));
+
+        // Empty
+        let result = validation::validate_mrn("");
+        assert!(!result.is_valid());
+        assert!(result.errors.iter().any(|e| e.code == validation::ValidationErrorCode::Required));
+
+        // Invalid characters
+        let result = validation::validate_mrn("MRN@123!");
+        assert!(!result.is_valid());
+        assert!(result.errors.iter().any(|e| e.code == validation::ValidationErrorCode::InvalidCharacters));
+
+        // Too long
+        let result = validation::validate_mrn("123456789012345678901");
+        assert!(!result.is_valid());
+        assert!(result.errors.iter().any(|e| e.code == validation::ValidationErrorCode::TooLong));
+    }
+
+    #[test]
+    fn test_validate_did_valid() {
+        let result = validation::validate_did("did:key:z6MkhaXgBZDvotDkL5257faiztiGiC2QtKLGpbnnEGta2doK");
+        assert!(result.is_valid());
+
+        let result = validation::validate_did("did:web:example.com");
+        assert!(result.is_valid());
+
+        let result = validation::validate_did("did:holo:abc123");
+        assert!(result.is_valid());
+    }
+
+    #[test]
+    fn test_validate_did_invalid() {
+        // Empty
+        let result = validation::validate_did("");
+        assert!(!result.is_valid());
+
+        // Missing prefix
+        let result = validation::validate_did("key:z6MkhaXgBZDvotDkL5257faiztiGiC2QtKLGpbnnEGta2doK");
+        assert!(!result.is_valid());
+
+        // Invalid method
+        let result = validation::validate_did("did:invalid:abc123");
+        assert!(!result.is_valid());
+
+        // Missing specific ID
+        let result = validation::validate_did("did:key:");
+        assert!(!result.is_valid());
+    }
+
+    #[test]
+    fn test_validate_confidence_score_valid() {
+        let result = validation::validate_confidence_score(0.0, "test");
+        assert!(result.is_valid());
+
+        let result = validation::validate_confidence_score(0.5, "test");
+        assert!(result.is_valid());
+
+        let result = validation::validate_confidence_score(1.0, "test");
+        assert!(result.is_valid());
+    }
+
+    #[test]
+    fn test_validate_confidence_score_invalid() {
+        // Below range
+        let result = validation::validate_confidence_score(-0.1, "test");
+        assert!(!result.is_valid());
+
+        // Above range
+        let result = validation::validate_confidence_score(1.1, "test");
+        assert!(!result.is_valid());
+
+        // NaN
+        let result = validation::validate_confidence_score(f64::NAN, "test");
+        assert!(!result.is_valid());
+    }
+
+    #[test]
+    fn test_validate_screening_responses_phq9() {
+        // Valid PHQ-9 responses (max score 3 per item, 9 items)
+        let responses = vec![
+            ("q1".to_string(), 0u8),
+            ("q2".to_string(), 1),
+            ("q3".to_string(), 2),
+            ("q4".to_string(), 3),
+            ("q5".to_string(), 1),
+            ("q6".to_string(), 0),
+            ("q7".to_string(), 2),
+            ("q8".to_string(), 1),
+            ("q9".to_string(), 0),
+        ];
+        let result = validation::validate_screening_responses("PHQ9", &responses);
+        assert!(result.is_valid());
+    }
+
+    #[test]
+    fn test_validate_screening_responses_phq9_invalid() {
+        // Invalid: score > 3
+        let responses = vec![
+            ("q1".to_string(), 4u8), // Invalid - max is 3
+        ];
+        let result = validation::validate_screening_responses("PHQ9", &responses);
+        assert!(!result.is_valid());
+    }
+
+    #[test]
+    fn test_validate_mood_entry_scores_valid() {
+        let result = validation::validate_mood_entry_scores(5, 3, 7, 6);
+        assert!(result.is_valid());
+
+        let result = validation::validate_mood_entry_scores(0, 0, 0, 0);
+        assert!(result.is_valid());
+
+        let result = validation::validate_mood_entry_scores(10, 10, 10, 10);
+        assert!(result.is_valid());
+    }
+
+    #[test]
+    fn test_validate_mood_entry_scores_invalid() {
+        // Mood score > 10
+        let result = validation::validate_mood_entry_scores(11, 5, 5, 5);
+        assert!(!result.is_valid());
+
+        // Anxiety score > 10
+        let result = validation::validate_mood_entry_scores(5, 15, 5, 5);
+        assert!(!result.is_valid());
+
+        // All invalid
+        let result = validation::validate_mood_entry_scores(100, 100, 100, 100);
+        assert_eq!(result.errors.len(), 4);
+    }
+
+    #[test]
+    fn test_validate_sleep_hours_valid() {
+        let result = validation::validate_sleep_hours(Some(8.0));
+        assert!(result.is_valid());
+
+        let result = validation::validate_sleep_hours(Some(0.0));
+        assert!(result.is_valid());
+
+        let result = validation::validate_sleep_hours(Some(24.0));
+        assert!(result.is_valid());
+
+        let result = validation::validate_sleep_hours(None);
+        assert!(result.is_valid());
+    }
+
+    #[test]
+    fn test_validate_sleep_hours_invalid() {
+        let result = validation::validate_sleep_hours(Some(-1.0));
+        assert!(!result.is_valid());
+
+        let result = validation::validate_sleep_hours(Some(25.0));
+        assert!(!result.is_valid());
+
+        let result = validation::validate_sleep_hours(Some(f32::NAN));
+        assert!(!result.is_valid());
+    }
+
+    #[test]
+    fn test_validate_fhir_id_valid() {
+        let result = validation::validate_fhir_id("patient-123", "Patient");
+        assert!(result.is_valid());
+
+        let result = validation::validate_fhir_id("a1b2c3d4", "Observation");
+        assert!(result.is_valid());
+
+        let result = validation::validate_fhir_id("condition.12345", "Condition");
+        assert!(result.is_valid());
+    }
+
+    #[test]
+    fn test_validate_fhir_id_invalid() {
+        // Empty
+        let result = validation::validate_fhir_id("", "Patient");
+        assert!(!result.is_valid());
+
+        // Invalid characters
+        let result = validation::validate_fhir_id("patient@123!", "Patient");
+        assert!(!result.is_valid());
+
+        // Too long (> 64 chars)
+        let result = validation::validate_fhir_id(&"a".repeat(65), "Patient");
+        assert!(!result.is_valid());
+    }
+
+    #[test]
+    fn test_validation_result_merge() {
+        let mut result1 = validation::ValidationResult::new();
+        result1.add_error("field1", "error1", validation::ValidationErrorCode::Required);
+
+        let mut result2 = validation::ValidationResult::new();
+        result2.add_error("field2", "error2", validation::ValidationErrorCode::InvalidFormat);
+
+        result1.merge(result2);
+        assert_eq!(result1.errors.len(), 2);
+    }
+
+    #[test]
+    fn test_get_instrument_spec() {
+        let spec = validation::get_instrument_spec("PHQ9");
+        assert!(spec.is_some());
+        let spec = spec.unwrap();
+        assert_eq!(spec.max_item_score, 3);
+        assert_eq!(spec.num_questions, 9);
+        assert_eq!(spec.max_total_score, 27);
+
+        let spec = validation::get_instrument_spec("GAD7");
+        assert!(spec.is_some());
+        let spec = spec.unwrap();
+        assert_eq!(spec.max_total_score, 21);
+
+        let spec = validation::get_instrument_spec("UNKNOWN");
+        assert!(spec.is_none());
+    }
+
+    #[test]
+    fn test_health_error_display() {
+        let err = types::HealthError::NotFound("Patient not found".to_string());
+        assert_eq!(format!("{}", err), "Not found: Patient not found");
+
+        let err = types::HealthError::ValidationError("Invalid MRN".to_string());
+        assert_eq!(format!("{}", err), "Validation error: Invalid MRN");
     }
 }

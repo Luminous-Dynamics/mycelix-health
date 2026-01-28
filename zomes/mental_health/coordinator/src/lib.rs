@@ -9,6 +9,14 @@ use mycelix_health_shared::{
     log_data_access,
     DataCategory,
     Permission,
+    validation::{
+        validate_screening_responses,
+        validate_mood_entry_scores,
+        validate_sleep_hours,
+        ValidationResult,
+    },
+    batch::{links_to_records_paginated, links_to_recent_records},
+    PaginationInput,
 };
 
 /// Input for creating a screening
@@ -98,6 +106,11 @@ fn check_crisis_indicators(
 /// Create a mental health screening
 #[hdk_extern]
 pub fn create_screening(input: CreateScreeningInput) -> ExternResult<Record> {
+    // Validate input first
+    let instrument_name = format!("{:?}", input.instrument);
+    let validation = validate_screening_responses(&instrument_name, &input.responses);
+    validation.into_result()?;
+
     let auth = require_authorization(
         input.patient_hash.clone(),
         DataCategory::MentalHealth,
@@ -166,6 +179,13 @@ pub struct CrisisSignal {
     pub message: String,
 }
 
+/// Input for paginated screening queries
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct GetScreeningsInput {
+    pub patient_hash: ActionHash,
+    pub pagination: Option<PaginationInput>,
+}
+
 /// Get patient's mental health screenings
 #[hdk_extern]
 pub fn get_patient_screenings(patient_hash: ActionHash) -> ExternResult<Vec<Record>> {
@@ -175,20 +195,18 @@ pub fn get_patient_screenings(patient_hash: ActionHash) -> ExternResult<Vec<Reco
         Permission::Read,
         false,
     )?;
+
+    // Get links first
     let links = get_links(
-        LinkQuery::try_new(patient_hash.clone(), LinkTypes::PatientToScreenings)?, GetStrategy::default(),
+        LinkQuery::try_new(patient_hash.clone(), LinkTypes::PatientToScreenings)?,
+        GetStrategy::default(),
     )?;
 
-    let mut records = Vec::new();
-    for link in links {
-        if let Some(target) = link.target.into_action_hash() {
-            if let Some(record) = get(target, GetOptions::default())? {
-                records.push(record);
-            }
-        }
-    }
+    // Use batch helper to avoid N+1 queries
+    let pagination = PaginationInput::default();
+    let result = links_to_records_paginated(links, &pagination)?;
 
-    if !records.is_empty() {
+    if !result.items.is_empty() {
         log_data_access(
             patient_hash,
             vec![DataCategory::MentalHealth],
@@ -199,7 +217,40 @@ pub fn get_patient_screenings(patient_hash: ActionHash) -> ExternResult<Vec<Reco
         )?;
     }
 
-    Ok(records)
+    Ok(result.items)
+}
+
+/// Get patient's mental health screenings with pagination
+#[hdk_extern]
+pub fn get_patient_screenings_paginated(input: GetScreeningsInput) -> ExternResult<mycelix_health_shared::PaginatedResult<Record>> {
+    let auth = require_authorization(
+        input.patient_hash.clone(),
+        DataCategory::MentalHealth,
+        Permission::Read,
+        false,
+    )?;
+
+    // Get links first
+    let links = get_links(
+        LinkQuery::try_new(input.patient_hash.clone(), LinkTypes::PatientToScreenings)?,
+        GetStrategy::default(),
+    )?;
+
+    let pagination = input.pagination.unwrap_or_default();
+    let result = links_to_records_paginated(links, &pagination)?;
+
+    if !result.items.is_empty() {
+        log_data_access(
+            input.patient_hash,
+            vec![DataCategory::MentalHealth],
+            Permission::Read,
+            auth.consent_hash,
+            auth.emergency_override,
+            None,
+        )?;
+    }
+
+    Ok(result)
 }
 
 /// Input for mood entry
@@ -222,6 +273,16 @@ pub struct CreateMoodEntryInput {
 /// Create a mood tracking entry (patient self-report)
 #[hdk_extern]
 pub fn create_mood_entry(input: CreateMoodEntryInput) -> ExternResult<Record> {
+    // Validate mood entry scores (0-10 range)
+    let mut validation = validate_mood_entry_scores(
+        input.mood_score,
+        input.anxiety_score,
+        input.sleep_quality,
+        input.energy_level,
+    );
+    validation.merge(validate_sleep_hours(input.sleep_hours));
+    validation.into_result()?;
+
     let patient_hash = input.patient_hash.clone();
     let auth = require_authorization(
         patient_hash.clone(),
@@ -268,6 +329,13 @@ pub fn create_mood_entry(input: CreateMoodEntryInput) -> ExternResult<Record> {
         .ok_or(wasm_error!(WasmErrorInner::Guest("Failed to get mood entry".to_string())))
 }
 
+/// Input for paginated mood entry queries
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct GetMoodEntriesInput {
+    pub patient_hash: ActionHash,
+    pub pagination: Option<PaginationInput>,
+}
+
 /// Get patient's mood entries
 #[hdk_extern]
 pub fn get_mood_entries(patient_hash: ActionHash) -> ExternResult<Vec<Record>> {
@@ -277,18 +345,18 @@ pub fn get_mood_entries(patient_hash: ActionHash) -> ExternResult<Vec<Record>> {
         Permission::Read,
         false,
     )?;
+
+    // Get links first
     let links = get_links(
-        LinkQuery::try_new(patient_hash.clone(), LinkTypes::PatientToMoodEntries)?, GetStrategy::default(),
+        LinkQuery::try_new(patient_hash.clone(), LinkTypes::PatientToMoodEntries)?,
+        GetStrategy::default(),
     )?;
 
-    let mut records = Vec::new();
-    for link in links {
-        if let Some(target) = link.target.into_action_hash() {
-            if let Some(record) = get(target, GetOptions::default())? {
-                records.push(record);
-            }
-        }
-    }
+    // Use batch helper to avoid N+1 queries
+    let pagination = PaginationInput::default();
+    let result = links_to_records_paginated(links, &pagination)?;
+
+    let records = result.items;
 
     if !records.is_empty() {
         log_data_access(
@@ -302,6 +370,78 @@ pub fn get_mood_entries(patient_hash: ActionHash) -> ExternResult<Vec<Record>> {
     }
 
     Ok(records)
+}
+
+/// Get patient's mood entries with pagination
+#[hdk_extern]
+pub fn get_mood_entries_paginated(input: GetMoodEntriesInput) -> ExternResult<mycelix_health_shared::PaginatedResult<Record>> {
+    let auth = require_authorization(
+        input.patient_hash.clone(),
+        DataCategory::MentalHealth,
+        Permission::Read,
+        false,
+    )?;
+
+    // Get links first
+    let links = get_links(
+        LinkQuery::try_new(input.patient_hash.clone(), LinkTypes::PatientToMoodEntries)?,
+        GetStrategy::default(),
+    )?;
+
+    let pagination = input.pagination.unwrap_or_default();
+    let result = links_to_records_paginated(links, &pagination)?;
+
+    if !result.items.is_empty() {
+        log_data_access(
+            input.patient_hash,
+            vec![DataCategory::MentalHealth],
+            Permission::Read,
+            auth.consent_hash,
+            auth.emergency_override,
+            None,
+        )?;
+    }
+
+    Ok(result)
+}
+
+/// Get most recent N mood entries for a patient
+#[hdk_extern]
+pub fn get_recent_mood_entries(input: GetRecentMoodInput) -> ExternResult<Vec<Record>> {
+    let auth = require_authorization(
+        input.patient_hash.clone(),
+        DataCategory::MentalHealth,
+        Permission::Read,
+        false,
+    )?;
+
+    // Get links first
+    let links = get_links(
+        LinkQuery::try_new(input.patient_hash.clone(), LinkTypes::PatientToMoodEntries)?,
+        GetStrategy::default(),
+    )?;
+
+    let records = links_to_recent_records(links, input.count.unwrap_or(10) as usize)?;
+
+    if !records.is_empty() {
+        log_data_access(
+            input.patient_hash,
+            vec![DataCategory::MentalHealth],
+            Permission::Read,
+            auth.consent_hash,
+            auth.emergency_override,
+            None,
+        )?;
+    }
+
+    Ok(records)
+}
+
+/// Input for getting recent mood entries
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct GetRecentMoodInput {
+    pub patient_hash: ActionHash,
+    pub count: Option<u32>,
 }
 
 /// Input for safety plan
