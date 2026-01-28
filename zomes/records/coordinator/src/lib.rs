@@ -288,6 +288,50 @@ fn vitals_to_twin_data_points(vitals: &VitalSigns) -> Vec<TwinDataPointInput> {
     data_points
 }
 
+/// Convert a diagnosis to twin data point
+fn diagnosis_to_twin_data_point(diagnosis: &Diagnosis) -> TwinDataPointInput {
+    let value_json = serde_json::json!({
+        "icd10_code": diagnosis.icd10_code,
+        "snomed_code": diagnosis.snomed_code,
+        "description": diagnosis.description,
+        "diagnosis_type": format!("{:?}", diagnosis.diagnosis_type),
+        "status": format!("{:?}", diagnosis.status),
+        "severity": diagnosis.severity.as_ref().map(|s| format!("{:?}", s)),
+        "onset_date": diagnosis.onset_date,
+        "epistemic_level": format!("{:?}", diagnosis.epistemic_level),
+    }).to_string();
+
+    TwinDataPointInput {
+        data_type: TwinDataType::Diagnosis(diagnosis.icd10_code.clone()),
+        value: value_json,
+        unit: None,
+        measured_at: diagnosis.created_at.as_micros() as i64,
+        source: TwinDataSourceType::EHR,
+        quality: TwinDataQuality::Clinical,
+    }
+}
+
+/// Convert a procedure to twin data point
+fn procedure_to_twin_data_point(procedure: &ProcedurePerformed) -> TwinDataPointInput {
+    let value_json = serde_json::json!({
+        "cpt_code": procedure.cpt_code,
+        "hcpcs_code": procedure.hcpcs_code,
+        "description": procedure.description,
+        "location": procedure.location,
+        "outcome": format!("{:?}", procedure.outcome),
+        "complications": procedure.complications,
+    }).to_string();
+
+    TwinDataPointInput {
+        data_type: TwinDataType::Procedure(procedure.cpt_code.clone()),
+        value: value_json,
+        unit: None,
+        measured_at: procedure.performed_at.as_micros() as i64,
+        source: TwinDataSourceType::EHR,
+        quality: TwinDataQuality::Clinical,
+    }
+}
+
 /// Input for creating encounter with access control
 #[derive(Serialize, Deserialize, Debug)]
 pub struct CreateEncounterInput {
@@ -331,6 +375,7 @@ pub fn create_encounter(input: CreateEncounterInput) -> ExternResult<Record> {
     log_data_access(
         input.encounter.patient_hash,
         vec![DataCategory::Procedures],
+        Permission::Write,
         auth.consent_hash,
         auth.emergency_override,
         input.emergency_reason,
@@ -377,6 +422,7 @@ pub fn get_encounter(input: GetEncounterInput) -> ExternResult<Option<Record>> {
         log_data_access(
             encounter.patient_hash,
             vec![DataCategory::Procedures],
+            Permission::Read,
             auth.consent_hash,
             auth.emergency_override,
             input.emergency_reason,
@@ -421,6 +467,7 @@ pub fn get_patient_encounters(input: GetPatientEncountersInput) -> ExternResult<
         log_data_access(
             input.patient_hash,
             vec![DataCategory::Procedures],
+            Permission::Read,
             auth.consent_hash,
             auth.emergency_override,
             input.emergency_reason,
@@ -454,6 +501,13 @@ pub fn create_diagnosis(input: CreateDiagnosisInput) -> ExternResult<Record> {
     let record = get(diagnosis_hash.clone(), GetOptions::default())?
         .ok_or(wasm_error!(WasmErrorInner::Guest("Could not find diagnosis".to_string())))?;
 
+    // ================ HEALTH TWIN INTEGRATION ================
+    // Feed the diagnosis to the patient's Health Twin for model updates
+    // (Must be done before moving encounter_hash)
+    let twin_data_point = diagnosis_to_twin_data_point(&input.diagnosis);
+    try_feed_to_health_twin(&input.diagnosis.patient_hash, twin_data_point);
+    // =========================================================
+
     // Link to encounter if provided
     if let Some(encounter_hash) = input.diagnosis.encounter_hash {
         create_link(
@@ -468,6 +522,7 @@ pub fn create_diagnosis(input: CreateDiagnosisInput) -> ExternResult<Record> {
     log_data_access(
         input.patient_hash,
         vec![DataCategory::Diagnoses],
+        Permission::Write,
         auth.consent_hash,
         auth.emergency_override,
         input.emergency_reason,
@@ -521,6 +576,7 @@ pub fn get_encounter_diagnoses(input: GetEncounterDiagnosesInput) -> ExternResul
         log_data_access(
             encounter.patient_hash,
             vec![DataCategory::Diagnoses],
+            Permission::Read,
             auth.consent_hash,
             auth.emergency_override,
             input.emergency_reason,
@@ -554,6 +610,13 @@ pub fn create_procedure(input: CreateProcedureInput) -> ExternResult<Record> {
     let record = get(procedure_hash.clone(), GetOptions::default())?
         .ok_or(wasm_error!(WasmErrorInner::Guest("Could not find procedure".to_string())))?;
 
+    // ================ HEALTH TWIN INTEGRATION ================
+    // Feed the procedure to the patient's Health Twin for model updates
+    // (Must be done before moving encounter_hash)
+    let twin_data_point = procedure_to_twin_data_point(&input.procedure);
+    try_feed_to_health_twin(&input.procedure.patient_hash, twin_data_point);
+    // =========================================================
+
     create_link(
         input.procedure.encounter_hash,
         procedure_hash,
@@ -565,6 +628,7 @@ pub fn create_procedure(input: CreateProcedureInput) -> ExternResult<Record> {
     log_data_access(
         input.patient_hash,
         vec![DataCategory::Procedures],
+        Permission::Write,
         auth.consent_hash,
         auth.emergency_override,
         input.emergency_reason,
@@ -628,6 +692,7 @@ pub fn create_lab_result(input: CreateLabResultInput) -> ExternResult<Record> {
     log_data_access(
         input.lab_result.patient_hash,
         vec![DataCategory::LabResults],
+        Permission::Write,
         auth.consent_hash,
         auth.emergency_override,
         input.emergency_reason,
@@ -671,6 +736,7 @@ pub fn get_patient_lab_results(input: GetPatientLabResultsInput) -> ExternResult
         log_data_access(
             input.patient_hash,
             vec![DataCategory::LabResults],
+            Permission::Read,
             auth.consent_hash,
             auth.emergency_override,
             input.emergency_reason,
@@ -719,6 +785,7 @@ pub fn acknowledge_critical_result(input: AcknowledgeInput) -> ExternResult<Reco
     log_data_access(
         lab_result.patient_hash,
         vec![DataCategory::LabResults],
+        Permission::Write,
         auth.consent_hash,
         auth.emergency_override,
         input.emergency_reason,
@@ -771,6 +838,7 @@ pub fn create_imaging_study(input: CreateImagingStudyInput) -> ExternResult<Reco
     log_data_access(
         input.imaging.patient_hash,
         vec![DataCategory::ImagingStudies],
+        Permission::Write,
         auth.consent_hash,
         auth.emergency_override,
         input.emergency_reason,
@@ -814,6 +882,7 @@ pub fn get_patient_imaging(input: GetPatientImagingInput) -> ExternResult<Vec<Re
         log_data_access(
             input.patient_hash,
             vec![DataCategory::ImagingStudies],
+            Permission::Read,
             auth.consent_hash,
             auth.emergency_override,
             input.emergency_reason,
@@ -869,6 +938,7 @@ pub fn record_vital_signs(input: RecordVitalSignsInput) -> ExternResult<Record> 
     log_data_access(
         input.vitals.patient_hash,
         vec![DataCategory::VitalSigns],
+        Permission::Write,
         auth.consent_hash,
         auth.emergency_override,
         input.emergency_reason,
@@ -912,6 +982,7 @@ pub fn get_patient_vitals(input: GetPatientVitalsInput) -> ExternResult<Vec<Reco
         log_data_access(
             input.patient_hash,
             vec![DataCategory::VitalSigns],
+            Permission::Read,
             auth.consent_hash,
             auth.emergency_override,
             input.emergency_reason,
@@ -987,6 +1058,7 @@ pub fn update_encounter(input: UpdateEncounterInput) -> ExternResult<Record> {
     log_data_access(
         input.updated_encounter.patient_hash,
         vec![DataCategory::Procedures],
+        Permission::Write,
         auth.consent_hash,
         auth.emergency_override,
         input.emergency_reason,
@@ -1024,6 +1096,7 @@ pub fn update_diagnosis(input: UpdateDiagnosisInput) -> ExternResult<Record> {
     log_data_access(
         input.patient_hash,
         vec![DataCategory::Diagnoses],
+        Permission::Amend,
         auth.consent_hash,
         auth.emergency_override,
         input.emergency_reason,
@@ -1060,6 +1133,7 @@ pub fn update_lab_result(input: UpdateLabResultInput) -> ExternResult<Record> {
     log_data_access(
         input.updated_result.patient_hash,
         vec![DataCategory::LabResults],
+        Permission::Amend,
         auth.consent_hash,
         auth.emergency_override,
         input.emergency_reason,
@@ -1103,6 +1177,7 @@ pub fn delete_encounter(input: DeleteEncounterInput) -> ExternResult<ActionHash>
     log_data_access(
         encounter.patient_hash,
         vec![DataCategory::Procedures],
+        Permission::Delete,
         auth.consent_hash,
         auth.emergency_override,
         input.emergency_reason,
@@ -1158,6 +1233,7 @@ pub fn get_encounter_history(input: GetEncounterHistoryInput) -> ExternResult<Ve
     log_data_access(
         encounter.patient_hash,
         vec![DataCategory::Procedures],
+        Permission::Read,
         auth.consent_hash,
         auth.emergency_override,
         input.emergency_reason,

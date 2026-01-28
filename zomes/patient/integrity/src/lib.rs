@@ -112,6 +112,9 @@ pub enum AllergySeverity {
 #[derive(Clone, PartialEq)]
 pub struct PatientIdentityLink {
     pub patient_hash: ActionHash,
+    /// Decentralized Identifier (DID) from Mycelix Identity hApp
+    /// Format: did:mycelix:<agent_pub_key_b64> or did:web:<domain>
+    pub did: String,
     pub identity_provider: String,
     pub verified_at: Timestamp,
     pub verification_method: String,
@@ -149,6 +152,12 @@ pub enum LinkTypes {
     PatientToInsurance,
     PatientUpdates,
     AllPatients,
+    /// Link from patient to their DID anchor for cross-domain lookup
+    PatientToDID,
+    /// Link from DID anchor to patient for reverse lookup
+    DIDToPatient,
+    /// Link from patient to their identity verification records
+    PatientToIdentityLink,
 }
 
 /// Validation for Patient entries
@@ -177,6 +186,9 @@ pub fn validate(op: Op) -> ExternResult<ValidateCallbackResult> {
             LinkTypes::PatientToInsurance => Ok(ValidateCallbackResult::Valid),
             LinkTypes::PatientUpdates => Ok(ValidateCallbackResult::Valid),
             LinkTypes::AllPatients => Ok(ValidateCallbackResult::Valid),
+            LinkTypes::PatientToDID => Ok(ValidateCallbackResult::Valid),
+            LinkTypes::DIDToPatient => Ok(ValidateCallbackResult::Valid),
+            LinkTypes::PatientToIdentityLink => Ok(ValidateCallbackResult::Valid),
         },
         _ => Ok(ValidateCallbackResult::Valid),
     }
@@ -224,6 +236,19 @@ fn validate_patient(patient: &Patient) -> ExternResult<ValidateCallbackResult> {
 }
 
 fn validate_identity_link(link: &PatientIdentityLink) -> ExternResult<ValidateCallbackResult> {
+    // Validate DID format (must start with "did:")
+    if link.did.is_empty() {
+        return Ok(ValidateCallbackResult::Invalid(
+            "DID (Decentralized Identifier) is required".to_string(),
+        ));
+    }
+
+    if !link.did.starts_with("did:") {
+        return Ok(ValidateCallbackResult::Invalid(
+            "DID must start with 'did:' prefix (e.g., did:mycelix:... or did:web:...)".to_string(),
+        ));
+    }
+
     if link.identity_provider.is_empty() {
         return Ok(ValidateCallbackResult::Invalid(
             "Identity provider is required".to_string(),

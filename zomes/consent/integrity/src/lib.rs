@@ -632,26 +632,45 @@ pub enum LinkTypes {
 pub fn validate(op: Op) -> ExternResult<ValidateCallbackResult> {
     match op.flattened::<EntryTypes, LinkTypes>()? {
         FlatOp::StoreEntry(store_entry) => match store_entry {
-            OpEntry::CreateEntry { app_entry, .. } => match app_entry {
-                EntryTypes::Consent(c) => validate_consent(&c),
-                EntryTypes::DataAccessRequest(r) => validate_access_request(&r),
-                EntryTypes::DataAccessLog(l) => validate_access_log(&l),
-                EntryTypes::EmergencyAccess(e) => validate_emergency_access(&e),
-                EntryTypes::AuthorizationDocument(d) => validate_authorization(&d),
-                EntryTypes::DelegationGrant(d) => validate_delegation_grant(&d),
-                EntryTypes::AccessNotification(n) => validate_access_notification(&n),
-                EntryTypes::NotificationPreferences(p) => validate_notification_preferences(&p),
-                EntryTypes::NotificationDigest(d) => validate_notification_digest(&d),
-                EntryTypes::CareTeamTemplate(t) => validate_care_team_template(&t),
-                EntryTypes::CareTeam(t) => validate_care_team(&t),
+            OpEntry::CreateEntry { action, app_entry, .. } => {
+                let author = &action.author;
+                match app_entry {
+                    EntryTypes::Consent(c) => validate_consent(&c, author),
+                    EntryTypes::DataAccessRequest(r) => validate_access_request(&r, author),
+                    EntryTypes::DataAccessLog(l) => validate_access_log(&l, author),
+                    EntryTypes::EmergencyAccess(e) => validate_emergency_access(&e, author),
+                    EntryTypes::AuthorizationDocument(d) => validate_authorization(&d, author),
+                    EntryTypes::DelegationGrant(d) => validate_delegation_grant(&d, author),
+                    EntryTypes::AccessNotification(n) => validate_access_notification(&n, author),
+                    EntryTypes::NotificationPreferences(p) => validate_notification_preferences(&p, author),
+                    EntryTypes::NotificationDigest(d) => validate_notification_digest(&d, author),
+                    EntryTypes::CareTeamTemplate(t) => validate_care_team_template(&t),
+                    EntryTypes::CareTeam(t) => validate_care_team(&t, author),
+                }
             },
+            OpEntry::UpdateEntry { action, app_entry, .. } => {
+                let author = &action.author;
+                match app_entry {
+                    EntryTypes::Consent(c) => validate_consent(&c, author),
+                    EntryTypes::DataAccessRequest(r) => validate_access_request(&r, author),
+                    EntryTypes::DataAccessLog(l) => validate_access_log(&l, author),
+                    EntryTypes::EmergencyAccess(e) => validate_emergency_access(&e, author),
+                    EntryTypes::AuthorizationDocument(d) => validate_authorization(&d, author),
+                    EntryTypes::DelegationGrant(d) => validate_delegation_grant(&d, author),
+                    EntryTypes::AccessNotification(n) => validate_access_notification(&n, author),
+                    EntryTypes::NotificationPreferences(p) => validate_notification_preferences(&p, author),
+                    EntryTypes::NotificationDigest(d) => validate_notification_digest(&d, author),
+                    EntryTypes::CareTeamTemplate(t) => validate_care_team_template(&t),
+                    EntryTypes::CareTeam(t) => validate_care_team(&t, author),
+                }
+            }
             _ => Ok(ValidateCallbackResult::Valid),
         },
         _ => Ok(ValidateCallbackResult::Valid),
     }
 }
 
-fn validate_consent(consent: &Consent) -> ExternResult<ValidateCallbackResult> {
+fn validate_consent(consent: &Consent, author: &AgentPubKey) -> ExternResult<ValidateCallbackResult> {
     if consent.consent_id.is_empty() {
         return Ok(ValidateCallbackResult::Invalid(
             "Consent ID is required".to_string(),
@@ -662,10 +681,14 @@ fn validate_consent(consent: &Consent) -> ExternResult<ValidateCallbackResult> {
             "At least one permission must be granted".to_string(),
         ));
     }
+    let ownership = validate_patient_reference_and_ownership(&consent.patient_hash, author, "create consent")?;
+    if !matches!(ownership, ValidateCallbackResult::Valid) {
+        return Ok(ownership);
+    }
     Ok(ValidateCallbackResult::Valid)
 }
 
-fn validate_access_request(request: &DataAccessRequest) -> ExternResult<ValidateCallbackResult> {
+fn validate_access_request(request: &DataAccessRequest, author: &AgentPubKey) -> ExternResult<ValidateCallbackResult> {
     if request.request_id.is_empty() {
         return Ok(ValidateCallbackResult::Invalid(
             "Request ID is required".to_string(),
@@ -676,10 +699,19 @@ fn validate_access_request(request: &DataAccessRequest) -> ExternResult<Validate
             "Justification is required for data access requests".to_string(),
         ));
     }
+    let patient_ref = validate_patient_reference(&request.patient_hash)?;
+    if !matches!(patient_ref, ValidateCallbackResult::Valid) {
+        return Ok(patient_ref);
+    }
+    if &request.requestor != author {
+        return Ok(ValidateCallbackResult::Invalid(
+            "Data access requestor must match the action author".to_string(),
+        ));
+    }
     Ok(ValidateCallbackResult::Valid)
 }
 
-fn validate_access_log(log: &DataAccessLog) -> ExternResult<ValidateCallbackResult> {
+fn validate_access_log(log: &DataAccessLog, author: &AgentPubKey) -> ExternResult<ValidateCallbackResult> {
     if log.log_id.is_empty() {
         return Ok(ValidateCallbackResult::Invalid(
             "Log ID is required".to_string(),
@@ -690,10 +722,22 @@ fn validate_access_log(log: &DataAccessLog) -> ExternResult<ValidateCallbackResu
             "Override reason is required for emergency access".to_string(),
         ));
     }
+    let patient_ref = validate_patient_reference(&log.patient_hash)?;
+    if !matches!(patient_ref, ValidateCallbackResult::Valid) {
+        return Ok(patient_ref);
+    }
+    if &log.accessor != author {
+        return Ok(ValidateCallbackResult::Invalid(
+            "Access log accessor must match the action author".to_string(),
+        ));
+    }
     Ok(ValidateCallbackResult::Valid)
 }
 
-fn validate_emergency_access(emergency: &EmergencyAccess) -> ExternResult<ValidateCallbackResult> {
+fn validate_emergency_access(
+    emergency: &EmergencyAccess,
+    author: &AgentPubKey,
+) -> ExternResult<ValidateCallbackResult> {
     if emergency.emergency_id.is_empty() {
         return Ok(ValidateCallbackResult::Invalid(
             "Emergency ID is required".to_string(),
@@ -704,10 +748,22 @@ fn validate_emergency_access(emergency: &EmergencyAccess) -> ExternResult<Valida
             "Emergency access requires reason and clinical justification".to_string(),
         ));
     }
+    let patient_ref = validate_patient_reference(&emergency.patient_hash)?;
+    if !matches!(patient_ref, ValidateCallbackResult::Valid) {
+        return Ok(patient_ref);
+    }
+    if &emergency.accessor != author {
+        return Ok(ValidateCallbackResult::Invalid(
+            "Emergency access accessor must match the action author".to_string(),
+        ));
+    }
     Ok(ValidateCallbackResult::Valid)
 }
 
-fn validate_authorization(doc: &AuthorizationDocument) -> ExternResult<ValidateCallbackResult> {
+fn validate_authorization(
+    doc: &AuthorizationDocument,
+    author: &AgentPubKey,
+) -> ExternResult<ValidateCallbackResult> {
     if doc.document_id.is_empty() {
         return Ok(ValidateCallbackResult::Invalid(
             "Document ID is required".to_string(),
@@ -718,6 +774,10 @@ fn validate_authorization(doc: &AuthorizationDocument) -> ExternResult<ValidateC
             "Patient signature is required".to_string(),
         ));
     }
+    let ownership = validate_patient_reference_and_ownership(&doc.patient_hash, author, "create authorization document")?;
+    if !matches!(ownership, ValidateCallbackResult::Valid) {
+        return Ok(ownership);
+    }
     Ok(ValidateCallbackResult::Valid)
 }
 
@@ -725,7 +785,10 @@ fn validate_authorization(doc: &AuthorizationDocument) -> ExternResult<ValidateC
 // VALIDATION: CONSENT DELEGATION
 // ============================================================
 
-fn validate_delegation_grant(delegation: &DelegationGrant) -> ExternResult<ValidateCallbackResult> {
+fn validate_delegation_grant(
+    delegation: &DelegationGrant,
+    author: &AgentPubKey,
+) -> ExternResult<ValidateCallbackResult> {
     if delegation.delegation_id.is_empty() {
         return Ok(ValidateCallbackResult::Invalid(
             "Delegation ID is required".to_string(),
@@ -740,6 +803,10 @@ fn validate_delegation_grant(delegation: &DelegationGrant) -> ExternResult<Valid
         return Ok(ValidateCallbackResult::Invalid(
             "Data scope must specify at least one category".to_string(),
         ));
+    }
+    let ownership = validate_patient_reference_and_ownership(&delegation.patient_hash, author, "create delegation grant")?;
+    if !matches!(ownership, ValidateCallbackResult::Valid) {
+        return Ok(ownership);
     }
     // Healthcare proxy and legal guardian require identity verification
     if matches!(delegation.delegation_type, DelegationType::HealthcareProxy | DelegationType::LegalGuardian) {
@@ -769,7 +836,10 @@ fn validate_delegation_grant(delegation: &DelegationGrant) -> ExternResult<Valid
 // VALIDATION: PATIENT NOTIFICATIONS
 // ============================================================
 
-fn validate_access_notification(notification: &AccessNotification) -> ExternResult<ValidateCallbackResult> {
+fn validate_access_notification(
+    notification: &AccessNotification,
+    author: &AgentPubKey,
+) -> ExternResult<ValidateCallbackResult> {
     if notification.notification_id.is_empty() {
         return Ok(ValidateCallbackResult::Invalid(
             "Notification ID is required".to_string(),
@@ -790,10 +860,26 @@ fn validate_access_notification(notification: &AccessNotification) -> ExternResu
             "Data categories accessed must be specified".to_string(),
         ));
     }
+    let patient_ref = validate_patient_reference(&notification.patient_hash)?;
+    if !matches!(patient_ref, ValidateCallbackResult::Valid) {
+        return Ok(patient_ref);
+    }
+    if &notification.accessor != author {
+        return Ok(ValidateCallbackResult::Invalid(
+            "Notification accessor must match the action author".to_string(),
+        ));
+    }
     Ok(ValidateCallbackResult::Valid)
 }
 
-fn validate_notification_preferences(prefs: &NotificationPreferences) -> ExternResult<ValidateCallbackResult> {
+fn validate_notification_preferences(
+    prefs: &NotificationPreferences,
+    author: &AgentPubKey,
+) -> ExternResult<ValidateCallbackResult> {
+    let ownership = validate_patient_reference_and_ownership(&prefs.patient_hash, author, "set notification preferences")?;
+    if !matches!(ownership, ValidateCallbackResult::Valid) {
+        return Ok(ownership);
+    }
     // Validate daily digest hour
     if let Some(hour) = prefs.daily_digest_hour {
         if hour > 23 {
@@ -825,11 +911,18 @@ fn validate_notification_preferences(prefs: &NotificationPreferences) -> ExternR
     Ok(ValidateCallbackResult::Valid)
 }
 
-fn validate_notification_digest(digest: &NotificationDigest) -> ExternResult<ValidateCallbackResult> {
+fn validate_notification_digest(
+    digest: &NotificationDigest,
+    author: &AgentPubKey,
+) -> ExternResult<ValidateCallbackResult> {
     if digest.digest_id.is_empty() {
         return Ok(ValidateCallbackResult::Invalid(
             "Digest ID is required".to_string(),
         ));
+    }
+    let ownership = validate_patient_reference_and_ownership(&digest.patient_hash, author, "create notification digest")?;
+    if !matches!(ownership, ValidateCallbackResult::Valid) {
+        return Ok(ownership);
     }
     // Period end must be after period start
     if digest.period_end.as_micros() <= digest.period_start.as_micros() {
@@ -873,7 +966,7 @@ fn validate_care_team_template(template: &CareTeamTemplate) -> ExternResult<Vali
     Ok(ValidateCallbackResult::Valid)
 }
 
-fn validate_care_team(team: &CareTeam) -> ExternResult<ValidateCallbackResult> {
+fn validate_care_team(team: &CareTeam, author: &AgentPubKey) -> ExternResult<ValidateCallbackResult> {
     if team.team_id.is_empty() {
         return Ok(ValidateCallbackResult::Invalid(
             "Team ID is required".to_string(),
@@ -897,6 +990,42 @@ fn validate_care_team(team: &CareTeam) -> ExternResult<ValidateCallbackResult> {
     if team.data_categories.is_empty() {
         return Ok(ValidateCallbackResult::Invalid(
             "Care team must specify data categories".to_string(),
+        ));
+    }
+    let ownership = validate_patient_reference_and_ownership(&team.patient_hash, author, "create care team")?;
+    if !matches!(ownership, ValidateCallbackResult::Valid) {
+        return Ok(ownership);
+    }
+    Ok(ValidateCallbackResult::Valid)
+}
+
+fn validate_patient_reference(patient_hash: &ActionHash) -> ExternResult<ValidateCallbackResult> {
+    let record = must_get_valid_record(patient_hash.clone())?;
+    match record.entry() {
+        RecordEntry::Present(_) => Ok(ValidateCallbackResult::Valid),
+        _ => Ok(ValidateCallbackResult::Invalid(
+            "patient_hash must reference an existing record with an entry".to_string(),
+        )),
+    }
+}
+
+fn validate_patient_reference_and_ownership(
+    patient_hash: &ActionHash,
+    author: &AgentPubKey,
+    operation: &str,
+) -> ExternResult<ValidateCallbackResult> {
+    let record = must_get_valid_record(patient_hash.clone())?;
+    match record.entry() {
+        RecordEntry::Present(_) => {}
+        _ => {
+            return Ok(ValidateCallbackResult::Invalid(
+                "patient_hash must reference an existing record with an entry".to_string(),
+            ));
+        }
+    }
+    if record.action().author() != author {
+        return Ok(ValidateCallbackResult::Invalid(
+            format!("Only the patient can {} for this patient_hash", operation),
         ));
     }
     Ok(ValidateCallbackResult::Valid)

@@ -1,6 +1,7 @@
 //! HDC Genetics Experiments
 //!
 //! Scientific experiments to validate HDC encoding for genetic data.
+//! Also provides practical CLI tools for VCF encoding and pharmacogenomics.
 
 mod taxonomy;
 mod prefilter;
@@ -10,6 +11,8 @@ mod fasta;
 mod real_taxonomy;
 mod real_hla;
 mod pharmacogenomics;
+mod benchmark;
+mod cli_tools;
 
 use clap::{Parser, Subcommand};
 use colored::*;
@@ -168,6 +171,109 @@ enum Commands {
         #[arg(short, long, default_value = "./results")]
         output: PathBuf,
     },
+
+    /// Benchmark HDC performance vs BLAST/minimap2 references
+    Benchmark {
+        /// Output JSON results file
+        #[arg(short, long)]
+        output_json: Option<PathBuf>,
+    },
+
+    // ========================================================================
+    // PRACTICAL CLINICAL TOOLS
+    // ========================================================================
+
+    /// Encode a VCF file to hypervector representation
+    EncodeVcf {
+        /// Input VCF file path
+        #[arg(short, long)]
+        input: PathBuf,
+
+        /// Output file for encoded vector (binary or JSON)
+        #[arg(short, long)]
+        output: Option<PathBuf>,
+
+        /// Apply differential privacy with given epsilon
+        #[arg(long)]
+        dp_epsilon: Option<f64>,
+
+        /// Output format: json, binary, or hex
+        #[arg(long, default_value = "json")]
+        format: String,
+
+        /// Seed for reproducible encoding
+        #[arg(long, default_value = "hdc-clinical-v1")]
+        seed: String,
+    },
+
+    /// Get pharmacogenomic predictions for a patient
+    Pgx {
+        /// Patient diplotypes in format: GENE:ALLELE1/ALLELE2 (e.g., CYP2D6:*1/*4)
+        #[arg(short, long, num_args = 1..)]
+        diplotypes: Vec<String>,
+
+        /// Drug to check interaction for
+        #[arg(short = 'r', long)]
+        drug: Option<String>,
+
+        /// Check all known drug interactions
+        #[arg(long)]
+        all_drugs: bool,
+
+        /// Output format: text, json
+        #[arg(long, default_value = "text")]
+        format: String,
+    },
+
+    /// Search for similar patients in an encoded database
+    Search {
+        /// Query VCF file
+        #[arg(short, long)]
+        query: PathBuf,
+
+        /// Database directory containing encoded patient vectors
+        #[arg(short, long)]
+        database: PathBuf,
+
+        /// Number of top matches to return
+        #[arg(short, long, default_value = "10")]
+        top_k: usize,
+
+        /// Minimum similarity threshold (0.0-1.0)
+        #[arg(long, default_value = "0.5")]
+        threshold: f64,
+
+        /// Apply differential privacy to query
+        #[arg(long)]
+        dp_epsilon: Option<f64>,
+
+        /// Seed for encoding
+        #[arg(long, default_value = "hdc-clinical-v1")]
+        seed: String,
+
+        /// Use GPU acceleration for batch similarity search
+        #[arg(long)]
+        gpu: bool,
+    },
+
+    /// Build a patient database from VCF files
+    BuildDb {
+        /// Directory containing VCF files
+        #[arg(short, long)]
+        input_dir: PathBuf,
+
+        /// Output database directory
+        #[arg(short, long)]
+        output: PathBuf,
+
+        /// Apply differential privacy with given epsilon
+        #[arg(long)]
+        dp_epsilon: Option<f64>,
+
+        /// Seed for encoding
+        #[arg(long, default_value = "hdc-clinical-v1")]
+        seed: String,
+    },
 }
 
 fn main() {
@@ -256,6 +362,39 @@ fn main() {
                 .filter_map(|s| s.trim().parse().ok())
                 .collect();
             taxonomy::run_parameter_sweep(&kmer_list, sequences, output);
+        }
+        Commands::Benchmark { output_json } => {
+            println!("{}", "Running HDC Performance Benchmarks...".yellow().bold());
+            println!();
+
+            let report = benchmark::run_benchmark_suite();
+            report.print();
+
+            if let Some(path) = output_json {
+                let json = serde_json::to_string_pretty(&report).unwrap();
+                std::fs::write(&path, json).expect("Failed to write JSON");
+                println!("\nResults saved to: {}", path.display());
+            }
+        }
+
+        // ====================================================================
+        // PRACTICAL CLINICAL TOOLS
+        // ====================================================================
+
+        Commands::EncodeVcf { input, output, dp_epsilon, format, seed } => {
+            cli_tools::encode_vcf(&input, output.as_deref(), dp_epsilon, &format, &seed);
+        }
+
+        Commands::Pgx { diplotypes, drug, all_drugs, format } => {
+            cli_tools::pharmacogenomics(&diplotypes, drug.as_deref(), all_drugs, &format);
+        }
+
+        Commands::Search { query, database, top_k, threshold, dp_epsilon, seed, gpu } => {
+            cli_tools::search_patients(&query, &database, top_k, threshold, dp_epsilon, &seed, gpu);
+        }
+
+        Commands::BuildDb { input_dir, output, dp_epsilon, seed } => {
+            cli_tools::build_database(&input_dir, &output, dp_epsilon, &seed);
         }
     }
 }

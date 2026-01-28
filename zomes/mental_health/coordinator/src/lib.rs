@@ -4,6 +4,12 @@
 
 use hdk::prelude::*;
 use mental_health_integrity::*;
+use mycelix_health_shared::{
+    require_authorization,
+    log_data_access,
+    DataCategory,
+    Permission,
+};
 
 /// Input for creating a screening
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -92,6 +98,12 @@ fn check_crisis_indicators(
 /// Create a mental health screening
 #[hdk_extern]
 pub fn create_screening(input: CreateScreeningInput) -> ExternResult<Record> {
+    let auth = require_authorization(
+        input.patient_hash.clone(),
+        DataCategory::MentalHealth,
+        Permission::Write,
+        false,
+    )?;
     let caller = agent_info()?.agent_initial_pubkey;
 
     let raw_score: u32 = input.responses.iter().map(|(_, s)| *s as u32).sum();
@@ -124,6 +136,15 @@ pub fn create_screening(input: CreateScreeningInput) -> ExternResult<Record> {
         (),
     )?;
 
+    log_data_access(
+        input.patient_hash.clone(),
+        vec![DataCategory::MentalHealth],
+        Permission::Write,
+        auth.consent_hash,
+        auth.emergency_override,
+        None,
+    )?;
+
     // If crisis indicators present, this should trigger additional workflow
     if crisis_indicators {
         emit_signal(CrisisSignal {
@@ -148,6 +169,12 @@ pub struct CrisisSignal {
 /// Get patient's mental health screenings
 #[hdk_extern]
 pub fn get_patient_screenings(patient_hash: ActionHash) -> ExternResult<Vec<Record>> {
+    let auth = require_authorization(
+        patient_hash.clone(),
+        DataCategory::MentalHealth,
+        Permission::Read,
+        false,
+    )?;
     let links = get_links(
         LinkQuery::try_new(patient_hash, LinkTypes::PatientToScreenings)?, GetStrategy::default(),
     )?;
@@ -159,6 +186,17 @@ pub fn get_patient_screenings(patient_hash: ActionHash) -> ExternResult<Vec<Reco
                 records.push(record);
             }
         }
+    }
+
+    if !records.is_empty() {
+        log_data_access(
+            patient_hash,
+            vec![DataCategory::MentalHealth],
+            Permission::Read,
+            auth.consent_hash,
+            auth.emergency_override,
+            None,
+        )?;
     }
 
     Ok(records)
@@ -184,8 +222,15 @@ pub struct CreateMoodEntryInput {
 /// Create a mood tracking entry (patient self-report)
 #[hdk_extern]
 pub fn create_mood_entry(input: CreateMoodEntryInput) -> ExternResult<Record> {
+    let patient_hash = input.patient_hash.clone();
+    let auth = require_authorization(
+        patient_hash.clone(),
+        DataCategory::MentalHealth,
+        Permission::Write,
+        false,
+    )?;
     let entry = MoodEntry {
-        patient_hash: input.patient_hash.clone(),
+        patient_hash: patient_hash.clone(),
         entry_date: sys_time()?,
         mood_score: input.mood_score,
         anxiety_score: input.anxiety_score,
@@ -204,10 +249,19 @@ pub fn create_mood_entry(input: CreateMoodEntryInput) -> ExternResult<Record> {
     let action_hash = create_entry(&EntryTypes::MoodEntry(entry))?;
 
     create_link(
-        input.patient_hash,
+        patient_hash.clone(),
         action_hash.clone(),
         LinkTypes::PatientToMoodEntries,
         (),
+    )?;
+
+    log_data_access(
+        patient_hash,
+        vec![DataCategory::MentalHealth],
+        Permission::Write,
+        auth.consent_hash,
+        auth.emergency_override,
+        None,
     )?;
 
     get(action_hash, GetOptions::default())?
@@ -217,6 +271,12 @@ pub fn create_mood_entry(input: CreateMoodEntryInput) -> ExternResult<Record> {
 /// Get patient's mood entries
 #[hdk_extern]
 pub fn get_mood_entries(patient_hash: ActionHash) -> ExternResult<Vec<Record>> {
+    let auth = require_authorization(
+        patient_hash.clone(),
+        DataCategory::MentalHealth,
+        Permission::Read,
+        false,
+    )?;
     let links = get_links(
         LinkQuery::try_new(patient_hash, LinkTypes::PatientToMoodEntries)?, GetStrategy::default(),
     )?;
@@ -228,6 +288,17 @@ pub fn get_mood_entries(patient_hash: ActionHash) -> ExternResult<Vec<Record>> {
                 records.push(record);
             }
         }
+    }
+
+    if !records.is_empty() {
+        log_data_access(
+            patient_hash,
+            vec![DataCategory::MentalHealth],
+            Permission::Read,
+            auth.consent_hash,
+            auth.emergency_override,
+            None,
+        )?;
     }
 
     Ok(records)
@@ -250,6 +321,13 @@ pub struct CreateSafetyPlanInput {
 /// Create a safety plan
 #[hdk_extern]
 pub fn create_safety_plan(input: CreateSafetyPlanInput) -> ExternResult<Record> {
+    let patient_hash = input.patient_hash.clone();
+    let auth = require_authorization(
+        patient_hash.clone(),
+        DataCategory::MentalHealth,
+        Permission::Write,
+        false,
+    )?;
     let caller = agent_info()?.agent_initial_pubkey;
     let now = sys_time()?;
 
@@ -278,10 +356,19 @@ pub fn create_safety_plan(input: CreateSafetyPlanInput) -> ExternResult<Record> 
     let action_hash = create_entry(&EntryTypes::SafetyPlan(plan))?;
 
     create_link(
-        input.patient_hash,
+        patient_hash.clone(),
         action_hash.clone(),
         LinkTypes::PatientToSafetyPlan,
         (),
+    )?;
+
+    log_data_access(
+        patient_hash,
+        vec![DataCategory::MentalHealth],
+        Permission::Write,
+        auth.consent_hash,
+        auth.emergency_override,
+        None,
     )?;
 
     get(action_hash, GetOptions::default())?
@@ -291,6 +378,12 @@ pub fn create_safety_plan(input: CreateSafetyPlanInput) -> ExternResult<Record> 
 /// Get patient's current safety plan
 #[hdk_extern]
 pub fn get_safety_plan(patient_hash: ActionHash) -> ExternResult<Option<Record>> {
+    let auth = require_authorization(
+        patient_hash.clone(),
+        DataCategory::MentalHealth,
+        Permission::Read,
+        false,
+    )?;
     let links = get_links(
         LinkQuery::try_new(patient_hash, LinkTypes::PatientToSafetyPlan)?, GetStrategy::default(),
     )?;
@@ -298,7 +391,18 @@ pub fn get_safety_plan(patient_hash: ActionHash) -> ExternResult<Option<Record>>
     // Get most recent
     if let Some(link) = links.last() {
         if let Some(target) = link.target.clone().into_action_hash() {
-            return get(target, GetOptions::default());
+            let record = get(target, GetOptions::default())?;
+            if record.is_some() {
+                log_data_access(
+                    patient_hash,
+                    vec![DataCategory::MentalHealth],
+                    Permission::Read,
+                    auth.consent_hash,
+                    auth.emergency_override,
+                    None,
+                )?;
+            }
+            return Ok(record);
         }
     }
 
@@ -325,10 +429,17 @@ pub struct ReportCrisisEventInput {
 /// Report a crisis event
 #[hdk_extern]
 pub fn report_crisis_event(input: ReportCrisisEventInput) -> ExternResult<Record> {
+    let patient_hash = input.patient_hash.clone();
+    let auth = require_authorization(
+        patient_hash.clone(),
+        DataCategory::MentalHealth,
+        Permission::Write,
+        false,
+    )?;
     let caller = agent_info()?.agent_initial_pubkey;
 
     let event = CrisisEvent {
-        patient_hash: input.patient_hash.clone(),
+        patient_hash: patient_hash.clone(),
         reporter_hash: caller,
         event_date: sys_time()?,
         crisis_level: input.crisis_level.clone(),
@@ -348,16 +459,25 @@ pub fn report_crisis_event(input: ReportCrisisEventInput) -> ExternResult<Record
     let action_hash = create_entry(&EntryTypes::CrisisEvent(event))?;
 
     create_link(
-        input.patient_hash.clone(),
+        patient_hash.clone(),
         action_hash.clone(),
         LinkTypes::PatientToCrisisEvents,
         (),
     )?;
 
+    log_data_access(
+        patient_hash.clone(),
+        vec![DataCategory::MentalHealth],
+        Permission::Write,
+        auth.consent_hash,
+        auth.emergency_override,
+        None,
+    )?;
+
     // Emit signal for high-risk events
     if matches!(input.crisis_level, CrisisLevel::HighRisk | CrisisLevel::Imminent) {
         emit_signal(CrisisSignal {
-            patient_hash: input.patient_hash,
+            patient_hash,
             screening_hash: action_hash.clone(),
             message: format!("Crisis event reported: {:?}", input.crisis_level),
         })?;
@@ -370,6 +490,12 @@ pub fn report_crisis_event(input: ReportCrisisEventInput) -> ExternResult<Record
 /// Get patient's crisis history
 #[hdk_extern]
 pub fn get_crisis_history(patient_hash: ActionHash) -> ExternResult<Vec<Record>> {
+    let auth = require_authorization(
+        patient_hash.clone(),
+        DataCategory::MentalHealth,
+        Permission::Read,
+        false,
+    )?;
     let links = get_links(
         LinkQuery::try_new(patient_hash, LinkTypes::PatientToCrisisEvents)?, GetStrategy::default(),
     )?;
@@ -381,6 +507,17 @@ pub fn get_crisis_history(patient_hash: ActionHash) -> ExternResult<Vec<Record>>
                 records.push(record);
             }
         }
+    }
+
+    if !records.is_empty() {
+        log_data_access(
+            patient_hash,
+            vec![DataCategory::MentalHealth],
+            Permission::Read,
+            auth.consent_hash,
+            auth.emergency_override,
+            None,
+        )?;
     }
 
     Ok(records)
@@ -404,8 +541,15 @@ pub struct CreatePart2ConsentInput {
 /// Create a 42 CFR Part 2 consent
 #[hdk_extern]
 pub fn create_part2_consent(input: CreatePart2ConsentInput) -> ExternResult<Record> {
+    let patient_hash = input.patient_hash.clone();
+    let auth = require_authorization(
+        patient_hash.clone(),
+        DataCategory::SubstanceAbuse,
+        Permission::Write,
+        false,
+    )?;
     let consent = Part2Consent {
-        patient_hash: input.patient_hash.clone(),
+        patient_hash: patient_hash.clone(),
         consent_type: input.consent_type,
         disclosing_program: input.disclosing_program,
         recipient_name: input.recipient_name,
@@ -426,10 +570,19 @@ pub fn create_part2_consent(input: CreatePart2ConsentInput) -> ExternResult<Reco
     let action_hash = create_entry(&EntryTypes::Part2Consent(consent))?;
 
     create_link(
-        input.patient_hash,
+        patient_hash.clone(),
         action_hash.clone(),
         LinkTypes::PatientToPart2Consents,
         (),
+    )?;
+
+    log_data_access(
+        patient_hash,
+        vec![DataCategory::SubstanceAbuse],
+        Permission::Write,
+        auth.consent_hash,
+        auth.emergency_override,
+        None,
     )?;
 
     get(action_hash, GetOptions::default())?
@@ -448,10 +601,26 @@ pub fn revoke_part2_consent(consent_hash: ActionHash) -> ExternResult<Record> {
         .map_err(|e| wasm_error!(WasmErrorInner::Guest(e.to_string())))?
         .ok_or(wasm_error!(WasmErrorInner::Guest("Invalid consent".to_string())))?;
 
+    let auth = require_authorization(
+        consent.patient_hash.clone(),
+        DataCategory::SubstanceAbuse,
+        Permission::Write,
+        false,
+    )?;
+
     consent.is_revoked = true;
     consent.revocation_date = Some(sys_time()?);
 
     let action_hash = update_entry(consent_hash, &consent)?;
+
+    log_data_access(
+        consent.patient_hash,
+        vec![DataCategory::SubstanceAbuse],
+        Permission::Write,
+        auth.consent_hash,
+        auth.emergency_override,
+        None,
+    )?;
 
     get(action_hash, GetOptions::default())?
         .ok_or(wasm_error!(WasmErrorInner::Guest("Failed to get updated consent".to_string())))
@@ -460,6 +629,12 @@ pub fn revoke_part2_consent(consent_hash: ActionHash) -> ExternResult<Record> {
 /// Get patient's Part 2 consents
 #[hdk_extern]
 pub fn get_part2_consents(patient_hash: ActionHash) -> ExternResult<Vec<Record>> {
+    let auth = require_authorization(
+        patient_hash.clone(),
+        DataCategory::SubstanceAbuse,
+        Permission::Read,
+        false,
+    )?;
     let links = get_links(
         LinkQuery::try_new(patient_hash, LinkTypes::PatientToPart2Consents)?, GetStrategy::default(),
     )?;
@@ -471,6 +646,17 @@ pub fn get_part2_consents(patient_hash: ActionHash) -> ExternResult<Vec<Record>>
                 records.push(record);
             }
         }
+    }
+
+    if !records.is_empty() {
+        log_data_access(
+            patient_hash,
+            vec![DataCategory::SubstanceAbuse],
+            Permission::Read,
+            auth.consent_hash,
+            auth.emergency_override,
+            None,
+        )?;
     }
 
     Ok(records)
@@ -494,10 +680,17 @@ pub struct CreateTherapyNoteInput {
 /// Create a therapy note
 #[hdk_extern]
 pub fn create_therapy_note(input: CreateTherapyNoteInput) -> ExternResult<Record> {
+    let patient_hash = input.patient_hash.clone();
+    let auth = require_authorization(
+        patient_hash.clone(),
+        DataCategory::MentalHealth,
+        Permission::Write,
+        false,
+    )?;
     let caller = agent_info()?.agent_initial_pubkey;
 
     let note = TherapyNote {
-        patient_hash: input.patient_hash.clone(),
+        patient_hash: patient_hash.clone(),
         provider_hash: caller.clone(),
         session_date: sys_time()?,
         session_type: input.session_type,
@@ -515,7 +708,7 @@ pub fn create_therapy_note(input: CreateTherapyNoteInput) -> ExternResult<Record
     let action_hash = create_entry(&EntryTypes::TherapyNote(note))?;
 
     create_link(
-        input.patient_hash.clone(),
+        patient_hash.clone(),
         action_hash.clone(),
         LinkTypes::PatientToTherapyNotes,
         (),
@@ -523,9 +716,18 @@ pub fn create_therapy_note(input: CreateTherapyNoteInput) -> ExternResult<Record
 
     create_link(
         caller,
-        input.patient_hash,
+        patient_hash.clone(),
         LinkTypes::ProviderToPatients,
         (),
+    )?;
+
+    log_data_access(
+        patient_hash,
+        vec![DataCategory::MentalHealth],
+        Permission::Write,
+        auth.consent_hash,
+        auth.emergency_override,
+        None,
     )?;
 
     get(action_hash, GetOptions::default())?
@@ -535,6 +737,12 @@ pub fn create_therapy_note(input: CreateTherapyNoteInput) -> ExternResult<Record
 /// Get therapy notes (provider access only, respects psychotherapy note protection)
 #[hdk_extern]
 pub fn get_therapy_notes(patient_hash: ActionHash) -> ExternResult<Vec<Record>> {
+    let auth = require_authorization(
+        patient_hash.clone(),
+        DataCategory::MentalHealth,
+        Permission::Read,
+        false,
+    )?;
     let links = get_links(
         LinkQuery::try_new(patient_hash, LinkTypes::PatientToTherapyNotes)?, GetStrategy::default(),
     )?;
@@ -546,6 +754,17 @@ pub fn get_therapy_notes(patient_hash: ActionHash) -> ExternResult<Vec<Record>> 
                 records.push(record);
             }
         }
+    }
+
+    if !records.is_empty() {
+        log_data_access(
+            patient_hash,
+            vec![DataCategory::MentalHealth],
+            Permission::Read,
+            auth.consent_hash,
+            auth.emergency_override,
+            None,
+        )?;
     }
 
     Ok(records)
@@ -567,6 +786,12 @@ pub struct MentalHealthSummary {
 /// Get mental health summary for a patient
 #[hdk_extern]
 pub fn get_mental_health_summary(patient_hash: ActionHash) -> ExternResult<MentalHealthSummary> {
+    let auth = require_authorization(
+        patient_hash.clone(),
+        DataCategory::MentalHealth,
+        Permission::Read,
+        false,
+    )?;
     let screenings = get_patient_screenings(patient_hash.clone())?;
     let safety_plan = get_safety_plan(patient_hash.clone())?;
     let crisis_events = get_crisis_history(patient_hash.clone())?;
@@ -588,7 +813,7 @@ pub fn get_mental_health_summary(patient_hash: ActionHash) -> ExternResult<Menta
         }
     }
 
-    Ok(MentalHealthSummary {
+    let summary = MentalHealthSummary {
         patient_hash,
         latest_phq9_score: latest_phq9.as_ref().map(|(s, _)| *s),
         latest_phq9_severity: latest_phq9.map(|(_, sev)| sev),
@@ -597,5 +822,16 @@ pub fn get_mental_health_summary(patient_hash: ActionHash) -> ExternResult<Menta
         recent_crisis_events: crisis_events.len() as u32,
         active_treatment_plan: false, // TODO: check treatment plans
         mood_trend: None, // TODO: calculate from mood entries
-    })
+    };
+
+    log_data_access(
+        summary.patient_hash.clone(),
+        vec![DataCategory::MentalHealth],
+        Permission::Read,
+        auth.consent_hash,
+        auth.emergency_override,
+        None,
+    )?;
+
+    Ok(summary)
 }

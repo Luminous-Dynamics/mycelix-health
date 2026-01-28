@@ -251,6 +251,7 @@ pub struct AccessLogEntry {
     pub patient_hash: ActionHash,
     pub accessor: AgentPubKey,
     pub data_categories: Vec<DataCategory>,
+    pub access_type: DataPermission,
     pub consent_hash: Option<ActionHash>,
     pub access_reason: String,
     pub accessed_at: Timestamp,
@@ -266,7 +267,7 @@ pub fn create_access_log(entry: AccessLogEntry) -> ExternResult<ActionHash> {
         log_id: entry.log_id,
         patient_hash: entry.patient_hash.clone(),
         accessor: entry.accessor,
-        access_type: DataPermission::Read, // Default for logging purposes
+        access_type: entry.access_type,
         data_categories_accessed: entry.data_categories,
         consent_hash: entry.consent_hash,
         access_reason: entry.access_reason,

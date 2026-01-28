@@ -7,6 +7,7 @@
 
 use hdk::prelude::*;
 use nutrition_integrity::*;
+use mycelix_health_shared::{require_authorization, log_data_access, DataCategory, Permission};
 
 // ============================================================================
 // Anchor Entry for Indexing
@@ -30,6 +31,12 @@ fn anchor_hash(anchor_text: &str) -> ExternResult<EntryHash> {
 /// Get all dietary restrictions for a patient
 #[hdk_extern]
 pub fn get_patient_restrictions(patient_hash: ActionHash) -> ExternResult<Vec<Record>> {
+    let auth = require_authorization(
+        patient_hash.clone(),
+        DataCategory::Allergies,
+        Permission::Read,
+        false,
+    )?;
     let links = get_links(
         LinkQuery::try_new(patient_hash.clone(), LinkTypes::PatientToRestrictions)?,
         GetStrategy::default(),
@@ -44,12 +51,29 @@ pub fn get_patient_restrictions(patient_hash: ActionHash) -> ExternResult<Vec<Re
         }
     }
 
+    if !records.is_empty() {
+        log_data_access(
+            patient_hash,
+            vec![DataCategory::Allergies],
+            Permission::Read,
+            auth.consent_hash,
+            auth.emergency_override,
+            None,
+        )?;
+    }
+
     Ok(records)
 }
 
 /// Add a new dietary restriction
 #[hdk_extern]
 pub fn add_dietary_restriction(restriction: DietaryRestriction) -> ExternResult<Record> {
+    let auth = require_authorization(
+        restriction.patient_hash.clone(),
+        DataCategory::Allergies,
+        Permission::Write,
+        false,
+    )?;
     let action_hash = create_entry(&EntryTypes::DietaryRestriction(restriction.clone()))?;
 
     // Link from patient to restriction
@@ -70,17 +94,61 @@ pub fn add_dietary_restriction(restriction: DietaryRestriction) -> ExternResult<
         )?;
     }
 
-    get(action_hash, GetOptions::default())?
+    let record = get(action_hash, GetOptions::default())?
         .ok_or(wasm_error!(WasmErrorInner::Guest("Failed to get created restriction".into())))
+
+    log_data_access(
+        restriction.patient_hash,
+        vec![DataCategory::Allergies],
+        Permission::Write,
+        auth.consent_hash,
+        auth.emergency_override,
+        None,
+    )?;
+
+    Ok(record)
 }
 
 /// Update a dietary restriction
 #[hdk_extern]
 pub fn update_dietary_restriction(input: UpdateRestrictionInput) -> ExternResult<Record> {
-    update_entry(input.original_hash.clone(), &input.updated_restriction)?;
+    let record = get(input.original_hash.clone(), GetOptions::default())?
+        .ok_or(wasm_error!(WasmErrorInner::Guest("Restriction not found".into())))?;
 
-    get(input.original_hash, GetOptions::default())?
-        .ok_or(wasm_error!(WasmErrorInner::Guest("Failed to get updated restriction".into())))
+    let existing: DietaryRestriction = record
+        .entry()
+        .to_app_option()
+        .map_err(|e| wasm_error!(WasmErrorInner::Guest(e.to_string())))?
+        .ok_or(wasm_error!(WasmErrorInner::Guest("Invalid restriction entry".into())))?;
+
+    if existing.patient_hash != input.updated_restriction.patient_hash {
+        return Err(wasm_error!(WasmErrorInner::Guest(
+            "Cannot change patient_hash on a restriction".into()
+        )));
+    }
+
+    let auth = require_authorization(
+        input.updated_restriction.patient_hash.clone(),
+        DataCategory::Allergies,
+        Permission::Write,
+        false,
+    )?;
+
+    let updated_hash = update_entry(input.original_hash.clone(), &input.updated_restriction)?;
+
+    let updated_record = get(updated_hash, GetOptions::default())?
+        .ok_or(wasm_error!(WasmErrorInner::Guest("Failed to get updated restriction".into())))?;
+
+    log_data_access(
+        input.updated_restriction.patient_hash,
+        vec![DataCategory::Allergies],
+        Permission::Write,
+        auth.consent_hash,
+        auth.emergency_override,
+        None,
+    )?;
+
+    Ok(updated_record)
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -104,10 +172,27 @@ pub fn deactivate_restriction(restriction_hash: ActionHash) -> ExternResult<Reco
     restriction.active = false;
     restriction.updated_at = sys_time()?;
 
-    update_entry(restriction_hash.clone(), &restriction)?;
+    let auth = require_authorization(
+        restriction.patient_hash.clone(),
+        DataCategory::Allergies,
+        Permission::Write,
+        false,
+    )?;
 
-    get(restriction_hash, GetOptions::default())?
-        .ok_or(wasm_error!(WasmErrorInner::Guest("Failed to get updated restriction".into())))
+    let updated_hash = update_entry(restriction_hash, &restriction)?;
+    let updated_record = get(updated_hash, GetOptions::default())?
+        .ok_or(wasm_error!(WasmErrorInner::Guest("Failed to get updated restriction".into())))?;
+
+    log_data_access(
+        restriction.patient_hash,
+        vec![DataCategory::Allergies],
+        Permission::Write,
+        auth.consent_hash,
+        auth.emergency_override,
+        None,
+    )?;
+
+    Ok(updated_record)
 }
 
 // ============================================================================
@@ -592,4 +677,246 @@ pub fn acknowledge_recommendation(rec_hash: ActionHash) -> ExternResult<Record> 
 
     get(rec_hash, GetOptions::default())?
         .ok_or(wasm_error!(WasmErrorInner::Guest("Failed to get updated recommendation".into())))
+}
+
+// ============================================================================
+// SDOH Food Security Integration
+// ============================================================================
+
+/// Input for generating recommendations from SDOH food security screening
+#[derive(Serialize, Deserialize, Debug)]
+pub struct SdohFoodSecurityInput {
+    pub patient_hash: ActionHash,
+    /// Food security level from SDOH screening (High, Marginal, Low, VeryLow)
+    pub security_level: String,
+    /// Whether patient has access to healthy food
+    pub access_to_healthy_food: bool,
+    /// Whether patient has transportation to grocery
+    pub has_transportation: bool,
+    /// Affordability score (0-100)
+    pub affordability_score: u8,
+    /// Barriers to healthy eating
+    pub barriers: Vec<String>,
+    /// Optional SDOH screening hash for linking
+    pub sdoh_screening_hash: Option<ActionHash>,
+}
+
+/// Output containing generated recommendations
+#[derive(Serialize, Deserialize, Debug)]
+pub struct SdohNutritionRecommendationsOutput {
+    pub recommendations_created: u32,
+    pub recommendation_hashes: Vec<ActionHash>,
+}
+
+/// Generate nutrition recommendations based on SDOH food security screening
+///
+/// This function bridges the SDOH module with nutrition recommendations,
+/// automatically creating relevant recommendations when food insecurity
+/// or barriers to healthy eating are identified.
+#[hdk_extern]
+pub fn generate_recommendations_from_sdoh(
+    input: SdohFoodSecurityInput,
+) -> ExternResult<SdohNutritionRecommendationsOutput> {
+    let mut recommendations_created = 0;
+    let mut recommendation_hashes = Vec::new();
+    let now = sys_time()?;
+
+    // Generate recommendations based on food security level
+    match input.security_level.as_str() {
+        "VeryLow" | "Low" => {
+            // High priority: Food assistance programs
+            let rec = NutritionRecommendation {
+                recommendation_id: format!("SDOH-FA-{}", now.as_micros()),
+                patient_hash: input.patient_hash.clone(),
+                source: RecommendationSource::System,
+                source_hash: input.sdoh_screening_hash.clone(),
+                recommendation_type: RecommendationType::General,
+                title: "Food Assistance Program Referral".to_string(),
+                description: "Based on your screening, you may be eligible for food assistance programs like SNAP (food stamps), WIC, or local food banks. These programs can help ensure you have access to nutritious food.".to_string(),
+                rationale: Some(format!("Food security screening indicated {} level", input.security_level)),
+                linked_conditions: vec!["Food Insecurity".to_string()],
+                linked_medications: vec![],
+                priority: if input.security_level == "VeryLow" {
+                    RecommendationPriority::Critical
+                } else {
+                    RecommendationPriority::High
+                },
+                created_at: now.clone(),
+                expires_at: None,
+                acknowledged: false,
+                acknowledged_at: None,
+            };
+
+            let hash = create_entry(&EntryTypes::NutritionRecommendation(rec.clone()))?;
+            create_link(
+                input.patient_hash.clone(),
+                hash.clone(),
+                LinkTypes::PatientToRecommendations,
+                (),
+            )?;
+            recommendation_hashes.push(hash);
+            recommendations_created += 1;
+
+            // Budget-friendly nutrition tips
+            let budget_rec = NutritionRecommendation {
+                recommendation_id: format!("SDOH-BN-{}", now.as_micros()),
+                patient_hash: input.patient_hash.clone(),
+                source: RecommendationSource::System,
+                source_hash: input.sdoh_screening_hash.clone(),
+                recommendation_type: RecommendationType::MealPlan,
+                title: "Budget-Friendly Nutrition Guide".to_string(),
+                description: "Nutritious eating on a budget: Focus on beans, lentils, eggs, frozen vegetables, oatmeal, and in-season produce. These foods provide excellent nutrition at lower cost.".to_string(),
+                rationale: Some("Affordability is a barrier to healthy eating".to_string()),
+                linked_conditions: vec!["Food Insecurity".to_string()],
+                linked_medications: vec![],
+                priority: RecommendationPriority::High,
+                created_at: now.clone(),
+                expires_at: None,
+                acknowledged: false,
+                acknowledged_at: None,
+            };
+
+            let hash = create_entry(&EntryTypes::NutritionRecommendation(budget_rec.clone()))?;
+            create_link(
+                input.patient_hash.clone(),
+                hash.clone(),
+                LinkTypes::PatientToRecommendations,
+                (),
+            )?;
+            recommendation_hashes.push(hash);
+            recommendations_created += 1;
+        }
+        "Marginal" => {
+            // Medium priority: Preventive guidance
+            let rec = NutritionRecommendation {
+                recommendation_id: format!("SDOH-PG-{}", now.as_micros()),
+                patient_hash: input.patient_hash.clone(),
+                source: RecommendationSource::System,
+                source_hash: input.sdoh_screening_hash.clone(),
+                recommendation_type: RecommendationType::General,
+                title: "Nutritional Planning Resources".to_string(),
+                description: "Consider meal planning and batch cooking to maximize food value. Local community resources may also be available to help with food access.".to_string(),
+                rationale: Some("Marginal food security identified - preventive intervention".to_string()),
+                linked_conditions: vec![],
+                linked_medications: vec![],
+                priority: RecommendationPriority::Medium,
+                created_at: now.clone(),
+                expires_at: None,
+                acknowledged: false,
+                acknowledged_at: None,
+            };
+
+            let hash = create_entry(&EntryTypes::NutritionRecommendation(rec.clone()))?;
+            create_link(
+                input.patient_hash.clone(),
+                hash.clone(),
+                LinkTypes::PatientToRecommendations,
+                (),
+            )?;
+            recommendation_hashes.push(hash);
+            recommendations_created += 1;
+        }
+        _ => {} // High security level - no specific recommendations needed
+    }
+
+    // Transportation barrier recommendation
+    if !input.has_transportation && !input.access_to_healthy_food {
+        let rec = NutritionRecommendation {
+            recommendation_id: format!("SDOH-TR-{}", now.as_micros()),
+            patient_hash: input.patient_hash.clone(),
+            source: RecommendationSource::System,
+            source_hash: input.sdoh_screening_hash.clone(),
+            recommendation_type: RecommendationType::General,
+            title: "Food Delivery and Transportation Options".to_string(),
+            description: "Many food assistance programs offer delivery services. Grocery delivery services, community shuttles, or volunteer driver programs may also help with food access.".to_string(),
+            rationale: Some("Transportation barrier to healthy food access identified".to_string()),
+            linked_conditions: vec!["Transportation Barrier".to_string()],
+            linked_medications: vec![],
+            priority: RecommendationPriority::High,
+            created_at: now.clone(),
+            expires_at: None,
+            acknowledged: false,
+            acknowledged_at: None,
+        };
+
+        let hash = create_entry(&EntryTypes::NutritionRecommendation(rec.clone()))?;
+        create_link(
+            input.patient_hash.clone(),
+            hash.clone(),
+            LinkTypes::PatientToRecommendations,
+            (),
+        )?;
+        recommendation_hashes.push(hash);
+        recommendations_created += 1;
+    }
+
+    // Generate barrier-specific recommendations
+    for barrier in &input.barriers {
+        let barrier_lower = barrier.to_lowercase();
+
+        if barrier_lower.contains("cooking") || barrier_lower.contains("kitchen") {
+            let rec = NutritionRecommendation {
+                recommendation_id: format!("SDOH-CK-{}", now.as_micros()),
+                patient_hash: input.patient_hash.clone(),
+                source: RecommendationSource::System,
+                source_hash: input.sdoh_screening_hash.clone(),
+                recommendation_type: RecommendationType::MealPlan,
+                title: "No-Cook Nutrition Options".to_string(),
+                description: "Nutritious foods that require no cooking: fresh fruits, vegetables with hummus, yogurt, cheese, nuts, whole grain bread with nut butter, pre-cooked rotisserie chicken.".to_string(),
+                rationale: Some(format!("Barrier identified: {}", barrier)),
+                linked_conditions: vec!["Cooking Limitation".to_string()],
+                linked_medications: vec![],
+                priority: RecommendationPriority::Medium,
+                created_at: now.clone(),
+                expires_at: None,
+                acknowledged: false,
+                acknowledged_at: None,
+            };
+
+            let hash = create_entry(&EntryTypes::NutritionRecommendation(rec.clone()))?;
+            create_link(
+                input.patient_hash.clone(),
+                hash.clone(),
+                LinkTypes::PatientToRecommendations,
+                (),
+            )?;
+            recommendation_hashes.push(hash);
+            recommendations_created += 1;
+        }
+
+        if barrier_lower.contains("time") || barrier_lower.contains("busy") {
+            let rec = NutritionRecommendation {
+                recommendation_id: format!("SDOH-QM-{}", now.as_micros()),
+                patient_hash: input.patient_hash.clone(),
+                source: RecommendationSource::System,
+                source_hash: input.sdoh_screening_hash.clone(),
+                recommendation_type: RecommendationType::MealPlan,
+                title: "Quick Healthy Meals Guide".to_string(),
+                description: "15-minute healthy meal ideas: Stir-fry with frozen vegetables, egg scrambles, grain bowls with pre-cooked ingredients, wraps with lean protein and vegetables.".to_string(),
+                rationale: Some(format!("Barrier identified: {}", barrier)),
+                linked_conditions: vec!["Time Constraint".to_string()],
+                linked_medications: vec![],
+                priority: RecommendationPriority::Medium,
+                created_at: now.clone(),
+                expires_at: None,
+                acknowledged: false,
+                acknowledged_at: None,
+            };
+
+            let hash = create_entry(&EntryTypes::NutritionRecommendation(rec.clone()))?;
+            create_link(
+                input.patient_hash.clone(),
+                hash.clone(),
+                LinkTypes::PatientToRecommendations,
+                (),
+            )?;
+            recommendation_hashes.push(hash);
+            recommendations_created += 1;
+        }
+    }
+
+    Ok(SdohNutritionRecommendationsOutput {
+        recommendations_created,
+        recommendation_hashes,
+    })
 }

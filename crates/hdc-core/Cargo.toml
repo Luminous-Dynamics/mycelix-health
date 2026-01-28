@@ -7,16 +7,31 @@ license = "MIT"
 
 [dependencies]
 serde = { version = "1.0", features = ["derive"] }
+serde_json = { version = "1.0", optional = true }
 # sha2 works in WASM
 sha2 = "0.10"
 rand = { version = "0.8", optional = true }
 rand_chacha = { version = "0.3", optional = true }
 rayon = { version = "1.8", optional = true }
+# GPU acceleration via wgpu (cross-platform: Vulkan/Metal/DirectX/WebGPU)
+wgpu = { version = "24.0", optional = true }
+pollster = { version = "0.4", optional = true }
+bytemuck = { version = "1.21", features = ["derive"], optional = true }
+# gzip support for compressed VCF files
+flate2 = { version = "1.0", optional = true }
 
 [features]
-default = ["std"]
+default = ["std", "dp", "learned"]
 std = []
 parallel = ["rayon"]
+# Differential privacy support with RNG
+dp = ["rand", "rand_chacha"]
+# GPU acceleration for bulk similarity computation
+gpu = ["wgpu", "pollster", "bytemuck"]
+# gzip support for .vcf.gz files
+gzip = ["flate2"]
+# Learned embeddings support (loads pre-trained k-mer vectors from JSON)
+learned = ["serde_json"]
 # For WASM/Holochain builds - uses no external RNG, pure deterministic ops
 wasm = []
 
@@ -27,4 +42,8 @@ criterion = "0.5"
 
 [[bench]]
 name = "encoding"
+harness = false
+
+[[bench]]
+name = "learned_encoding"
 harness = false

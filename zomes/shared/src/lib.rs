@@ -266,6 +266,7 @@ pub mod audit {
         pub patient_hash: ActionHash,
         pub accessor: AgentPubKey,
         pub data_categories: Vec<access_control::DataCategory>,
+        pub access_type: access_control::Permission,
         pub consent_hash: Option<ActionHash>,
         pub access_reason: String,
         pub accessed_at: Timestamp,
@@ -292,12 +293,14 @@ pub mod audit {
     /// # Arguments
     /// * `patient_hash` - Hash of the patient whose data was accessed
     /// * `categories` - Categories of data accessed
+    /// * `access_type` - Type of access performed (read/write/etc.)
     /// * `consent_hash` - Hash of the consent authorizing access
     /// * `is_emergency` - Whether this was an emergency access
     /// * `override_reason` - Reason for emergency override (if applicable)
     pub fn log_data_access(
         patient_hash: ActionHash,
         categories: Vec<access_control::DataCategory>,
+        access_type: access_control::Permission,
         consent_hash: Option<ActionHash>,
         is_emergency: bool,
         override_reason: Option<String>,
@@ -310,6 +313,7 @@ pub mod audit {
             patient_hash: patient_hash.clone(),
             accessor: caller,
             data_categories: categories,
+            access_type,
             consent_hash,
             access_reason: if is_emergency {
                 "Emergency access".to_string()

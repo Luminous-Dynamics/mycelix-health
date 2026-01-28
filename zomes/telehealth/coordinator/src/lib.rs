@@ -99,6 +99,7 @@ pub fn get_telehealth_session(input: GetSessionInput) -> ExternResult<Option<Rec
             log_data_access(
                 session.patient_hash,
                 vec![DataCategory::All],
+                Permission::Read,
                 auth.consent_hash,
                 auth.emergency_override,
                 input.emergency_reason,
@@ -369,6 +370,7 @@ pub fn get_session_documentation(input: GetSessionInput) -> ExternResult<Option<
     log_data_access(
         session.patient_hash,
         vec![DataCategory::All],
+        Permission::Read,
         auth.consent_hash,
         auth.emergency_override,
         input.emergency_reason,
@@ -495,6 +497,7 @@ pub fn get_patient_sessions(input: GetPatientSessionsInput) -> ExternResult<Vec<
     log_data_access(
         input.patient_hash,
         vec![DataCategory::All],
+        Permission::Read,
         auth.consent_hash,
         auth.emergency_override,
         input.emergency_reason,

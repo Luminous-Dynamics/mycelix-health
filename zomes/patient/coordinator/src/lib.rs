@@ -56,6 +56,7 @@ pub fn get_patient(input: GetPatientInput) -> ExternResult<Option<Record>> {
         log_data_access(
             input.patient_hash,
             vec![DataCategory::Demographics],
+            Permission::Read,
             auth.consent_hash,
             auth.emergency_override,
             input.emergency_reason,
@@ -101,6 +102,7 @@ pub fn update_patient(input: UpdatePatientInput) -> ExternResult<Record> {
     log_data_access(
         input.original_hash,
         vec![DataCategory::Demographics],
+        Permission::Write,
         auth.consent_hash,
         auth.emergency_override,
         input.emergency_reason,
@@ -134,6 +136,7 @@ pub fn delete_patient(input: DeletePatientInput) -> ExternResult<ActionHash> {
     log_data_access(
         input.patient_hash,
         vec![DataCategory::All],
+        Permission::Delete,
         auth.consent_hash,
         auth.emergency_override,
         input.emergency_reason,
@@ -210,30 +213,202 @@ pub fn search_patients_by_name(input: SearchPatientsInput) -> ExternResult<Vec<R
     Ok(filtered)
 }
 
-/// Link patient to Mycelix identity
+/// Link patient to Mycelix identity with bidirectional DID ↔ Patient links
+///
+/// This creates:
+/// 1. A PatientIdentityLink entry with verification details
+/// 2. A PatientToDID link from patient to DID anchor for forward lookup
+/// 3. A DIDToPatient link from DID anchor to patient for reverse lookup
+/// 4. A PatientToIdentityLink link from patient to the identity link record
 #[hdk_extern]
 pub fn link_patient_to_identity(input: LinkIdentityInput) -> ExternResult<Record> {
     let link = PatientIdentityLink {
         patient_hash: input.patient_hash.clone(),
+        did: input.did.clone(),
         identity_provider: input.identity_provider,
         verified_at: sys_time()?,
         verification_method: input.verification_method,
         confidence_score: input.confidence_score,
     };
-    
+
     let link_hash = create_entry(&EntryTypes::PatientIdentityLink(link))?;
-    let record = get(link_hash, GetOptions::default())?
+    let record = get(link_hash.clone(), GetOptions::default())?
         .ok_or(wasm_error!(WasmErrorInner::Guest("Could not find identity link".to_string())))?;
-    
+
+    // Create DID anchor for bidirectional lookups
+    let did_anchor = anchor_hash(&format!("did:{}", input.did))?;
+
+    // Link from Patient → DID anchor (forward lookup)
+    create_link(
+        input.patient_hash.clone(),
+        did_anchor.clone(),
+        LinkTypes::PatientToDID,
+        input.did.as_bytes().to_vec(),
+    )?;
+
+    // Link from DID anchor → Patient (reverse lookup for cross-domain resolution)
+    create_link(
+        did_anchor,
+        input.patient_hash.clone(),
+        LinkTypes::DIDToPatient,
+        (),
+    )?;
+
+    // Link from Patient → IdentityLink record
+    create_link(
+        input.patient_hash,
+        link_hash,
+        LinkTypes::PatientToIdentityLink,
+        (),
+    )?;
+
     Ok(record)
 }
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct LinkIdentityInput {
     pub patient_hash: ActionHash,
+    /// Decentralized Identifier from Mycelix Identity hApp
+    /// Format: did:mycelix:<agent_pub_key_b64> or did:web:<domain>
+    pub did: String,
     pub identity_provider: String,
     pub verification_method: String,
     pub confidence_score: f64,
+}
+
+/// Input for looking up patient by DID
+#[derive(Serialize, Deserialize, Debug)]
+pub struct GetPatientByDIDInput {
+    /// The DID to look up (e.g., did:mycelix:abc123 or did:web:example.com)
+    pub did: String,
+    pub is_emergency: bool,
+    pub emergency_reason: Option<String>,
+}
+
+/// Get patient by their Decentralized Identifier (DID)
+///
+/// This enables cross-domain identity resolution:
+/// - Mycelix Identity hApp can look up a patient's health records by DID
+/// - Other hApps can verify a patient's identity before accessing health data
+/// - Supports did:mycelix: and did:web: methods
+#[hdk_extern]
+pub fn get_patient_by_did(input: GetPatientByDIDInput) -> ExternResult<Option<Record>> {
+    // Create the DID anchor hash for lookup
+    let did_anchor = anchor_hash(&format!("did:{}", input.did))?;
+
+    // Get links from DID anchor to patient(s)
+    let links = get_links(
+        LinkQuery::try_new(did_anchor, LinkTypes::DIDToPatient)?,
+        GetStrategy::default(),
+    )?;
+
+    // Return the first linked patient (DIDs should map to exactly one patient)
+    for link in links {
+        if let Some(patient_hash) = link.target.into_action_hash() {
+            // Check authorization before returning patient data
+            let auth = require_authorization(
+                patient_hash.clone(),
+                DataCategory::Demographics,
+                Permission::Read,
+                input.is_emergency,
+            )?;
+
+            if let Some(record) = get_patient_internal(patient_hash.clone())? {
+                // Log the access for audit trail
+                log_data_access(
+                    patient_hash,
+                    vec![DataCategory::Demographics],
+                    Permission::Read,
+                    auth.consent_hash,
+                    auth.emergency_override,
+                    input.emergency_reason.clone(),
+                )?;
+
+                return Ok(Some(record));
+            }
+        }
+    }
+
+    Ok(None)
+}
+
+/// Get DID for a patient
+#[derive(Serialize, Deserialize, Debug)]
+pub struct GetDIDForPatientInput {
+    pub patient_hash: ActionHash,
+}
+
+/// Output containing patient's DID information
+#[derive(Serialize, Deserialize, Debug)]
+pub struct PatientDIDInfo {
+    pub patient_hash: ActionHash,
+    pub did: String,
+    pub identity_provider: String,
+    pub verified_at: Timestamp,
+    pub confidence_score: f64,
+}
+
+/// Get the DID associated with a patient
+///
+/// Returns the patient's verified DID for cross-domain identity sharing
+#[hdk_extern]
+pub fn get_did_for_patient(input: GetDIDForPatientInput) -> ExternResult<Option<PatientDIDInfo>> {
+    // Get identity links for this patient
+    let links = get_links(
+        LinkQuery::try_new(input.patient_hash.clone(), LinkTypes::PatientToIdentityLink)?,
+        GetStrategy::default(),
+    )?;
+
+    // Return the most recent identity link
+    for link in links {
+        if let Some(link_hash) = link.target.into_action_hash() {
+            if let Some(record) = get(link_hash, GetOptions::default())? {
+                if let Some(identity_link) = record.entry().to_app_option::<PatientIdentityLink>().ok().flatten() {
+                    return Ok(Some(PatientDIDInfo {
+                        patient_hash: input.patient_hash,
+                        did: identity_link.did,
+                        identity_provider: identity_link.identity_provider,
+                        verified_at: identity_link.verified_at,
+                        confidence_score: identity_link.confidence_score,
+                    }));
+                }
+            }
+        }
+    }
+
+    Ok(None)
+}
+
+/// Verify that a DID is linked to a specific patient
+#[derive(Serialize, Deserialize, Debug)]
+pub struct VerifyDIDPatientLinkInput {
+    pub did: String,
+    pub patient_hash: ActionHash,
+}
+
+/// Verify that a DID is linked to the specified patient
+///
+/// Returns true if the DID is linked to the patient with high confidence
+#[hdk_extern]
+pub fn verify_did_patient_link(input: VerifyDIDPatientLinkInput) -> ExternResult<bool> {
+    // Look up patient by DID
+    let did_anchor = anchor_hash(&format!("did:{}", input.did))?;
+
+    let links = get_links(
+        LinkQuery::try_new(did_anchor, LinkTypes::DIDToPatient)?,
+        GetStrategy::default(),
+    )?;
+
+    // Check if any link points to the specified patient
+    for link in links {
+        if let Some(linked_patient_hash) = link.target.into_action_hash() {
+            if linked_patient_hash == input.patient_hash {
+                return Ok(true);
+            }
+        }
+    }
+
+    Ok(false)
 }
 
 /// Create patient health summary
@@ -265,6 +440,7 @@ pub fn get_patient_health_summary(input: GetPatientInput) -> ExternResult<Option
         log_data_access(
             input.patient_hash,
             vec![DataCategory::All],
+            Permission::Read,
             auth.consent_hash,
             auth.emergency_override,
             input.emergency_reason,
@@ -321,6 +497,7 @@ pub fn add_patient_allergy(input: AddAllergyInput) -> ExternResult<Record> {
     log_data_access(
         input.patient_hash,
         vec![DataCategory::Allergies],
+        Permission::Write,
         auth.consent_hash,
         auth.emergency_override,
         input.emergency_reason,
@@ -363,6 +540,7 @@ pub fn get_patient_by_mrn(input: GetPatientByMrnInput) -> ExternResult<Option<Re
                 log_data_access(
                     patient_hash,
                     vec![DataCategory::Demographics],
+                    Permission::Read,
                     auth.consent_hash,
                     auth.emergency_override,
                     input.emergency_reason.clone(),

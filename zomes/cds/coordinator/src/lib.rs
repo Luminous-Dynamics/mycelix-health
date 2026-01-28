@@ -251,6 +251,7 @@ pub fn get_patient_alerts(input: GetPatientAlertsInput) -> ExternResult<Vec<Reco
     log_data_access(
         input.patient_hash,
         vec![DataCategory::All],
+        Permission::Read,
         auth.consent_hash,
         auth.emergency_override,
         input.emergency_reason,
@@ -446,6 +447,7 @@ pub fn get_patient_guideline_statuses(input: GetPatientGuidelineStatusInput) -> 
     log_data_access(
         input.patient_hash,
         vec![DataCategory::All],
+        Permission::Read,
         auth.consent_hash,
         auth.emergency_override,
         input.emergency_reason,

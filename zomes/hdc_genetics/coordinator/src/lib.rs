@@ -7,6 +7,12 @@ use hdk::prelude::*;
 use hdc_genetics_integrity::*;
 use hdc_genetics_integrity::hdc_ops::*;
 use hdc_genetics_integrity::dna_encoding;
+use mycelix_health_shared::{
+    require_authorization,
+    log_data_access,
+    DataCategory,
+    Permission,
+};
 
 /// Input for encoding a DNA sequence
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -139,8 +145,13 @@ fn get_default_codebook() -> ExternResult<GeneticCodebook> {
 /// privacy-preserving similarity comparisons.
 #[hdk_extern]
 pub fn encode_dna_sequence(input: EncodeDnaSequenceInput) -> ExternResult<ActionHash> {
-    // Validate consent for genetic data
-    validate_genetic_consent(&input.patient_hash, &input.source_metadata)?;
+    let patient_hash = input.patient_hash.clone();
+    let auth = require_authorization(
+        patient_hash.clone(),
+        DataCategory::GeneticData,
+        Permission::Write,
+        false,
+    )?;
 
     let codebook = get_default_codebook()?;
     let kmer_length = input.kmer_length.unwrap_or(DEFAULT_KMER_LENGTH);
@@ -169,7 +180,7 @@ pub fn encode_dna_sequence(input: EncodeDnaSequenceInput) -> ExternResult<Action
 
     // Link to patient
     create_link(
-        input.patient_hash.clone(),
+        patient_hash.clone(),
         action_hash.clone(),
         LinkTypes::PatientToVectors,
         LinkTag::new("dna"),
@@ -184,13 +195,28 @@ pub fn encode_dna_sequence(input: EncodeDnaSequenceInput) -> ExternResult<Action
         LinkTag::new(""),
     )?;
 
+    log_data_access(
+        patient_hash,
+        vec![DataCategory::GeneticData],
+        Permission::Write,
+        auth.consent_hash,
+        auth.emergency_override,
+        None,
+    )?;
+
     Ok(action_hash)
 }
 
 /// Encode a SNP panel as a hypervector
 #[hdk_extern]
 pub fn encode_snp_panel(input: EncodeSnpPanelInput) -> ExternResult<ActionHash> {
-    validate_genetic_consent(&input.patient_hash, &input.source_metadata)?;
+    let patient_hash = input.patient_hash.clone();
+    let auth = require_authorization(
+        patient_hash.clone(),
+        DataCategory::GeneticData,
+        Permission::Write,
+        false,
+    )?;
 
     let codebook = get_default_codebook()?;
 
@@ -214,7 +240,7 @@ pub fn encode_snp_panel(input: EncodeSnpPanelInput) -> ExternResult<ActionHash> 
     let action_hash = create_entry(&EntryTypes::GeneticHypervector(hypervector))?;
 
     create_link(
-        input.patient_hash,
+        patient_hash.clone(),
         action_hash.clone(),
         LinkTypes::PatientToVectors,
         LinkTag::new("snp"),
@@ -228,13 +254,28 @@ pub fn encode_snp_panel(input: EncodeSnpPanelInput) -> ExternResult<ActionHash> 
         LinkTag::new(""),
     )?;
 
+    log_data_access(
+        patient_hash,
+        vec![DataCategory::GeneticData],
+        Permission::Write,
+        auth.consent_hash,
+        auth.emergency_override,
+        None,
+    )?;
+
     Ok(action_hash)
 }
 
 /// Encode HLA typing as a hypervector
 #[hdk_extern]
 pub fn encode_hla_typing(input: EncodeHlaTypingInput) -> ExternResult<ActionHash> {
-    validate_genetic_consent(&input.patient_hash, &input.source_metadata)?;
+    let patient_hash = input.patient_hash.clone();
+    let auth = require_authorization(
+        patient_hash.clone(),
+        DataCategory::GeneticData,
+        Permission::Write,
+        false,
+    )?;
 
     let codebook = get_default_codebook()?;
 
@@ -258,7 +299,7 @@ pub fn encode_hla_typing(input: EncodeHlaTypingInput) -> ExternResult<ActionHash
     let action_hash = create_entry(&EntryTypes::GeneticHypervector(hypervector))?;
 
     create_link(
-        input.patient_hash,
+        patient_hash.clone(),
         action_hash.clone(),
         LinkTypes::PatientToVectors,
         LinkTag::new("hla"),
@@ -270,6 +311,15 @@ pub fn encode_hla_typing(input: EncodeHlaTypingInput) -> ExternResult<ActionHash
         action_hash.clone(),
         LinkTypes::EncodingTypeIndex,
         LinkTag::new(""),
+    )?;
+
+    log_data_access(
+        patient_hash,
+        vec![DataCategory::GeneticData],
+        Permission::Write,
+        auth.consent_hash,
+        auth.emergency_override,
+        None,
     )?;
 
     Ok(action_hash)
@@ -302,6 +352,19 @@ pub fn calculate_similarity(input: SimilarityQueryInput) -> ExternResult<Genetic
         .ok_or_else(|| wasm_error!(WasmErrorInner::Guest(
             "Target entry not found".to_string()
         )))?;
+
+    let auth_query = require_authorization(
+        query_vec.patient_hash.clone(),
+        DataCategory::GeneticData,
+        Permission::Read,
+        false,
+    )?;
+    let auth_target = require_authorization(
+        target_vec.patient_hash.clone(),
+        DataCategory::GeneticData,
+        Permission::Read,
+        false,
+    )?;
 
     // Calculate similarity using requested metric
     let metric = input.metric.unwrap_or(SimilarityMetric::Cosine);
@@ -339,6 +402,23 @@ pub fn calculate_similarity(input: SimilarityQueryInput) -> ExternResult<Genetic
     // Store result for audit
     create_entry(&EntryTypes::GeneticSimilarityResult(result.clone()))?;
 
+    log_data_access(
+        query_vec.patient_hash,
+        vec![DataCategory::GeneticData],
+        Permission::Read,
+        auth_query.consent_hash,
+        auth_query.emergency_override,
+        None,
+    )?;
+    log_data_access(
+        target_vec.patient_hash,
+        vec![DataCategory::GeneticData],
+        Permission::Read,
+        auth_target.consent_hash,
+        auth_target.emergency_override,
+        None,
+    )?;
+
     Ok(result)
 }
 
@@ -359,6 +439,13 @@ pub fn search_similar_genetics(
         .ok_or_else(|| wasm_error!(WasmErrorInner::Guest(
             "Query entry not found".to_string()
         )))?;
+
+    let auth_query = require_authorization(
+        query_vec.patient_hash.clone(),
+        DataCategory::GeneticData,
+        Permission::Read,
+        false,
+    )?;
 
     // Get all vectors of the same encoding type
     let type_anchor = match input.encoding_type {
@@ -392,6 +479,18 @@ pub fn search_similar_genetics(
                 .ok()
                 .flatten()
             {
+                // Only include target vectors the caller is authorized to access.
+                if require_authorization(
+                    target_vec.patient_hash.clone(),
+                    DataCategory::GeneticData,
+                    Permission::Read,
+                    false,
+                )
+                .is_err()
+                {
+                    continue;
+                }
+
                 let similarity = normalized_cosine_similarity(&query_vec.data, &target_vec.data);
 
                 if similarity >= input.min_similarity {
@@ -409,12 +508,29 @@ pub fn search_similar_genetics(
     results.sort_by(|a, b| b.similarity_score.partial_cmp(&a.similarity_score).unwrap());
     results.truncate(input.limit);
 
+    if !results.is_empty() {
+        log_data_access(
+            query_vec.patient_hash,
+            vec![DataCategory::GeneticData],
+            Permission::Read,
+            auth_query.consent_hash,
+            auth_query.emergency_override,
+            None,
+        )?;
+    }
+
     Ok(results)
 }
 
 /// Get all genetic vectors for a patient
 #[hdk_extern]
 pub fn get_patient_genetic_vectors(patient_hash: ActionHash) -> ExternResult<Vec<GeneticHypervector>> {
+    let auth = require_authorization(
+        patient_hash.clone(),
+        DataCategory::GeneticData,
+        Permission::Read,
+        false,
+    )?;
     let links = get_links(
         LinkQuery::try_new(patient_hash, LinkTypes::PatientToVectors)?,
         GetStrategy::default(),
@@ -439,6 +555,17 @@ pub fn get_patient_genetic_vectors(patient_hash: ActionHash) -> ExternResult<Vec
         }
     }
 
+    if !vectors.is_empty() {
+        log_data_access(
+            patient_hash,
+            vec![DataCategory::GeneticData],
+            Permission::Read,
+            auth.consent_hash,
+            auth.emergency_override,
+            None,
+        )?;
+    }
+
     Ok(vectors)
 }
 
@@ -447,26 +574,48 @@ pub fn get_patient_genetic_vectors(patient_hash: ActionHash) -> ExternResult<Vec
 pub fn bundle_genetic_vectors(
     input: BundleVectorsInput,
 ) -> ExternResult<ActionHash> {
+    if let Some(weights) = &input.weights {
+        if weights.len() != input.vector_hashes.len() {
+            return Err(wasm_error!(WasmErrorInner::Guest(
+                "weights must be the same length as vector_hashes".to_string()
+            )));
+        }
+    }
     if input.vector_hashes.is_empty() {
         return Err(wasm_error!(WasmErrorInner::Guest(
             "At least one vector hash is required".to_string()
         )));
     }
 
+    let patient_hash = input.patient_hash.clone();
+    let auth = require_authorization(
+        patient_hash.clone(),
+        DataCategory::GeneticData,
+        Permission::Write,
+        false,
+    )?;
+
     let mut vectors: Vec<Vec<u8>> = Vec::new();
     let mut weights: Vec<f64> = Vec::new();
 
     for (i, hash) in input.vector_hashes.iter().enumerate() {
-        if let Some(record) = get(hash.clone(), GetOptions::default())? {
-            if let Some(vec) = record.entry()
-                .to_app_option::<GeneticHypervector>()
-                .ok()
-                .flatten()
-            {
-                vectors.push(vec.data);
-                weights.push(input.weights.as_ref().map(|w| w[i]).unwrap_or(1.0));
-            }
+        let record = get(hash.clone(), GetOptions::default())?
+            .ok_or_else(|| wasm_error!(WasmErrorInner::Guest("Vector not found".to_string())))?;
+
+        let vec: GeneticHypervector = record
+            .entry()
+            .to_app_option()
+            .map_err(|e| wasm_error!(WasmErrorInner::Guest(e.to_string())))?
+            .ok_or_else(|| wasm_error!(WasmErrorInner::Guest("Invalid vector entry".to_string())))?;
+
+        if vec.patient_hash != patient_hash {
+            return Err(wasm_error!(WasmErrorInner::Guest(
+                "Cannot bundle vectors from different patients".to_string()
+            )));
         }
+
+        vectors.push(vec.data);
+        weights.push(input.weights.as_ref().map(|w| w[i]).unwrap_or(1.0));
     }
 
     // Perform weighted bundle
@@ -491,10 +640,19 @@ pub fn bundle_genetic_vectors(
     let action_hash = create_entry(&EntryTypes::BundledGeneticVector(bundled))?;
 
     create_link(
-        input.patient_hash,
+        patient_hash.clone(),
         action_hash.clone(),
         LinkTypes::PatientToVectors,
         LinkTag::new("bundle"),
+    )?;
+
+    log_data_access(
+        patient_hash,
+        vec![DataCategory::GeneticData],
+        Permission::Write,
+        auth.consent_hash,
+        auth.emergency_override,
+        None,
     )?;
 
     Ok(action_hash)
@@ -516,34 +674,6 @@ fn generate_vector_id(patient_hash: &ActionHash, time_micros: i64) -> String {
         hash_bytes[0], hash_bytes[1], hash_bytes[2], hash_bytes[3],
         time_micros
     )
-}
-
-fn validate_genetic_consent(
-    _patient_hash: &ActionHash,
-    metadata: &GeneticSourceMetadata,
-) -> ExternResult<()> {
-    // If consent hash is provided, verify it
-    if let Some(consent_hash) = &metadata.consent_hash {
-        // Call consent zome to verify
-        let response = call(
-            CallTargetCell::Local,
-            "consent",
-            "verify_consent".into(),
-            None,
-            consent_hash,
-        )?;
-
-        match response {
-            ZomeCallResponse::Ok(_) => Ok(()),
-            _ => Err(wasm_error!(WasmErrorInner::Guest(
-                "Consent verification failed".to_string()
-            ))),
-        }
-    } else {
-        // For now, allow without explicit consent if the caller owns the data
-        // In production, this would require proper consent
-        Ok(())
-    }
 }
 
 fn anchor_hash(text: &str) -> ExternResult<EntryHash> {

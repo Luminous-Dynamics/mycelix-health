@@ -69,6 +69,7 @@ pub fn create_prescription(input: CreatePrescriptionInput) -> ExternResult<Recor
     log_data_access(
         input.prescription.patient_hash,
         vec![DataCategory::Medications],
+        Permission::Write,
         auth.consent_hash,
         auth.emergency_override,
         input.emergency_reason,
@@ -115,6 +116,7 @@ pub fn get_prescription(input: GetPrescriptionInput) -> ExternResult<Option<Reco
         log_data_access(
             prescription.patient_hash,
             vec![DataCategory::Medications],
+            Permission::Read,
             auth.consent_hash,
             auth.emergency_override,
             input.emergency_reason,
@@ -166,6 +168,7 @@ pub fn get_patient_prescriptions(input: GetPatientPrescriptionsInput) -> ExternR
         log_data_access(
             input.patient_hash,
             vec![DataCategory::Medications],
+            Permission::Read,
             auth.consent_hash,
             auth.emergency_override,
             input.emergency_reason,
@@ -204,6 +207,7 @@ pub fn get_active_prescriptions(input: GetPatientPrescriptionsInput) -> ExternRe
         log_data_access(
             input.patient_hash,
             vec![DataCategory::Medications],
+            Permission::Read,
             auth.consent_hash,
             auth.emergency_override,
             input.emergency_reason,
@@ -267,6 +271,7 @@ pub fn fill_prescription(input: FillPrescriptionInput) -> ExternResult<Record> {
     log_data_access(
         prescription.patient_hash,
         vec![DataCategory::Medications],
+        Permission::Write,
         auth.consent_hash,
         auth.emergency_override,
         input.emergency_reason,
@@ -320,6 +325,7 @@ pub fn get_prescription_fills(input: GetPrescriptionFillsInput) -> ExternResult<
         log_data_access(
             prescription.patient_hash,
             vec![DataCategory::Medications],
+            Permission::Read,
             auth.consent_hash,
             auth.emergency_override,
             input.emergency_reason,
@@ -363,6 +369,7 @@ pub fn record_adherence(input: RecordAdherenceInput) -> ExternResult<Record> {
     log_data_access(
         input.adherence.patient_hash,
         vec![DataCategory::Medications],
+        Permission::Write,
         auth.consent_hash,
         auth.emergency_override,
         input.emergency_reason,
@@ -406,6 +413,7 @@ pub fn create_interaction_alert(input: CreateInteractionAlertInput) -> ExternRes
     log_data_access(
         input.patient_hash,
         vec![DataCategory::Medications],
+        Permission::Write,
         auth.consent_hash,
         auth.emergency_override,
         input.emergency_reason,
@@ -457,6 +465,7 @@ pub fn acknowledge_alert(input: AcknowledgeAlertInput) -> ExternResult<Record> {
     log_data_access(
         input.patient_hash,
         vec![DataCategory::Medications],
+        Permission::Write,
         auth.consent_hash,
         auth.emergency_override,
         input.emergency_reason,
@@ -535,6 +544,7 @@ pub fn set_patient_pharmacy(input: SetPharmacyInput) -> ExternResult<()> {
     log_data_access(
         input.patient_hash,
         vec![DataCategory::Demographics],
+        Permission::Write,
         auth.consent_hash,
         auth.emergency_override,
         input.emergency_reason,
@@ -582,6 +592,7 @@ pub fn discontinue_prescription(input: DiscontinueInput) -> ExternResult<Record>
     log_data_access(
         prescription.patient_hash,
         vec![DataCategory::Medications],
+        Permission::Write,
         auth.consent_hash,
         auth.emergency_override,
         input.emergency_reason,

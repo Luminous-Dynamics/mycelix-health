@@ -80,6 +80,7 @@ pub fn get_fhir_patient_mapping(input: GetFhirMappingInput) -> ExternResult<Opti
             log_data_access(
                 mapping.internal_patient_hash,
                 vec![DataCategory::Demographics],
+                Permission::Read,
                 auth.consent_hash,
                 auth.emergency_override,
                 input.emergency_reason,
@@ -124,6 +125,7 @@ pub fn get_patient_fhir_mappings(input: GetPatientFhirMappingsInput) -> ExternRe
     log_data_access(
         input.patient_hash,
         vec![DataCategory::All],
+        Permission::Read,
         auth.consent_hash,
         auth.emergency_override,
         input.emergency_reason,
@@ -179,6 +181,7 @@ pub fn get_fhir_observation_mapping(input: GetFhirMappingInput) -> ExternResult<
             log_data_access(
                 mapping.patient_hash,
                 vec![DataCategory::LabResults],
+                Permission::Read,
                 auth.consent_hash,
                 auth.emergency_override,
                 input.emergency_reason,
@@ -236,6 +239,7 @@ pub fn get_fhir_condition_mapping(input: GetFhirMappingInput) -> ExternResult<Op
             log_data_access(
                 mapping.patient_hash,
                 vec![DataCategory::Diagnoses],
+                Permission::Read,
                 auth.consent_hash,
                 auth.emergency_override,
                 input.emergency_reason,
@@ -293,6 +297,7 @@ pub fn get_fhir_medication_mapping(input: GetFhirMappingInput) -> ExternResult<O
             log_data_access(
                 mapping.patient_hash,
                 vec![DataCategory::Medications],
+                Permission::Read,
                 auth.consent_hash,
                 auth.emergency_override,
                 input.emergency_reason,
@@ -420,6 +425,7 @@ pub fn export_patient_bundle(input: ExportPatientBundleInput) -> ExternResult<Fh
     log_data_access(
         input.patient_hash,
         vec![DataCategory::All],
+        Permission::Read,
         auth.consent_hash,
         auth.emergency_override,
         input.emergency_reason,
