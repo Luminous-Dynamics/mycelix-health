@@ -1,0 +1,16 @@
+[package]
+name = "nutrition_integrity"
+version = "0.1.0"
+edition = "2021"
+description = "Nutrition Integrity Zome - Entry types and validation for nutrition tracking"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+name = "nutrition_integrity"
+
+[dependencies]
+getrandom = { workspace = true }
+hdi.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+holochain_serialized_bytes.workspace = true

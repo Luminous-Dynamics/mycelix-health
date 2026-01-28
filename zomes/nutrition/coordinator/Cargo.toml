@@ -1,0 +1,17 @@
+[package]
+name = "nutrition"
+version = "0.1.0"
+edition = "2021"
+description = "Nutrition Coordinator Zome - API for nutrition tracking and dietary restrictions"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+name = "nutrition"
+
+[dependencies]
+getrandom = { workspace = true }
+hdk.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+holochain_serialized_bytes.workspace = true
+nutrition_integrity = { path = "../integrity" }
