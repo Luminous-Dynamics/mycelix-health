@@ -12,6 +12,8 @@ serde_json = { version = "1.0", optional = true }
 sha2 = "0.10"
 rand = { version = "0.8", optional = true }
 rand_chacha = { version = "0.3", optional = true }
+# For WASM builds, getrandom 0.2 needs js feature
+getrandom = { version = "0.2", features = ["js"], optional = true }
 rayon = { version = "1.8", optional = true }
 # GPU acceleration via wgpu (cross-platform: Vulkan/Metal/DirectX/WebGPU)
 wgpu = { version = "24.0", optional = true }
@@ -25,7 +27,7 @@ default = ["std", "dp", "learned"]
 std = []
 parallel = ["rayon"]
 # Differential privacy support with RNG
-dp = ["rand", "rand_chacha"]
+dp = ["rand", "rand_chacha", "getrandom"]
 # GPU acceleration for bulk similarity computation
 gpu = ["wgpu", "pollster", "bytemuck"]
 # gzip support for .vcf.gz files
