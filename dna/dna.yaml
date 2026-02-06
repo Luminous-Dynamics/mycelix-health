@@ -1,128 +1,35 @@
 ---
-manifest_version: "1"
+manifest_version: "0"
 name: health
 integrity:
-  origin_time: 2024-01-01T00:00:00.000000Z
   network_seed: ~
   properties: ~
   zomes:
+    # Core patient/provider infrastructure
     - name: patient_integrity
-      bundled: ../target/wasm32-unknown-unknown/release/patient_integrity.wasm
+      path: ../target/wasm32-unknown-unknown/release/patient_integrity.wasm
     - name: provider_integrity
-      bundled: ../target/wasm32-unknown-unknown/release/provider_integrity.wasm
+      path: ../target/wasm32-unknown-unknown/release/provider_integrity.wasm
     - name: records_integrity
-      bundled: ../target/wasm32-unknown-unknown/release/records_integrity.wasm
+      path: ../target/wasm32-unknown-unknown/release/records_integrity.wasm
     - name: prescriptions_integrity
-      bundled: ../target/wasm32-unknown-unknown/release/prescriptions_integrity.wasm
+      path: ../target/wasm32-unknown-unknown/release/prescriptions_integrity.wasm
     - name: consent_integrity
-      bundled: ../target/wasm32-unknown-unknown/release/consent_integrity.wasm
+      path: ../target/wasm32-unknown-unknown/release/consent_integrity.wasm
     - name: trials_integrity
-      bundled: ../target/wasm32-unknown-unknown/release/trials_integrity.wasm
+      path: ../target/wasm32-unknown-unknown/release/trials_integrity.wasm
     - name: insurance_integrity
-      bundled: ../target/wasm32-unknown-unknown/release/insurance_integrity.wasm
+      path: ../target/wasm32-unknown-unknown/release/insurance_integrity.wasm
     - name: bridge_integrity
-      bundled: ../target/wasm32-unknown-unknown/release/bridge_integrity.wasm
-    # Revolutionary Features
-    - name: advocate_integrity
-      bundled: ../target/wasm32-unknown-unknown/release/advocate_integrity.wasm
-    - name: zkhealth_integrity
-      bundled: ../target/wasm32-unknown-unknown/release/zkhealth_integrity.wasm
-    - name: twin_integrity
-      bundled: ../target/wasm32-unknown-unknown/release/twin_integrity.wasm
-    - name: dividends_integrity
-      bundled: ../target/wasm32-unknown-unknown/release/dividends_integrity.wasm
+      path: ../target/wasm32-unknown-unknown/release/bridge_integrity.wasm
     # Health as a Commons
     - name: commons_integrity
-      bundled: ../target/wasm32-unknown-unknown/release/commons_integrity.wasm
+      path: ../target/wasm32-unknown-unknown/release/commons_integrity.wasm
     # Collective Immunity Intelligence
     - name: immunity_integrity
-      bundled: ../target/wasm32-unknown-unknown/release/immunity_integrity.wasm
-    # Universal Health Moment
-    - name: moment_integrity
-      bundled: ../target/wasm32-unknown-unknown/release/moment_integrity.wasm
+      path: ../target/wasm32-unknown-unknown/release/immunity_integrity.wasm
+    # Clinical Integration
+    - name: fhir_bridge_integrity
+      path: ../target/wasm32-unknown-unknown/release/fhir_bridge_integrity.wasm
 coordinator:
-  zomes:
-    - name: patient
-      bundled: ../target/wasm32-unknown-unknown/release/patient.wasm
-      dependencies:
-        - name: patient_integrity
-    - name: provider
-      bundled: ../target/wasm32-unknown-unknown/release/provider.wasm
-      dependencies:
-        - name: provider_integrity
-    - name: records
-      bundled: ../target/wasm32-unknown-unknown/release/records.wasm
-      dependencies:
-        - name: records_integrity
-        - name: patient_integrity
-        - name: consent_integrity
-    - name: prescriptions
-      bundled: ../target/wasm32-unknown-unknown/release/prescriptions.wasm
-      dependencies:
-        - name: prescriptions_integrity
-        - name: patient_integrity
-        - name: provider_integrity
-    - name: consent
-      bundled: ../target/wasm32-unknown-unknown/release/consent.wasm
-      dependencies:
-        - name: consent_integrity
-        - name: patient_integrity
-    - name: trials
-      bundled: ../target/wasm32-unknown-unknown/release/trials.wasm
-      dependencies:
-        - name: trials_integrity
-        - name: patient_integrity
-        - name: consent_integrity
-    - name: insurance
-      bundled: ../target/wasm32-unknown-unknown/release/insurance.wasm
-      dependencies:
-        - name: insurance_integrity
-        - name: patient_integrity
-    - name: bridge
-      bundled: ../target/wasm32-unknown-unknown/release/health_bridge.wasm
-      dependencies:
-        - name: bridge_integrity
-        - name: patient_integrity
-        - name: provider_integrity
-        - name: records_integrity
-    # Revolutionary Features
-    - name: advocate
-      bundled: ../target/wasm32-unknown-unknown/release/advocate_coordinator.wasm
-      dependencies:
-        - name: advocate_integrity
-        - name: patient_integrity
-        - name: records_integrity
-    - name: zkhealth
-      bundled: ../target/wasm32-unknown-unknown/release/zkhealth_coordinator.wasm
-      dependencies:
-        - name: zkhealth_integrity
-        - name: patient_integrity
-        - name: consent_integrity
-    - name: twin
-      bundled: ../target/wasm32-unknown-unknown/release/twin_coordinator.wasm
-      dependencies:
-        - name: twin_integrity
-        - name: patient_integrity
-        - name: records_integrity
-    - name: dividends
-      bundled: ../target/wasm32-unknown-unknown/release/dividends_coordinator.wasm
-      dependencies:
-        - name: dividends_integrity
-        - name: patient_integrity
-        - name: consent_integrity
-    # Health as a Commons
-    - name: commons
-      bundled: ../target/wasm32-unknown-unknown/release/commons_coordinator.wasm
-      dependencies:
-        - name: commons_integrity
-        - name: patient_integrity
-    # Collective Immunity Intelligence
-    - name: immunity
-      bundled: ../target/wasm32-unknown-unknown/release/immunity_coordinator.wasm
-      dependencies:
-        - name: immunity_integrity
-    # Universal Health Moment
-    - name: moment
-      bundled: ../target/wasm32-unknown-unknown/release/moment_coordinator.wasm
-      dependencies:
-        - name: moment_integrity
+  zomes: []
