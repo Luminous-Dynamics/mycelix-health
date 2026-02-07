@@ -1,5 +1,5 @@
 ---
-manifest_version: "1"
+manifest_version: "0"
 name: mycelix-health
 description: |
   Mycelix-Health: Complete Decentralized Healthcare Infrastructure
@@ -16,16 +16,14 @@ description: |
   - International Patient Summary (IPS)
   - Verifiable health credentials
   - Offline-first mobile support
-
 roles:
   - name: health
     provisioning:
       strategy: create
       deferred: false
     dna:
-      bundled: dnas/health/workdir/health.dna
+      path: ./dna/health.dna
       modifiers:
         network_seed: ~
         properties: ~
-        origin_time: ~
-        quantum_time: ~
+      clone_limit: 0
