@@ -30,3 +30,15 @@ path = "tests/hdc_genetics.rs"
 [[test]]
 name = "fhir_bridge"
 path = "tests/fhir_bridge.rs"
+
+[[test]]
+name = "consent_ownership"
+path = "tests/consent_ownership.rs"
+
+[[test]]
+name = "fhir_integration"
+path = "tests/fhir_integration.rs"
+
+[[test]]
+name = "cds_safety"
+path = "tests/cds_safety.rs"
