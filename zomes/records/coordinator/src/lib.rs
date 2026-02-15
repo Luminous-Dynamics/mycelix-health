@@ -18,6 +18,7 @@ use mycelix_health_shared::{
     require_authorization, require_admin_authorization,
     log_data_access,
     DataCategory, Permission,
+    batch::links_to_records,
 };
 
 // ==================== HEALTH TWIN INTEGRATION ====================
@@ -441,6 +442,8 @@ pub struct GetPatientEncountersInput {
 }
 
 /// Get patient's encounters with access control
+///
+/// OPTIMIZED: Uses batch query to avoid N+1 pattern
 #[hdk_extern]
 pub fn get_patient_encounters(input: GetPatientEncountersInput) -> ExternResult<Vec<Record>> {
     // Require Read authorization for Procedures category
@@ -453,14 +456,8 @@ pub fn get_patient_encounters(input: GetPatientEncountersInput) -> ExternResult<
 
     let links = get_links(LinkQuery::try_new(input.patient_hash.clone(), LinkTypes::PatientToEncounters)?, GetStrategy::default())?;
 
-    let mut encounters = Vec::new();
-    for link in links {
-        if let Some(hash) = link.target.into_action_hash() {
-            if let Some(record) = get(hash, GetOptions::default())? {
-                encounters.push(record);
-            }
-        }
-    }
+    // FIXED N+1: Use batch fetch instead of individual get() calls
+    let encounters = links_to_records(links)?;
 
     // Log the access
     if !encounters.is_empty() {
@@ -540,6 +537,8 @@ pub struct GetEncounterDiagnosesInput {
 }
 
 /// Get diagnoses for an encounter with access control
+///
+/// OPTIMIZED: Uses batch query to avoid N+1 pattern
 #[hdk_extern]
 pub fn get_encounter_diagnoses(input: GetEncounterDiagnosesInput) -> ExternResult<Vec<Record>> {
     // First get the encounter to find the patient_hash
@@ -562,14 +561,8 @@ pub fn get_encounter_diagnoses(input: GetEncounterDiagnosesInput) -> ExternResul
 
     let links = get_links(LinkQuery::try_new(input.encounter_hash, LinkTypes::EncounterToDiagnoses)?, GetStrategy::default())?;
 
-    let mut diagnoses = Vec::new();
-    for link in links {
-        if let Some(hash) = link.target.into_action_hash() {
-            if let Some(record) = get(hash, GetOptions::default())? {
-                diagnoses.push(record);
-            }
-        }
-    }
+    // FIXED N+1: Use batch fetch instead of individual get() calls
+    let diagnoses = links_to_records(links)?;
 
     // Log the access
     if !diagnoses.is_empty() {
@@ -710,6 +703,8 @@ pub struct GetPatientLabResultsInput {
 }
 
 /// Get patient's lab results with access control
+///
+/// OPTIMIZED: Uses batch query to avoid N+1 pattern
 #[hdk_extern]
 pub fn get_patient_lab_results(input: GetPatientLabResultsInput) -> ExternResult<Vec<Record>> {
     // Require Read authorization for LabResults category
@@ -722,14 +717,8 @@ pub fn get_patient_lab_results(input: GetPatientLabResultsInput) -> ExternResult
 
     let links = get_links(LinkQuery::try_new(input.patient_hash.clone(), LinkTypes::PatientToLabResults)?, GetStrategy::default())?;
 
-    let mut results = Vec::new();
-    for link in links {
-        if let Some(hash) = link.target.into_action_hash() {
-            if let Some(record) = get(hash, GetOptions::default())? {
-                results.push(record);
-            }
-        }
-    }
+    // FIXED N+1: Use batch fetch instead of individual get() calls
+    let results = links_to_records(links)?;
 
     // Log the access
     if !results.is_empty() {
@@ -856,6 +845,8 @@ pub struct GetPatientImagingInput {
 }
 
 /// Get patient's imaging studies with access control
+///
+/// OPTIMIZED: Uses batch query to avoid N+1 pattern
 #[hdk_extern]
 pub fn get_patient_imaging(input: GetPatientImagingInput) -> ExternResult<Vec<Record>> {
     // Require Read authorization for ImagingStudies category
@@ -868,14 +859,8 @@ pub fn get_patient_imaging(input: GetPatientImagingInput) -> ExternResult<Vec<Re
 
     let links = get_links(LinkQuery::try_new(input.patient_hash.clone(), LinkTypes::PatientToImaging)?, GetStrategy::default())?;
 
-    let mut studies = Vec::new();
-    for link in links {
-        if let Some(hash) = link.target.into_action_hash() {
-            if let Some(record) = get(hash, GetOptions::default())? {
-                studies.push(record);
-            }
-        }
-    }
+    // FIXED N+1: Use batch fetch instead of individual get() calls
+    let studies = links_to_records(links)?;
 
     // Log the access
     if !studies.is_empty() {
@@ -956,6 +941,8 @@ pub struct GetPatientVitalsInput {
 }
 
 /// Get patient's recent vital signs with access control
+///
+/// OPTIMIZED: Uses batch query to avoid N+1 pattern
 #[hdk_extern]
 pub fn get_patient_vitals(input: GetPatientVitalsInput) -> ExternResult<Vec<Record>> {
     // Require Read authorization for VitalSigns category
@@ -968,14 +955,8 @@ pub fn get_patient_vitals(input: GetPatientVitalsInput) -> ExternResult<Vec<Reco
 
     let links = get_links(LinkQuery::try_new(input.patient_hash.clone(), LinkTypes::PatientToVitals)?, GetStrategy::default())?;
 
-    let mut vitals = Vec::new();
-    for link in links {
-        if let Some(hash) = link.target.into_action_hash() {
-            if let Some(record) = get(hash, GetOptions::default())? {
-                vitals.push(record);
-            }
-        }
-    }
+    // FIXED N+1: Use batch fetch instead of individual get() calls
+    let vitals = links_to_records(links)?;
 
     // Log the access
     if !vitals.is_empty() {
@@ -994,6 +975,8 @@ pub fn get_patient_vitals(input: GetPatientVitalsInput) -> ExternResult<Vec<Reco
 
 /// Get all critical/unacknowledged results (admin function)
 /// Requires admin authorization as it accesses multiple patients' data
+///
+/// OPTIMIZED: Uses batch query to avoid N+1 pattern
 #[hdk_extern]
 pub fn get_critical_results(_: ()) -> ExternResult<Vec<Record>> {
     // Require admin authorization for bulk critical results access
@@ -1002,23 +985,23 @@ pub fn get_critical_results(_: ()) -> ExternResult<Vec<Record>> {
     let critical_anchor = anchor_hash("critical_results")?;
     let links = get_links(LinkQuery::try_new(critical_anchor, LinkTypes::CriticalResults)?, GetStrategy::default())?;
 
-    let mut results = Vec::new();
-    for link in links {
-        if let Some(hash) = link.target.into_action_hash() {
-            if let Some(record) = get(hash, GetOptions::default())? {
-                // Check if lab result is unacknowledged
-                if let Some(lab) = record.entry().to_app_option::<LabResult>().ok().flatten() {
-                    if lab.acknowledged_by.is_none() {
-                        results.push(record);
-                    }
-                } else if let Some(imaging) = record.entry().to_app_option::<ImagingStudy>().ok().flatten() {
-                    if imaging.is_critical {
-                        results.push(record);
-                    }
-                }
+    // FIXED N+1: Batch fetch all records first, then filter
+    let all_records = links_to_records(links)?;
+
+    let results = all_records
+        .into_iter()
+        .filter(|record| {
+            // Check if lab result is unacknowledged
+            if let Some(lab) = record.entry().to_app_option::<LabResult>().ok().flatten() {
+                return lab.acknowledged_by.is_none();
             }
-        }
-    }
+            // Check if imaging is critical
+            if let Some(imaging) = record.entry().to_app_option::<ImagingStudy>().ok().flatten() {
+                return imaging.is_critical;
+            }
+            false
+        })
+        .collect();
 
     Ok(results)
 }
@@ -1195,6 +1178,8 @@ pub struct GetEncounterHistoryInput {
 }
 
 /// Get encounter history (all versions) with access control
+///
+/// OPTIMIZED: Uses batch query to avoid N+1 pattern
 #[hdk_extern]
 pub fn get_encounter_history(input: GetEncounterHistoryInput) -> ExternResult<Vec<Record>> {
     // First get the encounter to find the patient_hash
@@ -1217,17 +1202,10 @@ pub fn get_encounter_history(input: GetEncounterHistoryInput) -> ExternResult<Ve
 
     let links = get_links(LinkQuery::try_new(input.encounter_hash, LinkTypes::EncounterUpdates)?, GetStrategy::default())?;
 
+    // FIXED N+1: Batch fetch updates
     let mut history = Vec::new();
     history.push(original);
-
-    // Add updates
-    for link in links {
-        if let Some(hash) = link.target.into_action_hash() {
-            if let Some(record) = get(hash, GetOptions::default())? {
-                history.push(record);
-            }
-        }
-    }
+    history.extend(links_to_records(links)?);
 
     // Log the access
     log_data_access(

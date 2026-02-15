@@ -96,6 +96,27 @@ def train_and_export(
     with open(output_path, 'w') as f:
         json.dump(export_data, f)
 
+    # Export MLP classifier weights
+    if model.W1 is not None:
+        mlp_path = output_path.replace('.json', '_mlp.json')
+        print(f"Exporting MLP classifier to {mlp_path}...")
+
+        mlp_data = {
+            "input_dim": config.dim,
+            "hidden_dim": config.mlp_hidden,
+            "output_dim": config.num_classes,
+            "W1": model.W1.tolist(),
+            "b1": model.b1.tolist(),
+            "W2": model.W2.tolist(),
+            "b2": model.b2.tolist(),
+        }
+
+        with open(mlp_path, 'w') as f:
+            json.dump(mlp_data, f)
+
+        mlp_size = os.path.getsize(mlp_path)
+        print(f"  MLP exported: {mlp_size / 1024:.1f} KB")
+
     # Calculate file size
     file_size = os.path.getsize(output_path)
 

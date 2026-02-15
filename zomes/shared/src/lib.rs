@@ -15,8 +15,6 @@ pub use access_control::*;
 pub use audit::*;
 pub use types::*;
 pub use anchors::*;
-pub use encryption::*;
-pub use key_management::*;
 pub use validation::*;
 pub use batch::*;
 
@@ -559,7 +557,8 @@ pub mod types {
 /// - Substance abuse records
 /// - Genetic data
 ///
-/// Uses XChaCha20-Poly1305 semantics with HMAC verification
+/// NOTE: Field-level encryption is not implemented in this repository (a previous insecure
+/// placeholder was removed). Integrate a proper AEAD before storing PHI at rest.
 pub mod encryption {
     use super::*;
 
@@ -641,25 +640,17 @@ pub mod encryption {
         }
     }
 
-    /// Simple SHA-256 hash implementation using available primitives
+    /// SHA-256 hash
     pub fn sha256_hash(input: &[u8]) -> [u8; 32] {
-        use std::collections::hash_map::DefaultHasher;
-        use std::hash::{Hash, Hasher};
+        use sha2::{Digest, Sha256};
 
-        // Use multiple rounds of hashing for better distribution
-        // This is a simplified version - in production, use a proper SHA-256
-        let mut result = [0u8; 32];
+        let mut hasher = Sha256::new();
+        hasher.update(input);
+        let digest = hasher.finalize();
 
-        for i in 0..4 {
-            let mut hasher = DefaultHasher::new();
-            input.hash(&mut hasher);
-            i.hash(&mut hasher);
-            let hash = hasher.finish();
-
-            result[i * 8..(i + 1) * 8].copy_from_slice(&hash.to_le_bytes());
-        }
-
-        result
+        let mut out = [0u8; 32];
+        out.copy_from_slice(&digest);
+        out
     }
 
     /// Encrypt a sensitive field value
@@ -676,40 +667,10 @@ pub mod encryption {
         key: &EncryptionKey,
         field_type: SensitiveFieldType,
     ) -> ExternResult<EncryptedField> {
-        // Generate random nonce (12 bytes)
-        let mut nonce = [0u8; 12];
-        getrandom::fill(&mut nonce)
-            .map_err(|e| wasm_error!(WasmErrorInner::Guest(
-                format!("Failed to generate random nonce: {:?}", e)
-            )))?;
-
-        // XOR-based encryption with nonce and key
-        // Note: In production, use AES-GCM or ChaCha20-Poly1305
-        let plaintext_bytes = plaintext.as_bytes();
-        let mut ciphertext = Vec::with_capacity(plaintext_bytes.len() + 32);
-
-        // Generate keystream
-        let keystream = generate_keystream(key.as_bytes(), &nonce, plaintext_bytes.len() + 32);
-
-        // Encrypt with XOR
-        for (i, &byte) in plaintext_bytes.iter().enumerate() {
-            ciphertext.push(byte ^ keystream[i]);
-        }
-
-        // Add HMAC tag for integrity (32 bytes)
-        let tag = compute_hmac(key.as_bytes(), &nonce, &ciphertext);
-        ciphertext.extend_from_slice(&tag);
-
-        // Encode as base64
-        let ciphertext_b64 = base64_encode(&ciphertext);
-        let nonce_b64 = base64_encode(&nonce);
-
-        Ok(EncryptedField {
-            ciphertext: ciphertext_b64,
-            nonce: nonce_b64,
-            field_type,
-            version: 1,
-        })
+        let _ = (plaintext, key, field_type);
+        Err(wasm_error!(WasmErrorInner::Guest(
+            "Field-level encryption is not implemented (insecure placeholder removed)".to_string()
+        )))
     }
 
     /// Decrypt a sensitive field value
@@ -724,119 +685,10 @@ pub mod encryption {
         encrypted: &EncryptedField,
         key: &EncryptionKey,
     ) -> ExternResult<String> {
-        // Decode from base64
-        let ciphertext_with_tag = base64_decode(&encrypted.ciphertext)
-            .map_err(|e| wasm_error!(WasmErrorInner::Guest(
-                format!("Invalid ciphertext encoding: {}", e)
-            )))?;
-
-        let nonce = base64_decode(&encrypted.nonce)
-            .map_err(|e| wasm_error!(WasmErrorInner::Guest(
-                format!("Invalid nonce encoding: {}", e)
-            )))?;
-
-        if nonce.len() != 12 {
-            return Err(wasm_error!(WasmErrorInner::Guest(
-                "Invalid nonce length".to_string()
-            )));
-        }
-
-        if ciphertext_with_tag.len() < 32 {
-            return Err(wasm_error!(WasmErrorInner::Guest(
-                "Ciphertext too short".to_string()
-            )));
-        }
-
-        // Split ciphertext and tag
-        let ciphertext_len = ciphertext_with_tag.len() - 32;
-        let ciphertext = &ciphertext_with_tag[..ciphertext_len];
-        let stored_tag = &ciphertext_with_tag[ciphertext_len..];
-
-        // Verify HMAC tag
-        let nonce_array: [u8; 12] = nonce.try_into()
-            .map_err(|_| wasm_error!(WasmErrorInner::Guest("Invalid nonce".to_string())))?;
-        let computed_tag = compute_hmac(key.as_bytes(), &nonce_array, ciphertext);
-
-        if !constant_time_compare(&computed_tag, stored_tag) {
-            return Err(wasm_error!(WasmErrorInner::Guest(
-                "Integrity check failed - data may have been tampered with".to_string()
-            )));
-        }
-
-        // Generate keystream
-        let keystream = generate_keystream(key.as_bytes(), &nonce_array, ciphertext.len());
-
-        // Decrypt with XOR
-        let mut plaintext_bytes = Vec::with_capacity(ciphertext.len());
-        for (i, &byte) in ciphertext.iter().enumerate() {
-            plaintext_bytes.push(byte ^ keystream[i]);
-        }
-
-        String::from_utf8(plaintext_bytes)
-            .map_err(|e| wasm_error!(WasmErrorInner::Guest(
-                format!("Invalid UTF-8 in decrypted data: {}", e)
-            )))
-    }
-
-    /// Generate keystream for XOR encryption
-    fn generate_keystream(key: &[u8; 32], nonce: &[u8; 12], len: usize) -> Vec<u8> {
-        let mut keystream = Vec::with_capacity(len);
-        let mut counter = 0u64;
-
-        while keystream.len() < len {
-            let mut block_input = Vec::new();
-            block_input.extend_from_slice(key);
-            block_input.extend_from_slice(nonce);
-            block_input.extend_from_slice(&counter.to_le_bytes());
-
-            let block_hash = sha256_hash(&block_input);
-            keystream.extend_from_slice(&block_hash);
-            counter += 1;
-        }
-
-        keystream.truncate(len);
-        keystream
-    }
-
-    /// Compute HMAC for integrity verification
-    fn compute_hmac(key: &[u8; 32], nonce: &[u8; 12], data: &[u8]) -> [u8; 32] {
-        // HMAC using SHA-256
-        // inner = H(K XOR ipad || message)
-        // outer = H(K XOR opad || inner)
-
-        let mut ipad = [0x36u8; 64];
-        let mut opad = [0x5cu8; 64];
-
-        for i in 0..32 {
-            ipad[i] ^= key[i];
-            opad[i] ^= key[i];
-        }
-
-        // Inner hash
-        let mut inner_input = Vec::new();
-        inner_input.extend_from_slice(&ipad);
-        inner_input.extend_from_slice(nonce);
-        inner_input.extend_from_slice(data);
-        let inner_hash = sha256_hash(&inner_input);
-
-        // Outer hash
-        let mut outer_input = Vec::new();
-        outer_input.extend_from_slice(&opad);
-        outer_input.extend_from_slice(&inner_hash);
-        sha256_hash(&outer_input)
-    }
-
-    /// Constant-time comparison to prevent timing attacks
-    fn constant_time_compare(a: &[u8], b: &[u8]) -> bool {
-        if a.len() != b.len() {
-            return false;
-        }
-
-        let mut result = 0u8;
-        for (x, y) in a.iter().zip(b.iter()) {
-            result |= x ^ y;
-        }
-        result == 0
+        let _ = (encrypted, key);
+        Err(wasm_error!(WasmErrorInner::Guest(
+            "Field-level decryption is not implemented (insecure placeholder removed)".to_string()
+        )))
     }
 
     /// Base64 encode bytes
@@ -944,7 +796,9 @@ pub mod encryption {
 /// Key management for field-level encryption
 ///
 /// This module handles secure storage and lifecycle management of encryption keys.
-/// Keys are stored encrypted in the DHT using the agent's keypair for protection.
+///
+/// NOTE: Key wrapping/unwrapping is not implemented in this repository (a previous insecure
+/// placeholder was removed).
 pub mod key_management {
     use super::*;
 
@@ -1032,100 +886,26 @@ pub mod key_management {
     }
 
     /// Wrap a key for secure storage
-    ///
-    /// The key is encrypted using a key derived from the agent's keypair.
-    /// This ensures only the agent can unwrap the key.
     pub fn wrap_key(
         key: &[u8; 32],
         metadata: KeyMetadata,
         agent: &AgentPubKey,
     ) -> ExternResult<WrappedKey> {
-        // Derive wrapping key from agent pubkey
-        let agent_bytes = agent.get_raw_39();
-        let mut wrapping_key_input = Vec::new();
-        wrapping_key_input.extend_from_slice(&agent_bytes);
-        wrapping_key_input.extend_from_slice(b"key_wrapping_v1");
-        let wrapping_key = super::encryption::sha256_hash(&wrapping_key_input);
-
-        // Generate nonce
-        let mut nonce = [0u8; 12];
-        getrandom::fill(&mut nonce)
-            .map_err(|e| wasm_error!(WasmErrorInner::Guest(
-                format!("Failed to generate nonce: {:?}", e)
-            )))?;
-
-        // Encrypt the key using XOR with keystream
-        let keystream = generate_wrapping_keystream(&wrapping_key, &nonce, 32 + 32);
-        let mut encrypted = Vec::with_capacity(64);
-
-        // Encrypt key material
-        for (i, &byte) in key.iter().enumerate() {
-            encrypted.push(byte ^ keystream[i]);
-        }
-
-        // Add integrity tag
-        let tag = compute_key_tag(&wrapping_key, &nonce, &encrypted[..32]);
-        encrypted.extend_from_slice(&tag);
-
-        Ok(WrappedKey {
-            metadata,
-            encrypted_key: super::encryption::base64_encode(&encrypted),
-            nonce: super::encryption::base64_encode(&nonce),
-        })
+        let _ = (key, metadata, agent);
+        Err(wasm_error!(WasmErrorInner::Guest(
+            "Key wrapping is not implemented (insecure placeholder removed)".to_string()
+        )))
     }
 
     /// Unwrap a key for use
-    ///
-    /// Decrypts the key using the agent's keypair-derived key.
     pub fn unwrap_key(
         wrapped: &WrappedKey,
         agent: &AgentPubKey,
     ) -> ExternResult<[u8; 32]> {
-        // Derive wrapping key
-        let agent_bytes = agent.get_raw_39();
-        let mut wrapping_key_input = Vec::new();
-        wrapping_key_input.extend_from_slice(&agent_bytes);
-        wrapping_key_input.extend_from_slice(b"key_wrapping_v1");
-        let wrapping_key = super::encryption::sha256_hash(&wrapping_key_input);
-
-        // Decode encrypted key
-        let encrypted = super::encryption::base64_decode(&wrapped.encrypted_key)
-            .map_err(|e| wasm_error!(WasmErrorInner::Guest(
-                format!("Invalid encrypted key: {}", e)
-            )))?;
-
-        let nonce = super::encryption::base64_decode(&wrapped.nonce)
-            .map_err(|e| wasm_error!(WasmErrorInner::Guest(
-                format!("Invalid nonce: {}", e)
-            )))?;
-
-        if encrypted.len() != 64 || nonce.len() != 12 {
-            return Err(wasm_error!(WasmErrorInner::Guest(
-                "Invalid wrapped key format".to_string()
-            )));
-        }
-
-        let nonce_array: [u8; 12] = nonce.try_into()
-            .map_err(|_| wasm_error!(WasmErrorInner::Guest("Invalid nonce".to_string())))?;
-
-        // Verify integrity tag
-        let stored_tag = &encrypted[32..64];
-        let computed_tag = compute_key_tag(&wrapping_key, &nonce_array, &encrypted[..32]);
-
-        if !constant_time_eq(&stored_tag, &computed_tag) {
-            return Err(wasm_error!(WasmErrorInner::Guest(
-                "Key integrity check failed".to_string()
-            )));
-        }
-
-        // Decrypt key
-        let keystream = generate_wrapping_keystream(&wrapping_key, &nonce_array, 32);
-        let mut key = [0u8; 32];
-        for i in 0..32 {
-            key[i] = encrypted[i] ^ keystream[i];
-        }
-
-        Ok(key)
+        let _ = (wrapped, agent);
+        Err(wasm_error!(WasmErrorInner::Guest(
+            "Key unwrapping is not implemented (insecure placeholder removed)".to_string()
+        )))
     }
 
     /// Check if a key should be rotated
@@ -1140,48 +920,6 @@ pub mod key_management {
         Ok(false)
     }
 
-    /// Helper to generate keystream for key wrapping
-    fn generate_wrapping_keystream(key: &[u8; 32], nonce: &[u8; 12], len: usize) -> Vec<u8> {
-        let mut keystream = Vec::with_capacity(len);
-        let mut counter = 0u64;
-
-        while keystream.len() < len {
-            let mut block_input = Vec::new();
-            block_input.extend_from_slice(key);
-            block_input.extend_from_slice(nonce);
-            block_input.extend_from_slice(&counter.to_le_bytes());
-            block_input.extend_from_slice(b"wrap");
-
-            let block_hash = super::encryption::sha256_hash(&block_input);
-            keystream.extend_from_slice(&block_hash);
-            counter += 1;
-        }
-
-        keystream.truncate(len);
-        keystream
-    }
-
-    /// Compute integrity tag for wrapped key
-    fn compute_key_tag(key: &[u8; 32], nonce: &[u8; 12], data: &[u8]) -> [u8; 32] {
-        let mut input = Vec::new();
-        input.extend_from_slice(key);
-        input.extend_from_slice(nonce);
-        input.extend_from_slice(data);
-        input.extend_from_slice(b"key_tag");
-        super::encryption::sha256_hash(&input)
-    }
-
-    /// Constant-time equality check
-    fn constant_time_eq(a: &[u8], b: &[u8]) -> bool {
-        if a.len() != b.len() {
-            return false;
-        }
-        let mut result = 0u8;
-        for (x, y) in a.iter().zip(b.iter()) {
-            result |= x ^ y;
-        }
-        result == 0
-    }
 }
 
 /// Anchor utilities for consistent indexing

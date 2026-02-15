@@ -299,7 +299,7 @@ export interface CreatePart2ConsentInput {
 export class MentalHealthClient {
   constructor(
     private client: AppClient,
-    private roleName: string = 'mycelix-health'
+    private roleName: string = 'health'
   ) {}
 
   private async call<T>(fnName: string, payload: unknown): Promise<T> {

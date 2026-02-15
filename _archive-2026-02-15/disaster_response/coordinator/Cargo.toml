@@ -1,0 +1,15 @@
+[package]
+name = "disaster_response"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+name = "disaster_response"
+
+[dependencies]
+hdk = { workspace = true }
+holochain_serialized_bytes = { workspace = true }
+serde = { workspace = true }
+disaster_response_integrity = { path = "../integrity" }
+mycelix-health-shared = { path = "../../shared" }

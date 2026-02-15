@@ -422,7 +422,7 @@ export interface MycelixHealthConfig {
  */
 export const DEFAULT_CONFIG: Required<MycelixHealthConfig> = {
   appId: 'mycelix-health',
-  roleName: 'mycelix_health',
+  roleName: 'health',
   url: 'ws://localhost:8888',
   debug: false,
   retry: {

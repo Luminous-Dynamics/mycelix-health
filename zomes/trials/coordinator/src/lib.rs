@@ -12,6 +12,7 @@
 
 use hdk::prelude::*;
 use trials_integrity::*;
+use mycelix_health_shared::{require_authorization, log_data_access, DataCategory, Permission};
 
 // ==================== DATA DIVIDENDS INTEGRATION ====================
 
@@ -233,6 +234,13 @@ pub fn get_recruiting_trials(_: ()) -> ExternResult<Vec<Record>> {
 /// Enroll participant in trial
 #[hdk_extern]
 pub fn enroll_participant(participant: TrialParticipant) -> ExternResult<Record> {
+    let auth = require_authorization(
+        participant.patient_hash.clone(),
+        DataCategory::All,
+        Permission::Write,
+        false,
+    )?;
+
     let participant_hash = create_entry(&EntryTypes::TrialParticipant(participant.clone()))?;
     let record = get(participant_hash.clone(), GetOptions::default())?
         .ok_or(wasm_error!(WasmErrorInner::Guest("Could not find participant".to_string())))?;
@@ -265,12 +273,30 @@ pub fn enroll_participant(participant: TrialParticipant) -> ExternResult<Record>
         }
     }
 
+    log_data_access(
+        participant.patient_hash,
+        vec![DataCategory::All],
+        Permission::Write,
+        auth.consent_hash,
+        auth.emergency_override,
+        None,
+    )?;
+
     Ok(record)
 }
 
 /// Get trial participants
 #[hdk_extern]
 pub fn get_trial_participants(trial_hash: ActionHash) -> ExternResult<Vec<Record>> {
+    let caller = agent_info()?.agent_initial_pubkey;
+    let trial_record = get(trial_hash.clone(), GetOptions::default())?
+        .ok_or(wasm_error!(WasmErrorInner::Guest("Trial not found".to_string())))?;
+    if trial_record.action().author() != &caller {
+        return Err(wasm_error!(WasmErrorInner::Guest(
+            "Only the trial creator can view participants".to_string()
+        )));
+    }
+
     let links = get_links(LinkQuery::try_new(trial_hash, LinkTypes::TrialToParticipants)?, GetStrategy::default())?;
     
     let mut participants = Vec::new();
@@ -296,12 +322,29 @@ pub fn withdraw_participant(input: WithdrawInput) -> ExternResult<Record> {
         .to_app_option()
         .map_err(|e| wasm_error!(WasmErrorInner::Guest(e.to_string())))?
         .ok_or(wasm_error!(WasmErrorInner::Guest("Invalid participant".to_string())))?;
+
+    let patient_hash = participant.patient_hash.clone();
+    let auth = require_authorization(
+        patient_hash.clone(),
+        DataCategory::All,
+        Permission::Amend,
+        false,
+    )?;
     
     participant.status = ParticipantStatus::Withdrawn;
     participant.withdrawal_date = Some(sys_time()?);
     participant.withdrawal_reason = Some(input.reason);
     
     let updated_hash = update_entry(input.participant_hash, &participant)?;
+
+    log_data_access(
+        patient_hash,
+        vec![DataCategory::All],
+        Permission::Amend,
+        auth.consent_hash,
+        auth.emergency_override,
+        None,
+    )?;
     
     get(updated_hash, GetOptions::default())?
         .ok_or(wasm_error!(WasmErrorInner::Guest("Could not find updated participant".to_string())))
@@ -316,6 +359,22 @@ pub struct WithdrawInput {
 /// Record trial visit
 #[hdk_extern]
 pub fn record_visit(visit: TrialVisit) -> ExternResult<Record> {
+    let participant_record = get(visit.participant_hash.clone(), GetOptions::default())?
+        .ok_or(wasm_error!(WasmErrorInner::Guest("Participant not found".to_string())))?;
+    let participant: TrialParticipant = participant_record
+        .entry()
+        .to_app_option()
+        .map_err(|e| wasm_error!(WasmErrorInner::Guest(e.to_string())))?
+        .ok_or(wasm_error!(WasmErrorInner::Guest("Invalid participant".to_string())))?;
+
+    let patient_hash = participant.patient_hash.clone();
+    let auth = require_authorization(
+        patient_hash.clone(),
+        DataCategory::All,
+        Permission::Write,
+        false,
+    )?;
+
     let visit_hash = create_entry(&EntryTypes::TrialVisit(visit.clone()))?;
     let record = get(visit_hash.clone(), GetOptions::default())?
         .ok_or(wasm_error!(WasmErrorInner::Guest("Could not find visit".to_string())))?;
@@ -329,11 +388,16 @@ pub fn record_visit(visit: TrialVisit) -> ExternResult<Record> {
 
     // Track data usage in dividends zome (best effort)
     // Need to get the participant record to link the data to the patient
-    if let Some(participant_record) = get(visit.participant_hash.clone(), GetOptions::default())? {
-        if let Some(participant) = participant_record.entry().to_app_option::<TrialParticipant>().ok().flatten() {
-            try_track_visit_data(&visit, &participant);
-        }
-    }
+    try_track_visit_data(&visit, &participant);
+
+    log_data_access(
+        patient_hash,
+        vec![DataCategory::All],
+        Permission::Write,
+        auth.consent_hash,
+        auth.emergency_override,
+        None,
+    )?;
 
     Ok(record)
 }
@@ -350,6 +414,14 @@ pub fn get_participant_visits(participant_hash: ActionHash) -> ExternResult<Vec<
         .to_app_option()
         .map_err(|e| wasm_error!(WasmErrorInner::Guest(e.to_string())))?
         .ok_or(wasm_error!(WasmErrorInner::Guest("Invalid participant".to_string())))?;
+
+    let patient_hash = participant.patient_hash.clone();
+    let auth = require_authorization(
+        patient_hash.clone(),
+        DataCategory::All,
+        Permission::Read,
+        false,
+    )?;
     
     let links = get_links(LinkQuery::try_new(participant.trial_hash, LinkTypes::TrialToVisits)?, GetStrategy::default())?;
     
@@ -365,6 +437,17 @@ pub fn get_participant_visits(participant_hash: ActionHash) -> ExternResult<Vec<
             }
         }
     }
+
+    if !visits.is_empty() {
+        log_data_access(
+            patient_hash,
+            vec![DataCategory::All],
+            Permission::Read,
+            auth.consent_hash,
+            auth.emergency_override,
+            None,
+        )?;
+    }
     
     Ok(visits)
 }
@@ -372,6 +455,22 @@ pub fn get_participant_visits(participant_hash: ActionHash) -> ExternResult<Vec<
 /// Report adverse event
 #[hdk_extern]
 pub fn report_adverse_event(event: AdverseEvent) -> ExternResult<Record> {
+    let participant_record = get(event.participant_hash.clone(), GetOptions::default())?
+        .ok_or(wasm_error!(WasmErrorInner::Guest("Participant not found".to_string())))?;
+    let participant: TrialParticipant = participant_record
+        .entry()
+        .to_app_option()
+        .map_err(|e| wasm_error!(WasmErrorInner::Guest(e.to_string())))?
+        .ok_or(wasm_error!(WasmErrorInner::Guest("Invalid participant".to_string())))?;
+
+    let patient_hash = participant.patient_hash.clone();
+    let auth = require_authorization(
+        patient_hash.clone(),
+        DataCategory::All,
+        Permission::Write,
+        false,
+    )?;
+
     let event_hash = create_entry(&EntryTypes::AdverseEvent(event.clone()))?;
     let record = get(event_hash.clone(), GetOptions::default())?
         .ok_or(wasm_error!(WasmErrorInner::Guest("Could not find adverse event".to_string())))?;
@@ -382,6 +481,15 @@ pub fn report_adverse_event(event: AdverseEvent) -> ExternResult<Record> {
         LinkTypes::TrialToAdverseEvents,
         (),
     )?;
+
+    log_data_access(
+        patient_hash,
+        vec![DataCategory::All],
+        Permission::Write,
+        auth.consent_hash,
+        auth.emergency_override,
+        None,
+    )?;
     
     Ok(record)
 }
@@ -389,6 +497,15 @@ pub fn report_adverse_event(event: AdverseEvent) -> ExternResult<Record> {
 /// Get trial adverse events
 #[hdk_extern]
 pub fn get_trial_adverse_events(trial_hash: ActionHash) -> ExternResult<Vec<Record>> {
+    let caller = agent_info()?.agent_initial_pubkey;
+    let trial_record = get(trial_hash.clone(), GetOptions::default())?
+        .ok_or(wasm_error!(WasmErrorInner::Guest("Trial not found".to_string())))?;
+    if trial_record.action().author() != &caller {
+        return Err(wasm_error!(WasmErrorInner::Guest(
+            "Only the trial creator can view adverse events".to_string()
+        )));
+    }
+
     let links = get_links(LinkQuery::try_new(trial_hash, LinkTypes::TrialToAdverseEvents)?, GetStrategy::default())?;
     
     let mut events = Vec::new();

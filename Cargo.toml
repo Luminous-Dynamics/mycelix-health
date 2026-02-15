@@ -1,6 +1,7 @@
 [workspace]
 resolver = "2"
 members = [
+    # ── Tier 1: MVP Core (7 zomes + shared) ──
     "zomes/shared",
     "zomes/patient/integrity",
     "zomes/patient/coordinator",
@@ -12,79 +13,31 @@ members = [
     "zomes/prescriptions/coordinator",
     "zomes/consent/integrity",
     "zomes/consent/coordinator",
-    "zomes/trials/integrity",
-    "zomes/trials/coordinator",
-    "zomes/insurance/integrity",
-    "zomes/insurance/coordinator",
     "zomes/bridge/integrity",
     "zomes/bridge/coordinator",
-    # Revolutionary Features
-    "zomes/advocate/integrity",
-    "zomes/advocate/coordinator",
-    "zomes/zkhealth/integrity",
-    "zomes/zkhealth/coordinator",
-    "zomes/twin/integrity",
-    "zomes/twin/coordinator",
-    "zomes/dividends/integrity",
-    "zomes/dividends/coordinator",
-    # Health as a Commons
-    "zomes/commons/integrity",
-    "zomes/commons/coordinator",
-    # Collective Immunity Intelligence
-    "zomes/immunity/integrity",
-    "zomes/immunity/coordinator",
-    # Universal Health Moment
-    "zomes/moment/integrity",
-    "zomes/moment/coordinator",
-    # Clinical Integration (Phase 3)
-    "zomes/fhir_mapping/integrity",
-    "zomes/fhir_mapping/coordinator",
-    "zomes/cds/integrity",
-    "zomes/cds/coordinator",
-    "zomes/provider_directory/integrity",
-    "zomes/provider_directory/coordinator",
-    "zomes/telehealth/integrity",
-    "zomes/telehealth/coordinator",
-    # Equity & Access (Phase 4)
-    "zomes/sdoh/integrity",
-    "zomes/sdoh/coordinator",
-    "zomes/mental_health/integrity",
-    "zomes/mental_health/coordinator",
-    "zomes/chronic_care/integrity",
-    "zomes/chronic_care/coordinator",
-    "zomes/pediatric/integrity",
-    "zomes/pediatric/coordinator",
-    # Advanced Research (Phase 5)
-    "zomes/research_commons/integrity",
-    "zomes/research_commons/coordinator",
-    "zomes/trial_matching/integrity",
-    "zomes/trial_matching/coordinator",
-    "zomes/irb/integrity",
-    "zomes/irb/coordinator",
-    "zomes/federated_learning/integrity",
-    "zomes/federated_learning/coordinator",
-    "zomes/population_health/integrity",
-    "zomes/population_health/coordinator",
-    # Global Scale (Phase 6)
-    "zomes/ips/integrity",
-    "zomes/ips/coordinator",
-    "zomes/i18n/integrity",
-    "zomes/i18n/coordinator",
-    "zomes/disaster_response/integrity",
-    "zomes/disaster_response/coordinator",
-    "zomes/verifiable_credentials/integrity",
-    "zomes/verifiable_credentials/coordinator",
-    "zomes/mobile_support/integrity",
-    "zomes/mobile_support/coordinator",
-    # HDC Genetics (Privacy-Preserving Genetic Similarity)
-    "zomes/hdc_genetics/integrity",
-    "zomes/hdc_genetics/coordinator",
-    # Nutrition Tracking (Health-Food Integration)
-    "zomes/nutrition/integrity",
-    "zomes/nutrition/coordinator",
-    # HDC Core Libraries (native target only)
-    "crates/hdc-core",
-    "crates/hdc-experiments",
+
+    # ── DEFERRED: Tier 2 (re-enable when needed) ──
+    # "zomes/trials/integrity",
+    # "zomes/trials/coordinator",
+    # "zomes/insurance/integrity",
+    # "zomes/insurance/coordinator",
+    # "zomes/fhir_mapping/integrity",
+    # "zomes/fhir_mapping/coordinator",
+    # "zomes/fhir_bridge/integrity",
+    # "zomes/fhir_bridge/coordinator",
+    # "zomes/cds/integrity",
+    # "zomes/cds/coordinator",
+    # "zomes/provider_directory/integrity",
+    # "zomes/provider_directory/coordinator",
+    # "zomes/telehealth/integrity",
+    # "zomes/telehealth/coordinator",
+    # "zomes/nutrition/integrity",
+    # "zomes/nutrition/coordinator",
+    # "crates/hdc-core",
+    # "crates/hdc-experiments",
+
+    # ── ARCHIVED: Tier 3 (22 zomes moved to _archive-2026-02-15/) ──
+    # See _archive-2026-02-15/README.md for details
 ]
 
 # Tests are separate - run with: cargo test -p mycelix-health-tests
@@ -108,10 +61,10 @@ thiserror = "1.0"
 derive_more = "0.99"
 
 # WASM compatibility
-# getrandom 0.3+ uses "wasm_js" feature
-getrandom = { version = "0.3", features = ["wasm_js"] }
-# getrandom 0.2 needs "js" feature for WASM (pulled in by rand)
-getrandom_02 = { package = "getrandom", version = "0.2", features = ["js"] }
+# WASM compatibility - getrandom 0.3 with custom backend (HDK provides __getrandom_v03_custom)
+# NOTE: Do NOT use features = ["js"] or ["wasm_js"] - they pull in wasm-bindgen
+# which is incompatible with Holochain's WASM runtime.
+getrandom_03 = { package = "getrandom", version = "0.3" }
 
 [profile.dev]
 opt-level = "z"

@@ -20,7 +20,6 @@ pub mod bridge;
 pub mod hipaa_compliance;
 pub mod byzantine;
 pub mod access_control;
-pub mod encryption;
 pub mod delegation;
 pub mod notifications;
 pub mod care_teams;

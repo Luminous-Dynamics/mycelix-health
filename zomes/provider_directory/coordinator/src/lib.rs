@@ -73,6 +73,15 @@ pub struct UpdateProviderInput {
 /// Update a provider profile
 #[hdk_extern]
 pub fn update_provider(input: UpdateProviderInput) -> ExternResult<Record> {
+    let caller = agent_info()?.agent_initial_pubkey;
+    let original_record = get(input.original_hash.clone(), GetOptions::default())?
+        .ok_or(wasm_error!(WasmErrorInner::Guest("Provider profile not found".to_string())))?;
+    if original_record.action().author() != &caller {
+        return Err(wasm_error!(WasmErrorInner::Guest(
+            "Only the provider profile creator can update it".to_string()
+        )));
+    }
+
     let mut profile = input.updated_profile;
     profile.updated_at = sys_time()?;
 

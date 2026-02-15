@@ -5,6 +5,7 @@
 
 use hdk::prelude::*;
 use provider_integrity::*;
+use mycelix_health_shared::{require_authorization, log_data_access, DataCategory, Permission};
 
 /// Create a new provider profile
 #[hdk_extern]
@@ -43,6 +44,15 @@ pub fn get_provider(provider_hash: ActionHash) -> ExternResult<Option<Record>> {
 /// Update an existing provider
 #[hdk_extern]
 pub fn update_provider(input: UpdateProviderInput) -> ExternResult<Record> {
+    let caller = agent_info()?.agent_initial_pubkey;
+    let original_record = get(input.original_hash.clone(), GetOptions::default())?
+        .ok_or(wasm_error!(WasmErrorInner::Guest("Provider not found".to_string())))?;
+    if original_record.action().author() != &caller {
+        return Err(wasm_error!(WasmErrorInner::Guest(
+            "Only the provider profile creator can update it".to_string()
+        )));
+    }
+
     let updated_hash = update_entry(input.original_hash.clone(), &input.updated_provider)?;
     let record = get(updated_hash.clone(), GetOptions::default())?
         .ok_or(wasm_error!(WasmErrorInner::Guest("Could not find updated provider".to_string())))?;
@@ -102,6 +112,15 @@ pub fn search_providers_by_specialty(specialty: String) -> ExternResult<Vec<Reco
 /// Add a license to a provider
 #[hdk_extern]
 pub fn add_license(license: License) -> ExternResult<Record> {
+    let caller = agent_info()?.agent_initial_pubkey;
+    let provider_record = get(license.provider_hash.clone(), GetOptions::default())?
+        .ok_or(wasm_error!(WasmErrorInner::Guest("Provider not found".to_string())))?;
+    if provider_record.action().author() != &caller {
+        return Err(wasm_error!(WasmErrorInner::Guest(
+            "Only the provider profile creator can add licenses".to_string()
+        )));
+    }
+
     let license_hash = create_entry(&EntryTypes::License(license.clone()))?;
     let record = get(license_hash.clone(), GetOptions::default())?
         .ok_or(wasm_error!(WasmErrorInner::Guest("Could not find license".to_string())))?;
@@ -136,6 +155,15 @@ pub fn get_provider_licenses(provider_hash: ActionHash) -> ExternResult<Vec<Reco
 /// Add board certification
 #[hdk_extern]
 pub fn add_board_certification(cert: BoardCertification) -> ExternResult<Record> {
+    let caller = agent_info()?.agent_initial_pubkey;
+    let provider_record = get(cert.provider_hash.clone(), GetOptions::default())?
+        .ok_or(wasm_error!(WasmErrorInner::Guest("Provider not found".to_string())))?;
+    if provider_record.action().author() != &caller {
+        return Err(wasm_error!(WasmErrorInner::Guest(
+            "Only the provider profile creator can add certifications".to_string()
+        )));
+    }
+
     let cert_hash = create_entry(&EntryTypes::BoardCertification(cert.clone()))?;
     let record = get(cert_hash.clone(), GetOptions::default())?
         .ok_or(wasm_error!(WasmErrorInner::Guest("Could not find certification".to_string())))?;
@@ -170,6 +198,28 @@ pub fn get_provider_certifications(provider_hash: ActionHash) -> ExternResult<Ve
 /// Create provider-patient relationship
 #[hdk_extern]
 pub fn create_provider_patient_relationship(relationship: ProviderPatientRelationship) -> ExternResult<Record> {
+    let caller = agent_info()?.agent_initial_pubkey;
+    let provider_record = get(relationship.provider_hash.clone(), GetOptions::default())?
+        .ok_or(wasm_error!(WasmErrorInner::Guest("Provider not found".to_string())))?;
+    let provider_author = provider_record.action().author().clone();
+
+    let patient_record = get(relationship.patient_hash.clone(), GetOptions::default())?
+        .ok_or(wasm_error!(WasmErrorInner::Guest("Patient not found".to_string())))?;
+    let patient_author = patient_record.action().author().clone();
+
+    if caller != provider_author && caller != patient_author {
+        return Err(wasm_error!(WasmErrorInner::Guest(
+            "Only the patient or provider can create this relationship".to_string()
+        )));
+    }
+
+    let auth = require_authorization(
+        relationship.patient_hash.clone(),
+        DataCategory::All,
+        Permission::Share,
+        false,
+    )?;
+
     let rel_hash = create_entry(&EntryTypes::ProviderPatientRelationship(relationship.clone()))?;
     let record = get(rel_hash.clone(), GetOptions::default())?
         .ok_or(wasm_error!(WasmErrorInner::Guest("Could not find relationship".to_string())))?;
@@ -181,6 +231,15 @@ pub fn create_provider_patient_relationship(relationship: ProviderPatientRelatio
         LinkTypes::ProviderToPatients,
         (),
     )?;
+
+    log_data_access(
+        relationship.patient_hash,
+        vec![DataCategory::All],
+        Permission::Share,
+        auth.consent_hash,
+        auth.emergency_override,
+        None,
+    )?;
     
     Ok(record)
 }
@@ -188,6 +247,15 @@ pub fn create_provider_patient_relationship(relationship: ProviderPatientRelatio
 /// Get provider's patients
 #[hdk_extern]
 pub fn get_provider_patients(provider_hash: ActionHash) -> ExternResult<Vec<ActionHash>> {
+    let caller = agent_info()?.agent_initial_pubkey;
+    let provider_record = get(provider_hash.clone(), GetOptions::default())?
+        .ok_or(wasm_error!(WasmErrorInner::Guest("Provider not found".to_string())))?;
+    if provider_record.action().author() != &caller {
+        return Err(wasm_error!(WasmErrorInner::Guest(
+            "Only the provider profile creator can view patients".to_string()
+        )));
+    }
+
     let links = get_links(LinkQuery::try_new(provider_hash, LinkTypes::ProviderToPatients)?, GetStrategy::default())?;
     
     Ok(links.into_iter()

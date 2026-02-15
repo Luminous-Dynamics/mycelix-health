@@ -15,6 +15,7 @@ serde_json = { workspace = true }
 trials_integrity = { path = "../integrity" }
 patient_integrity = { path = "../../patient/integrity" }
 consent_integrity = { path = "../../consent/integrity" }
+mycelix-health-shared = { path = "../../shared" }
 
 [features]
 default = []

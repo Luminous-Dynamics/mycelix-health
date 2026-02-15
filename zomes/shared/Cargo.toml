@@ -12,7 +12,9 @@ hdk = { workspace = true }
 hdi = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
-getrandom = { workspace = true }
+sha2 = "0.10"
+# WASM-compatible getrandom 0.3 (HDK provides __getrandom_v03_custom backend)
+getrandom = "0.3"
 
 [dev-dependencies]
 proptest = "1.9"

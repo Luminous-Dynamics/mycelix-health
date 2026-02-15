@@ -5,7 +5,7 @@ integrity:
   network_seed: ~
   properties: ~
   zomes:
-    # Core patient/provider infrastructure
+    # Tier 1: MVP Core
     - name: patient_integrity
       path: ../target/wasm32-unknown-unknown/release/patient_integrity.wasm
     - name: provider_integrity
@@ -16,20 +16,8 @@ integrity:
       path: ../target/wasm32-unknown-unknown/release/prescriptions_integrity.wasm
     - name: consent_integrity
       path: ../target/wasm32-unknown-unknown/release/consent_integrity.wasm
-    - name: trials_integrity
-      path: ../target/wasm32-unknown-unknown/release/trials_integrity.wasm
-    - name: insurance_integrity
-      path: ../target/wasm32-unknown-unknown/release/insurance_integrity.wasm
     - name: bridge_integrity
       path: ../target/wasm32-unknown-unknown/release/bridge_integrity.wasm
-    # Health as a Commons
-    - name: commons_integrity
-      path: ../target/wasm32-unknown-unknown/release/commons_integrity.wasm
-    # Clinical Integration
-    - name: fhir_mapping_integrity
-      path: ../target/wasm32-unknown-unknown/release/fhir_mapping_integrity.wasm
-    - name: fhir_bridge_integrity
-      path: ../target/wasm32-unknown-unknown/release/fhir_bridge_integrity.wasm
 coordinator:
   zomes:
     - name: patient
@@ -57,17 +45,6 @@ coordinator:
       dependencies:
         - name: consent_integrity
         - name: patient_integrity
-    - name: trials
-      path: ../target/wasm32-unknown-unknown/release/trials.wasm
-      dependencies:
-        - name: trials_integrity
-        - name: patient_integrity
-        - name: consent_integrity
-    - name: insurance
-      path: ../target/wasm32-unknown-unknown/release/insurance.wasm
-      dependencies:
-        - name: insurance_integrity
-        - name: patient_integrity
     - name: bridge
       path: ../target/wasm32-unknown-unknown/release/health_bridge.wasm
       dependencies:
@@ -75,25 +52,3 @@ coordinator:
         - name: patient_integrity
         - name: provider_integrity
         - name: records_integrity
-    # Health as a Commons
-    - name: commons
-      path: ../target/wasm32-unknown-unknown/release/commons_coordinator.wasm
-      dependencies:
-        - name: commons_integrity
-        - name: patient_integrity
-    # Clinical Integration
-    - name: fhir_mapping
-      path: ../target/wasm32-unknown-unknown/release/fhir_mapping.wasm
-      dependencies:
-        - name: fhir_mapping_integrity
-        - name: patient_integrity
-        - name: records_integrity
-        - name: consent_integrity
-    - name: fhir_bridge
-      path: ../target/wasm32-unknown-unknown/release/fhir_bridge.wasm
-      dependencies:
-        - name: fhir_bridge_integrity
-        - name: fhir_mapping_integrity
-        - name: patient_integrity
-        - name: records_integrity
-        - name: consent_integrity

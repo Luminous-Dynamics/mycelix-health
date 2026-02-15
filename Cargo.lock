@@ -15,6 +15,7 @@ dependencies = [
  "advocate_integrity",
  "hdk",
  "holochain_serialized_bytes",
+ "mycelix-health-shared",
  "serde",
  "serde_json",
 ]
@@ -24,7 +25,6 @@ name = "advocate_integrity"
 version = "0.1.0"
 dependencies = [
  "derive_more 0.99.20",
- "getrandom 0.3.4",
  "hdi",
  "holochain_serialized_bytes",
  "serde",
@@ -198,7 +198,6 @@ dependencies = [
 name = "bridge_integrity"
 version = "0.1.0"
 dependencies = [
- "getrandom 0.3.4",
  "hdi",
  "holochain_serialized_bytes",
  "serde",
@@ -258,7 +257,6 @@ name = "cds"
 version = "0.1.0"
 dependencies = [
  "cds_integrity",
- "getrandom 0.3.4",
  "hdk",
  "holochain_serialized_bytes",
  "mycelix-health-shared",
@@ -270,7 +268,6 @@ dependencies = [
 name = "cds_integrity"
 version = "0.1.0"
 dependencies = [
- "getrandom 0.3.4",
  "hdi",
  "holochain_serialized_bytes",
  "serde",
@@ -294,9 +291,9 @@ name = "chronic_care"
 version = "0.1.0"
 dependencies = [
  "chronic_care_integrity",
- "getrandom 0.3.4",
  "hdk",
  "holochain_serialized_bytes",
+ "mycelix-health-shared",
  "serde",
  "serde_json",
 ]
@@ -305,7 +302,6 @@ dependencies = [
 name = "chronic_care_integrity"
 version = "0.1.0"
 dependencies = [
- "getrandom 0.3.4",
  "hdi",
  "holochain_serialized_bytes",
  "serde",
@@ -465,7 +461,6 @@ dependencies = [
 name = "consent_integrity"
 version = "0.1.0"
 dependencies = [
- "getrandom 0.3.4",
  "hdi",
  "holochain_serialized_bytes",
  "serde",
@@ -716,6 +711,7 @@ dependencies = [
  "disaster_response_integrity",
  "hdk",
  "holochain_serialized_bytes",
+ "mycelix-health-shared",
  "serde",
 ]
 
@@ -735,6 +731,7 @@ dependencies = [
  "dividends_integrity",
  "hdk",
  "holochain_serialized_bytes",
+ "mycelix-health-shared",
  "serde",
  "serde_json",
 ]
@@ -744,7 +741,6 @@ name = "dividends_integrity"
 version = "0.1.0"
 dependencies = [
  "derive_more 0.99.20",
- "getrandom 0.3.4",
  "hdi",
  "holochain_serialized_bytes",
  "serde",
@@ -820,11 +816,32 @@ dependencies = [
 ]
 
 [[package]]
+name = "fhir_bridge"
+version = "0.1.0"
+dependencies = [
+ "fhir_bridge_integrity",
+ "hdk",
+ "mycelix-health-shared",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "fhir_bridge_integrity"
+version = "0.1.0"
+dependencies = [
+ "hdi",
+ "holochain_serialized_bytes",
+ "mycelix-health-shared",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "fhir_mapping"
 version = "0.1.0"
 dependencies = [
  "fhir_mapping_integrity",
- "getrandom 0.3.4",
  "hdk",
  "holochain_serialized_bytes",
  "mycelix-health-shared",
@@ -836,7 +853,6 @@ dependencies = [
 name = "fhir_mapping_integrity"
 version = "0.1.0"
 dependencies = [
- "getrandom 0.3.4",
  "hdi",
  "holochain_serialized_bytes",
  "serde",
@@ -1017,11 +1033,9 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "899def5c37c4fd7b2664648c28120ecec138e4d395b459e5ca34f9cce2dd77fd"
 dependencies = [
  "cfg-if",
- "js-sys",
  "libc",
  "r-efi",
  "wasip2",
- "wasm-bindgen",
 ]
 
 [[package]]
@@ -1171,7 +1185,6 @@ dependencies = [
 name = "hdc_genetics"
 version = "0.1.0"
 dependencies = [
- "getrandom 0.3.4",
  "hdc_genetics_integrity",
  "hdk",
  "holochain_serialized_bytes",
@@ -1184,7 +1197,6 @@ dependencies = [
 name = "hdc_genetics_integrity"
 version = "0.1.0"
 dependencies = [
- "getrandom 0.3.4",
  "hdc-core",
  "hdi",
  "holochain_serialized_bytes",
@@ -1532,6 +1544,7 @@ dependencies = [
  "hdk",
  "holochain_serialized_bytes",
  "insurance_integrity",
+ "mycelix-health-shared",
  "patient_integrity",
  "serde",
  "serde_json",
@@ -1541,7 +1554,6 @@ dependencies = [
 name = "insurance_integrity"
 version = "0.1.0"
 dependencies = [
- "getrandom 0.3.4",
  "hdi",
  "holochain_serialized_bytes",
  "serde",
@@ -1555,6 +1567,7 @@ dependencies = [
  "hdk",
  "holochain_serialized_bytes",
  "ips_integrity",
+ "mycelix-health-shared",
  "serde",
 ]
 
@@ -1719,7 +1732,6 @@ checksum = "f52b00d39961fc5b2736ea853c9cc86238e165017a493d1d5c8eac6bdc4cc273"
 name = "mental_health"
 version = "0.1.0"
 dependencies = [
- "getrandom 0.3.4",
  "hdk",
  "holochain_serialized_bytes",
  "mental_health_integrity",
@@ -1732,7 +1744,6 @@ dependencies = [
 name = "mental_health_integrity"
 version = "0.1.0"
 dependencies = [
- "getrandom 0.3.4",
  "hdi",
  "holochain_serialized_bytes",
  "serde",
@@ -1771,6 +1782,7 @@ dependencies = [
  "hdk",
  "holochain_serialized_bytes",
  "mobile_support_integrity",
+ "mycelix-health-shared",
  "serde",
 ]
 
@@ -1824,6 +1836,7 @@ dependencies = [
  "proptest",
  "serde",
  "serde_json",
+ "sha2",
 ]
 
 [[package]]
@@ -1876,7 +1889,6 @@ checksum = "830b246a0e5f20af87141b25c173cd1b609bd7779a4617d6ec582abaf90870f3"
 name = "nutrition"
 version = "0.1.0"
 dependencies = [
- "getrandom 0.3.4",
  "hdk",
  "holochain_serialized_bytes",
  "mycelix-health-shared",
@@ -1889,7 +1901,6 @@ dependencies = [
 name = "nutrition_integrity"
 version = "0.1.0"
 dependencies = [
- "getrandom 0.3.4",
  "hdi",
  "holochain_serialized_bytes",
  "serde",
@@ -1965,7 +1976,6 @@ checksum = "57c0d7b74b563b49d38dae00a0c37d4d6de9b432382b2892f0574ddcae73fd0a"
 name = "patient"
 version = "0.1.0"
 dependencies = [
- "getrandom 0.3.4",
  "hdk",
  "holochain_serialized_bytes",
  "mycelix-health-shared",
@@ -1978,7 +1988,6 @@ dependencies = [
 name = "patient_integrity"
 version = "0.1.0"
 dependencies = [
- "getrandom 0.3.4",
  "hdi",
  "holochain_serialized_bytes",
  "serde",
@@ -1989,9 +1998,9 @@ dependencies = [
 name = "pediatric"
 version = "0.1.0"
 dependencies = [
- "getrandom 0.3.4",
  "hdk",
  "holochain_serialized_bytes",
+ "mycelix-health-shared",
  "pediatric_integrity",
  "serde",
  "serde_json",
@@ -2001,7 +2010,6 @@ dependencies = [
 name = "pediatric_integrity"
 version = "0.1.0"
 dependencies = [
- "getrandom 0.3.4",
  "hdi",
  "holochain_serialized_bytes",
  "serde",
@@ -2098,7 +2106,6 @@ dependencies = [
 name = "prescriptions"
 version = "0.1.0"
 dependencies = [
- "getrandom 0.3.4",
  "hdk",
  "holochain_serialized_bytes",
  "mycelix-health-shared",
@@ -2113,7 +2120,6 @@ dependencies = [
 name = "prescriptions_integrity"
 version = "0.1.0"
 dependencies = [
- "getrandom 0.3.4",
  "hdi",
  "holochain_serialized_bytes",
  "serde",
@@ -2190,6 +2196,7 @@ version = "0.1.0"
 dependencies = [
  "hdk",
  "holochain_serialized_bytes",
+ "mycelix-health-shared",
  "provider_integrity",
  "serde",
  "serde_json",
@@ -2199,7 +2206,6 @@ dependencies = [
 name = "provider_directory"
 version = "0.1.0"
 dependencies = [
- "getrandom 0.3.4",
  "hdk",
  "holochain_serialized_bytes",
  "mycelix-health-shared",
@@ -2212,7 +2218,6 @@ dependencies = [
 name = "provider_directory_integrity"
 version = "0.1.0"
 dependencies = [
- "getrandom 0.3.4",
  "hdi",
  "holochain_serialized_bytes",
  "serde",
@@ -2223,7 +2228,6 @@ dependencies = [
 name = "provider_integrity"
 version = "0.1.0"
 dependencies = [
- "getrandom 0.3.4",
  "hdi",
  "holochain_serialized_bytes",
  "serde",
@@ -2356,7 +2360,6 @@ name = "records"
 version = "0.1.0"
 dependencies = [
  "consent_integrity",
- "getrandom 0.3.4",
  "hdk",
  "holochain_serialized_bytes",
  "mycelix-health-shared",
@@ -2370,7 +2373,6 @@ dependencies = [
 name = "records_integrity"
 version = "0.1.0"
 dependencies = [
- "getrandom 0.3.4",
  "hdi",
  "holochain_serialized_bytes",
  "serde",
@@ -2531,9 +2533,9 @@ checksum = "94143f37725109f92c262ed2cf5e59bce7498c01bcc1502d7b9afe439a4e9f49"
 name = "sdoh"
 version = "0.1.0"
 dependencies = [
- "getrandom 0.3.4",
  "hdk",
  "holochain_serialized_bytes",
+ "mycelix-health-shared",
  "sdoh_integrity",
  "serde",
  "serde_json",
@@ -2543,7 +2545,6 @@ dependencies = [
 name = "sdoh_integrity"
 version = "0.1.0"
 dependencies = [
- "getrandom 0.3.4",
  "hdi",
  "holochain_serialized_bytes",
  "serde",
@@ -2743,7 +2744,6 @@ dependencies = [
 name = "telehealth"
 version = "0.1.0"
 dependencies = [
- "getrandom 0.3.4",
  "hdk",
  "holochain_serialized_bytes",
  "mycelix-health-shared",
@@ -2756,7 +2756,6 @@ dependencies = [
 name = "telehealth_integrity"
 version = "0.1.0"
 dependencies = [
- "getrandom 0.3.4",
  "hdi",
  "holochain_serialized_bytes",
  "serde",
@@ -2873,6 +2872,7 @@ version = "0.1.0"
 dependencies = [
  "hdk",
  "holochain_serialized_bytes",
+ "mycelix-health-shared",
  "serde",
  "trial_matching_integrity",
 ]
@@ -2893,6 +2893,7 @@ dependencies = [
  "consent_integrity",
  "hdk",
  "holochain_serialized_bytes",
+ "mycelix-health-shared",
  "patient_integrity",
  "serde",
  "serde_json",
@@ -2903,7 +2904,6 @@ dependencies = [
 name = "trials_integrity"
 version = "0.1.0"
 dependencies = [
- "getrandom 0.3.4",
  "hdi",
  "holochain_serialized_bytes",
  "serde",
@@ -2916,6 +2916,7 @@ version = "0.1.0"
 dependencies = [
  "hdk",
  "holochain_serialized_bytes",
+ "mycelix-health-shared",
  "serde",
  "serde_json",
  "twin_integrity",
@@ -2926,7 +2927,6 @@ name = "twin_integrity"
 version = "0.1.0"
 dependencies = [
  "derive_more 0.99.20",
- "getrandom 0.3.4",
  "hdi",
  "holochain_serialized_bytes",
  "serde",
@@ -3487,6 +3487,7 @@ version = "0.1.0"
 dependencies = [
  "hdk",
  "holochain_serialized_bytes",
+ "mycelix-health-shared",
  "serde",
  "serde_json",
  "zkhealth_integrity",
@@ -3497,7 +3498,6 @@ name = "zkhealth_integrity"
 version = "0.1.0"
 dependencies = [
  "derive_more 0.99.20",
- "getrandom 0.3.4",
  "hdi",
  "holochain_serialized_bytes",
  "serde",

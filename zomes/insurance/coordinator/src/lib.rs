@@ -5,19 +5,39 @@
 
 use hdk::prelude::*;
 use insurance_integrity::*;
+use mycelix_health_shared::{
+    require_authorization, require_admin_authorization,
+    log_data_access,
+    DataCategory, Permission,
+};
 
 /// Register an insurance plan for a patient
 #[hdk_extern]
 pub fn register_insurance_plan(plan: InsurancePlan) -> ExternResult<Record> {
+    let auth = require_authorization(
+        plan.patient_hash.clone(),
+        DataCategory::FinancialData,
+        Permission::Write,
+        false,
+    )?;
     let plan_hash = create_entry(&EntryTypes::InsurancePlan(plan.clone()))?;
     let record = get(plan_hash.clone(), GetOptions::default())?
         .ok_or(wasm_error!(WasmErrorInner::Guest("Could not find plan".to_string())))?;
     
     create_link(
-        plan.patient_hash,
+        plan.patient_hash.clone(),
         plan_hash,
         LinkTypes::PatientToPlans,
         (),
+    )?;
+
+    log_data_access(
+        plan.patient_hash,
+        vec![DataCategory::FinancialData],
+        Permission::Write,
+        auth.consent_hash,
+        auth.emergency_override,
+        None,
     )?;
     
     Ok(record)
@@ -26,7 +46,13 @@ pub fn register_insurance_plan(plan: InsurancePlan) -> ExternResult<Record> {
 /// Get patient's insurance plans
 #[hdk_extern]
 pub fn get_patient_insurance(patient_hash: ActionHash) -> ExternResult<Vec<Record>> {
-    let links = get_links(LinkQuery::try_new(patient_hash, LinkTypes::PatientToPlans)?, GetStrategy::default())?;
+    let auth = require_authorization(
+        patient_hash.clone(),
+        DataCategory::FinancialData,
+        Permission::Read,
+        false,
+    )?;
+    let links = get_links(LinkQuery::try_new(patient_hash.clone(), LinkTypes::PatientToPlans)?, GetStrategy::default())?;
     
     let mut plans = Vec::new();
     for link in links {
@@ -45,6 +71,17 @@ pub fn get_patient_insurance(patient_hash: ActionHash) -> ExternResult<Vec<Recor
             .map(|p| p.coordination_order).unwrap_or(255);
         a_order.cmp(&b_order)
     });
+
+    if !plans.is_empty() {
+        log_data_access(
+            patient_hash,
+            vec![DataCategory::FinancialData],
+            Permission::Read,
+            auth.consent_hash,
+            auth.emergency_override,
+            None,
+        )?;
+    }
     
     Ok(plans)
 }
@@ -52,9 +89,43 @@ pub fn get_patient_insurance(patient_hash: ActionHash) -> ExternResult<Vec<Recor
 /// Update insurance plan
 #[hdk_extern]
 pub fn update_insurance_plan(input: UpdatePlanInput) -> ExternResult<Record> {
+    let record = get(input.original_hash.clone(), GetOptions::default())?
+        .ok_or(wasm_error!(WasmErrorInner::Guest("Plan not found".to_string())))?;
+
+    let existing: InsurancePlan = record
+        .entry()
+        .to_app_option()
+        .map_err(|e| wasm_error!(WasmErrorInner::Guest(e.to_string())))?
+        .ok_or(wasm_error!(WasmErrorInner::Guest("Invalid plan entry".to_string())))?;
+
+    if existing.patient_hash != input.updated_plan.patient_hash {
+        return Err(wasm_error!(WasmErrorInner::Guest(
+            "Cannot change patient_hash on an insurance plan".to_string()
+        )));
+    }
+
+    let auth = require_authorization(
+        input.updated_plan.patient_hash.clone(),
+        DataCategory::FinancialData,
+        Permission::Amend,
+        false,
+    )?;
+
     let updated_hash = update_entry(input.original_hash, &input.updated_plan)?;
-    get(updated_hash, GetOptions::default())?
-        .ok_or(wasm_error!(WasmErrorInner::Guest("Could not find updated plan".to_string())))
+
+    let updated_record = get(updated_hash, GetOptions::default())?
+        .ok_or(wasm_error!(WasmErrorInner::Guest("Could not find updated plan".to_string())))?;
+
+    log_data_access(
+        input.updated_plan.patient_hash,
+        vec![DataCategory::FinancialData],
+        Permission::Amend,
+        auth.consent_hash,
+        auth.emergency_override,
+        None,
+    )?;
+
+    Ok(updated_record)
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -66,6 +137,12 @@ pub struct UpdatePlanInput {
 /// Submit a claim
 #[hdk_extern]
 pub fn submit_claim(claim: Claim) -> ExternResult<Record> {
+    let auth = require_authorization(
+        claim.patient_hash.clone(),
+        DataCategory::FinancialData,
+        Permission::Write,
+        false,
+    )?;
     let claim_hash = create_entry(&EntryTypes::Claim(claim.clone()))?;
     let record = get(claim_hash.clone(), GetOptions::default())?
         .ok_or(wasm_error!(WasmErrorInner::Guest("Could not find claim".to_string())))?;
@@ -102,6 +179,15 @@ pub fn submit_claim(claim: Claim) -> ExternResult<Record> {
         LinkTypes::PendingClaims,
         (),
     )?;
+
+    log_data_access(
+        claim.patient_hash,
+        vec![DataCategory::FinancialData],
+        Permission::Write,
+        auth.consent_hash,
+        auth.emergency_override,
+        None,
+    )?;
     
     Ok(record)
 }
@@ -109,7 +195,13 @@ pub fn submit_claim(claim: Claim) -> ExternResult<Record> {
 /// Get patient's claims
 #[hdk_extern]
 pub fn get_patient_claims(patient_hash: ActionHash) -> ExternResult<Vec<Record>> {
-    let links = get_links(LinkQuery::try_new(patient_hash, LinkTypes::PatientToClaims)?, GetStrategy::default())?;
+    let auth = require_authorization(
+        patient_hash.clone(),
+        DataCategory::FinancialData,
+        Permission::Read,
+        false,
+    )?;
+    let links = get_links(LinkQuery::try_new(patient_hash.clone(), LinkTypes::PatientToClaims)?, GetStrategy::default())?;
     
     let mut claims = Vec::new();
     for link in links {
@@ -118,6 +210,17 @@ pub fn get_patient_claims(patient_hash: ActionHash) -> ExternResult<Vec<Record>>
                 claims.push(record);
             }
         }
+    }
+
+    if !claims.is_empty() {
+        log_data_access(
+            patient_hash,
+            vec![DataCategory::FinancialData],
+            Permission::Read,
+            auth.consent_hash,
+            auth.emergency_override,
+            None,
+        )?;
     }
     
     Ok(claims)
@@ -134,6 +237,13 @@ pub fn update_claim_status(input: UpdateClaimInput) -> ExternResult<Record> {
         .to_app_option()
         .map_err(|e| wasm_error!(WasmErrorInner::Guest(e.to_string())))?
         .ok_or(wasm_error!(WasmErrorInner::Guest("Invalid claim".to_string())))?;
+
+    let authz = require_authorization(
+        claim.patient_hash.clone(),
+        DataCategory::FinancialData,
+        Permission::Amend,
+        false,
+    )?;
     
     claim.status = input.new_status.clone();
     claim.adjudication_date = Some(sys_time()?);
@@ -155,8 +265,19 @@ pub fn update_claim_status(input: UpdateClaimInput) -> ExternResult<Record> {
         )?;
     }
     
-    get(updated_hash, GetOptions::default())?
-        .ok_or(wasm_error!(WasmErrorInner::Guest("Could not find updated claim".to_string())))
+    let updated_record = get(updated_hash, GetOptions::default())?
+        .ok_or(wasm_error!(WasmErrorInner::Guest("Could not find updated claim".to_string())))?;
+
+    log_data_access(
+        claim.patient_hash,
+        vec![DataCategory::FinancialData],
+        Permission::Amend,
+        authz.consent_hash,
+        authz.emergency_override,
+        None,
+    )?;
+
+    Ok(updated_record)
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -172,12 +293,19 @@ pub struct UpdateClaimInput {
 /// Submit prior authorization request
 #[hdk_extern]
 pub fn submit_prior_auth(auth: PriorAuthorization) -> ExternResult<Record> {
+    let patient_hash = auth.patient_hash.clone();
+    let authz = require_authorization(
+        patient_hash.clone(),
+        DataCategory::FinancialData,
+        Permission::Write,
+        false,
+    )?;
     let auth_hash = create_entry(&EntryTypes::PriorAuthorization(auth.clone()))?;
     let record = get(auth_hash.clone(), GetOptions::default())?
         .ok_or(wasm_error!(WasmErrorInner::Guest("Could not find authorization".to_string())))?;
     
     create_link(
-        auth.patient_hash,
+        patient_hash.clone(),
         auth_hash.clone(),
         LinkTypes::PatientToAuths,
         (),
@@ -190,6 +318,15 @@ pub fn submit_prior_auth(auth: PriorAuthorization) -> ExternResult<Record> {
         LinkTypes::PendingAuths,
         (),
     )?;
+
+    log_data_access(
+        patient_hash,
+        vec![DataCategory::FinancialData],
+        Permission::Write,
+        authz.consent_hash,
+        authz.emergency_override,
+        None,
+    )?;
     
     Ok(record)
 }
@@ -197,7 +334,13 @@ pub fn submit_prior_auth(auth: PriorAuthorization) -> ExternResult<Record> {
 /// Get patient's prior authorizations
 #[hdk_extern]
 pub fn get_patient_authorizations(patient_hash: ActionHash) -> ExternResult<Vec<Record>> {
-    let links = get_links(LinkQuery::try_new(patient_hash, LinkTypes::PatientToAuths)?, GetStrategy::default())?;
+    let auth = require_authorization(
+        patient_hash.clone(),
+        DataCategory::FinancialData,
+        Permission::Read,
+        false,
+    )?;
+    let links = get_links(LinkQuery::try_new(patient_hash.clone(), LinkTypes::PatientToAuths)?, GetStrategy::default())?;
     
     let mut auths = Vec::new();
     for link in links {
@@ -206,6 +349,17 @@ pub fn get_patient_authorizations(patient_hash: ActionHash) -> ExternResult<Vec<
                 auths.push(record);
             }
         }
+    }
+
+    if !auths.is_empty() {
+        log_data_access(
+            patient_hash,
+            vec![DataCategory::FinancialData],
+            Permission::Read,
+            auth.consent_hash,
+            auth.emergency_override,
+            None,
+        )?;
     }
     
     Ok(auths)
@@ -222,6 +376,13 @@ pub fn update_authorization(input: UpdateAuthInput) -> ExternResult<Record> {
         .to_app_option()
         .map_err(|e| wasm_error!(WasmErrorInner::Guest(e.to_string())))?
         .ok_or(wasm_error!(WasmErrorInner::Guest("Invalid authorization".to_string())))?;
+
+    let authz = require_authorization(
+        auth.patient_hash.clone(),
+        DataCategory::FinancialData,
+        Permission::Amend,
+        false,
+    )?;
     
     auth.status = input.new_status;
     auth.decision_at = Some(sys_time()?);
@@ -232,8 +393,20 @@ pub fn update_authorization(input: UpdateAuthInput) -> ExternResult<Record> {
     auth.denial_reason = input.denial_reason;
     
     let updated_hash = update_entry(input.auth_hash, &auth)?;
-    get(updated_hash, GetOptions::default())?
-        .ok_or(wasm_error!(WasmErrorInner::Guest("Could not find updated authorization".to_string())))
+
+    let updated_record = get(updated_hash, GetOptions::default())?
+        .ok_or(wasm_error!(WasmErrorInner::Guest("Could not find updated authorization".to_string())))?;
+
+    log_data_access(
+        auth.patient_hash,
+        vec![DataCategory::FinancialData],
+        Permission::Amend,
+        authz.consent_hash,
+        authz.emergency_override,
+        None,
+    )?;
+
+    Ok(updated_record)
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -250,14 +423,38 @@ pub struct UpdateAuthInput {
 /// Check eligibility
 #[hdk_extern]
 pub fn check_eligibility(check: EligibilityCheck) -> ExternResult<Record> {
+    let patient_hash = check.patient_hash.clone();
+    let auth = require_authorization(
+        patient_hash.clone(),
+        DataCategory::FinancialData,
+        Permission::Read,
+        false,
+    )?;
     let check_hash = create_entry(&EntryTypes::EligibilityCheck(check))?;
-    get(check_hash, GetOptions::default())?
-        .ok_or(wasm_error!(WasmErrorInner::Guest("Could not find eligibility check".to_string())))
+    let record = get(check_hash, GetOptions::default())?
+        .ok_or(wasm_error!(WasmErrorInner::Guest("Could not find eligibility check".to_string())))?;
+
+    log_data_access(
+        patient_hash,
+        vec![DataCategory::FinancialData],
+        Permission::Read,
+        auth.consent_hash,
+        auth.emergency_override,
+        None,
+    )?;
+
+    Ok(record)
 }
 
 /// Create explanation of benefits
 #[hdk_extern]
 pub fn create_eob(eob: ExplanationOfBenefits) -> ExternResult<Record> {
+    let auth = require_authorization(
+        eob.patient_hash.clone(),
+        DataCategory::FinancialData,
+        Permission::Write,
+        false,
+    )?;
     let eob_hash = create_entry(&EntryTypes::ExplanationOfBenefits(eob.clone()))?;
     let record = get(eob_hash.clone(), GetOptions::default())?
         .ok_or(wasm_error!(WasmErrorInner::Guest("Could not find EOB".to_string())))?;
@@ -268,6 +465,15 @@ pub fn create_eob(eob: ExplanationOfBenefits) -> ExternResult<Record> {
         LinkTypes::ClaimToEOB,
         (),
     )?;
+
+    log_data_access(
+        eob.patient_hash,
+        vec![DataCategory::FinancialData],
+        Permission::Write,
+        auth.consent_hash,
+        auth.emergency_override,
+        None,
+    )?;
     
     Ok(record)
 }
@@ -275,20 +481,55 @@ pub fn create_eob(eob: ExplanationOfBenefits) -> ExternResult<Record> {
 /// Get EOB for a claim
 #[hdk_extern]
 pub fn get_claim_eob(claim_hash: ActionHash) -> ExternResult<Option<Record>> {
-    let links = get_links(LinkQuery::try_new(claim_hash, LinkTypes::ClaimToEOB)?, GetStrategy::default())?;
-    
+    let claim_record = get(claim_hash.clone(), GetOptions::default())?;
+    let rec = match claim_record {
+        Some(record) => record,
+        None => return Ok(None),
+    };
+
+    let claim: Claim = rec
+        .entry()
+        .to_app_option()
+        .map_err(|e| wasm_error!(WasmErrorInner::Guest(e.to_string())))?
+        .ok_or(wasm_error!(WasmErrorInner::Guest("Invalid claim".to_string())))?;
+
+    let auth = require_authorization(
+        claim.patient_hash.clone(),
+        DataCategory::FinancialData,
+        Permission::Read,
+        false,
+    )?;
+
+    let links = get_links(
+        LinkQuery::try_new(claim_hash, LinkTypes::ClaimToEOB)?,
+        GetStrategy::default(),
+    )?;
+
     if let Some(link) = links.first() {
         if let Some(hash) = link.target.clone().into_action_hash() {
-            return get(hash, GetOptions::default());
+            let record = get(hash, GetOptions::default())?;
+            if record.is_some() {
+                log_data_access(
+                    claim.patient_hash,
+                    vec![DataCategory::FinancialData],
+                    Permission::Read,
+                    auth.consent_hash,
+                    auth.emergency_override,
+                    None,
+                )?;
+            }
+            return Ok(record);
         }
     }
-    
+
     Ok(None)
 }
 
 /// Get pending claims
 #[hdk_extern]
 pub fn get_pending_claims(_: ()) -> ExternResult<Vec<Record>> {
+    // Bulk cross-patient claim access is restricted to admins.
+    require_admin_authorization()?;
     let pending_anchor = anchor_hash("pending_claims")?;
     let links = get_links(LinkQuery::try_new(pending_anchor, LinkTypes::PendingClaims)?, GetStrategy::default())?;
     

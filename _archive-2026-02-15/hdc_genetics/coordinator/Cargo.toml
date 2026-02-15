@@ -1,0 +1,17 @@
+[package]
+name = "hdc_genetics"
+version = "0.1.0"
+edition = "2021"
+description = "HDC Genetics Coordinator Zome - API for genetic hypervector operations"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+name = "hdc_genetics"
+
+[dependencies]
+hdk.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+holochain_serialized_bytes.workspace = true
+hdc_genetics_integrity = { path = "../integrity" }
+mycelix-health-shared = { path = "../../shared" }

@@ -13,6 +13,7 @@ holochain_serialized_bytes = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 provider_integrity = { path = "../integrity" }
+mycelix-health-shared = { path = "../../shared" }
 
 [features]
 default = []

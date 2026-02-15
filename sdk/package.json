@@ -43,10 +43,10 @@
   },
   "devDependencies": {
     "@types/node": "^20.19.30",
-    "eslint": "^8.56.0",
+    "eslint": "^9.39.2",
     "tsup": "^8.0.1",
     "typescript": "^5.3.3",
-    "vitest": "^1.6.1"
+    "vitest": "^4.0.18"
   },
   "peerDependencies": {
     "@holochain/client": ">=0.17.0"

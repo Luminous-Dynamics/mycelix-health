@@ -271,7 +271,7 @@ export interface AcknowledgeAlertInput {
 export class ChronicCareClient {
   constructor(
     private client: AppClient,
-    private roleName: string = 'mycelix-health'
+    private roleName: string = 'health'
   ) {}
 
   private async call<T>(fnName: string, payload: unknown): Promise<T> {

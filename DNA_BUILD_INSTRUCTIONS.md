@@ -2,16 +2,16 @@
 
 ## Current State (2026-02-07)
 
+**✅ DNA Bundle Complete: `dna/health.dna` (8.0MB)**
+
 The DNA manifest (`dna/dna.yaml`) has been updated for Holochain 0.6 compatibility:
 - ✅ `manifest_version: "0"`
 - ✅ `path:` instead of `bundled:`
 - ✅ `origin_time` removed
 
-Currently using a **minimal manifest** with 11 integrity zomes that have compiled WASM.
+All zomes (11 integrity + 11 coordinator) are compiled and bundled.
 
-## Building Coordinator Zomes
-
-The coordinator zomes need to be compiled before the DNA can include them.
+## Rebuilding
 
 ### Prerequisites
 
@@ -29,28 +29,32 @@ cd /srv/luminous-dynamics/mycelix-health
 cargo build --release --target wasm32-unknown-unknown
 ```
 
-### Build Specific Coordinators
+### Pack DNA Bundle
 
 ```bash
-cargo build --release --target wasm32-unknown-unknown \
-  -p patient -p provider -p records -p consent \
-  -p prescriptions -p trials -p insurance -p bridge
+cd /srv/luminous-dynamics/mycelix-workspace
+nix develop --command bash -c "cd /srv/luminous-dynamics/mycelix-health && hc dna pack dna/"
 ```
 
-## After Building
+## Included Zomes (22 total)
 
-1. Update `dna/dna.yaml` to include coordinator zomes
-2. Repack the DNA: `hc dna pack dna/`
-3. Test with sweettest
+### Integrity Zomes (11)
+- patient_integrity, provider_integrity, records_integrity
+- prescriptions_integrity, consent_integrity, trials_integrity
+- insurance_integrity, bridge_integrity, commons_integrity
+- fhir_mapping_integrity, fhir_bridge_integrity
 
-## Existing WASM Files (27)
-
-All integrity zomes are compiled. Coordinator zomes pending:
-- patient, provider, records, consent
-- prescriptions, trials, insurance, bridge
-- advocate, zkhealth, twin, dividends
-- commons, immunity, moment
+### Coordinator Zomes (11)
+- patient, provider, records, prescriptions, consent
+- trials, insurance, bridge (health_bridge), commons
 - fhir_mapping, fhir_bridge
+
+## Testing
+
+```bash
+cd /srv/luminous-dynamics/mycelix-workspace
+nix develop --command bash -c "cd /srv/luminous-dynamics/mycelix-health && cargo test"
+```
 
 ## Flake Issue
 

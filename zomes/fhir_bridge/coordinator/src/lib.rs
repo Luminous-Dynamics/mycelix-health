@@ -12,13 +12,149 @@
 
 use hdk::prelude::*;
 use fhir_bridge_integrity::*;
-use fhir_mapping_integrity::{
-    FhirPatientMapping, FhirObservationMapping, FhirConditionMapping,
-    FhirMedicationMapping, SyncStatus,
-};
+
+// Local mirrors of fhir_mapping_integrity types to avoid duplicate __num_entry_types
+// symbols when compiling to WASM. These must match the serialization layout exactly.
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+pub struct FhirCoding {
+    pub system: String,
+    pub code: String,
+    pub display: Option<String>,
+    pub version: Option<String>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+pub struct FhirCodeableConcept {
+    pub coding: Vec<FhirCoding>,
+    pub text: Option<String>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+pub struct FhirQuantity {
+    pub value: f64,
+    pub unit: String,
+    pub system: Option<String>,
+    pub code: Option<String>,
+    pub comparator: Option<String>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+pub struct FhirPeriod {
+    pub start: Option<String>,
+    pub end: Option<String>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+pub struct FhirIdentifier {
+    pub system: Option<String>,
+    pub value: Option<String>,
+    pub type_code: Option<FhirCodeableConcept>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+pub struct FhirReference {
+    pub reference: Option<String>,
+    pub type_name: Option<String>,
+    pub identifier: Option<FhirIdentifier>,
+    pub display: Option<String>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+pub struct FhirDosage {
+    pub sequence: Option<i32>,
+    pub text: Option<String>,
+    pub patient_instruction: Option<String>,
+    pub timing_text: Option<String>,
+    pub route: Option<FhirCodeableConcept>,
+    pub dose_quantity: Option<FhirQuantity>,
+    pub max_dose_per_period: Option<String>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+pub struct ObservationReferenceRange {
+    pub low: Option<FhirQuantity>,
+    pub high: Option<FhirQuantity>,
+    pub type_code: Option<FhirCodeableConcept>,
+    pub age: Option<String>,
+    pub text: Option<String>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+pub struct FhirObservationMapping {
+    pub internal_record_hash: ActionHash,
+    pub patient_hash: ActionHash,
+    pub fhir_observation_id: String,
+    pub source_system: String,
+    pub status: String,
+    pub category: Vec<FhirCodeableConcept>,
+    pub code: FhirCodeableConcept,
+    pub loinc_code: String,
+    pub snomed_code: Option<String>,
+    pub value_quantity: Option<FhirQuantity>,
+    pub value_codeable_concept: Option<FhirCodeableConcept>,
+    pub value_string: Option<String>,
+    pub value_boolean: Option<bool>,
+    pub effective_datetime: Timestamp,
+    pub issued: Option<Timestamp>,
+    pub reference_range: Option<ObservationReferenceRange>,
+    pub interpretation: Vec<FhirCodeableConcept>,
+    pub note: Vec<String>,
+    pub mapping_version: String,
+    pub last_synced: Timestamp,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+pub struct FhirConditionMapping {
+    pub internal_diagnosis_hash: ActionHash,
+    pub patient_hash: ActionHash,
+    pub fhir_condition_id: String,
+    pub source_system: String,
+    pub clinical_status: String,
+    pub verification_status: String,
+    pub category: Vec<FhirCodeableConcept>,
+    pub severity: Option<FhirCodeableConcept>,
+    pub code: FhirCodeableConcept,
+    pub icd10_code: String,
+    pub snomed_code: Option<String>,
+    pub body_site: Vec<FhirCodeableConcept>,
+    pub onset_datetime: Option<Timestamp>,
+    pub abatement_datetime: Option<Timestamp>,
+    pub recorded_date: Option<Timestamp>,
+    pub recorder_reference: Option<FhirReference>,
+    pub asserter_reference: Option<FhirReference>,
+    pub note: Vec<String>,
+    pub mapping_version: String,
+    pub last_synced: Timestamp,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+pub struct FhirMedicationMapping {
+    pub internal_medication_hash: ActionHash,
+    pub patient_hash: ActionHash,
+    pub fhir_medication_id: String,
+    pub source_system: String,
+    pub status: String,
+    pub intent: String,
+    pub medication_codeable_concept: FhirCodeableConcept,
+    pub rxnorm_code: String,
+    pub ndc_code: Option<String>,
+    pub requester_reference: Option<FhirReference>,
+    pub reason_code: Vec<FhirCodeableConcept>,
+    pub dosage_instruction: Vec<FhirDosage>,
+    pub dispense_quantity: Option<FhirQuantity>,
+    pub dispense_refills: Option<u32>,
+    pub validity_period: Option<FhirPeriod>,
+    pub authored_on: Option<Timestamp>,
+    pub note: Vec<String>,
+    pub mapping_version: String,
+    pub last_synced: Timestamp,
+}
 use mycelix_health_shared::{
-    log_data_access, anchor_hash,
-    DataCategory, Permission,
+    require_authorization,
+    anchor_hash,
+    DataCategory,
+    Permission,
 };
 use serde_json::Value as JsonValue;
 
@@ -263,7 +399,7 @@ pub fn ingest_bundle(input: IngestBundleInput) -> ExternResult<IngestReport> {
         patient_hash,
         report_hash,
         LinkTypes::PatientToIngestReports,
-        LinkTag::new(&input.source_system),
+        LinkTag::new(input.source_system.as_bytes().to_vec()),
     )?;
 
     Ok(report)
@@ -272,6 +408,30 @@ pub fn ingest_bundle(input: IngestBundleInput) -> ExternResult<IngestReport> {
 /// Export a patient's data as a FHIR R4 Bundle
 #[hdk_extern]
 pub fn export_patient_fhir(input: ExportPatientInput) -> ExternResult<ExportResult> {
+    let mut required_categories = Vec::new();
+    if input.include_sections.iter().any(|s| s == "Observation") {
+        required_categories.push(DataCategory::VitalSigns);
+    }
+    if input.include_sections.iter().any(|s| s == "Condition") {
+        required_categories.push(DataCategory::Diagnoses);
+    }
+    if input.include_sections.iter().any(|s| s == "MedicationRequest") {
+        required_categories.push(DataCategory::Medications);
+    }
+
+    if required_categories.is_empty() {
+        required_categories.push(DataCategory::All);
+    }
+
+    for category in required_categories {
+        require_authorization(
+            input.patient_hash.clone(),
+            category,
+            Permission::Export,
+            false,
+        )?;
+    }
+
     // Call fhir_mapping zome to get the export
     let export_input = serde_json::json!({
         "patient_hash": input.patient_hash,
@@ -411,23 +571,32 @@ fn process_observation(resource: &JsonValue, patient_hash: &ActionHash, source_s
     }
 
     // Extract observation data
-    let code = extract_coding(resource, "code");
-    let value = extract_value(resource);
+    let (code, display, system) = extract_coding(resource, "code");
+    let loinc_code = code.clone().unwrap_or_else(|| "unknown".to_string());
+    let status = get_fhir_string(resource, "status").unwrap_or_else(|| "unknown".to_string());
+    let now = sys_time().map_err(|e| e.to_string())?;
 
-    // Create FHIR mapping
     let mapping = FhirObservationMapping {
         fhir_observation_id: fhir_id.clone(),
-        internal_record_hash: patient_hash.clone(), // Will be updated when actual record is created
+        internal_record_hash: patient_hash.clone(),
         patient_hash: patient_hash.clone(),
-        loinc_code: code.0.clone(),
-        display: code.1.clone(),
-        value: value.clone(),
-        unit: extract_unit(resource),
-        effective_datetime: get_fhir_string(resource, "effectiveDateTime"),
         source_system: source_system.to_string(),
-        last_synced: sys_time().map_err(|e| e.to_string())?,
-        sync_status: SyncStatus::Synced,
-        sync_errors: Vec::new(),
+        status,
+        category: Vec::new(),
+        code: build_codeable_concept(code, display, system),
+        loinc_code,
+        snomed_code: None,
+        value_quantity: None,
+        value_codeable_concept: None,
+        value_string: extract_value(resource),
+        value_boolean: resource.get("valueBoolean").and_then(|v| v.as_bool()),
+        effective_datetime: now,
+        issued: None,
+        reference_range: None,
+        interpretation: Vec::new(),
+        note: Vec::new(),
+        mapping_version: "1".to_string(),
+        last_synced: now,
     };
 
     // Call fhir_mapping to create
@@ -464,22 +633,33 @@ fn process_condition(resource: &JsonValue, patient_hash: &ActionHash, source_sys
         return Ok(false);
     }
 
-    let code = extract_coding(resource, "code");
-    let clinical_status = get_fhir_string(resource, "clinicalStatus");
+    let (code, display, system) = extract_coding(resource, "code");
+    let now = sys_time().map_err(|e| e.to_string())?;
+    let clinical_status = get_fhir_string(resource, "clinicalStatus").unwrap_or_else(|| "unknown".to_string());
+    let verification_status = get_fhir_string(resource, "verificationStatus").unwrap_or_else(|| "unknown".to_string());
+    let icd10_code = extract_icd10(resource).unwrap_or_else(|| "unknown".to_string());
 
     let mapping = FhirConditionMapping {
         fhir_condition_id: fhir_id.clone(),
         internal_diagnosis_hash: patient_hash.clone(),
         patient_hash: patient_hash.clone(),
-        snomed_code: code.0.clone(),
-        icd10_code: extract_icd10(resource),
-        display: code.1.clone(),
-        clinical_status,
-        onset_datetime: get_fhir_string(resource, "onsetDateTime"),
         source_system: source_system.to_string(),
-        last_synced: sys_time().map_err(|e| e.to_string())?,
-        sync_status: SyncStatus::Synced,
-        sync_errors: Vec::new(),
+        clinical_status,
+        verification_status,
+        category: Vec::new(),
+        severity: None,
+        code: build_codeable_concept(code, display, system),
+        icd10_code,
+        snomed_code: None,
+        body_site: Vec::new(),
+        onset_datetime: None,
+        abatement_datetime: None,
+        recorded_date: None,
+        recorder_reference: None,
+        asserter_reference: None,
+        note: Vec::new(),
+        mapping_version: "1".to_string(),
+        last_synced: now,
     };
 
     let response = call(
@@ -514,21 +694,31 @@ fn process_medication(resource: &JsonValue, patient_hash: &ActionHash, source_sy
     }
 
     let medication_code = extract_medication_code(resource);
-    let status = get_fhir_string(resource, "status");
+    let status = get_fhir_string(resource, "status").unwrap_or_else(|| "unknown".to_string());
+    let intent = get_fhir_string(resource, "intent").unwrap_or_else(|| "unknown".to_string());
+    let now = sys_time().map_err(|e| e.to_string())?;
+    let rxnorm_code = medication_code.0.clone().unwrap_or_else(|| "unknown".to_string());
 
     let mapping = FhirMedicationMapping {
         fhir_medication_id: fhir_id.clone(),
         internal_medication_hash: patient_hash.clone(),
         patient_hash: patient_hash.clone(),
-        rxnorm_code: medication_code.0.clone(),
-        ndc_code: medication_code.1.clone(),
-        display: medication_code.2.clone(),
-        status,
-        authored_on: get_fhir_string(resource, "authoredOn"),
         source_system: source_system.to_string(),
-        last_synced: sys_time().map_err(|e| e.to_string())?,
-        sync_status: SyncStatus::Synced,
-        sync_errors: Vec::new(),
+        status,
+        intent,
+        medication_codeable_concept: build_codeable_concept(medication_code.0, medication_code.2, None),
+        rxnorm_code,
+        ndc_code: medication_code.1,
+        requester_reference: None,
+        reason_code: Vec::new(),
+        dosage_instruction: Vec::new(),
+        dispense_quantity: None,
+        dispense_refills: None,
+        validity_period: None,
+        authored_on: None,
+        note: Vec::new(),
+        mapping_version: "1".to_string(),
+        last_synced: now,
     };
 
     let response = call(
@@ -564,21 +754,31 @@ fn process_allergy(resource: &JsonValue, patient_hash: &ActionHash, source_syste
 
     // For now, store as a generic observation since there's no dedicated allergy mapping
     // In a full implementation, we'd have a dedicated allergy zome
-    let code = extract_coding(resource, "code");
+    let (code, display, system) = extract_coding(resource, "code");
+    let status = get_fhir_string(resource, "status").unwrap_or_else(|| "unknown".to_string());
+    let now = sys_time().map_err(|e| e.to_string())?;
 
     let mapping = FhirObservationMapping {
         fhir_observation_id: format!("allergy-{}", fhir_id),
         internal_record_hash: patient_hash.clone(),
         patient_hash: patient_hash.clone(),
-        loinc_code: "allergy".to_string(),
-        display: code.1.clone(),
-        value: serde_json::to_string(resource).ok(),
-        unit: None,
-        effective_datetime: get_fhir_string(resource, "recordedDate"),
         source_system: source_system.to_string(),
-        last_synced: sys_time().map_err(|e| e.to_string())?,
-        sync_status: SyncStatus::Synced,
-        sync_errors: Vec::new(),
+        status,
+        category: Vec::new(),
+        code: build_codeable_concept(code, display, system),
+        loinc_code: "allergy".to_string(),
+        snomed_code: None,
+        value_quantity: None,
+        value_codeable_concept: None,
+        value_string: serde_json::to_string(resource).ok(),
+        value_boolean: None,
+        effective_datetime: now,
+        issued: None,
+        reference_range: None,
+        interpretation: Vec::new(),
+        note: Vec::new(),
+        mapping_version: "1".to_string(),
+        last_synced: now,
     };
 
     let response = call(
@@ -612,21 +812,31 @@ fn process_immunization(resource: &JsonValue, patient_hash: &ActionHash, source_
         return Ok(false);
     }
 
-    let vaccine_code = extract_coding(resource, "vaccineCode");
+    let (code, display, system) = extract_coding(resource, "vaccineCode");
+    let status = get_fhir_string(resource, "status").unwrap_or_else(|| "unknown".to_string());
+    let now = sys_time().map_err(|e| e.to_string())?;
 
     let mapping = FhirObservationMapping {
         fhir_observation_id: format!("immunization-{}", fhir_id),
         internal_record_hash: patient_hash.clone(),
         patient_hash: patient_hash.clone(),
-        loinc_code: "immunization".to_string(),
-        display: vaccine_code.1.clone(),
-        value: serde_json::to_string(resource).ok(),
-        unit: None,
-        effective_datetime: get_fhir_string(resource, "occurrenceDateTime"),
         source_system: source_system.to_string(),
-        last_synced: sys_time().map_err(|e| e.to_string())?,
-        sync_status: SyncStatus::Synced,
-        sync_errors: Vec::new(),
+        status,
+        category: Vec::new(),
+        code: build_codeable_concept(code, display, system),
+        loinc_code: "immunization".to_string(),
+        snomed_code: None,
+        value_quantity: None,
+        value_codeable_concept: None,
+        value_string: serde_json::to_string(resource).ok(),
+        value_boolean: None,
+        effective_datetime: now,
+        issued: None,
+        reference_range: None,
+        interpretation: Vec::new(),
+        note: Vec::new(),
+        mapping_version: "1".to_string(),
+        last_synced: now,
     };
 
     let response = call(
@@ -660,21 +870,32 @@ fn process_procedure(resource: &JsonValue, patient_hash: &ActionHash, source_sys
         return Ok(false);
     }
 
-    let code = extract_coding(resource, "code");
+    let (code, display, system) = extract_coding(resource, "code");
+    let loinc_code = code.clone().unwrap_or_else(|| "procedure".to_string());
+    let status = get_fhir_string(resource, "status").unwrap_or_else(|| "unknown".to_string());
+    let now = sys_time().map_err(|e| e.to_string())?;
 
     let mapping = FhirObservationMapping {
         fhir_observation_id: format!("procedure-{}", fhir_id),
         internal_record_hash: patient_hash.clone(),
         patient_hash: patient_hash.clone(),
-        loinc_code: code.0.clone(),
-        display: code.1.clone(),
-        value: serde_json::to_string(resource).ok(),
-        unit: None,
-        effective_datetime: get_fhir_string(resource, "performedDateTime"),
         source_system: source_system.to_string(),
-        last_synced: sys_time().map_err(|e| e.to_string())?,
-        sync_status: SyncStatus::Synced,
-        sync_errors: Vec::new(),
+        status,
+        category: Vec::new(),
+        code: build_codeable_concept(code, display, system),
+        loinc_code,
+        snomed_code: None,
+        value_quantity: None,
+        value_codeable_concept: None,
+        value_string: serde_json::to_string(resource).ok(),
+        value_boolean: None,
+        effective_datetime: now,
+        issued: None,
+        reference_range: None,
+        interpretation: Vec::new(),
+        note: Vec::new(),
+        mapping_version: "1".to_string(),
+        last_synced: now,
     };
 
     let response = call(
@@ -710,38 +931,33 @@ fn process_diagnostic_report(resource: &JsonValue, patient_hash: &ActionHash, so
     }
 
     // Extract diagnostic report data
-    let code = extract_coding(resource, "code");
+    let (code, display, system) = extract_coding(resource, "code");
     let category = extract_category(resource);
-    let status = get_fhir_string(resource, "status");
-    let effective_datetime = get_fhir_string(resource, "effectiveDateTime")
-        .or_else(|| {
-            // Try effectivePeriod.start
-            resource.get("effectivePeriod")
-                .and_then(|p| p.get("start"))
-                .and_then(|s| s.as_str())
-                .map(|s| s.to_string())
-        });
-    let conclusion = get_fhir_string(resource, "conclusion");
+    let status = get_fhir_string(resource, "status").unwrap_or_else(|| "unknown".to_string());
+    let now = sys_time().map_err(|e| e.to_string())?;
+    let loinc_code = code.clone().unwrap_or_else(|| format!("diagnostic-report:{}", category.unwrap_or_default()));
 
-    // Build display text
-    let display = code.1.clone().or_else(|| {
-        conclusion.clone().map(|c| c.chars().take(100).collect())
-    });
-
-    // Store as observation mapping (DiagnosticReports are observation-like)
     let mapping = FhirObservationMapping {
         fhir_observation_id: format!("diagnostic-report-{}", fhir_id),
         internal_record_hash: patient_hash.clone(),
         patient_hash: patient_hash.clone(),
-        loinc_code: code.0.clone().unwrap_or_else(|| format!("diagnostic-report:{}", category.unwrap_or_default())),
-        display,
-        value: serde_json::to_string(resource).ok(),
-        unit: status, // Use unit field to store status
-        effective_datetime,
         source_system: source_system.to_string(),
-        last_synced: sys_time().map_err(|e| e.to_string())?,
-        sync_status: SyncStatus::Synced,
-        sync_errors: Vec::new(),
+        status,
+        category: Vec::new(),
+        code: build_codeable_concept(code, display, system),
+        loinc_code,
+        snomed_code: None,
+        value_quantity: None,
+        value_codeable_concept: None,
+        value_string: serde_json::to_string(resource).ok(),
+        value_boolean: None,
+        effective_datetime: now,
+        issued: None,
+        reference_range: None,
+        interpretation: Vec::new(),
+        note: Vec::new(),
+        mapping_version: "1".to_string(),
+        last_synced: now,
     };
 
     let response = call(
@@ -779,52 +995,39 @@ fn process_care_plan(resource: &JsonValue, patient_hash: &ActionHash, source_sys
     // Extract care plan data
     let title = get_fhir_string(resource, "title");
     let description = get_fhir_string(resource, "description");
-    let status = get_fhir_string(resource, "status");
-    let intent = get_fhir_string(resource, "intent");
+    let status = get_fhir_string(resource, "status").unwrap_or_else(|| "unknown".to_string());
     let category = extract_category(resource);
+    let now = sys_time().map_err(|e| e.to_string())?;
 
-    // Extract period
-    let period_start = resource.get("period")
-        .and_then(|p| p.get("start"))
-        .and_then(|s| s.as_str())
-        .map(|s| s.to_string());
+    let display = title
+        .or_else(|| description.clone())
+        .or_else(|| category.clone());
 
-    // Extract activities summary
-    let activities_count = resource.get("activity")
-        .and_then(|a| a.as_array())
-        .map(|arr| arr.len())
-        .unwrap_or(0);
-
-    // Extract goals count
-    let goals_count = resource.get("goal")
-        .and_then(|g| g.as_array())
-        .map(|arr| arr.len())
-        .unwrap_or(0);
-
-    // Build display text
-    let display = title.clone()
-        .or_else(|| description.clone().map(|d| d.chars().take(100).collect()))
-        .or_else(|| category.clone().map(|c| format!("{} Care Plan", c)));
-
-    // Store as observation mapping (we store the full JSON for rich data)
     let mapping = FhirObservationMapping {
         fhir_observation_id: format!("care-plan-{}", fhir_id),
         internal_record_hash: patient_hash.clone(),
         patient_hash: patient_hash.clone(),
-        loinc_code: format!("care-plan:{}", category.unwrap_or_else(|| "general".to_string())),
-        display,
-        value: serde_json::to_string(resource).ok(),
-        unit: Some(format!("status:{} intent:{} activities:{} goals:{}",
-            status.unwrap_or_default(),
-            intent.unwrap_or_default(),
-            activities_count,
-            goals_count
-        )),
-        effective_datetime: period_start,
         source_system: source_system.to_string(),
-        last_synced: sys_time().map_err(|e| e.to_string())?,
-        sync_status: SyncStatus::Synced,
-        sync_errors: Vec::new(),
+        status,
+        category: Vec::new(),
+        code: build_codeable_concept(
+            Some(format!("care-plan:{}", category.clone().unwrap_or_else(|| "general".to_string()))),
+            display.clone(),
+            None,
+        ),
+        loinc_code: format!("care-plan:{}", category.unwrap_or_else(|| "general".to_string())),
+        snomed_code: None,
+        value_quantity: None,
+        value_codeable_concept: None,
+        value_string: serde_json::to_string(resource).ok(),
+        value_boolean: None,
+        effective_datetime: now,
+        issued: None,
+        reference_range: None,
+        interpretation: Vec::new(),
+        note: description.into_iter().collect(),
+        mapping_version: "1".to_string(),
+        last_synced: now,
     };
 
     let response = call(
@@ -869,6 +1072,24 @@ fn extract_category(resource: &JsonValue) -> Option<String> {
 // ============================================================================
 // Helper Functions
 // ============================================================================
+
+fn build_codeable_concept(
+    code: Option<String>,
+    display: Option<String>,
+    system: Option<String>,
+) -> FhirCodeableConcept {
+    let coding = FhirCoding {
+        system: system.unwrap_or_else(|| "unknown".to_string()),
+        code: code.unwrap_or_else(|| "unknown".to_string()),
+        display,
+        version: None,
+    };
+
+    FhirCodeableConcept {
+        coding: vec![coding],
+        text: None,
+    }
+}
 
 fn lookup_resource_anchor(source_key: &str) -> ExternResult<Option<FhirResourceAnchor>> {
     let anchor = anchor_hash(&format!("fhir_anchor:{}", source_key))?;
@@ -942,17 +1163,18 @@ fn extract_patient_name(resource: &JsonValue) -> (Option<String>, Option<String>
     (None, None)
 }
 
-fn extract_coding(resource: &JsonValue, field: &str) -> (Option<String>, Option<String>) {
+fn extract_coding(resource: &JsonValue, field: &str) -> (Option<String>, Option<String>, Option<String>) {
     if let Some(code_field) = resource.get(field) {
         if let Some(codings) = code_field.get("coding").and_then(|c| c.as_array()) {
             if let Some(coding) = codings.first() {
                 let code = coding.get("code").and_then(|c| c.as_str()).map(|s| s.to_string());
                 let display = coding.get("display").and_then(|d| d.as_str()).map(|s| s.to_string());
-                return (code, display);
+                let system = coding.get("system").and_then(|s| s.as_str()).map(|s| s.to_string());
+                return (code, display, system);
             }
         }
     }
-    (None, None)
+    (None, None, None)
 }
 
 fn extract_value(resource: &JsonValue) -> Option<String> {
