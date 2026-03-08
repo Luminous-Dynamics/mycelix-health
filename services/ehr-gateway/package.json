@@ -29,7 +29,7 @@
   "author": "Luminous Dynamics",
   "license": "MIT",
   "dependencies": {
-    "@holochain/client": "^0.20.0",
+    "@holochain/client": "0.20.0",
     "@hono/node-server": "^1.8.0",
     "hono": "^4.0.0",
     "jose": "^5.2.0",

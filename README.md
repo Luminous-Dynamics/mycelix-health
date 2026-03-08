@@ -117,7 +117,7 @@ mycelix-health/
 ### Prerequisites
 
 - NixOS or Linux with Nix
-- Holochain 0.4.x
+- Holochain 0.6.x
 - HDK 0.6 / HDI 0.7
 
 ### Build

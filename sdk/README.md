@@ -647,7 +647,7 @@ import {
 
 - Node.js 18+
 - Holochain conductor running with mycelix-health hApp installed
-- `@holochain/client` ^0.18.0
+- `@holochain/client` 0.20.0
 
 ## License
 

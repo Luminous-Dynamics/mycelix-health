@@ -13,8 +13,8 @@
     "test:byzantine": "vitest run byzantine"
   },
   "devDependencies": {
-    "@holochain/client": "^0.20.0",
-    "@holochain/tryorama": "^0.19.0",
+    "@holochain/client": "0.20.0",
+    "@holochain/tryorama": "0.19.0",
     "@types/node": "^20.0.0",
     "typescript": "^5.3.0",
     "vitest": "^1.0.0"

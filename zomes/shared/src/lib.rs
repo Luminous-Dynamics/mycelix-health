@@ -196,18 +196,54 @@ pub mod access_control {
             )));
         }
 
-        // If emergency, mark as override but allow
+        // If emergency, require a recorded break-glass entry
         if !auth_result.authorized && is_emergency {
-            return Ok(AuthorizationResult {
-                authorized: true,
-                consent_hash: None,
-                reason: "Emergency override - requires post-hoc justification".to_string(),
-                permissions: vec![permission],
-                emergency_override: true,
-            });
+            if has_active_emergency_access(patient_hash.clone())? {
+                return Ok(AuthorizationResult {
+                    authorized: true,
+                    consent_hash: None,
+                    reason: "Emergency override with recorded break-glass entry".to_string(),
+                    permissions: vec![permission],
+                    emergency_override: true,
+                });
+            }
+            return Err(wasm_error!(WasmErrorInner::Guest(
+                "Emergency access requires a recorded break-glass entry".to_string()
+            )));
         }
 
         Ok(auth_result)
+    }
+
+    fn has_active_emergency_access(patient_hash: ActionHash) -> ExternResult<bool> {
+        let response = call(
+            CallTargetCell::Local,
+            "consent",
+            "has_active_emergency_access".into(),
+            None,
+            patient_hash,
+        )?;
+
+        match response {
+            ZomeCallResponse::Ok(extern_io) => extern_io.decode().map_err(|e| {
+                wasm_error!(WasmErrorInner::Guest(format!(
+                    "Failed to decode emergency access response: {:?}",
+                    e
+                )))
+            }),
+            ZomeCallResponse::Unauthorized(_, _, _, _) => Err(wasm_error!(WasmErrorInner::Guest(
+                "Unauthorized to call consent zome for emergency access".to_string()
+            ))),
+            ZomeCallResponse::NetworkError(err) => Err(wasm_error!(WasmErrorInner::Guest(
+                format!("Network error checking emergency access: {}", err)
+            ))),
+            ZomeCallResponse::CountersigningSession(err) => Err(wasm_error!(WasmErrorInner::Guest(
+                format!("Countersigning error checking emergency access: {}", err)
+            ))),
+            ZomeCallResponse::AuthenticationFailed(_, _) => Err(wasm_error!(WasmErrorInner::Guest(
+                "Authentication failed for emergency access check".to_string()
+            ))),
+        }
     }
 
     /// Check if the caller is the patient themselves

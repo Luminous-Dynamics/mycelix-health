@@ -56,12 +56,18 @@ pub fn get_patient_consents(patient_hash: ActionHash) -> ExternResult<Vec<Record
 #[hdk_extern]
 pub fn get_active_consents(patient_hash: ActionHash) -> ExternResult<Vec<Record>> {
     let all_consents = get_patient_consents(patient_hash)?;
+    let now = sys_time()?;
     
     let active: Vec<Record> = all_consents
         .into_iter()
         .filter(|record| {
             if let Some(consent) = record.entry().to_app_option::<Consent>().ok().flatten() {
-                matches!(consent.status, ConsentStatus::Active)
+                let not_expired = consent
+                    .expires_at
+                    .map(|expires| expires > now)
+                    .unwrap_or(true);
+                let not_revoked = consent.revoked_at.is_none();
+                matches!(consent.status, ConsentStatus::Active) && not_expired && not_revoked
             } else {
                 false
             }
@@ -355,6 +361,39 @@ pub fn record_emergency_access(emergency: EmergencyAccess) -> ExternResult<Recor
     )?;
     
     Ok(record)
+}
+
+/// Check if the caller has an active break-glass emergency access entry
+#[hdk_extern]
+pub fn has_active_emergency_access(patient_hash: ActionHash) -> ExternResult<bool> {
+    let caller = agent_info()?.agent_initial_pubkey;
+    let now = sys_time()?;
+
+    let links = get_links(
+        LinkQuery::try_new(patient_hash, LinkTypes::PatientToEmergencyAccess)?,
+        GetStrategy::default(),
+    )?;
+
+    for link in links {
+        if let Some(hash) = link.target.into_action_hash() {
+            if let Some(record) = get(hash, GetOptions::default())? {
+                if let Some(emergency) = record.entry().to_app_option::<EmergencyAccess>().ok().flatten() {
+                    if emergency.accessor != caller {
+                        continue;
+                    }
+                    let duration_micros = (emergency.access_duration_minutes as i64)
+                        .saturating_mul(60)
+                        .saturating_mul(1_000_000);
+                    let expires_at = emergency.accessed_at.as_micros().saturating_add(duration_micros);
+                    if now.as_micros() <= expires_at {
+                        return Ok(true);
+                    }
+                }
+            }
+        }
+    }
+
+    Ok(false)
 }
 
 /// Create authorization document
