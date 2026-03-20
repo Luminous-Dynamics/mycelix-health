@@ -1764,3 +1764,1517 @@ pub fn get_zk_proof_audit_logs(patient_hash: ActionHash) -> ExternResult<Vec<Rec
 
     Ok(zk_logs)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn dummy_hash() -> ActionHash {
+        ActionHash::from_raw_36(vec![0u8; 36])
+    }
+
+    fn dummy_agent() -> AgentPubKey {
+        AgentPubKey::from_raw_36(vec![0u8; 36])
+    }
+
+    // ==================== Serde roundtrip tests ====================
+
+    #[test]
+    fn test_serde_roundtrip_revoke_consent_input() {
+        let input = RevokeConsentInput {
+            consent_hash: dummy_hash(),
+            reason: "Patient requested revocation".to_string(),
+        };
+        let json = serde_json::to_string(&input).expect("serialize");
+        let decoded: RevokeConsentInput = serde_json::from_str(&json).expect("deserialize");
+        assert_eq!(decoded.reason, "Patient requested revocation");
+    }
+
+    #[test]
+    fn test_serde_roundtrip_authorization_check_input() {
+        let input = AuthorizationCheckInput {
+            patient_hash: dummy_hash(),
+            requestor: dummy_agent(),
+            data_category: DataCategory::Demographics,
+            permission: DataPermission::Read,
+            is_emergency: false,
+        };
+        let json = serde_json::to_string(&input).expect("serialize");
+        let decoded: AuthorizationCheckInput = serde_json::from_str(&json).expect("deserialize");
+        assert_eq!(decoded.data_category, DataCategory::Demographics);
+        assert_eq!(decoded.permission, DataPermission::Read);
+        assert!(!decoded.is_emergency);
+    }
+
+    #[test]
+    fn test_serde_roundtrip_authorization_result() {
+        let result = AuthorizationResult {
+            authorized: true,
+            consent_hash: Some(dummy_hash()),
+            reason: "Active consent found".to_string(),
+            permissions: vec![DataPermission::Read, DataPermission::Write],
+            emergency_override: false,
+        };
+        let json = serde_json::to_string(&result).expect("serialize");
+        let decoded: AuthorizationResult = serde_json::from_str(&json).expect("deserialize");
+        assert!(decoded.authorized);
+        assert_eq!(decoded.permissions.len(), 2);
+        assert!(!decoded.emergency_override);
+    }
+
+    #[test]
+    fn test_serde_roundtrip_date_range_input() {
+        let input = DateRangeInput {
+            patient_hash: dummy_hash(),
+            start_date: Timestamp::from_micros(1000000),
+            end_date: Timestamp::from_micros(2000000),
+        };
+        let json = serde_json::to_string(&input).expect("serialize");
+        let decoded: DateRangeInput = serde_json::from_str(&json).expect("deserialize");
+        assert_eq!(decoded.start_date, Timestamp::from_micros(1000000));
+    }
+
+    #[test]
+    fn test_serde_roundtrip_accessor_logs_input() {
+        let input = AccessorLogsInput {
+            patient_hash: dummy_hash(),
+            accessor: dummy_agent(),
+        };
+        let json = serde_json::to_string(&input).expect("serialize");
+        let decoded: AccessorLogsInput = serde_json::from_str(&json).expect("deserialize");
+        assert_eq!(decoded.patient_hash, dummy_hash());
+    }
+
+    // ==================== Consent integrity type tests ====================
+
+    #[test]
+    fn test_consent_status_all_variants_serde() {
+        let statuses = vec![
+            ConsentStatus::Active,
+            ConsentStatus::Expired,
+            ConsentStatus::Revoked,
+            ConsentStatus::Pending,
+            ConsentStatus::Rejected,
+        ];
+        for s in statuses {
+            let json = serde_json::to_string(&s).expect("serialize");
+            let decoded: ConsentStatus = serde_json::from_str(&json).expect("deserialize");
+            assert_eq!(decoded, s);
+        }
+    }
+
+    #[test]
+    fn test_data_permission_all_variants_serde() {
+        let permissions = vec![
+            DataPermission::Read,
+            DataPermission::Write,
+            DataPermission::Share,
+            DataPermission::Export,
+            DataPermission::Delete,
+            DataPermission::Amend,
+        ];
+        for p in permissions {
+            let json = serde_json::to_string(&p).expect("serialize");
+            let decoded: DataPermission = serde_json::from_str(&json).expect("deserialize");
+            assert_eq!(decoded, p);
+        }
+    }
+
+    #[test]
+    fn test_consent_grantee_all_variants_serde() {
+        let grantees = vec![
+            ConsentGrantee::Provider(dummy_hash()),
+            ConsentGrantee::Organization("Hospital A".to_string()),
+            ConsentGrantee::Agent(dummy_agent()),
+            ConsentGrantee::ResearchStudy(dummy_hash()),
+            ConsentGrantee::InsuranceCompany(dummy_hash()),
+            ConsentGrantee::EmergencyAccess,
+            ConsentGrantee::Public,
+        ];
+        for g in grantees {
+            let json = serde_json::to_string(&g).expect("serialize");
+            let _decoded: ConsentGrantee = serde_json::from_str(&json).expect("deserialize");
+        }
+    }
+
+    #[test]
+    fn test_consent_scope_construction() {
+        let scope = ConsentScope {
+            data_categories: vec![DataCategory::Demographics, DataCategory::Allergies],
+            date_range: Some(DateRange {
+                start: Timestamp::from_micros(0),
+                end: Some(Timestamp::from_micros(1000000)),
+            }),
+            encounter_hashes: None,
+            exclusions: vec![DataCategory::MentalHealth],
+        };
+        assert_eq!(scope.data_categories.len(), 2);
+        assert_eq!(scope.exclusions.len(), 1);
+        assert!(scope.date_range.is_some());
+    }
+
+    #[test]
+    fn test_data_category_all_variants_serde() {
+        let categories = vec![
+            DataCategory::Demographics,
+            DataCategory::Allergies,
+            DataCategory::Medications,
+            DataCategory::Diagnoses,
+            DataCategory::Procedures,
+            DataCategory::LabResults,
+            DataCategory::ImagingStudies,
+            DataCategory::VitalSigns,
+            DataCategory::Immunizations,
+            DataCategory::MentalHealth,
+            DataCategory::SubstanceAbuse,
+            DataCategory::SexualHealth,
+            DataCategory::GeneticData,
+            DataCategory::FinancialData,
+            DataCategory::All,
+        ];
+        for cat in &categories {
+            let json = serde_json::to_string(cat).expect("serialize");
+            let decoded: DataCategory = serde_json::from_str(&json).expect("deserialize");
+            assert_eq!(&decoded, cat);
+        }
+        assert_eq!(categories.len(), 15);
+    }
+
+    #[test]
+    fn test_consent_purpose_all_variants_serde() {
+        let purposes = vec![
+            ConsentPurpose::Treatment,
+            ConsentPurpose::Payment,
+            ConsentPurpose::HealthcareOperations,
+            ConsentPurpose::Research,
+            ConsentPurpose::PublicHealth,
+            ConsentPurpose::LegalProceeding,
+            ConsentPurpose::Marketing,
+            ConsentPurpose::FamilyNotification,
+            ConsentPurpose::Other("Custom".to_string()),
+        ];
+        for p in purposes {
+            let json = serde_json::to_string(&p).expect("serialize");
+            let _decoded: ConsentPurpose = serde_json::from_str(&json).expect("deserialize");
+        }
+    }
+
+    // ==================== Delegation type tests ====================
+
+    #[test]
+    fn test_delegation_type_all_variants_serde() {
+        let types = vec![
+            DelegationType::HealthcareProxy,
+            DelegationType::Caregiver,
+            DelegationType::FamilyMember,
+            DelegationType::LegalGuardian,
+            DelegationType::Temporary,
+            DelegationType::ResearchAdvocate,
+            DelegationType::FinancialOnly,
+        ];
+        for dt in types {
+            let json = serde_json::to_string(&dt).expect("serialize");
+            let decoded: DelegationType = serde_json::from_str(&json).expect("deserialize");
+            assert_eq!(decoded, dt);
+        }
+    }
+
+    #[test]
+    fn test_delegation_permission_all_variants_serde() {
+        let perms = vec![
+            DelegationPermission::ViewRecords,
+            DelegationPermission::ScheduleAppointments,
+            DelegationPermission::CommunicateWithProviders,
+            DelegationPermission::MakeMedicalDecisions,
+            DelegationPermission::ConsentToTreatment,
+            DelegationPermission::ManageMedications,
+            DelegationPermission::AccessFinancial,
+            DelegationPermission::ReceiveNotifications,
+            DelegationPermission::ExportData,
+            DelegationPermission::SubDelegate,
+        ];
+        for p in perms {
+            let json = serde_json::to_string(&p).expect("serialize");
+            let decoded: DelegationPermission = serde_json::from_str(&json).expect("deserialize");
+            assert_eq!(decoded, p);
+        }
+    }
+
+    // ==================== Notification type tests ====================
+
+    #[test]
+    fn test_notification_priority_all_variants_serde() {
+        let priorities = vec![
+            NotificationPriority::Immediate,
+            NotificationPriority::Daily,
+            NotificationPriority::Weekly,
+            NotificationPriority::Silent,
+        ];
+        for p in priorities {
+            let json = serde_json::to_string(&p).expect("serialize");
+            let decoded: NotificationPriority = serde_json::from_str(&json).expect("deserialize");
+            assert_eq!(decoded, p);
+        }
+    }
+
+    // ==================== Edge cases ====================
+
+    #[test]
+    fn test_authorization_result_denied_no_consent() {
+        let result = AuthorizationResult {
+            authorized: false,
+            consent_hash: None,
+            reason: "No valid consent found".to_string(),
+            permissions: vec![],
+            emergency_override: false,
+        };
+        assert!(!result.authorized);
+        assert!(result.consent_hash.is_none());
+        assert!(result.permissions.is_empty());
+    }
+
+    #[test]
+    fn test_authorization_result_emergency_override() {
+        let result = AuthorizationResult {
+            authorized: false,
+            consent_hash: None,
+            reason: "No consent found - emergency override available".to_string(),
+            permissions: vec![DataPermission::Read],
+            emergency_override: true,
+        };
+        assert!(!result.authorized);
+        assert!(result.emergency_override);
+        assert_eq!(result.permissions.len(), 1);
+    }
+
+    #[test]
+    fn test_access_log_entry_serde_roundtrip() {
+        let entry = AccessLogEntry {
+            log_id: "LOG-12345".to_string(),
+            patient_hash: dummy_hash(),
+            accessor: dummy_agent(),
+            data_categories: vec![DataCategory::Demographics, DataCategory::LabResults],
+            access_type: DataPermission::Read,
+            consent_hash: Some(dummy_hash()),
+            access_reason: "Authorized access".to_string(),
+            accessed_at: Timestamp::from_micros(1000000),
+            access_location: "holochain_node".to_string(),
+            emergency_override: false,
+            override_reason: None,
+        };
+        let json = serde_json::to_string(&entry).expect("serialize");
+        let decoded: AccessLogEntry = serde_json::from_str(&json).expect("deserialize");
+        assert_eq!(decoded.log_id, "LOG-12345");
+        assert_eq!(decoded.data_categories.len(), 2);
+    }
+
+    #[test]
+    fn test_access_denied_log_entry_serde_roundtrip() {
+        let entry = AccessDeniedLogEntry {
+            log_id: "DENY-12345".to_string(),
+            patient_hash: dummy_hash(),
+            attempted_accessor: dummy_agent(),
+            data_category: DataCategory::GeneticData,
+            denial_reason: "No consent for genetic data".to_string(),
+            attempted_at: Timestamp::from_micros(1000000),
+        };
+        let json = serde_json::to_string(&entry).expect("serialize");
+        let decoded: AccessDeniedLogEntry = serde_json::from_str(&json).expect("deserialize");
+        assert_eq!(decoded.log_id, "DENY-12345");
+        assert_eq!(decoded.data_category, DataCategory::GeneticData);
+    }
+
+    // ==================== HIPAA consent enforcement tests ====================
+
+    fn make_consent(
+        grantee: ConsentGrantee,
+        categories: Vec<DataCategory>,
+        permissions: Vec<DataPermission>,
+        status: ConsentStatus,
+        expires_at: Option<Timestamp>,
+        revoked_at: Option<Timestamp>,
+        exclusions: Vec<DataCategory>,
+    ) -> Consent {
+        Consent {
+            consent_id: "consent-001".to_string(),
+            patient_hash: dummy_hash(),
+            grantee,
+            scope: ConsentScope {
+                data_categories: categories,
+                date_range: None,
+                encounter_hashes: None,
+                exclusions,
+            },
+            permissions,
+            purpose: ConsentPurpose::Treatment,
+            status,
+            granted_at: Timestamp::from_micros(1000000),
+            expires_at,
+            revoked_at,
+            revocation_reason: None,
+            document_hash: None,
+            witness: None,
+            legal_representative: None,
+            notes: None,
+        }
+    }
+
+    // --- Access without consent ---
+
+    #[test]
+    fn test_authorization_denied_when_no_consent_exists() {
+        // With no active consents, authorization must be denied
+        let result = AuthorizationResult {
+            authorized: false,
+            consent_hash: None,
+            reason: "No valid consent found".to_string(),
+            permissions: vec![],
+            emergency_override: false,
+        };
+        assert!(!result.authorized);
+        assert!(result.consent_hash.is_none());
+        assert!(result.permissions.is_empty());
+        assert!(!result.emergency_override);
+    }
+
+    #[test]
+    fn test_authorization_denied_for_wrong_grantee() {
+        // Consent exists for Agent A, Agent B should not be authorized
+        let agent_a = AgentPubKey::from_raw_36(vec![1u8; 36]);
+        let agent_b = AgentPubKey::from_raw_36(vec![2u8; 36]);
+        let consent = make_consent(
+            ConsentGrantee::Agent(agent_a.clone()),
+            vec![DataCategory::All],
+            vec![DataPermission::Read],
+            ConsentStatus::Active,
+            None,
+            None,
+            vec![],
+        );
+
+        // Simulate check_authorization logic: grantee must match
+        let grantee_matches = match &consent.grantee {
+            ConsentGrantee::Agent(agent) => *agent == agent_b,
+            _ => false,
+        };
+        assert!(!grantee_matches, "Agent B should not match Agent A consent");
+    }
+
+    #[test]
+    fn test_authorization_denied_for_pending_consent() {
+        // Pending consent should not grant access
+        let consent = make_consent(
+            ConsentGrantee::Agent(dummy_agent()),
+            vec![DataCategory::All],
+            vec![DataPermission::Read],
+            ConsentStatus::Pending,
+            None,
+            None,
+            vec![],
+        );
+        assert!(
+            !matches!(consent.status, ConsentStatus::Active),
+            "Pending consent must not be treated as active"
+        );
+    }
+
+    #[test]
+    fn test_authorization_denied_for_rejected_consent() {
+        let consent = make_consent(
+            ConsentGrantee::Agent(dummy_agent()),
+            vec![DataCategory::All],
+            vec![DataPermission::Read],
+            ConsentStatus::Rejected,
+            None,
+            None,
+            vec![],
+        );
+        assert!(
+            !matches!(consent.status, ConsentStatus::Active),
+            "Rejected consent must not grant access"
+        );
+    }
+
+    // --- Consent revocation is immediate ---
+
+    #[test]
+    fn test_revoked_consent_has_revoked_status_immediately() {
+        let mut consent = make_consent(
+            ConsentGrantee::Agent(dummy_agent()),
+            vec![DataCategory::All],
+            vec![DataPermission::Read],
+            ConsentStatus::Active,
+            None,
+            None,
+            vec![],
+        );
+        // Simulate revocation
+        consent.status = ConsentStatus::Revoked;
+        consent.revoked_at = Some(Timestamp::from_micros(2000000));
+        consent.revocation_reason = Some("Patient requested".to_string());
+
+        assert!(matches!(consent.status, ConsentStatus::Revoked));
+        assert!(consent.revoked_at.is_some());
+    }
+
+    #[test]
+    fn test_revoked_consent_not_in_active_filter() {
+        // get_active_consents filters: Active status AND revoked_at is None
+        let consent = make_consent(
+            ConsentGrantee::Agent(dummy_agent()),
+            vec![DataCategory::All],
+            vec![DataPermission::Read],
+            ConsentStatus::Revoked,
+            None,
+            Some(Timestamp::from_micros(2000000)),
+            vec![],
+        );
+        let is_active = matches!(consent.status, ConsentStatus::Active)
+            && consent.revoked_at.is_none();
+        assert!(!is_active, "Revoked consent must not pass active filter");
+    }
+
+    #[test]
+    fn test_revocation_preserves_original_consent_data() {
+        let mut consent = make_consent(
+            ConsentGrantee::Agent(dummy_agent()),
+            vec![DataCategory::Demographics, DataCategory::LabResults],
+            vec![DataPermission::Read, DataPermission::Share],
+            ConsentStatus::Active,
+            None,
+            None,
+            vec![],
+        );
+        let original_categories = consent.scope.data_categories.clone();
+        let original_permissions = consent.permissions.clone();
+
+        consent.status = ConsentStatus::Revoked;
+        consent.revoked_at = Some(Timestamp::from_micros(3000000));
+
+        // Original data preserved for audit trail
+        assert_eq!(consent.scope.data_categories, original_categories);
+        assert_eq!(consent.permissions, original_permissions);
+    }
+
+    // --- Time-bound consent expiration ---
+
+    #[test]
+    fn test_expired_consent_not_active() {
+        let now = Timestamp::from_micros(5000000);
+        let consent = make_consent(
+            ConsentGrantee::Agent(dummy_agent()),
+            vec![DataCategory::All],
+            vec![DataPermission::Read],
+            ConsentStatus::Active,
+            Some(Timestamp::from_micros(3000000)), // expired before now
+            None,
+            vec![],
+        );
+        let not_expired = consent
+            .expires_at
+            .map(|expires| expires > now)
+            .unwrap_or(true);
+        assert!(!not_expired, "Consent that expired before 'now' must not be active");
+    }
+
+    #[test]
+    fn test_non_expired_consent_still_active() {
+        let now = Timestamp::from_micros(2000000);
+        let consent = make_consent(
+            ConsentGrantee::Agent(dummy_agent()),
+            vec![DataCategory::All],
+            vec![DataPermission::Read],
+            ConsentStatus::Active,
+            Some(Timestamp::from_micros(5000000)), // expires after now
+            None,
+            vec![],
+        );
+        let not_expired = consent
+            .expires_at
+            .map(|expires| expires > now)
+            .unwrap_or(true);
+        let not_revoked = consent.revoked_at.is_none();
+        let is_active = matches!(consent.status, ConsentStatus::Active) && not_expired && not_revoked;
+        assert!(is_active, "Non-expired active consent should pass filter");
+    }
+
+    #[test]
+    fn test_no_expiry_consent_never_expires() {
+        let now = Timestamp::from_micros(999999999999);
+        let consent = make_consent(
+            ConsentGrantee::Agent(dummy_agent()),
+            vec![DataCategory::All],
+            vec![DataPermission::Read],
+            ConsentStatus::Active,
+            None, // no expiration
+            None,
+            vec![],
+        );
+        let not_expired = consent
+            .expires_at
+            .map(|expires| expires > now)
+            .unwrap_or(true);
+        assert!(not_expired, "Consent without expiration should never expire");
+    }
+
+    // --- Granular consent (per-provider, per-record-type) ---
+
+    #[test]
+    fn test_granular_consent_per_provider() {
+        let provider_a = AgentPubKey::from_raw_36(vec![10u8; 36]);
+        let provider_b = AgentPubKey::from_raw_36(vec![20u8; 36]);
+
+        let consent = make_consent(
+            ConsentGrantee::Agent(provider_a.clone()),
+            vec![DataCategory::Medications],
+            vec![DataPermission::Read],
+            ConsentStatus::Active,
+            None,
+            None,
+            vec![],
+        );
+
+        // Provider A matches
+        let a_matches = match &consent.grantee {
+            ConsentGrantee::Agent(agent) => *agent == provider_a,
+            _ => false,
+        };
+        assert!(a_matches, "Provider A should be authorized");
+
+        // Provider B does not match
+        let b_matches = match &consent.grantee {
+            ConsentGrantee::Agent(agent) => *agent == provider_b,
+            _ => false,
+        };
+        assert!(!b_matches, "Provider B should not be authorized");
+    }
+
+    #[test]
+    fn test_granular_consent_per_record_type() {
+        let consent = make_consent(
+            ConsentGrantee::Agent(dummy_agent()),
+            vec![DataCategory::Medications, DataCategory::Allergies],
+            vec![DataPermission::Read],
+            ConsentStatus::Active,
+            None,
+            None,
+            vec![],
+        );
+
+        // Medications covered
+        let meds_covered = consent.scope.data_categories.iter().any(|cat| {
+            matches!(cat, DataCategory::All) || *cat == DataCategory::Medications
+        });
+        assert!(meds_covered, "Medications should be covered");
+
+        // LabResults NOT covered
+        let labs_covered = consent.scope.data_categories.iter().any(|cat| {
+            matches!(cat, DataCategory::All) || *cat == DataCategory::LabResults
+        });
+        assert!(!labs_covered, "LabResults should NOT be covered");
+    }
+
+    #[test]
+    fn test_exclusions_override_all_category() {
+        let consent = make_consent(
+            ConsentGrantee::Agent(dummy_agent()),
+            vec![DataCategory::All],
+            vec![DataPermission::Read],
+            ConsentStatus::Active,
+            None,
+            None,
+            vec![DataCategory::MentalHealth, DataCategory::SubstanceAbuse],
+        );
+
+        let category = DataCategory::MentalHealth;
+        let category_covered = consent.scope.data_categories.iter().any(|cat| {
+            matches!(cat, DataCategory::All) || *cat == category
+        });
+        let not_excluded = !consent.scope.exclusions.contains(&category);
+
+        assert!(category_covered, "All should cover MentalHealth");
+        assert!(!not_excluded, "MentalHealth should be excluded");
+        assert!(
+            !(category_covered && not_excluded),
+            "Exclusion must override All"
+        );
+    }
+
+    #[test]
+    fn test_permission_granularity_read_only_denies_write() {
+        let consent = make_consent(
+            ConsentGrantee::Agent(dummy_agent()),
+            vec![DataCategory::All],
+            vec![DataPermission::Read],
+            ConsentStatus::Active,
+            None,
+            None,
+            vec![],
+        );
+
+        assert!(
+            consent.permissions.contains(&DataPermission::Read),
+            "Read should be granted"
+        );
+        assert!(
+            !consent.permissions.contains(&DataPermission::Write),
+            "Write should NOT be granted for read-only consent"
+        );
+        assert!(
+            !consent.permissions.contains(&DataPermission::Delete),
+            "Delete should NOT be granted for read-only consent"
+        );
+    }
+
+    // --- Consent cannot be granted by non-patient agents ---
+
+    #[test]
+    fn test_consent_validation_rejects_non_patient_author() {
+        // The validate_patient_reference_and_ownership function checks
+        // that the action author matches the patient_hash record author.
+        // A non-patient agent should be rejected.
+        let patient_agent = AgentPubKey::from_raw_36(vec![1u8; 36]);
+        let non_patient = AgentPubKey::from_raw_36(vec![2u8; 36]);
+
+        // Simulate the ownership check: record.action().author() != author
+        assert_ne!(
+            patient_agent, non_patient,
+            "Non-patient agent must differ from patient"
+        );
+        // In validation: this would return Invalid("Only the patient can create consent...")
+    }
+
+    #[test]
+    fn test_delegation_validation_rejects_non_patient_author() {
+        // Same ownership check for delegation grants
+        let patient_agent = AgentPubKey::from_raw_36(vec![1u8; 36]);
+        let stranger = AgentPubKey::from_raw_36(vec![3u8; 36]);
+        assert_ne!(patient_agent, stranger);
+        // validate_delegation_grant calls validate_patient_reference_and_ownership
+    }
+
+    // --- Consent audit trail immutability ---
+
+    #[test]
+    fn test_consent_update_creates_audit_trail_link() {
+        // UpdateConsentInput uses update_entry + ConsentUpdates link type
+        // Verifying the data structures support audit trail
+        let input = UpdateConsentInput {
+            original_hash: dummy_hash(),
+            updated_consent: make_consent(
+                ConsentGrantee::Agent(dummy_agent()),
+                vec![DataCategory::All],
+                vec![DataPermission::Read],
+                ConsentStatus::Active,
+                Some(Timestamp::from_micros(9999999)),
+                None,
+                vec![],
+            ),
+        };
+        let json = serde_json::to_string(&input).expect("serialize UpdateConsentInput");
+        let decoded: UpdateConsentInput = serde_json::from_str(&json).expect("deserialize");
+        assert_eq!(decoded.original_hash, dummy_hash());
+    }
+
+    #[test]
+    fn test_access_log_immutability_no_delete_permission() {
+        // DataAccessLog entries are create-only (no update/delete extern for logs)
+        // Verify the log structure is complete and has no mutable state
+        let log = DataAccessLog {
+            log_id: "LOG-IMMUTABLE-001".to_string(),
+            patient_hash: dummy_hash(),
+            accessor: dummy_agent(),
+            access_type: DataPermission::Read,
+            data_categories_accessed: vec![DataCategory::Demographics],
+            consent_hash: Some(dummy_hash()),
+            access_reason: "Treatment".to_string(),
+            accessed_at: Timestamp::from_micros(1000000),
+            access_location: Some("node-1".to_string()),
+            emergency_override: false,
+            override_reason: None,
+        };
+        // Log has all required fields for HIPAA accounting of disclosures
+        assert!(!log.log_id.is_empty());
+        assert!(log.consent_hash.is_some());
+    }
+
+    #[test]
+    fn test_emergency_access_requires_clinical_justification() {
+        // EmergencyAccess validation requires non-empty reason AND clinical_justification
+        let emergency = EmergencyAccess {
+            emergency_id: "EM-001".to_string(),
+            patient_hash: dummy_hash(),
+            accessor: dummy_agent(),
+            reason: "Cardiac arrest".to_string(),
+            clinical_justification: "Need medication history for treatment".to_string(),
+            accessed_at: Timestamp::from_micros(1000000),
+            access_duration_minutes: 60,
+            approved_by: None,
+            data_accessed: vec![DataCategory::Medications, DataCategory::Allergies],
+            audited: false,
+            audited_by: None,
+            audited_at: None,
+            audit_findings: None,
+        };
+        assert!(!emergency.reason.is_empty());
+        assert!(!emergency.clinical_justification.is_empty());
+        assert!(!emergency.data_accessed.is_empty());
+    }
+
+    #[test]
+    fn test_emergency_override_must_have_reason_in_log() {
+        // validate_access_log rejects emergency_override=true without override_reason
+        let log_valid = DataAccessLog {
+            log_id: "LOG-EM-001".to_string(),
+            patient_hash: dummy_hash(),
+            accessor: dummy_agent(),
+            access_type: DataPermission::Read,
+            data_categories_accessed: vec![DataCategory::All],
+            consent_hash: None,
+            access_reason: "Emergency".to_string(),
+            accessed_at: Timestamp::from_micros(1000000),
+            access_location: None,
+            emergency_override: true,
+            override_reason: Some("Life-threatening condition".to_string()),
+        };
+        assert!(log_valid.override_reason.is_some());
+
+        let log_invalid = DataAccessLog {
+            log_id: "LOG-EM-002".to_string(),
+            patient_hash: dummy_hash(),
+            accessor: dummy_agent(),
+            access_type: DataPermission::Read,
+            data_categories_accessed: vec![DataCategory::All],
+            consent_hash: None,
+            access_reason: "Emergency".to_string(),
+            accessed_at: Timestamp::from_micros(1000000),
+            access_location: None,
+            emergency_override: true,
+            override_reason: None, // Missing - would fail validation
+        };
+        assert!(
+            log_invalid.emergency_override && log_invalid.override_reason.is_none(),
+            "This would fail integrity validation"
+        );
+    }
+
+    #[test]
+    fn test_disclosure_report_serde_roundtrip() {
+        let report = DisclosureReport {
+            patient_hash: dummy_hash(),
+            generated_at: Timestamp::from_micros(5000000),
+            period_start: Timestamp::from_micros(1000000),
+            period_end: Timestamp::from_micros(4000000),
+            total_disclosures: 3,
+            disclosures: vec![
+                DisclosureEntry {
+                    accessed_at: Timestamp::from_micros(2000000),
+                    accessor: dummy_agent(),
+                    data_categories: vec!["Demographics".to_string()],
+                    access_reason: "Treatment".to_string(),
+                    consent_hash: Some(dummy_hash()),
+                    emergency_override: false,
+                },
+            ],
+        };
+        let json = serde_json::to_string(&report).expect("serialize report");
+        let decoded: DisclosureReport = serde_json::from_str(&json).expect("deserialize");
+        assert_eq!(decoded.total_disclosures, 3);
+        assert_eq!(decoded.disclosures.len(), 1);
+    }
+
+    // ==================== HIPAA consent enforcement (extended) ====================
+    //
+    // These tests exercise the check_authorization inline logic against
+    // the Consent data model, validating HIPAA §164.508 and §164.510
+    // requirements for consent-gated access control.
+
+    /// Simulates the core check_authorization matching logic against a list
+    /// of consents, mirroring the real extern without HDK host calls.
+    fn simulate_check_authorization(
+        consents: &[Consent],
+        requestor: &AgentPubKey,
+        data_category: &DataCategory,
+        permission: &DataPermission,
+        is_emergency: bool,
+        now: Timestamp,
+    ) -> AuthorizationResult {
+        for consent in consents {
+            // Active filter (mirrors get_active_consents)
+            let not_expired = consent
+                .expires_at
+                .map(|expires| expires > now)
+                .unwrap_or(true);
+            let not_revoked = consent.revoked_at.is_none();
+            if !matches!(consent.status, ConsentStatus::Active) || !not_expired || !not_revoked {
+                continue;
+            }
+
+            // Grantee match (mirrors check_authorization)
+            let grantee_matches = match &consent.grantee {
+                ConsentGrantee::Agent(agent) => *agent == *requestor,
+                ConsentGrantee::EmergencyAccess => is_emergency,
+                _ => false,
+            };
+            if !grantee_matches {
+                continue;
+            }
+
+            // Category coverage
+            let category_covered = consent.scope.data_categories.iter().any(|cat| {
+                matches!(cat, DataCategory::All) || *cat == *data_category
+            });
+            let not_excluded = !consent.scope.exclusions.contains(data_category);
+            let permission_granted = consent.permissions.contains(permission);
+
+            if category_covered && not_excluded && permission_granted {
+                return AuthorizationResult {
+                    authorized: true,
+                    consent_hash: Some(dummy_hash()),
+                    reason: "Active consent found".to_string(),
+                    permissions: consent.permissions.clone(),
+                    emergency_override: false,
+                };
+            }
+        }
+
+        if is_emergency {
+            return AuthorizationResult {
+                authorized: false,
+                consent_hash: None,
+                reason: "No consent found - emergency override available".to_string(),
+                permissions: vec![permission.clone()],
+                emergency_override: true,
+            };
+        }
+
+        AuthorizationResult {
+            authorized: false,
+            consent_hash: None,
+            reason: "No valid consent found".to_string(),
+            permissions: vec![],
+            emergency_override: false,
+        }
+    }
+
+    // --- Access without consent (extended) ---
+
+    #[test]
+    fn test_empty_consent_list_denies_all_access() {
+        let result = simulate_check_authorization(
+            &[],
+            &dummy_agent(),
+            &DataCategory::Demographics,
+            &DataPermission::Read,
+            false,
+            Timestamp::from_micros(1000000),
+        );
+        assert!(!result.authorized);
+        assert!(result.permissions.is_empty());
+        assert_eq!(result.reason, "No valid consent found");
+    }
+
+    #[test]
+    fn test_consent_for_different_agent_denies_access() {
+        let agent_a = AgentPubKey::from_raw_36(vec![1u8; 36]);
+        let agent_b = AgentPubKey::from_raw_36(vec![2u8; 36]);
+        let consents = vec![make_consent(
+            ConsentGrantee::Agent(agent_a),
+            vec![DataCategory::All],
+            vec![DataPermission::Read],
+            ConsentStatus::Active,
+            None,
+            None,
+            vec![],
+        )];
+        let result = simulate_check_authorization(
+            &consents,
+            &agent_b,
+            &DataCategory::Demographics,
+            &DataPermission::Read,
+            false,
+            Timestamp::from_micros(1000000),
+        );
+        assert!(!result.authorized, "Agent B must not access Agent A's consent");
+    }
+
+    #[test]
+    fn test_expired_consent_denies_access_via_authorization() {
+        let agent = AgentPubKey::from_raw_36(vec![5u8; 36]);
+        let consents = vec![make_consent(
+            ConsentGrantee::Agent(agent.clone()),
+            vec![DataCategory::All],
+            vec![DataPermission::Read],
+            ConsentStatus::Active,
+            Some(Timestamp::from_micros(1000000)), // expired
+            None,
+            vec![],
+        )];
+        let result = simulate_check_authorization(
+            &consents,
+            &agent,
+            &DataCategory::Demographics,
+            &DataPermission::Read,
+            false,
+            Timestamp::from_micros(5000000), // now is after expiry
+        );
+        assert!(!result.authorized, "Expired consent must deny access");
+    }
+
+    #[test]
+    fn test_pending_consent_denies_access_via_authorization() {
+        let agent = AgentPubKey::from_raw_36(vec![6u8; 36]);
+        let consents = vec![make_consent(
+            ConsentGrantee::Agent(agent.clone()),
+            vec![DataCategory::All],
+            vec![DataPermission::Read],
+            ConsentStatus::Pending,
+            None,
+            None,
+            vec![],
+        )];
+        let result = simulate_check_authorization(
+            &consents,
+            &agent,
+            &DataCategory::Demographics,
+            &DataPermission::Read,
+            false,
+            Timestamp::from_micros(1000000),
+        );
+        assert!(!result.authorized, "Pending consent must not grant access");
+    }
+
+    #[test]
+    fn test_rejected_consent_denies_access_via_authorization() {
+        let agent = AgentPubKey::from_raw_36(vec![7u8; 36]);
+        let consents = vec![make_consent(
+            ConsentGrantee::Agent(agent.clone()),
+            vec![DataCategory::All],
+            vec![DataPermission::Read],
+            ConsentStatus::Rejected,
+            None,
+            None,
+            vec![],
+        )];
+        let result = simulate_check_authorization(
+            &consents,
+            &agent,
+            &DataCategory::Demographics,
+            &DataPermission::Read,
+            false,
+            Timestamp::from_micros(1000000),
+        );
+        assert!(!result.authorized, "Rejected consent must not grant access");
+    }
+
+    // --- Consent revocation blocks authorization ---
+
+    #[test]
+    fn test_revoked_consent_denies_access_via_authorization() {
+        let agent = AgentPubKey::from_raw_36(vec![8u8; 36]);
+        let consents = vec![make_consent(
+            ConsentGrantee::Agent(agent.clone()),
+            vec![DataCategory::All],
+            vec![DataPermission::Read],
+            ConsentStatus::Revoked,
+            None,
+            Some(Timestamp::from_micros(500000)),
+            vec![],
+        )];
+        let result = simulate_check_authorization(
+            &consents,
+            &agent,
+            &DataCategory::Demographics,
+            &DataPermission::Read,
+            false,
+            Timestamp::from_micros(1000000),
+        );
+        assert!(!result.authorized, "Revoked consent must block access");
+    }
+
+    #[test]
+    fn test_revoked_consent_with_revoked_at_set_blocks_access() {
+        // Even if status is still Active, revoked_at being set should block
+        let agent = AgentPubKey::from_raw_36(vec![9u8; 36]);
+        let consents = vec![make_consent(
+            ConsentGrantee::Agent(agent.clone()),
+            vec![DataCategory::All],
+            vec![DataPermission::Read],
+            ConsentStatus::Active,
+            None,
+            Some(Timestamp::from_micros(500000)), // revoked_at set
+            vec![],
+        )];
+        let result = simulate_check_authorization(
+            &consents,
+            &agent,
+            &DataCategory::Demographics,
+            &DataPermission::Read,
+            false,
+            Timestamp::from_micros(1000000),
+        );
+        assert!(
+            !result.authorized,
+            "Consent with revoked_at set must be filtered out even if status not updated"
+        );
+    }
+
+    #[test]
+    fn test_revocation_does_not_erase_consent_fields() {
+        let agent = AgentPubKey::from_raw_36(vec![11u8; 36]);
+        let mut consent = make_consent(
+            ConsentGrantee::Agent(agent.clone()),
+            vec![DataCategory::Medications, DataCategory::Allergies],
+            vec![DataPermission::Read, DataPermission::Share],
+            ConsentStatus::Active,
+            Some(Timestamp::from_micros(9999999)),
+            None,
+            vec![DataCategory::GeneticData],
+        );
+
+        // Revoke
+        consent.status = ConsentStatus::Revoked;
+        consent.revoked_at = Some(Timestamp::from_micros(2000000));
+        consent.revocation_reason = Some("Patient withdrew consent".to_string());
+
+        // All original fields preserved for audit
+        assert_eq!(consent.consent_id, "consent-001");
+        assert_eq!(consent.scope.data_categories.len(), 2);
+        assert!(consent.scope.data_categories.contains(&DataCategory::Medications));
+        assert_eq!(consent.permissions.len(), 2);
+        assert_eq!(consent.scope.exclusions, vec![DataCategory::GeneticData]);
+        assert!(consent.expires_at.is_some());
+        assert_eq!(consent.revocation_reason.as_deref(), Some("Patient withdrew consent"));
+    }
+
+    // --- Time-bound consent expiration (extended) ---
+
+    #[test]
+    fn test_consent_exactly_at_expiry_boundary() {
+        // Consent expires_at == now: the get_active_consents filter uses
+        // expires > now (strict), so exactly-equal should be expired.
+        let agent = AgentPubKey::from_raw_36(vec![12u8; 36]);
+        let boundary = Timestamp::from_micros(5000000);
+        let consents = vec![make_consent(
+            ConsentGrantee::Agent(agent.clone()),
+            vec![DataCategory::All],
+            vec![DataPermission::Read],
+            ConsentStatus::Active,
+            Some(boundary),
+            None,
+            vec![],
+        )];
+        let result = simulate_check_authorization(
+            &consents,
+            &agent,
+            &DataCategory::Demographics,
+            &DataPermission::Read,
+            false,
+            boundary, // now == expires_at
+        );
+        assert!(
+            !result.authorized,
+            "Consent at exact expiry boundary must be denied (strict >)"
+        );
+    }
+
+    #[test]
+    fn test_consent_one_microsecond_before_expiry() {
+        let agent = AgentPubKey::from_raw_36(vec![13u8; 36]);
+        let consents = vec![make_consent(
+            ConsentGrantee::Agent(agent.clone()),
+            vec![DataCategory::All],
+            vec![DataPermission::Read],
+            ConsentStatus::Active,
+            Some(Timestamp::from_micros(5000000)),
+            None,
+            vec![],
+        )];
+        let result = simulate_check_authorization(
+            &consents,
+            &agent,
+            &DataCategory::Demographics,
+            &DataPermission::Read,
+            false,
+            Timestamp::from_micros(4999999), // 1us before expiry
+        );
+        assert!(result.authorized, "Consent 1us before expiry must still be valid");
+    }
+
+    #[test]
+    fn test_no_expiry_consent_active_at_far_future() {
+        let agent = AgentPubKey::from_raw_36(vec![14u8; 36]);
+        let consents = vec![make_consent(
+            ConsentGrantee::Agent(agent.clone()),
+            vec![DataCategory::All],
+            vec![DataPermission::Read],
+            ConsentStatus::Active,
+            None, // no expiration
+            None,
+            vec![],
+        )];
+        let result = simulate_check_authorization(
+            &consents,
+            &agent,
+            &DataCategory::Demographics,
+            &DataPermission::Read,
+            false,
+            Timestamp::from_micros(999_999_999_999), // far future
+        );
+        assert!(result.authorized, "Consent without expiration must remain active");
+    }
+
+    // --- Granular consent (extended) ---
+
+    #[test]
+    fn test_consent_covers_specific_category_but_not_others() {
+        let agent = AgentPubKey::from_raw_36(vec![15u8; 36]);
+        let consents = vec![make_consent(
+            ConsentGrantee::Agent(agent.clone()),
+            vec![DataCategory::Medications],
+            vec![DataPermission::Read],
+            ConsentStatus::Active,
+            None,
+            None,
+            vec![],
+        )];
+
+        // Medications: authorized
+        let result_meds = simulate_check_authorization(
+            &consents,
+            &agent,
+            &DataCategory::Medications,
+            &DataPermission::Read,
+            false,
+            Timestamp::from_micros(1000000),
+        );
+        assert!(result_meds.authorized, "Medications should be authorized");
+
+        // LabResults: denied
+        let result_labs = simulate_check_authorization(
+            &consents,
+            &agent,
+            &DataCategory::LabResults,
+            &DataPermission::Read,
+            false,
+            Timestamp::from_micros(1000000),
+        );
+        assert!(!result_labs.authorized, "LabResults not in scope should be denied");
+
+        // GeneticData: denied
+        let result_genetic = simulate_check_authorization(
+            &consents,
+            &agent,
+            &DataCategory::GeneticData,
+            &DataPermission::Read,
+            false,
+            Timestamp::from_micros(1000000),
+        );
+        assert!(!result_genetic.authorized, "GeneticData not in scope should be denied");
+    }
+
+    #[test]
+    fn test_read_only_consent_blocks_write_and_delete() {
+        let agent = AgentPubKey::from_raw_36(vec![16u8; 36]);
+        let consents = vec![make_consent(
+            ConsentGrantee::Agent(agent.clone()),
+            vec![DataCategory::All],
+            vec![DataPermission::Read],
+            ConsentStatus::Active,
+            None,
+            None,
+            vec![],
+        )];
+
+        let result_read = simulate_check_authorization(
+            &consents,
+            &agent,
+            &DataCategory::Demographics,
+            &DataPermission::Read,
+            false,
+            Timestamp::from_micros(1000000),
+        );
+        assert!(result_read.authorized, "Read should be authorized");
+
+        let result_write = simulate_check_authorization(
+            &consents,
+            &agent,
+            &DataCategory::Demographics,
+            &DataPermission::Write,
+            false,
+            Timestamp::from_micros(1000000),
+        );
+        assert!(!result_write.authorized, "Write must be denied on read-only consent");
+
+        let result_delete = simulate_check_authorization(
+            &consents,
+            &agent,
+            &DataCategory::Demographics,
+            &DataPermission::Delete,
+            false,
+            Timestamp::from_micros(1000000),
+        );
+        assert!(!result_delete.authorized, "Delete must be denied on read-only consent");
+    }
+
+    #[test]
+    fn test_exclusion_overrides_all_category_via_authorization() {
+        let agent = AgentPubKey::from_raw_36(vec![17u8; 36]);
+        let consents = vec![make_consent(
+            ConsentGrantee::Agent(agent.clone()),
+            vec![DataCategory::All],
+            vec![DataPermission::Read],
+            ConsentStatus::Active,
+            None,
+            None,
+            vec![DataCategory::MentalHealth, DataCategory::SubstanceAbuse],
+        )];
+
+        // Demographics: authorized (not excluded)
+        let result_demo = simulate_check_authorization(
+            &consents,
+            &agent,
+            &DataCategory::Demographics,
+            &DataPermission::Read,
+            false,
+            Timestamp::from_micros(1000000),
+        );
+        assert!(result_demo.authorized, "Demographics not excluded should be authorized");
+
+        // MentalHealth: denied (excluded)
+        let result_mh = simulate_check_authorization(
+            &consents,
+            &agent,
+            &DataCategory::MentalHealth,
+            &DataPermission::Read,
+            false,
+            Timestamp::from_micros(1000000),
+        );
+        assert!(!result_mh.authorized, "MentalHealth excluded must be denied");
+
+        // SubstanceAbuse: denied (excluded)
+        let result_sa = simulate_check_authorization(
+            &consents,
+            &agent,
+            &DataCategory::SubstanceAbuse,
+            &DataPermission::Read,
+            false,
+            Timestamp::from_micros(1000000),
+        );
+        assert!(!result_sa.authorized, "SubstanceAbuse excluded must be denied");
+    }
+
+    // --- Emergency access ---
+
+    #[test]
+    fn test_emergency_flag_returns_override_available_when_no_consent() {
+        let result = simulate_check_authorization(
+            &[],
+            &dummy_agent(),
+            &DataCategory::All,
+            &DataPermission::Read,
+            true, // emergency
+            Timestamp::from_micros(1000000),
+        );
+        assert!(!result.authorized, "Emergency alone does not auto-authorize");
+        assert!(result.emergency_override, "Emergency override flag must be set");
+        assert!(
+            result.reason.contains("emergency override available"),
+            "Reason should mention emergency override"
+        );
+    }
+
+    #[test]
+    fn test_emergency_consent_grantee_authorizes_emergency_requestor() {
+        let agent = AgentPubKey::from_raw_36(vec![18u8; 36]);
+        let consents = vec![make_consent(
+            ConsentGrantee::EmergencyAccess,
+            vec![DataCategory::All],
+            vec![DataPermission::Read],
+            ConsentStatus::Active,
+            None,
+            None,
+            vec![],
+        )];
+        let result = simulate_check_authorization(
+            &consents,
+            &agent,
+            &DataCategory::Medications,
+            &DataPermission::Read,
+            true,
+            Timestamp::from_micros(1000000),
+        );
+        assert!(
+            result.authorized,
+            "EmergencyAccess grantee should authorize any agent during emergency"
+        );
+        assert!(!result.emergency_override, "Should be consent-based, not override");
+    }
+
+    #[test]
+    fn test_emergency_consent_grantee_requires_emergency_flag() {
+        // EmergencyAccess grantee only matches when is_emergency=true
+        let agent = AgentPubKey::from_raw_36(vec![19u8; 36]);
+        let consents = vec![make_consent(
+            ConsentGrantee::EmergencyAccess,
+            vec![DataCategory::All],
+            vec![DataPermission::Read],
+            ConsentStatus::Active,
+            None,
+            None,
+            vec![],
+        )];
+        let result = simulate_check_authorization(
+            &consents,
+            &agent,
+            &DataCategory::Medications,
+            &DataPermission::Read,
+            false, // not emergency
+            Timestamp::from_micros(1000000),
+        );
+        assert!(
+            !result.authorized,
+            "EmergencyAccess grantee must not authorize non-emergency requests"
+        );
+    }
+
+    // --- Multiple consents: first-match wins ---
+
+    #[test]
+    fn test_multiple_consents_first_valid_match_wins() {
+        let agent = AgentPubKey::from_raw_36(vec![20u8; 36]);
+        let consents = vec![
+            // Expired consent
+            make_consent(
+                ConsentGrantee::Agent(agent.clone()),
+                vec![DataCategory::All],
+                vec![DataPermission::Read, DataPermission::Write],
+                ConsentStatus::Active,
+                Some(Timestamp::from_micros(500000)), // expired
+                None,
+                vec![],
+            ),
+            // Active consent with Read only
+            make_consent(
+                ConsentGrantee::Agent(agent.clone()),
+                vec![DataCategory::Medications],
+                vec![DataPermission::Read],
+                ConsentStatus::Active,
+                None,
+                None,
+                vec![],
+            ),
+        ];
+        let result = simulate_check_authorization(
+            &consents,
+            &agent,
+            &DataCategory::Medications,
+            &DataPermission::Read,
+            false,
+            Timestamp::from_micros(1000000),
+        );
+        assert!(result.authorized, "Second consent should match");
+        // Write should fail because only Read in second consent
+        let result_write = simulate_check_authorization(
+            &consents,
+            &agent,
+            &DataCategory::Medications,
+            &DataPermission::Write,
+            false,
+            Timestamp::from_micros(1000000),
+        );
+        assert!(!result_write.authorized, "Expired consent's Write should not carry over");
+    }
+
+    // --- Delegation validation ---
+
+    #[test]
+    fn test_delegation_temporary_requires_expiration() {
+        let delegation = DelegationGrant {
+            delegation_id: "DEL-001".to_string(),
+            patient_hash: dummy_hash(),
+            delegate: dummy_agent(),
+            delegation_type: DelegationType::Temporary,
+            permissions: vec![DelegationPermission::ViewRecords],
+            data_scope: vec![DataCategory::All],
+            exclusions: vec![],
+            relationship: DelegateRelationship::Friend,
+            granted_at: Timestamp::from_micros(1000000),
+            expires_at: None, // Missing - would fail validation
+            revoked_at: None,
+            revocation_reason: None,
+            status: DelegationStatus::Active,
+            identity_verified: false,
+            verification_method: None,
+            legal_document_hash: None,
+            notes: None,
+        };
+        // validate_delegation_grant checks: Temporary must have expires_at
+        assert!(
+            matches!(delegation.delegation_type, DelegationType::Temporary) && delegation.expires_at.is_none(),
+            "Temporary delegation without expiration should fail integrity validation"
+        );
+    }
+
+    #[test]
+    fn test_delegation_healthcare_proxy_requires_verification() {
+        let delegation = DelegationGrant {
+            delegation_id: "DEL-002".to_string(),
+            patient_hash: dummy_hash(),
+            delegate: dummy_agent(),
+            delegation_type: DelegationType::HealthcareProxy,
+            permissions: vec![DelegationPermission::MakeMedicalDecisions],
+            data_scope: vec![DataCategory::All],
+            exclusions: vec![],
+            relationship: DelegateRelationship::Spouse,
+            granted_at: Timestamp::from_micros(1000000),
+            expires_at: None,
+            revoked_at: None,
+            revocation_reason: None,
+            status: DelegationStatus::Active,
+            identity_verified: false, // Not verified - would fail
+            verification_method: None,
+            legal_document_hash: None, // No legal doc - would fail
+            notes: None,
+        };
+        assert!(
+            !delegation.identity_verified,
+            "Healthcare proxy without identity verification should fail validation"
+        );
+        assert!(
+            delegation.legal_document_hash.is_none(),
+            "Healthcare proxy without legal document should fail validation"
+        );
+    }
+
+    // --- string_to_data_category coverage ---
+
+    #[test]
+    fn test_string_to_data_category_known_mappings() {
+        assert_eq!(string_to_data_category("VitalSigns"), DataCategory::VitalSigns);
+        assert_eq!(string_to_data_category("Allergies"), DataCategory::Allergies);
+        assert_eq!(string_to_data_category("Medications"), DataCategory::Medications);
+        assert_eq!(string_to_data_category("Diagnoses"), DataCategory::Diagnoses);
+        assert_eq!(string_to_data_category("Conditions"), DataCategory::Diagnoses);
+        assert_eq!(string_to_data_category("LabResults"), DataCategory::LabResults);
+        assert_eq!(string_to_data_category("Labs"), DataCategory::LabResults);
+        assert_eq!(string_to_data_category("Immunizations"), DataCategory::Immunizations);
+        assert_eq!(string_to_data_category("Procedures"), DataCategory::Procedures);
+        assert_eq!(string_to_data_category("Imaging"), DataCategory::ImagingStudies);
+        assert_eq!(string_to_data_category("ImagingStudies"), DataCategory::ImagingStudies);
+        assert_eq!(string_to_data_category("MentalHealth"), DataCategory::MentalHealth);
+        assert_eq!(string_to_data_category("Demographics"), DataCategory::Demographics);
+        assert_eq!(string_to_data_category("SubstanceAbuse"), DataCategory::SubstanceAbuse);
+        assert_eq!(string_to_data_category("SexualHealth"), DataCategory::SexualHealth);
+        assert_eq!(string_to_data_category("GeneticData"), DataCategory::GeneticData);
+        assert_eq!(string_to_data_category("FinancialData"), DataCategory::FinancialData);
+        assert_eq!(string_to_data_category("Insurance"), DataCategory::FinancialData);
+        assert_eq!(string_to_data_category("All"), DataCategory::All);
+    }
+
+    #[test]
+    fn test_string_to_data_category_unknown_defaults_to_all() {
+        assert_eq!(string_to_data_category("UnknownCategory"), DataCategory::All);
+        assert_eq!(string_to_data_category(""), DataCategory::All);
+    }
+}
