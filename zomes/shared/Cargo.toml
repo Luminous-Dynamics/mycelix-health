@@ -2,6 +2,7 @@
 name = "mycelix-health-shared"
 version = "0.1.0"
 edition = "2021"
+license.workspace = true
 description = "Shared utilities for Mycelix-Health zomes including access control, audit logging, and formal differential privacy"
 
 [lib]

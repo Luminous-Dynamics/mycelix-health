@@ -2,6 +2,7 @@
 name = "health_bridge"
 version = "0.1.0"
 edition = "2021"
+license.workspace = true
 description = "Mycelix bridge for cross-hApp health data federation coordinator zome"
 
 [lib]

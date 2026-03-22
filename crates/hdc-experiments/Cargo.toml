@@ -3,7 +3,7 @@ name = "hdc-experiments"
 version = "0.1.0"
 edition = "2021"
 description = "HDC genomics experiments for scientific validation"
-license = "MIT"
+license = "AGPL-3.0-or-later"
 
 [[bin]]
 name = "hdc-experiments"

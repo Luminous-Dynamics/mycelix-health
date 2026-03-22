@@ -43,6 +43,11 @@ members = [
 # Tests are separate - run with: cargo test -p mycelix-health-tests
 exclude = ["tests"]
 
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+license = "AGPL-3.0-or-later"
+
 [workspace.dependencies]
 # Holochain 0.7 compatible
 hdi = "0.7.0"

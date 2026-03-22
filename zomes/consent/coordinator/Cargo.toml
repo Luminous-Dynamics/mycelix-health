@@ -2,6 +2,7 @@
 name = "consent"
 version = "0.1.0"
 edition = "2021"
+license.workspace = true
 description = "Patient consent and data access authorization coordinator zome"
 
 [lib]

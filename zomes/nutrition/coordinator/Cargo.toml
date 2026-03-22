@@ -2,6 +2,7 @@
 name = "nutrition"
 version = "0.1.0"
 edition = "2021"
+license.workspace = true
 description = "Nutrition Coordinator Zome - API for nutrition tracking and dietary restrictions"
 
 [lib]

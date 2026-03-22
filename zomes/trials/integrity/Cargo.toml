@@ -2,6 +2,7 @@
 name = "trials_integrity"
 version = "0.1.0"
 edition = "2021"
+license.workspace = true
 description = "Clinical trials and research study management integrity zome"
 
 [lib]

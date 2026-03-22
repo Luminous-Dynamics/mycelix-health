@@ -2,6 +2,7 @@
 name = "cds"
 version = "0.1.0"
 edition = "2021"
+license.workspace = true
 description = "Clinical Decision Support coordinator zome - drug interactions, alerts, guidelines"
 
 [lib]

@@ -2,6 +2,7 @@
 name = "insurance"
 version = "0.1.0"
 edition = "2021"
+license.workspace = true
 description = "Insurance claims and coverage verification coordinator zome"
 
 [lib]

@@ -2,6 +2,7 @@
 name = "provider"
 version = "0.1.0"
 edition = "2021"
+license.workspace = true
 description = "Healthcare provider credentials and licensing coordinator zome"
 
 [lib]
