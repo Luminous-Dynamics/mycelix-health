@@ -586,19 +586,6 @@ pub enum CareTeamStatus {
 // ENCRYPTED HEALTH ENTRIES — Patient-Controlled Encryption
 // ============================================================================
 
-/// Category of health data for consent enforcement.
-/// 42 CFR Part 2 requires substance abuse records to have stricter controls.
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
-pub enum HealthDataCategory {
-    GeneralHealth,
-    MentalHealth,
-    SubstanceAbuse,
-    Psychotherapy,
-    Crisis,
-    Insurance,
-    Demographics,
-}
-
 /// An encrypted health entry stored on the DHT.
 ///
 /// Encryption happens CLIENT-SIDE using the patient's ML-KEM-768 public key.
@@ -622,7 +609,7 @@ pub struct EncryptedHealthEntry {
     /// Patient whose key was used for encryption
     pub patient_hash: ActionHash,
     /// Data category for consent enforcement
-    pub data_category: HealthDataCategory,
+    pub data_category: DataCategory,
     /// Key version (for key rotation support)
     pub key_version: u32,
     /// Timestamp
@@ -666,7 +653,7 @@ pub struct HealthDecryptionAudit {
     /// Hash of the EncryptedHealthEntry that was accessed
     pub entry_hash: ActionHash,
     /// Data category (for Part 2 tracking)
-    pub data_category: HealthDataCategory,
+    pub data_category: DataCategory,
     /// Hash of the consent that authorized this access
     pub consent_hash: Option<ActionHash>,
     /// Whether 42 CFR Part 2 consent was required and checked

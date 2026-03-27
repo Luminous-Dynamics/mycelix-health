@@ -1,4 +1,6 @@
-//! Consent Coordinator Zome
+// Copyright (C) 2024-2026 Tristan Stoltz / Luminous Dynamics
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// Commercial licensing: see COMMERCIAL_LICENSE.md at repository root//! Consent Coordinator Zome
 //! 
 //! Provides extern functions for consent management,
 //! access control, and audit logging.
@@ -1763,6 +1765,329 @@ pub fn get_zk_proof_audit_logs(patient_hash: ActionHash) -> ExternResult<Vec<Rec
     }
 
     Ok(zk_logs)
+}
+
+// ============================================================================
+// C.2: PATIENT KEY MANAGEMENT — Post-Quantum Health Encryption Keys
+// ============================================================================
+
+/// Input for creating a health encryption key bundle.
+#[derive(Serialize, Deserialize, Debug)]
+pub struct CreateHealthKeyBundleInput {
+    /// ML-KEM-768 public key (generated client-side, never stored on DHT)
+    pub kem_public_key: Vec<u8>,
+}
+
+/// Create a health encryption key bundle for the calling patient.
+///
+/// The ML-KEM-768 private key is held CLIENT-SIDE only. This function
+/// stores the public key on DHT so providers can encrypt health entries
+/// to this patient. Returns the record for the new key bundle.
+#[hdk_extern]
+pub fn create_health_key_bundle(input: CreateHealthKeyBundleInput) -> ExternResult<Record> {
+    let caller = agent_info()?.agent_initial_pubkey;
+    let patient_did = format!("did:mycelix:{}", caller);
+    let patient_anchor = anchor_hash(&format!("patient_keys:{}", patient_did))?;
+
+    // Get current key version (0 if first key)
+    let existing_links = get_links(
+        LinkQuery::try_new(patient_anchor.clone(), LinkTypes::PatientToKeyBundles)?,
+        GetStrategy::default(),
+    )?;
+    let key_version = existing_links.len() as u32;
+
+    // Deactivate previous active key if any
+    let active_anchor = anchor_hash("active_health_keys")?;
+    let active_links = get_links(
+        LinkQuery::try_new(active_anchor.clone(), LinkTypes::ActiveKeyBundle)?,
+        GetStrategy::default(),
+    )?;
+    for link in &active_links {
+        if let Some(hash) = link.target.clone().into_action_hash() {
+            if let Some(record) = get(hash.clone(), GetOptions::default())? {
+                if let Some(mut bundle) = record
+                    .entry()
+                    .to_app_option::<HealthKeyBundle>()
+                    .ok()
+                    .flatten()
+                {
+                    if bundle.patient_did == patient_did && bundle.active {
+                        bundle.active = false;
+                        update_entry(hash, &bundle)?;
+                    }
+                }
+            }
+        }
+    }
+
+    let bundle = HealthKeyBundle {
+        patient_did,
+        kem_public_key: input.kem_public_key,
+        key_version,
+        active: true,
+        created_at: sys_time()?,
+        previous_key_hash: active_links
+            .last()
+            .and_then(|l| l.target.clone().into_action_hash()),
+    };
+
+    let action_hash = create_entry(&EntryTypes::HealthKeyBundle(bundle))?;
+
+    // Link patient → key bundle
+    create_link(
+        patient_anchor,
+        action_hash.clone(),
+        LinkTypes::PatientToKeyBundles,
+        (),
+    )?;
+
+    // Link as active key
+    create_link(
+        active_anchor,
+        action_hash.clone(),
+        LinkTypes::ActiveKeyBundle,
+        (),
+    )?;
+
+    get(action_hash, GetOptions::default())?
+        .ok_or(wasm_error!(WasmErrorInner::Guest("Could not get key bundle".into())))
+}
+
+/// Get a patient's active KEM public key for encrypting health entries.
+#[hdk_extern]
+pub fn get_patient_kem_key(patient_did: String) -> ExternResult<Vec<u8>> {
+    let active_anchor = anchor_hash("active_health_keys")?;
+    let links = get_links(
+        LinkQuery::try_new(active_anchor, LinkTypes::ActiveKeyBundle)?,
+        GetStrategy::default(),
+    )?;
+
+    for link in links {
+        if let Some(hash) = link.target.into_action_hash() {
+            if let Some(record) = get(hash, GetOptions::default())? {
+                if let Some(bundle) = record
+                    .entry()
+                    .to_app_option::<HealthKeyBundle>()
+                    .ok()
+                    .flatten()
+                {
+                    if bundle.patient_did == patient_did && bundle.active {
+                        return Ok(bundle.kem_public_key);
+                    }
+                }
+            }
+        }
+    }
+
+    Err(wasm_error!(WasmErrorInner::Guest(format!(
+        "No active health key bundle found for {}",
+        patient_did
+    ))))
+}
+
+// ============================================================================
+// C.3: ENCRYPTED HEALTH ENTRY STORAGE + MANDATORY AUDIT
+// ============================================================================
+
+/// Input for storing a pre-encrypted health entry.
+#[derive(Serialize, Deserialize, Debug)]
+pub struct StoreEncryptedHealthInput {
+    /// Original entry type (e.g., "MentalHealthScreening")
+    pub entry_type: String,
+    /// XChaCha20-Poly1305 ciphertext
+    pub encrypted_payload: Vec<u8>,
+    /// 24-byte nonce
+    pub nonce: Vec<u8>,
+    /// ML-KEM-768 encapsulated shared secret
+    pub kem_ciphertext: Vec<u8>,
+    /// Patient this entry belongs to
+    pub patient_hash: ActionHash,
+    /// Data category for consent enforcement
+    pub data_category: DataCategory,
+    /// Key version used for encryption
+    pub key_version: u32,
+}
+
+/// Store a pre-encrypted health entry and link to patient.
+///
+/// Encryption happens CLIENT-SIDE using the patient's ML-KEM-768 public key.
+/// The zome only stores ciphertext — it never sees plaintext PHI.
+#[hdk_extern]
+pub fn store_encrypted_health_entry(input: StoreEncryptedHealthInput) -> ExternResult<Record> {
+    let entry = EncryptedHealthEntry {
+        entry_type: input.entry_type,
+        encrypted_payload: input.encrypted_payload,
+        nonce: input.nonce,
+        kem_ciphertext: input.kem_ciphertext,
+        patient_hash: input.patient_hash.clone(),
+        data_category: input.data_category,
+        key_version: input.key_version,
+        created_at: sys_time()?,
+    };
+
+    let action_hash = create_entry(&EntryTypes::EncryptedHealthEntry(entry))?;
+
+    // Link patient → encrypted entry
+    create_link(
+        input.patient_hash,
+        action_hash.clone(),
+        LinkTypes::PatientToEncryptedEntries,
+        (),
+    )?;
+
+    get(action_hash, GetOptions::default())?
+        .ok_or(wasm_error!(WasmErrorInner::Guest("Could not get encrypted entry".into())))
+}
+
+/// Retrieve an encrypted health entry with MANDATORY audit logging.
+///
+/// Every retrieval creates an immutable `HealthDecryptionAudit` entry.
+/// For SubstanceAbuse data, also checks 42 CFR Part 2 consent.
+#[hdk_extern]
+pub fn get_encrypted_health_entry(input: GetEncryptedHealthInput) -> ExternResult<Record> {
+    let record = get(input.entry_hash.clone(), GetOptions::default())?
+        .ok_or(wasm_error!(WasmErrorInner::Guest("Encrypted entry not found".into())))?;
+
+    let entry: EncryptedHealthEntry = record
+        .entry()
+        .to_app_option()
+        .map_err(|e| wasm_error!(WasmErrorInner::Guest(format!("Deserialize error: {:?}", e))))?
+        .ok_or(wasm_error!(WasmErrorInner::Guest("Invalid entry".into())))?;
+
+    // 42 CFR Part 2 gate: SubstanceAbuse requires specific consent
+    let part2_required = entry.data_category == DataCategory::SubstanceAbuse;
+    let part2_consent_hash = if part2_required {
+        check_part2_authorization(entry.patient_hash.clone(), &input.purpose)?
+    } else {
+        None
+    };
+
+    // MANDATORY audit: log every decryption request
+    let caller = agent_info()?.agent_initial_pubkey;
+    let audit = HealthDecryptionAudit {
+        log_id: format!("audit:{}:{}", input.entry_hash, sys_time()?.as_micros()),
+        patient_hash: entry.patient_hash.clone(),
+        decryptor: caller,
+        entry_hash: input.entry_hash.clone(),
+        data_category: entry.data_category.clone(),
+        consent_hash: input.consent_hash.clone(),
+        part2_consent_required: part2_required,
+        part2_consent_hash,
+        purpose: input.purpose,
+        decrypted_at: sys_time()?,
+    };
+
+    let audit_hash = create_entry(&EntryTypes::HealthDecryptionAudit(audit))?;
+
+    // Link entry → audit trail
+    create_link(
+        input.entry_hash,
+        audit_hash,
+        LinkTypes::EntryToDecryptionAudits,
+        (),
+    )?;
+
+    Ok(record)
+}
+
+/// Input for retrieving an encrypted health entry.
+#[derive(Serialize, Deserialize, Debug)]
+pub struct GetEncryptedHealthInput {
+    pub entry_hash: ActionHash,
+    pub purpose: String,
+    pub consent_hash: Option<ActionHash>,
+}
+
+// ============================================================================
+// C.4: 42 CFR PART 2 ENFORCEMENT GATE
+// ============================================================================
+
+/// Check 42 CFR Part 2 authorization for substance abuse data.
+///
+/// Returns the consent hash if authorized, or an error if not.
+/// Emergency access is allowed but creates a mandatory audit trail.
+fn check_part2_authorization(
+    patient_hash: ActionHash,
+    purpose: &str,
+) -> ExternResult<Option<ActionHash>> {
+    // Check for active Part 2 consent
+    let consent_links = get_links(
+        LinkQuery::try_new(patient_hash.clone(), LinkTypes::PatientToConsents)?,
+        GetStrategy::default(),
+    )?;
+
+    for link in &consent_links {
+        if let Some(hash) = link.target.clone().into_action_hash() {
+            if let Some(record) = get(hash.clone(), GetOptions::default())? {
+                if let Some(consent) = record
+                    .entry()
+                    .to_app_option::<Consent>()
+                    .ok()
+                    .flatten()
+                {
+                    // Check if this consent covers substance abuse data
+                    if matches!(consent.status, ConsentStatus::Active)
+                        && consent.scope.data_categories.iter().any(|cat| {
+                            matches!(cat, DataCategory::SubstanceAbuse | DataCategory::All)
+                        })
+                    {
+                        return Ok(Some(hash));
+                    }
+                }
+            }
+        }
+    }
+
+    // Emergency override: medical emergencies can access without consent
+    // but MUST create an audit trail
+    if purpose.contains("emergency") || purpose.contains("crisis") {
+        // Log emergency access
+        let caller = agent_info()?.agent_initial_pubkey;
+        let emergency = EmergencyAccess {
+            emergency_id: format!("part2-emergency:{}", sys_time()?.as_micros()),
+            patient_hash: patient_hash.clone(),
+            accessor: caller,
+            reason: format!("42 CFR Part 2 emergency override: {}", purpose),
+            clinical_justification: purpose.to_string(),
+            accessed_at: sys_time()?,
+            access_duration_minutes: 60,
+            approved_by: None,
+            data_accessed: vec![DataCategory::SubstanceAbuse],
+            audited: false,
+            audited_by: None,
+            audited_at: None,
+            audit_findings: None,
+        };
+        create_entry(&EntryTypes::EmergencyAccess(emergency))?;
+
+        return Ok(None); // Allowed without specific consent hash
+    }
+
+    Err(wasm_error!(WasmErrorInner::Guest(
+        "42 CFR Part 2: No active consent for substance abuse data access. \
+         Patient must provide explicit written consent before substance use \
+         disorder records can be disclosed."
+            .into()
+    )))
+}
+
+/// Get the audit trail for a specific encrypted health entry.
+#[hdk_extern]
+pub fn get_decryption_audit_trail(entry_hash: ActionHash) -> ExternResult<Vec<Record>> {
+    let links = get_links(
+        LinkQuery::try_new(entry_hash, LinkTypes::EntryToDecryptionAudits)?,
+        GetStrategy::default(),
+    )?;
+
+    let mut records = Vec::new();
+    for link in links {
+        if let Some(hash) = link.target.into_action_hash() {
+            if let Some(record) = get(hash, GetOptions::default())? {
+                records.push(record);
+            }
+        }
+    }
+    Ok(records)
 }
 
 #[cfg(test)]
