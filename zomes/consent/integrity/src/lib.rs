@@ -1,4 +1,6 @@
-//! Patient Consent and Data Access Authorization Integrity Zome
+// Copyright (C) 2024-2026 Tristan Stoltz / Luminous Dynamics
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// Commercial licensing: see COMMERCIAL_LICENSE.md at repository root//! Patient Consent and Data Access Authorization Integrity Zome
 //! 
 //! Defines entry types for granular consent management, access control,
 //! and audit logging with HIPAA alignment.
@@ -580,6 +582,103 @@ pub enum CareTeamStatus {
     Expired,
 }
 
+// ============================================================================
+// ENCRYPTED HEALTH ENTRIES — Patient-Controlled Encryption
+// ============================================================================
+
+/// Category of health data for consent enforcement.
+/// 42 CFR Part 2 requires substance abuse records to have stricter controls.
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+pub enum HealthDataCategory {
+    GeneralHealth,
+    MentalHealth,
+    SubstanceAbuse,
+    Psychotherapy,
+    Crisis,
+    Insurance,
+    Demographics,
+}
+
+/// An encrypted health entry stored on the DHT.
+///
+/// Encryption happens CLIENT-SIDE using the patient's ML-KEM-768 public key.
+/// The zome stores only ciphertext — decryption requires the patient's private key.
+/// This follows the same pattern as mycelix-mail's PGP encryption.
+///
+/// ## 42 CFR Part 2 Compliance
+/// Entries with `data_category == SubstanceAbuse` require additional consent
+/// checks before the ciphertext is returned to any requester.
+#[hdk_entry_helper]
+#[derive(Clone)]
+pub struct EncryptedHealthEntry {
+    /// Original entry type name (e.g., "MentalHealthScreening", "TherapyNote")
+    pub entry_type: String,
+    /// XChaCha20-Poly1305 ciphertext of the serialized entry
+    pub encrypted_payload: Vec<u8>,
+    /// Random nonce used for encryption (24 bytes for XChaCha20)
+    pub nonce: Vec<u8>,
+    /// ML-KEM-768 encapsulated shared secret (for recipient decapsulation)
+    pub kem_ciphertext: Vec<u8>,
+    /// Patient whose key was used for encryption
+    pub patient_hash: ActionHash,
+    /// Data category for consent enforcement
+    pub data_category: HealthDataCategory,
+    /// Key version (for key rotation support)
+    pub key_version: u32,
+    /// Timestamp
+    pub created_at: Timestamp,
+}
+
+/// Patient health encryption key bundle.
+///
+/// Stores the patient's ML-KEM-768 public key for encrypting health entries.
+/// The private key is held client-side only — never stored on DHT.
+#[hdk_entry_helper]
+#[derive(Clone)]
+pub struct HealthKeyBundle {
+    /// Patient DID
+    pub patient_did: String,
+    /// ML-KEM-768 public key (for encrypting health entries to this patient)
+    pub kem_public_key: Vec<u8>,
+    /// Key version (monotonically increasing)
+    pub key_version: u32,
+    /// Whether this key bundle is the active one
+    pub active: bool,
+    /// When this key was created
+    pub created_at: Timestamp,
+    /// Hash of the previous key bundle (for key chain verification)
+    pub previous_key_hash: Option<ActionHash>,
+}
+
+/// Audit entry for health data decryption events.
+///
+/// Every decryption request produces an immutable audit record.
+/// Required for HIPAA and 42 CFR Part 2 compliance.
+#[hdk_entry_helper]
+#[derive(Clone)]
+pub struct HealthDecryptionAudit {
+    /// Unique audit log ID
+    pub log_id: String,
+    /// Patient whose data was accessed
+    pub patient_hash: ActionHash,
+    /// Agent who performed the decryption
+    pub decryptor: AgentPubKey,
+    /// Hash of the EncryptedHealthEntry that was accessed
+    pub entry_hash: ActionHash,
+    /// Data category (for Part 2 tracking)
+    pub data_category: HealthDataCategory,
+    /// Hash of the consent that authorized this access
+    pub consent_hash: Option<ActionHash>,
+    /// Whether 42 CFR Part 2 consent was required and checked
+    pub part2_consent_required: bool,
+    /// Hash of the Part 2 consent if applicable
+    pub part2_consent_hash: Option<ActionHash>,
+    /// Purpose of the access (e.g., "treatment", "billing", "research")
+    pub purpose: String,
+    /// Timestamp of the decryption
+    pub decrypted_at: Timestamp,
+}
+
 #[hdk_entry_types]
 #[unit_enum(UnitEntryTypes)]
 pub enum EntryTypes {
@@ -597,6 +696,10 @@ pub enum EntryTypes {
     // Care Team Templates
     CareTeamTemplate(CareTeamTemplate),
     CareTeam(CareTeam),
+    // Encrypted Health Entries
+    EncryptedHealthEntry(EncryptedHealthEntry),
+    HealthKeyBundle(HealthKeyBundle),
+    HealthDecryptionAudit(HealthDecryptionAudit),
 }
 
 #[hdk_link_types]
@@ -626,6 +729,11 @@ pub enum LinkTypes {
     TemplateToTeams,
     SystemTemplates,
     ActiveCareTeams,
+    // Encrypted health entry links
+    PatientToEncryptedEntries,
+    PatientToKeyBundles,
+    EntryToDecryptionAudits,
+    ActiveKeyBundle,
 }
 
 #[hdk_extern]
@@ -646,6 +754,33 @@ pub fn validate(op: Op) -> ExternResult<ValidateCallbackResult> {
                     EntryTypes::NotificationDigest(d) => validate_notification_digest(&d, author),
                     EntryTypes::CareTeamTemplate(t) => validate_care_team_template(&t),
                     EntryTypes::CareTeam(t) => validate_care_team(&t, author),
+                    // Encrypted health entries — validated by structure, not content
+                    EntryTypes::EncryptedHealthEntry(e) => {
+                        if e.encrypted_payload.is_empty() {
+                            Ok(ValidateCallbackResult::Invalid("Empty encrypted payload".into()))
+                        } else if e.nonce.len() != 24 {
+                            Ok(ValidateCallbackResult::Invalid("Nonce must be 24 bytes (XChaCha20)".into()))
+                        } else if e.kem_ciphertext.is_empty() {
+                            Ok(ValidateCallbackResult::Invalid("Empty KEM ciphertext".into()))
+                        } else if e.entry_type.is_empty() || e.entry_type.len() > 128 {
+                            Ok(ValidateCallbackResult::Invalid("Entry type must be 1-128 chars".into()))
+                        } else {
+                            Ok(ValidateCallbackResult::Valid)
+                        }
+                    }
+                    EntryTypes::HealthKeyBundle(k) => {
+                        if k.kem_public_key.is_empty() {
+                            Ok(ValidateCallbackResult::Invalid("Empty KEM public key".into()))
+                        } else if k.patient_did.is_empty() || !k.patient_did.starts_with("did:") {
+                            Ok(ValidateCallbackResult::Invalid("Patient DID must be a valid DID".into()))
+                        } else {
+                            Ok(ValidateCallbackResult::Valid)
+                        }
+                    }
+                    EntryTypes::HealthDecryptionAudit(_) => {
+                        // Audit entries are always valid (append-only log)
+                        Ok(ValidateCallbackResult::Valid)
+                    }
                 }
             },
             OpEntry::UpdateEntry { action, app_entry, .. } => {
@@ -662,6 +797,11 @@ pub fn validate(op: Op) -> ExternResult<ValidateCallbackResult> {
                     EntryTypes::NotificationDigest(d) => validate_notification_digest(&d, author),
                     EntryTypes::CareTeamTemplate(t) => validate_care_team_template(&t),
                     EntryTypes::CareTeam(t) => validate_care_team(&t, author),
+                    EntryTypes::EncryptedHealthEntry(_) => Ok(ValidateCallbackResult::Valid),
+                    EntryTypes::HealthKeyBundle(_) => Ok(ValidateCallbackResult::Valid),
+                    EntryTypes::HealthDecryptionAudit(_) => Ok(ValidateCallbackResult::Invalid(
+                        "Decryption audit entries are append-only and cannot be updated".into(),
+                    )),
                 }
             }
             _ => Ok(ValidateCallbackResult::Valid),
