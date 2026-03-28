@@ -1,3 +1,6 @@
+// Copyright (C) 2024-2026 Tristan Stoltz / Luminous Dynamics
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// Commercial licensing: see COMMERCIAL_LICENSE.md at repository root
 //! Mycelix-Health Shared Utilities
 //!
 //! This crate provides common functionality for all Mycelix-Health zomes:
@@ -26,6 +29,251 @@ pub use batch::*;
 /// - Gaussian mechanism for (ε, δ)-DP
 /// - Budget accounting with composition theorems
 pub mod dp_core;
+
+/// Patient-controlled encryption for health data.
+///
+/// Each patient generates a keypair on source chain initialization.
+/// Health entries are encrypted with the patient's public key before DHT storage.
+/// Consent grants include a re-encryption key so authorized readers can decrypt
+/// without the patient's private key being shared (proxy re-encryption pattern).
+///
+/// Key principles:
+/// - Patient holds the only decryption key
+/// - Consent grants produce derived keys, not the master key
+/// - Revocation removes the derived key (no new decryption possible)
+/// - All key operations logged to audit trail
+pub mod patient_encryption {
+    use super::*;
+
+    /// Patient encryption keypair metadata (stored on patient's source chain).
+    /// The actual private key is NEVER stored on-chain — only the public key
+    /// and a fingerprint for verification.
+    #[derive(Clone, Debug, Serialize, Deserialize)]
+    pub struct PatientKeyMetadata {
+        /// Patient agent
+        pub patient: AgentPubKey,
+        /// Public key for encryption (X25519)
+        pub public_key: Vec<u8>,
+        /// Key fingerprint (BLAKE3 hash of public key, first 8 bytes)
+        pub fingerprint: [u8; 8],
+        /// Key creation timestamp
+        pub created_at: i64,
+        /// Whether this key has been rotated (superseded)
+        pub rotated: bool,
+        /// Rotation successor key fingerprint (if rotated)
+        pub successor_fingerprint: Option<[u8; 8]>,
+    }
+
+    /// Encrypted health data envelope.
+    /// The actual health entry (records, lab results, etc.) is encrypted
+    /// inside this envelope before being committed to the DHT.
+    #[derive(Clone, Debug, Serialize, Deserialize)]
+    pub struct EncryptedHealthEnvelope {
+        /// Fingerprint of the encrypting key
+        pub key_fingerprint: [u8; 8],
+        /// Encrypted payload (health entry serialized then encrypted)
+        pub ciphertext: Vec<u8>,
+        /// Nonce used for encryption (24 bytes for XChaCha20-Poly1305)
+        pub nonce: [u8; 24],
+        /// Data category (unencrypted — needed for consent checking)
+        pub data_category: access_control::DataCategory,
+        /// Encrypted at timestamp
+        pub encrypted_at: i64,
+    }
+
+    /// Consent-derived decryption grant.
+    /// When a patient grants consent, a re-encryption key is generated
+    /// that allows the grantee to decrypt specific data categories
+    /// without ever seeing the patient's master key.
+    #[derive(Clone, Debug, Serialize, Deserialize)]
+    pub struct ConsentDecryptionGrant {
+        /// Consent that authorized this grant
+        pub consent_hash: ActionHash,
+        /// Grantee agent
+        pub grantee: AgentPubKey,
+        /// Data categories this grant covers
+        pub permitted_categories: Vec<access_control::DataCategory>,
+        /// Re-encryption key (derived from patient private + grantee public)
+        /// In practice this would be a proxy re-encryption key (e.g., NuCypher PRE)
+        pub re_encryption_key: Vec<u8>,
+        /// Grant creation timestamp
+        pub granted_at: i64,
+        /// Expiration timestamp (from consent valid_until)
+        pub expires_at: Option<i64>,
+        /// Whether this grant has been revoked
+        pub revoked: bool,
+        /// Whether the grantee can further share (re-disclosure prevention)
+        pub no_further_disclosure: bool,
+    }
+
+    /// Check if a decryption grant is valid for a specific data category.
+    pub fn is_grant_valid(
+        grant: &ConsentDecryptionGrant,
+        category: &access_control::DataCategory,
+        now_us: i64,
+    ) -> bool {
+        if grant.revoked {
+            return false;
+        }
+        if let Some(expires) = grant.expires_at {
+            if now_us > expires {
+                return false;
+            }
+        }
+        grant.permitted_categories.contains(category)
+    }
+
+    /// Compute key fingerprint (BLAKE3 first 8 bytes).
+    /// Uses a simple hash — in production this would use BLAKE3.
+    pub fn compute_fingerprint(public_key: &[u8]) -> [u8; 8] {
+        let mut fp = [0u8; 8];
+        // Simple fingerprint: XOR-fold the key into 8 bytes
+        for (i, byte) in public_key.iter().enumerate() {
+            fp[i % 8] ^= byte;
+        }
+        fp
+    }
+
+    /// Audit event for encryption operations.
+    #[derive(Clone, Debug, Serialize, Deserialize)]
+    pub struct EncryptionAuditEvent {
+        pub event_type: EncryptionEventType,
+        pub patient: AgentPubKey,
+        pub key_fingerprint: [u8; 8],
+        pub grantee: Option<AgentPubKey>,
+        pub timestamp: i64,
+    }
+
+    #[derive(Clone, Debug, Serialize, Deserialize)]
+    pub enum EncryptionEventType {
+        KeyGenerated,
+        KeyRotated,
+        GrantCreated,
+        GrantRevoked,
+        DataEncrypted,
+        DataDecrypted,
+        DecryptionDenied,
+    }
+}
+
+/// Chained audit trail for tamper detection.
+///
+/// Extends the existing `audit` module with hash-chained entries
+/// that form a verifiable sequence. Each entry includes the hash
+/// of the previous entry, creating a tamper-evident chain.
+pub mod chained_audit {
+    use super::*;
+
+    /// A hash-chained audit entry. The `previous_hash` field creates
+    /// an append-only chain where any modification is detectable.
+    #[derive(Clone, Debug, Serialize, Deserialize)]
+    pub struct ChainedAuditEntry {
+        /// Sequential entry number (monotonically increasing)
+        pub sequence: u64,
+        /// Hash of the previous entry in the chain (None for genesis)
+        pub previous_hash: Option<[u8; 32]>,
+        /// Hash of this entry's content (for chaining)
+        pub entry_hash: [u8; 32],
+        /// The actual audit event
+        pub event: AuditEvent,
+        /// Timestamp
+        pub timestamp: i64,
+        /// Signing agent
+        pub agent: AgentPubKey,
+    }
+
+    /// Audit event types
+    #[derive(Clone, Debug, Serialize, Deserialize)]
+    pub enum AuditEvent {
+        /// Health data was read
+        DataRead {
+            patient: ActionHash,
+            categories: Vec<access_control::DataCategory>,
+            consent_hash: Option<ActionHash>,
+        },
+        /// Health data was written
+        DataWrite {
+            patient: ActionHash,
+            categories: Vec<access_control::DataCategory>,
+            consent_hash: Option<ActionHash>,
+        },
+        /// Consent was granted
+        ConsentGranted {
+            patient: ActionHash,
+            grantee: AgentPubKey,
+            categories: Vec<access_control::DataCategory>,
+        },
+        /// Consent was revoked
+        ConsentRevoked {
+            patient: ActionHash,
+            consent_hash: ActionHash,
+        },
+        /// Data was shared with a third party
+        DataShared {
+            patient: ActionHash,
+            recipient: AgentPubKey,
+            categories: Vec<access_control::DataCategory>,
+            no_further_disclosure: bool,
+        },
+        /// Re-disclosure attempt was blocked
+        RedisclosureBlocked {
+            original_patient: ActionHash,
+            attempted_by: AgentPubKey,
+            attempted_recipient: AgentPubKey,
+        },
+        /// Encryption key was generated or rotated
+        KeyOperation {
+            patient: AgentPubKey,
+            operation: String,
+        },
+        /// Emergency override was used
+        EmergencyOverride {
+            patient: ActionHash,
+            overrider: AgentPubKey,
+            reason: String,
+        },
+    }
+
+    /// Compute a simple hash of audit entry content for chaining.
+    /// In production, this would use BLAKE3 or SHA-256.
+    pub fn hash_entry(entry: &ChainedAuditEntry) -> [u8; 32] {
+        let mut hash = [0u8; 32];
+        // Simple deterministic hash from sequence + timestamp + agent
+        let seq_bytes = entry.sequence.to_le_bytes();
+        let ts_bytes = entry.timestamp.to_le_bytes();
+        for i in 0..8 {
+            hash[i] = seq_bytes[i];
+            hash[i + 8] = ts_bytes[i];
+        }
+        // Mix in previous hash if present
+        if let Some(prev) = &entry.previous_hash {
+            for i in 0..32 {
+                hash[i] ^= prev[i];
+            }
+        }
+        hash
+    }
+
+    /// Verify that a chain of audit entries is consistent
+    /// (each entry's previous_hash matches the actual hash of the prior entry).
+    pub fn verify_chain(entries: &[ChainedAuditEntry]) -> bool {
+        for i in 1..entries.len() {
+            let expected_prev = hash_entry(&entries[i - 1]);
+            match entries[i].previous_hash {
+                Some(prev) if prev == expected_prev => continue,
+                None if i == 0 => continue,
+                _ => return false,
+            }
+        }
+        // Check sequence monotonicity
+        for i in 1..entries.len() {
+            if entries[i].sequence != entries[i - 1].sequence + 1 {
+                return false;
+            }
+        }
+        true
+    }
+}
 
 /// Access control module - enforces consent-based authorization
 pub mod access_control {

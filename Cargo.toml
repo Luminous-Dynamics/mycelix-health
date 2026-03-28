@@ -36,7 +36,15 @@ members = [
     "crates/hdc-core",
     "crates/hdc-experiments",
 
-    # ── ARCHIVED: Tier 3 (22 zomes moved to _archive-2026-02-15/) ──
+    # ── Tier 3: Behavioral Health (restored 2026-03-26) ──
+    "zomes/mental_health/integrity",
+    "zomes/mental_health/coordinator",
+
+    # ── Tier 3: Data Dividends (restored 2026-03-28) ──
+    "zomes/dividends/integrity",
+    "zomes/dividends/coordinator",
+
+    # ── ARCHIVED: Tier 3 remainder (20 zomes in _archive-2026-02-15/) ──
     # See _archive-2026-02-15/README.md for details
 ]
 
