@@ -130,10 +130,10 @@ fn AlignmentDashboard(
                 <span class="stat-value">{encrypted_count}</span>
                 <span class="stat-label">"Encrypted Tissues"</span>
             </div>
-            <div class="stat-card metabolic">
+            <a href="/metabolism" class="stat-card metabolic stat-link">
                 <span class="stat-value">{yield_display}</span>
                 <span class="stat-label">"Metabolic Yield"</span>
-            </div>
+            </a>
         </section>
 
         // Timeline

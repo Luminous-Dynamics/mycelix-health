@@ -474,6 +474,16 @@ body {
     color: var(--amber);
 }
 
+a.stat-link {
+    text-decoration: none;
+    color: inherit;
+    cursor: pointer;
+}
+
+a.stat-link:hover {
+    border-color: var(--border-active);
+}
+
 /* ═══════════════════════════════════════════
    Consent Cards
    ═══════════════════════════════════════════ */
@@ -1258,8 +1268,17 @@ body {
         animation-duration: 0.01ms !important;
         transition-duration: 0.01ms !important;
     }
+    /* Replace animated canvas with static gradient — don't remove it */
     .homeostasis-bg {
-        display: none;
+        opacity: 0;
+    }
+    .portal-root::before {
+        content: "";
+        position: fixed;
+        inset: 0;
+        z-index: 0;
+        background: radial-gradient(ellipse at 50% 50%, #0A1416 0%, #040A0C 100%);
+        pointer-events: none;
     }
 }
 

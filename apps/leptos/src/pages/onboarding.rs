@@ -8,6 +8,7 @@
 //! 3. Seed phrase backup — write down 24 words, verify 4 of them
 
 use leptos::prelude::*;
+use crate::app::{AppState, VaultState};
 use crate::crypto::key_manager;
 
 #[derive(Clone, Copy, PartialEq)]
@@ -263,6 +264,10 @@ pub fn OnboardingPage() -> impl IntoView {
                                 match key_manager::store_wrapped_key(&key, &pass) {
                                     Ok(()) => {
                                         error_msg.set(None);
+                                        // Update global vault state to Unlocked
+                                        if let Some(app) = use_context::<AppState>() {
+                                            app.vault.set(VaultState::Unlocked);
+                                        }
                                         step.set(OnboardingStep::Complete);
                                     },
                                     Err(e) => {

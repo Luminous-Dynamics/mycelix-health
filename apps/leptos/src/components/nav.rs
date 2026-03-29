@@ -14,7 +14,7 @@ pub fn BottomNav() -> impl IntoView {
         ("/records", "Records", "Tissue"),
         ("/consent", "Consent", "Symbiosis"),
         ("/privacy", "Privacy", "Membrane"),
-        ("/metabolism", "Metabolism", "Yield"),
+        ("/settings", "Settings", "Config"),
     ];
 
     view! {
