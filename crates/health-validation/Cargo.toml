@@ -1,0 +1,12 @@
+[package]
+name = "health-validation"
+version = "0.1.0"
+edition = "2021"
+license = "AGPL-3.0-or-later"
+description = "Pure-Rust input validation for Mycelix Health — MRN, DID, confidence scores, instrument ranges"
+
+[dependencies]
+serde = { version = "1.0", features = ["derive"] }
+
+[dev-dependencies]
+proptest = "1"

@@ -35,6 +35,7 @@ members = [
     "zomes/nutrition/coordinator",
     "crates/hdc-core",
     "crates/hdc-experiments",
+    "crates/health-validation",
 
     # ── Tier 3: Behavioral Health (restored 2026-03-26) ──
     "zomes/mental_health/integrity",
