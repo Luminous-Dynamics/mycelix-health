@@ -14,6 +14,7 @@ hdi = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 sha2 = "0.10"
+hmac = "0.12"
 # WASM-compatible getrandom 0.3 (HDK provides __getrandom_v03_custom backend)
 getrandom = "0.3"
 # Real AEAD encryption for patient data (pure Rust, WASM-compatible)

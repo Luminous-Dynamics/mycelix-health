@@ -195,35 +195,33 @@ pub mod patient_encryption {
             .map_err(|_| "Decryption failed: authentication tag mismatch (data tampered or wrong key)".to_string())
     }
 
-    /// Derive a 32-byte symmetric key using HKDF-SHA256.
+    /// Derive a 32-byte symmetric key using HKDF-SHA256 (RFC 5869).
     ///
     /// The `ikm` (input key material) MUST contain secret material:
     /// - For patient encrypting own data: the patient's private key bytes
     /// - For consent-granted access: the shared secret from X25519 DH
-    ///   (patient_private × grantee_public, or grantee_private × patient_public)
     /// - For the e2e demo: any 32+ byte secret
     ///
-    /// NEVER pass a public key as `ikm` — that would make the derived key
-    /// computable by anyone who knows the public key, defeating encryption.
-    ///
-    /// Uses HKDF-SHA256 (RFC 5869) with a domain-separation salt.
+    /// NEVER pass a public key as `ikm` — that defeats encryption.
     pub fn derive_key(ikm: &[u8], context: &[u8]) -> [u8; 32] {
-        use sha2::{Sha256, Digest};
+        use hmac::{Hmac, Mac};
+        use sha2::Sha256;
 
-        // HKDF-Extract: PRK = HMAC-SHA256(salt, IKM)
-        // Using a fixed domain-separation salt
+        type HmacSha256 = Hmac<Sha256>;
+
+        // HKDF-Extract (RFC 5869 §2.2): PRK = HMAC-Hash(salt, IKM)
         let salt = b"mycelix-health-v1-patient-encryption";
-        let mut extract_input = Vec::with_capacity(salt.len() + ikm.len());
-        extract_input.extend_from_slice(salt);
-        extract_input.extend_from_slice(ikm);
-        let prk = Sha256::digest(&extract_input);
+        let mut mac = HmacSha256::new_from_slice(salt)
+            .expect("HMAC accepts any key length");
+        mac.update(ikm);
+        let prk = mac.finalize().into_bytes();
 
-        // HKDF-Expand: OKM = HMAC-SHA256(PRK, context || 0x01)
-        let mut expand_input = Vec::with_capacity(prk.len() + context.len() + 1);
-        expand_input.extend_from_slice(&prk);
-        expand_input.extend_from_slice(context);
-        expand_input.push(0x01);
-        let okm = Sha256::digest(&expand_input);
+        // HKDF-Expand (RFC 5869 §2.3): OKM = HMAC-Hash(PRK, info || 0x01)
+        let mut mac = HmacSha256::new_from_slice(&prk)
+            .expect("HMAC accepts any key length");
+        mac.update(context);
+        mac.update(&[0x01]);
+        let okm = mac.finalize().into_bytes();
 
         let mut key = [0u8; 32];
         key.copy_from_slice(&okm);
@@ -1060,38 +1058,54 @@ pub mod audit {
     }
 
     /// Query the last chained audit entry for a patient from the consent zome.
-    /// Returns (sequence, entry_hash) if found.
+    /// Returns (sequence, content_hash) if found.
+    ///
+    /// Unlike the previous version, this function:
+    /// - Hashes the CONTENT of the last entry (not just the action hash)
+    /// - Returns Err on network failure (not silent restart)
+    /// - Uses entry content for the chain link (tamper-detectable)
     fn get_last_chain_entry(patient_hash: &ActionHash) -> ExternResult<Option<(u64, [u8; 32])>> {
         use sha2::{Sha256, Digest};
 
-        // Query consent zome for the patient's audit logs
         let response = call(
             CallTargetCell::Local,
             "consent",
             "get_access_logs".into(),
             None,
             patient_hash,
-        );
-
-        // Best-effort: if we can't query, start a new chain (sequence 0)
-        let Ok(response) = response else { return Ok(None) };
+        )?;
 
         match response {
             ZomeCallResponse::Ok(extern_io) => {
                 let records: Vec<Record> = extern_io.decode().unwrap_or_default();
-                // Count records as sequence, use last record's action hash for chaining
                 if records.is_empty() {
                     return Ok(None);
                 }
                 let seq = (records.len() - 1) as u64;
-                // Use the action hash of the last record as the chain link
-                let last_action_hash = records.last().unwrap().action_address().get_raw_39();
-                let hash = Sha256::digest(last_action_hash);
+                // Hash the CONTENT of the last entry for tamper detection
+                let last = records.last().unwrap();
+                let mut hasher = Sha256::new();
+                hasher.update(last.action_address().get_raw_39());
+                hasher.update(seq.to_le_bytes());
+                // Include entry bytes if available
+                if let Some(entry) = last.entry().as_option() {
+                    let entry_bytes = SerializedBytes::try_from(entry.clone())
+                        .map(|b| b.bytes().to_vec())
+                        .unwrap_or_default();
+                    hasher.update(&entry_bytes);
+                }
+                let hash = hasher.finalize();
                 let mut entry_hash = [0u8; 32];
                 entry_hash.copy_from_slice(&hash);
                 Ok(Some((seq, entry_hash)))
             },
-            _ => Ok(None),
+            ZomeCallResponse::NetworkError(err) => {
+                Err(wasm_error!(WasmErrorInner::Guest(format!(
+                    "Cannot query audit chain — network error: {}. \
+                     Refusing to create unchained entry (tamper risk).", err
+                ))))
+            },
+            _ => Ok(None), // No logs yet — genesis entry
         }
     }
 }

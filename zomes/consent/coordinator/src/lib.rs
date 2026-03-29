@@ -2544,22 +2544,25 @@ pub struct ChainedAuditEntryInput {
 /// audit infrastructure while adding tamper-evident chaining.
 #[hdk_extern]
 pub fn create_chained_audit_entry(input: ChainedAuditEntryInput) -> ExternResult<ActionHash> {
-    // Encode chain metadata into the log's access_reason for persistence
-    let chain_info = format!(
-        "CHAINED[seq={},prev={},hash={}]",
-        input.sequence,
-        input.previous_hash.map(|h| hex_encode(&h[..4])).unwrap_or_else(|| "GENESIS".to_string()),
-        hex_encode(&input.entry_hash[..4]),
-    );
+    // Store full chain hashes (not truncated) for verification.
+    // The access_reason field holds a JSON-encoded chain metadata object
+    // that can be parsed back for chain verification.
+    let chain_metadata = serde_json::json!({
+        "chain_version": 2,
+        "sequence": input.sequence,
+        "previous_hash": input.previous_hash.map(|h| hex_encode(&h)),
+        "entry_hash": hex_encode(&input.entry_hash),
+        "event": input.event_description,
+    });
 
     let log_entry = DataAccessLog {
-        log_id: format!("CHAIN-{}-{}", input.sequence, input.timestamp),
+        log_id: format!("CHAIN-{:06}-{}", input.sequence, input.timestamp),
         patient_hash: input.patient_hash.clone(),
         accessor: input.agent,
         data_categories_accessed: input.categories,
-        access_type: DataPermission::Read, // Audit entries are read-triggered
+        access_type: DataPermission::Read,
         consent_hash: input.consent_hash,
-        access_reason: chain_info,
+        access_reason: chain_metadata.to_string(),
         accessed_at: Timestamp::from_micros(input.timestamp),
         access_location: Some("holochain_node".to_string()),
         emergency_override: false,
@@ -2568,7 +2571,6 @@ pub fn create_chained_audit_entry(input: ChainedAuditEntryInput) -> ExternResult
 
     let hash = create_entry(&EntryTypes::DataAccessLog(log_entry))?;
 
-    // Link to patient's audit chain
     create_link(
         input.patient_hash,
         hash.clone(),

@@ -204,14 +204,18 @@ fn laplace_sample(u: f64, scale: f64) -> f64 {
     }
 }
 
-/// Simple deterministic pseudo-uniform [0,1] from seed (for tests).
+/// Deterministic pseudo-uniform [0,1) from seed using full u64 range.
+///
+/// Uses SplitMix64 (Vigna 2015) — better statistical properties than xorshift
+/// and maps to [0,1) using the full 2^64 range (not modulo 10K).
 fn pseudo_uniform(seed: u64) -> f64 {
-    // xorshift64
-    let mut x = seed.wrapping_add(1);
-    x ^= x << 13;
-    x ^= x >> 7;
-    x ^= x << 17;
-    (x % 10000) as f64 / 10000.0
+    // SplitMix64 — used by java.util.SplittableRandom
+    let mut z = seed.wrapping_add(0x9e3779b97f4a7c15);
+    z = (z ^ (z >> 30)).wrapping_mul(0xbf58476d1ce4e5b9);
+    z = (z ^ (z >> 27)).wrapping_mul(0x94d049bb133111eb);
+    z = z ^ (z >> 31);
+    // Map full u64 to [0, 1) — 2^53 possible values (IEEE 754 double precision)
+    (z >> 11) as f64 / (1u64 << 53) as f64
 }
 
 // ==================== P2-3: ADAPTIVE DEFENSE ====================

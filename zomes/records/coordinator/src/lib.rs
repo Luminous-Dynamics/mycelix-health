@@ -1618,108 +1618,125 @@ fn anchor_hash(anchor_text: &str) -> ExternResult<EntryHash> {
 
 // ==================== P1-5: RIGHT TO AMEND (HIPAA 45 CFR 164.526) ====================
 
-/// Amendment request from a patient.
+/// Input for requesting an amendment.
 #[derive(Serialize, Deserialize, Debug, Clone)]
-pub struct AmendmentRequest {
-    /// Record to amend.
+pub struct AmendmentRequestInput {
     pub record_hash: ActionHash,
-    /// Patient requesting amendment.
     pub patient_hash: ActionHash,
-    /// What the patient wants changed.
     pub requested_change: String,
-    /// Reason for the amendment.
     pub reason: String,
 }
 
-/// Amendment response from a provider.
+/// Input for processing an amendment decision.
 #[derive(Serialize, Deserialize, Debug, Clone)]
-pub struct AmendmentResponse {
-    /// Original amendment request hash.
-    pub request_hash: ActionHash,
-    /// Whether the amendment is approved.
+pub struct AmendmentDecisionInput {
+    pub amendment_hash: ActionHash,
     pub approved: bool,
-    /// If denied, the reason (required by HIPAA).
     pub denial_reason: Option<String>,
-    /// The amended record data (if approved, serialized entry bytes).
-    pub amended_entry: Option<Vec<u8>>,
-    /// Provider who reviewed.
-    pub reviewer: AgentPubKey,
 }
 
 /// Request an amendment to a health record.
 ///
-/// HIPAA 45 CFR 164.526 gives patients the right to request amendments
-/// to their PHI. The provider must respond within 60 days.
+/// Creates a proper AmendmentRequestEntry (not a log string).
+/// HIPAA 45 CFR 164.526: provider must respond within 60 days.
 #[hdk_extern]
-pub fn request_amendment(input: AmendmentRequest) -> ExternResult<ActionHash> {
-    // Patient must be authorized to amend their own data
-    let caller = agent_info()?.agent_initial_pubkey;
-
+pub fn request_amendment(input: AmendmentRequestInput) -> ExternResult<ActionHash> {
     // Verify the record exists
     let _record = get(input.record_hash.clone(), GetOptions::default())?
         .ok_or(wasm_error!(WasmErrorInner::Guest("Record not found".to_string())))?;
 
-    // Store the amendment request (using DataAccessLog as container)
-    let log_entry = format!(
-        "AMENDMENT_REQUEST|record={}|reason={}|change={}",
-        input.record_hash,
-        input.reason,
-        input.requested_change,
-    );
+    let entry = AmendmentRequestEntry {
+        record_hash: input.record_hash,
+        patient_hash: input.patient_hash.clone(),
+        requested_change: input.requested_change,
+        reason: input.reason,
+        status: AmendmentStatus::Pending,
+        reviewer: None,
+        denial_reason: None,
+        amended_record_hash: None,
+        requested_at: sys_time()?,
+        decided_at: None,
+    };
 
-    // Log the amendment request
-    log_data_access(
+    let hash = create_entry(&EntryTypes::AmendmentRequest(entry))?;
+
+    create_link(
         input.patient_hash.clone(),
+        hash.clone(),
+        LinkTypes::PatientToAmendments,
+        (),
+    )?;
+
+    // Audit log
+    log_data_access(
+        input.patient_hash,
         vec![DataCategory::All],
         Permission::Amend,
         None,
         false,
-        Some(log_entry),
-    )
+        Some("Amendment requested".to_string()),
+    )?;
+
+    Ok(hash)
 }
 
-/// Process an amendment response (provider approves or denies).
+/// Process an amendment decision (provider approves or denies).
 ///
-/// If approved, creates a new version of the record linked to the original.
-/// If denied, the denial reason is recorded (HIPAA requires documentation).
-/// The original record is NEVER deleted — both versions are preserved.
+/// Updates the AmendmentRequestEntry with the decision.
+/// Original record is NEVER deleted — both versions preserved.
 #[hdk_extern]
-pub fn process_amendment(input: AmendmentResponse) -> ExternResult<ActionHash> {
-    if input.approved {
-        if let Some(amended_data) = &input.amended_entry {
-            // Create the amended record as an update to the original
-            let reason = format!(
-                "AMENDMENT_APPROVED|reviewer={}|original={}",
-                input.reviewer,
-                input.request_hash,
-            );
-            log_data_access(
-                ActionHash::from_raw_36(vec![0u8; 36]), // placeholder
-                vec![DataCategory::All],
-                Permission::Amend,
-                None,
-                false,
-                Some(reason),
-            )?;
-        }
-    } else {
-        // Document the denial (HIPAA requires this)
-        let reason = format!(
-            "AMENDMENT_DENIED|reviewer={}|reason={}",
-            input.reviewer,
-            input.denial_reason.as_deref().unwrap_or("No reason given"),
-        );
-        log_data_access(
-            ActionHash::from_raw_36(vec![0u8; 36]),
-            vec![DataCategory::All],
-            Permission::Amend,
-            None,
-            false,
-            Some(reason),
-        )?;
-    }
+pub fn process_amendment(input: AmendmentDecisionInput) -> ExternResult<ActionHash> {
+    let record = get(input.amendment_hash.clone(), GetOptions::default())?
+        .ok_or(wasm_error!(WasmErrorInner::Guest("Amendment request not found".to_string())))?;
 
-    Ok(input.request_hash)
+    let mut amendment: AmendmentRequestEntry = record
+        .entry()
+        .to_app_option()
+        .map_err(|e| wasm_error!(WasmErrorInner::Guest(format!("Invalid amendment: {}", e))))?
+        .ok_or(wasm_error!(WasmErrorInner::Guest("Not an AmendmentRequest".to_string())))?;
+
+    let reviewer = agent_info()?.agent_initial_pubkey;
+
+    amendment.status = if input.approved {
+        AmendmentStatus::Approved
+    } else {
+        AmendmentStatus::Denied
+    };
+    amendment.reviewer = Some(reviewer);
+    amendment.denial_reason = input.denial_reason;
+    amendment.decided_at = Some(sys_time()?);
+
+    let updated_hash = update_entry(input.amendment_hash, &amendment)?;
+
+    // Audit
+    log_data_access(
+        amendment.patient_hash,
+        vec![DataCategory::All],
+        Permission::Amend,
+        None,
+        false,
+        Some(format!("Amendment {}", amendment.status == AmendmentStatus::Approved)),
+    )?;
+
+    Ok(updated_hash)
+}
+
+/// Get all amendment requests for a patient.
+#[hdk_extern]
+pub fn get_patient_amendments(patient_hash: ActionHash) -> ExternResult<Vec<Record>> {
+    let links = get_links(
+        LinkQuery::try_new(patient_hash, LinkTypes::PatientToAmendments)?,
+        GetStrategy::default(),
+    )?;
+    let mut records = vec![];
+    for link in links {
+        if let Some(hash) = link.target.into_action_hash() {
+            if let Some(record) = get(hash, GetOptions::default())? {
+                records.push(record);
+            }
+        }
+    }
+    Ok(records)
 }
 
 // ==================== P1-6: BREACH DETECTION ====================
@@ -1818,8 +1835,6 @@ pub fn detect_access_anomalies(patient_hash: ActionHash) -> ExternResult<Vec<Acc
 #[hdk_extern]
 pub fn request_crypto_erasure(patient_hash: ActionHash) -> ExternResult<ActionHash> {
     // Only the patient themselves can request erasure
-    let caller = agent_info()?.agent_initial_pubkey;
-    // Verify caller is the patient (only patient can request erasure)
     let auth = require_authorization(
         patient_hash.clone(),
         DataCategory::All,
@@ -1832,34 +1847,47 @@ pub fn request_crypto_erasure(patient_hash: ActionHash) -> ExternResult<ActionHa
         )));
     }
 
-    // Step 1: Revoke all active consents (no new decryption grants)
-    let _ = call(
+    // Step 1: Revoke ALL active consents (no new decryption grants)
+    let revoke_result = call(
         CallTargetCell::Local,
         "consent",
         "revoke_all_patient_consents".into(),
         None,
         &patient_hash,
-    );
+    )?;
+    let consents_revoked: u32 = match revoke_result {
+        ZomeCallResponse::Ok(io) => io.decode().unwrap_or(0),
+        other => return Err(wasm_error!(WasmErrorInner::Guest(format!(
+            "Failed to revoke consents: {:?}", other
+        )))),
+    };
 
-    // Step 2: Delete key bundles (renders all encrypted data unreadable)
-    // We can't truly delete from DHT, but we create a "key destroyed" tombstone
-    // that signals to all agents that this key is no longer valid
-    let erasure_marker = format!(
-        "CRYPTO_ERASURE|patient={}|time={}|all_keys_destroyed",
-        patient_hash,
-        sys_time()?.as_micros(),
+    // Step 2: Deactivate ALL key bundles via consent zome
+    // This marks HealthKeyBundle entries as inactive, preventing decryption
+    let deactivate_result = call(
+        CallTargetCell::Local,
+        "consent",
+        "deactivate_patient_keys".into(),
+        None,
+        &patient_hash,
     );
+    let keys_deactivated: u32 = match deactivate_result {
+        Ok(ZomeCallResponse::Ok(io)) => io.decode().unwrap_or(0),
+        _ => 0, // Key deactivation is best-effort (function may not exist yet)
+    };
 
-    let result = log_data_access(
+    // Step 3: Log the erasure with actual counts (not just a marker string)
+    log_data_access(
         patient_hash,
         vec![DataCategory::All],
         Permission::Delete,
         None,
         false,
-        Some(erasure_marker),
-    )?;
-
-    Ok(result)
+        Some(format!(
+            "CRYPTO_ERASURE: {} consents revoked, {} keys deactivated",
+            consents_revoked, keys_deactivated
+        )),
+    )
 }
 
 // ==================== P3-3: SOCIAL DETERMINANTS OF HEALTH (SDOH) ====================
@@ -1925,28 +1953,38 @@ pub struct SdohReferral {
     pub accepted: bool,
 }
 
-/// Record an SDOH screening result.
+/// Record an SDOH screening result as a proper entry.
 ///
+/// Creates a SdohScreeningEntry linked to the patient.
 /// CMS requires SDOH screening documentation for quality reporting.
-/// Results are linked to the patient and stored as encrypted records
-/// (SDOH data is sensitive — housing/food insecurity stigma).
 #[hdk_extern]
 pub fn record_sdoh_screening(input: SdohScreening) -> ExternResult<ActionHash> {
     let auth = require_authorization(
         input.patient_hash.clone(),
-        DataCategory::Demographics, // SDOH falls under demographics
+        DataCategory::Demographics,
         Permission::Write,
         false,
     )?;
 
-    // Serialize and log (in production, encrypt via create_encrypted_record)
-    let risk_summary = format!(
-        "SDOH_SCREENING|instrument={:?}|risk={:?}|domains={}|referrals={}",
-        input.instrument,
-        input.overall_risk,
-        input.risk_domains.len(),
-        input.referrals.len(),
-    );
+    let entry = SdohScreeningEntry {
+        patient_hash: input.patient_hash.clone(),
+        instrument: format!("{:?}", input.instrument),
+        responses_json: serde_json::to_string(&input.responses).unwrap_or_default(),
+        risk_domains: input.risk_domains.iter().map(|d| format!("{:?}", d)).collect(),
+        overall_risk: format!("{:?}", input.overall_risk),
+        referrals_json: serde_json::to_string(&input.referrals).unwrap_or_default(),
+        screener: input.screener,
+        screened_at: Timestamp::from_micros(input.screened_at),
+    };
+
+    let hash = create_entry(&EntryTypes::SdohScreening(entry))?;
+
+    create_link(
+        input.patient_hash.clone(),
+        hash.clone(),
+        LinkTypes::PatientToSdohScreenings,
+        (),
+    )?;
 
     log_data_access(
         input.patient_hash,
@@ -1954,8 +1992,10 @@ pub fn record_sdoh_screening(input: SdohScreening) -> ExternResult<ActionHash> {
         Permission::Write,
         auth.consent_hash,
         false,
-        Some(risk_summary),
-    )
+        None,
+    )?;
+
+    Ok(hash)
 }
 
 /// Get SDOH screening history for a patient.

@@ -256,10 +256,12 @@ pub enum EntryTypes {
     LabResult(LabResult),
     ImagingStudy(ImagingStudy),
     VitalSigns(VitalSigns),
-    /// Encrypted health record — stores any health entry encrypted with patient's key.
-    /// The ciphertext can only be decrypted by the patient or authorized consent holders.
-    /// The `data_category` is stored in cleartext for consent-checking without decryption.
+    /// Encrypted health record.
     EncryptedRecord(EncryptedRecord),
+    /// Amendment request (HIPAA right to amend).
+    AmendmentRequest(AmendmentRequestEntry),
+    /// SDOH screening result.
+    SdohScreening(SdohScreeningEntry),
 }
 
 /// An encrypted health record. The actual clinical data (lab result, encounter, etc.)
@@ -284,6 +286,62 @@ pub struct EncryptedRecord {
     pub encrypted_at: i64,
 }
 
+/// Amendment request (HIPAA 45 CFR 164.526).
+/// Patients can request changes to their health records.
+/// Providers must respond within 60 days.
+#[hdk_entry_helper]
+#[derive(Clone, PartialEq)]
+pub struct AmendmentRequestEntry {
+    /// Record to amend.
+    pub record_hash: ActionHash,
+    /// Patient requesting.
+    pub patient_hash: ActionHash,
+    /// What the patient wants changed.
+    pub requested_change: String,
+    /// Reason for the amendment.
+    pub reason: String,
+    /// Status: Pending, Approved, Denied.
+    pub status: AmendmentStatus,
+    /// Provider who reviewed (set on decision).
+    pub reviewer: Option<AgentPubKey>,
+    /// Denial reason (required by HIPAA if denied).
+    pub denial_reason: Option<String>,
+    /// Hash of the amended record (if approved).
+    pub amended_record_hash: Option<ActionHash>,
+    /// When requested.
+    pub requested_at: Timestamp,
+    /// When decided.
+    pub decided_at: Option<Timestamp>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+pub enum AmendmentStatus {
+    Pending,
+    Approved,
+    Denied,
+}
+
+/// SDOH screening record (CMS quality reporting).
+#[hdk_entry_helper]
+#[derive(Clone, PartialEq)]
+pub struct SdohScreeningEntry {
+    pub patient_hash: ActionHash,
+    /// Instrument used (e.g., "PRAPARE", "AHC-HRSN").
+    pub instrument: String,
+    /// Individual responses serialized as JSON.
+    pub responses_json: String,
+    /// Risk domains identified.
+    pub risk_domains: Vec<String>,
+    /// Overall risk level.
+    pub overall_risk: String,
+    /// Referrals made.
+    pub referrals_json: String,
+    /// Screener agent.
+    pub screener: AgentPubKey,
+    /// When screened.
+    pub screened_at: Timestamp,
+}
+
 #[hdk_link_types]
 pub enum LinkTypes {
     PatientToEncounters,
@@ -297,8 +355,9 @@ pub enum LinkTypes {
     EncounterUpdates,
     LabResultUpdates,
     CriticalResults,
-    /// Patient → encrypted records
     PatientToEncryptedRecords,
+    PatientToAmendments,
+    PatientToSdohScreenings,
 }
 
 #[hdk_extern]
@@ -313,6 +372,8 @@ pub fn validate(op: Op) -> ExternResult<ValidateCallbackResult> {
                 EntryTypes::ImagingStudy(i) => validate_imaging(&i),
                 EntryTypes::VitalSigns(v) => validate_vitals(&v),
                 EntryTypes::EncryptedRecord(e) => validate_encrypted_record(&e),
+                EntryTypes::AmendmentRequest(_) => Ok(ValidateCallbackResult::Valid),
+                EntryTypes::SdohScreening(_) => Ok(ValidateCallbackResult::Valid),
             },
             OpEntry::UpdateEntry { app_entry, .. } => match app_entry {
                 EntryTypes::Encounter(e) => validate_encounter(&e),
@@ -322,6 +383,8 @@ pub fn validate(op: Op) -> ExternResult<ValidateCallbackResult> {
                 EntryTypes::ImagingStudy(i) => validate_imaging(&i),
                 EntryTypes::VitalSigns(v) => validate_vitals(&v),
                 EntryTypes::EncryptedRecord(e) => validate_encrypted_record(&e),
+                EntryTypes::AmendmentRequest(_) => Ok(ValidateCallbackResult::Valid),
+                EntryTypes::SdohScreening(_) => Ok(ValidateCallbackResult::Valid),
             },
             _ => Ok(ValidateCallbackResult::Valid),
         },
