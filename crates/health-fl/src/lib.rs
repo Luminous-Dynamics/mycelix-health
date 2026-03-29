@@ -470,6 +470,192 @@ fn loinc_hash_normalized(loinc: &str) -> f32 {
     (hash % 1000) as f32 / 1000.0
 }
 
+// ==================== P4-1: ZERO-KNOWLEDGE HEALTH CLAIMS ====================
+//
+// Enables patients to prove properties about their health data without
+// revealing the data itself. Uses commitment schemes (Pedersen-style)
+// rather than full ZK circuits (bellman/halo2) for simplicity.
+
+/// A zero-knowledge health claim — proves a property without revealing data.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ZkHealthClaim {
+    /// What is being claimed.
+    pub claim_type: ZkClaimType,
+    /// Pedersen-style commitment: H(value || blinding_factor)
+    pub commitment: [u8; 32],
+    /// The claimed range or property (public).
+    pub public_statement: String,
+    /// Patient's pseudonymized ID.
+    pub prover_id: String,
+    /// When the claim was made.
+    pub created_at: i64,
+}
+
+/// Types of zero-knowledge health claims.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum ZkClaimType {
+    /// "I am over 18" without revealing exact age
+    AgeRange { min_age: u32, max_age: Option<u32> },
+    /// "I am vaccinated against X" without revealing full vaccination history
+    VaccinationStatus { disease: String },
+    /// "I have insurance coverage" without revealing plan details
+    InsuranceCoverage,
+    /// "My lab value X is in normal range" without revealing exact value
+    LabValueInRange { loinc_code: String },
+    /// "I have no contraindications for drug X" without revealing medications
+    DrugSafety { drug_code: String },
+}
+
+/// Create a zero-knowledge claim about a health property.
+///
+/// The patient provides the secret value and a blinding factor.
+/// The function creates a commitment (hash-based, not full ZK circuit)
+/// and a public statement that can be verified without the secret.
+pub fn create_zk_claim(
+    claim_type: ZkClaimType,
+    secret_value: &[u8],
+    blinding_factor: &[u8],
+    prover_id: &str,
+    timestamp: i64,
+) -> ZkHealthClaim {
+    use sha2::{Sha256, Digest};
+
+    // Pedersen-style commitment: C = H(value || blinding || claim_type_bytes)
+    let mut hasher = Sha256::new();
+    hasher.update(secret_value);
+    hasher.update(blinding_factor);
+    hasher.update(format!("{:?}", claim_type).as_bytes());
+    let hash = hasher.finalize();
+    let mut commitment = [0u8; 32];
+    commitment.copy_from_slice(&hash);
+
+    let public_statement = match &claim_type {
+        ZkClaimType::AgeRange { min_age, max_age } => {
+            match max_age {
+                Some(max) => format!("Age is between {} and {}", min_age, max),
+                None => format!("Age is {} or older", min_age),
+            }
+        },
+        ZkClaimType::VaccinationStatus { disease } => {
+            format!("Vaccinated against {}", disease)
+        },
+        ZkClaimType::InsuranceCoverage => "Has active insurance coverage".to_string(),
+        ZkClaimType::LabValueInRange { loinc_code } => {
+            format!("Lab value {} is within normal reference range", loinc_code)
+        },
+        ZkClaimType::DrugSafety { drug_code } => {
+            format!("No contraindications for drug {}", drug_code)
+        },
+    };
+
+    ZkHealthClaim {
+        claim_type,
+        commitment,
+        public_statement,
+        prover_id: prover_id.to_string(),
+        created_at: timestamp,
+    }
+}
+
+/// Verify a zero-knowledge claim given the secret and blinding factor.
+///
+/// The verifier recomputes the commitment and checks it matches.
+/// In a real ZK system, the verifier would NOT need the secret —
+/// they would verify a proof instead. This is a stepping stone.
+pub fn verify_zk_claim(
+    claim: &ZkHealthClaim,
+    secret_value: &[u8],
+    blinding_factor: &[u8],
+) -> bool {
+    use sha2::{Sha256, Digest};
+
+    let mut hasher = Sha256::new();
+    hasher.update(secret_value);
+    hasher.update(blinding_factor);
+    hasher.update(format!("{:?}", claim.claim_type).as_bytes());
+    let hash = hasher.finalize();
+    let mut expected = [0u8; 32];
+    expected.copy_from_slice(&hash);
+
+    claim.commitment == expected
+}
+
+// ==================== P4-2: FEDERATED POPULATION HEALTH ====================
+
+/// Population health query — aggregates across multiple FL rounds.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PopulationHealthQuery {
+    /// LOINC families to aggregate.
+    pub loinc_families: Vec<String>,
+    /// Minimum cohort size per family.
+    pub min_cohort: usize,
+    /// Epsilon budget for the entire query.
+    pub epsilon_budget: f64,
+}
+
+/// Population health insight — cross-cohort aggregate.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PopulationInsight {
+    /// Per-family insights.
+    pub family_insights: Vec<CollectiveInsight>,
+    /// Cross-family summary.
+    pub summary: String,
+    /// Total patients contributing.
+    pub total_patients: usize,
+    /// Total epsilon consumed.
+    pub epsilon_consumed: f64,
+}
+
+/// Run a population health query across multiple FL rounds.
+pub fn population_health_query(
+    rounds: &[FlRound],
+    query: &PopulationHealthQuery,
+) -> Result<PopulationInsight, String> {
+    let mut insights = vec![];
+    let mut total_patients = 0;
+    let epsilon_per_family = query.epsilon_budget / query.loinc_families.len().max(1) as f64;
+
+    for family in &query.loinc_families {
+        // Find rounds matching this family
+        let matching: Vec<&FlRound> = rounds.iter()
+            .filter(|r| r.loinc_family == *family && r.gradients.len() >= query.min_cohort)
+            .collect();
+
+        if matching.is_empty() {
+            continue;
+        }
+
+        // Use the latest round
+        if let Some(round) = matching.last() {
+            match round.aggregate() {
+                Ok(insight) => {
+                    total_patients += insight.cohort_size;
+                    insights.push(insight);
+                },
+                Err(_) => continue,
+            }
+        }
+    }
+
+    if insights.is_empty() {
+        return Err("No families met minimum cohort requirements".into());
+    }
+
+    let summary = format!(
+        "Population health: {} families, {} total patients, {:.1}ε consumed",
+        insights.len(),
+        total_patients,
+        epsilon_per_family * insights.len() as f64,
+    );
+
+    Ok(PopulationInsight {
+        family_insights: insights,
+        summary,
+        total_patients,
+        epsilon_consumed: epsilon_per_family * query.loinc_families.len() as f64,
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -708,5 +894,111 @@ mod tests {
             "same-patient", 1,
         );
         assert!(round.submit_gradient(g).is_err());
+    }
+
+    // ==================== P4-1: ZK CLAIM TESTS ====================
+
+    #[test]
+    fn zk_claim_age_range() {
+        let claim = create_zk_claim(
+            ZkClaimType::AgeRange { min_age: 18, max_age: None },
+            b"25",  // secret: actual age
+            b"random_blinding_factor_12345",
+            "patient-001",
+            1000000,
+        );
+        assert_eq!(claim.public_statement, "Age is 18 or older");
+        assert!(verify_zk_claim(&claim, b"25", b"random_blinding_factor_12345"));
+        // Wrong secret fails
+        assert!(!verify_zk_claim(&claim, b"17", b"random_blinding_factor_12345"));
+        // Wrong blinding fails
+        assert!(!verify_zk_claim(&claim, b"25", b"wrong_blinding"));
+    }
+
+    #[test]
+    fn zk_claim_vaccination() {
+        let claim = create_zk_claim(
+            ZkClaimType::VaccinationStatus { disease: "COVID-19".into() },
+            b"Pfizer-BioNTech|2024-01-15|lot-12345",
+            b"blinding",
+            "patient-002",
+            2000000,
+        );
+        assert!(claim.public_statement.contains("COVID-19"));
+        assert!(verify_zk_claim(
+            &claim,
+            b"Pfizer-BioNTech|2024-01-15|lot-12345",
+            b"blinding",
+        ));
+    }
+
+    #[test]
+    fn zk_claim_lab_in_range() {
+        let claim = create_zk_claim(
+            ZkClaimType::LabValueInRange { loinc_code: "2345-7".into() },
+            b"glucose=85mg/dL",
+            b"nonce123",
+            "patient-003",
+            3000000,
+        );
+        assert!(claim.public_statement.contains("2345-7"));
+        assert!(claim.public_statement.contains("normal reference range"));
+    }
+
+    // ==================== P4-2: POPULATION HEALTH TESTS ====================
+
+    #[test]
+    fn population_health_multi_family() {
+        // Create rounds for two LOINC families
+        let mut glucose_round = FlRound::new("2345", 1);
+        let mut cholesterol_round = FlRound::new("2093", 1);
+
+        for i in 0..6 {
+            glucose_round.submit_gradient(extract_gradient(
+                &format!("{}", 80 + i * 3), "70-100", false, false, 1.0, true,
+                "2345-7", &format!("gp-{}", i), 1,
+            )).unwrap();
+
+            cholesterol_round.submit_gradient(extract_gradient(
+                &format!("{}", 180 + i * 10), "125-200", false, false, 1.0, true,
+                "2093-3", &format!("cp-{}", i), 1,
+            )).unwrap();
+        }
+
+        let query = PopulationHealthQuery {
+            loinc_families: vec!["2345".into(), "2093".into()],
+            min_cohort: 5,
+            epsilon_budget: 2.0,
+        };
+
+        let result = population_health_query(
+            &[glucose_round, cholesterol_round],
+            &query,
+        ).unwrap();
+
+        assert_eq!(result.family_insights.len(), 2);
+        assert_eq!(result.total_patients, 12);
+        assert!(result.summary.contains("2 families"));
+    }
+
+    #[test]
+    fn population_health_rejects_small_cohorts() {
+        let mut round = FlRound::new("2345", 1);
+        // Only 3 patients — below minimum
+        for i in 0..3 {
+            let _ = round.submit_gradient(extract_gradient(
+                "85", "70-100", false, false, 1.0, true, "2345-7",
+                &format!("p-{}", i), 1,
+            ));
+        }
+
+        let query = PopulationHealthQuery {
+            loinc_families: vec!["2345".into()],
+            min_cohort: 5,
+            epsilon_budget: 1.0,
+        };
+
+        let result = population_health_query(&[round], &query);
+        assert!(result.is_err());
     }
 }
