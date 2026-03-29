@@ -16,6 +16,9 @@ serde_json = { workspace = true }
 sha2 = "0.10"
 # WASM-compatible getrandom 0.3 (HDK provides __getrandom_v03_custom backend)
 getrandom = "0.3"
+# Real AEAD encryption for patient data (pure Rust, WASM-compatible)
+# No default features — avoids pulling in getrandom 0.2 via aead/OsRng
+chacha20poly1305 = { version = "0.10", default-features = false, features = ["alloc"] }
 
 [dev-dependencies]
 proptest = "1.9"

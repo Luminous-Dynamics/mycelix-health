@@ -9,3 +9,10 @@ description = "Federated learning pipeline for health data — privacy-preservin
 mycelix-fl = { path = "../../../mycelix-core/libs/mycelix-fl", default-features = false }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
+# Real encryption for the demo (same as the shared crate uses)
+chacha20poly1305 = { version = "0.10", default-features = false, features = ["alloc"] }
+sha2 = "0.10"
+
+[[example]]
+name = "health_sovereignty_demo"
+path = "examples/health_sovereignty_demo.rs"

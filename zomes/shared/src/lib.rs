@@ -123,15 +123,89 @@ pub mod patient_encryption {
         grant.permitted_categories.contains(category)
     }
 
-    /// Compute key fingerprint (BLAKE3 first 8 bytes).
-    /// Uses a simple hash — in production this would use BLAKE3.
+    /// Compute key fingerprint (SHA-256, first 8 bytes).
     pub fn compute_fingerprint(public_key: &[u8]) -> [u8; 8] {
+        use sha2::{Sha256, Digest};
+        let hash = Sha256::digest(public_key);
         let mut fp = [0u8; 8];
-        // Simple fingerprint: XOR-fold the key into 8 bytes
-        for (i, byte) in public_key.iter().enumerate() {
-            fp[i % 8] ^= byte;
-        }
+        fp.copy_from_slice(&hash[..8]);
         fp
+    }
+
+    /// Encrypt plaintext bytes using XChaCha20-Poly1305.
+    ///
+    /// Uses a 32-byte symmetric key derived from the patient's key material.
+    /// Returns (ciphertext, nonce). The ciphertext includes a 16-byte Poly1305
+    /// authentication tag — any tampering is detected on decryption.
+    ///
+    /// # Arguments
+    /// * `plaintext` — data to encrypt
+    /// * `key_bytes` — 32-byte symmetric key (derived from patient keypair)
+    ///
+    /// # Errors
+    /// Returns error if key is not 32 bytes or encryption fails.
+    pub fn encrypt(plaintext: &[u8], key_bytes: &[u8]) -> Result<(Vec<u8>, [u8; 24]), String> {
+        use chacha20poly1305::{XChaCha20Poly1305, KeyInit, aead::Aead};
+
+        if key_bytes.len() != 32 {
+            return Err(format!("Key must be 32 bytes, got {}", key_bytes.len()));
+        }
+
+        let key = chacha20poly1305::Key::from_slice(key_bytes);
+        let cipher = XChaCha20Poly1305::new(key);
+
+        // Generate random nonce via getrandom (24 bytes for XChaCha20)
+        let mut nonce_arr = [0u8; 24];
+        getrandom::fill(&mut nonce_arr)
+            .map_err(|e| format!("Nonce generation failed: {}", e))?;
+        let nonce = chacha20poly1305::XNonce::from_slice(&nonce_arr);
+
+        let ciphertext = cipher
+            .encrypt(nonce, plaintext)
+            .map_err(|e| format!("Encryption failed: {}", e))?;
+
+        Ok((ciphertext, nonce_arr))
+    }
+
+    /// Decrypt ciphertext using XChaCha20-Poly1305.
+    ///
+    /// Verifies the Poly1305 authentication tag — returns error if data
+    /// was tampered with. This is the AEAD guarantee.
+    ///
+    /// # Arguments
+    /// * `ciphertext` — encrypted data (includes auth tag)
+    /// * `nonce` — 24-byte nonce used during encryption
+    /// * `key_bytes` — 32-byte symmetric key
+    ///
+    /// # Errors
+    /// Returns error if authentication fails (data tampered) or key is wrong.
+    pub fn decrypt(ciphertext: &[u8], nonce: &[u8; 24], key_bytes: &[u8]) -> Result<Vec<u8>, String> {
+        use chacha20poly1305::{XChaCha20Poly1305, KeyInit, aead::Aead};
+
+        if key_bytes.len() != 32 {
+            return Err(format!("Key must be 32 bytes, got {}", key_bytes.len()));
+        }
+
+        let key = chacha20poly1305::Key::from_slice(key_bytes);
+        let cipher = XChaCha20Poly1305::new(key);
+        let nonce = chacha20poly1305::XNonce::from_slice(nonce);
+
+        cipher
+            .decrypt(nonce, ciphertext)
+            .map_err(|_| "Decryption failed: authentication tag mismatch (data tampered or wrong key)".to_string())
+    }
+
+    /// Derive a 32-byte symmetric key from a patient's public key material.
+    ///
+    /// In production, this would use X25519 Diffie-Hellman or a KDF.
+    /// For now, we use SHA-256 of the public key as a deterministic derivation.
+    /// This is suitable for patient-encrypts-own-data (symmetric use case).
+    pub fn derive_key(public_key: &[u8]) -> [u8; 32] {
+        use sha2::{Sha256, Digest};
+        let hash = Sha256::digest(public_key);
+        let mut key = [0u8; 32];
+        key.copy_from_slice(&hash);
+        key
     }
 
     /// Audit event for encryption operations.
@@ -461,6 +535,112 @@ pub mod access_control {
         }
 
         Ok(auth_result)
+    }
+
+    // ==================== RE-DISCLOSURE PREVENTION ====================
+    // 42 CFR Part 2 requires that substance abuse treatment records
+    // received under consent cannot be further shared without explicit
+    // re-consent from the patient. This applies to ALL data shared
+    // with `no_further_disclosure: true` on the consent grant.
+
+    /// Source provenance for health data — tracks where data originally came from.
+    /// This is stored alongside health records and checked on Share/Export.
+    #[derive(Clone, Debug, Serialize, Deserialize)]
+    pub struct DataProvenance {
+        /// Original source system (e.g., "epic.hospital.org", "patient-self")
+        pub source_system: String,
+        /// Consent hash under which this data was received
+        pub received_under_consent: Option<ActionHash>,
+        /// Whether the original consent prohibited re-disclosure
+        pub no_further_disclosure: bool,
+        /// Data categories covered by the original consent's restrictions
+        pub restricted_categories: Vec<DataCategory>,
+        /// Timestamp when data was received from source
+        pub received_at: i64,
+    }
+
+    /// Check if a Share/Export operation is blocked by re-disclosure rules.
+    ///
+    /// Returns `Err` if:
+    /// - The data was received under a consent with `no_further_disclosure: true`
+    /// - The requested permission is Share or Export
+    /// - No explicit re-consent from the patient exists for this specific sharing
+    ///
+    /// This enforces 42 CFR Part 2 re-disclosure prevention for substance abuse
+    /// records and any other data shared with `no_further_disclosure`.
+    pub fn check_redisclosure(
+        provenance: &DataProvenance,
+        permission: &Permission,
+        patient_hash: &ActionHash,
+    ) -> ExternResult<()> {
+        // Only Share and Export trigger re-disclosure checks
+        if !matches!(permission, Permission::Share | Permission::Export) {
+            return Ok(());
+        }
+
+        // If data has no provenance restriction, allow
+        if !provenance.no_further_disclosure {
+            return Ok(());
+        }
+
+        // Check if patient is the one sharing (patient can always share own data)
+        let caller = agent_info()?.agent_initial_pubkey;
+        if is_patient_self(patient_hash, &caller)? {
+            return Ok(());
+        }
+
+        // Data was received with no_further_disclosure — check for explicit re-consent
+        // Call consent zome to see if patient has granted a SPECIFIC re-disclosure consent
+        let input = RedisclosureConsentInput {
+            patient_hash: patient_hash.clone(),
+            requestor: caller,
+            original_consent: provenance.received_under_consent.clone(),
+            categories: provenance.restricted_categories.clone(),
+        };
+
+        let response = call(
+            CallTargetCell::Local,
+            "consent",
+            "check_redisclosure_consent".into(),
+            None,
+            &input,
+        )?;
+
+        match response {
+            ZomeCallResponse::Ok(extern_io) => {
+                let has_reconsent: bool = extern_io.decode()
+                    .map_err(|e| wasm_error!(WasmErrorInner::Guest(
+                        format!("Failed to decode re-consent check: {:?}", e)
+                    )))?;
+
+                if has_reconsent {
+                    Ok(())
+                } else {
+                    Err(wasm_error!(WasmErrorInner::Guest(format!(
+                        "RE-DISCLOSURE BLOCKED: Data from '{}' was received under consent with \
+                         no_further_disclosure=true. Patient must grant explicit re-disclosure \
+                         consent before this data can be shared or exported. \
+                         (42 CFR Part 2 compliance)",
+                        provenance.source_system
+                    ))))
+                }
+            },
+            _ => {
+                // If we can't reach consent zome, DENY by default (fail-closed)
+                Err(wasm_error!(WasmErrorInner::Guest(
+                    "Cannot verify re-disclosure consent — access denied (fail-closed)".to_string()
+                )))
+            },
+        }
+    }
+
+    /// Input for re-disclosure consent check
+    #[derive(Clone, Debug, Serialize, Deserialize)]
+    pub struct RedisclosureConsentInput {
+        pub patient_hash: ActionHash,
+        pub requestor: AgentPubKey,
+        pub original_consent: Option<ActionHash>,
+        pub categories: Vec<DataCategory>,
     }
 
     fn has_active_emergency_access(patient_hash: ActionHash) -> ExternResult<bool> {

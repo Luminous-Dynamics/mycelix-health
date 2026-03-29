@@ -721,7 +721,7 @@ pub struct CreateEncryptedLabResultInput {
 /// or a consent-derived re-encryption key.
 #[hdk_extern]
 pub fn create_encrypted_lab_result(input: CreateEncryptedLabResultInput) -> ExternResult<Record> {
-    use mycelix_health_shared::patient_encryption::compute_fingerprint;
+    use mycelix_health_shared::patient_encryption;
 
     // Require Write authorization (same as unencrypted path)
     let auth = require_authorization(
@@ -735,25 +735,16 @@ pub fn create_encrypted_lab_result(input: CreateEncryptedLabResultInput) -> Exte
     let plaintext = ExternIO::encode(&input.lab_result)
         .map_err(|e| wasm_error!(WasmErrorInner::Guest(format!("Serialize failed: {}", e))))?;
 
-    // Generate nonce from system time + agent entropy (24 bytes for XChaCha20-Poly1305)
     let now = sys_time()?;
-    let agent = agent_info()?.agent_initial_pubkey;
-    let mut nonce = [0u8; 24];
-    let time_bytes = now.as_micros().to_le_bytes();
-    let agent_bytes = agent.get_raw_39();
-    for i in 0..8 { nonce[i] = time_bytes[i]; }
-    for i in 0..16.min(agent_bytes.len()) { nonce[8 + i % 16] = agent_bytes[i]; }
 
-    // XOR-encrypt with key (simplified — production would use XChaCha20-Poly1305)
-    // This demonstrates the architecture; replace with real AEAD in production.
-    let key = &input.patient_public_key;
-    let ciphertext: Vec<u8> = plaintext.as_bytes()
-        .iter()
-        .enumerate()
-        .map(|(i, &b)| b ^ key[i % key.len()] ^ nonce[i % 24])
-        .collect();
+    // Derive symmetric key from patient's public key material
+    let sym_key = patient_encryption::derive_key(&input.patient_public_key);
 
-    let fingerprint = compute_fingerprint(&input.patient_public_key);
+    // Encrypt with XChaCha20-Poly1305 (real AEAD — tamper detection via Poly1305 tag)
+    let (ciphertext, nonce) = patient_encryption::encrypt(plaintext.as_bytes(), &sym_key)
+        .map_err(|e| wasm_error!(WasmErrorInner::Guest(format!("Encryption failed: {}", e))))?;
+
+    let fingerprint = patient_encryption::compute_fingerprint(&input.patient_public_key);
 
     // Create the encrypted record
     let encrypted = EncryptedRecord {
@@ -789,6 +780,85 @@ pub fn create_encrypted_lab_result(input: CreateEncryptedLabResultInput) -> Exte
     )?;
 
     Ok(record)
+}
+
+/// Input for decrypting a specific encrypted lab result.
+#[derive(Serialize, Deserialize, Debug)]
+pub struct DecryptLabResultInput {
+    /// Hash of the EncryptedRecord to decrypt.
+    pub encrypted_record_hash: ActionHash,
+    /// Patient hash (for consent verification).
+    pub patient_hash: ActionHash,
+    /// Patient's key material (for deriving decryption key).
+    pub patient_key: Vec<u8>,
+    /// Whether this is emergency access.
+    pub is_emergency: bool,
+    pub emergency_reason: Option<String>,
+}
+
+/// Decrypt an encrypted lab result after consent verification.
+///
+/// This enforces the access control boundary: the encrypted record is stored
+/// on the DHT but can only be decrypted by someone who:
+/// 1. Has valid consent (checked by `require_authorization`)
+/// 2. Possesses the correct key material
+///
+/// The Poly1305 authentication tag ensures that any tampering with the
+/// ciphertext is detected — decryption fails rather than returning corrupted data.
+#[hdk_extern]
+pub fn decrypt_lab_result(input: DecryptLabResultInput) -> ExternResult<LabResult> {
+    use mycelix_health_shared::patient_encryption;
+
+    // Step 1: Verify consent BEFORE decryption
+    let auth = require_authorization(
+        input.patient_hash.clone(),
+        DataCategory::LabResults,
+        Permission::Read,
+        input.is_emergency,
+    )?;
+
+    // Step 2: Retrieve the encrypted record
+    let record = get(input.encrypted_record_hash, GetOptions::default())?
+        .ok_or(wasm_error!(WasmErrorInner::Guest("Encrypted record not found".to_string())))?;
+
+    let encrypted: EncryptedRecord = record
+        .entry()
+        .to_app_option()
+        .map_err(|e| wasm_error!(WasmErrorInner::Guest(format!("Invalid encrypted record: {}", e))))?
+        .ok_or(wasm_error!(WasmErrorInner::Guest("Not an EncryptedRecord entry".to_string())))?;
+
+    // Step 3: Verify this record belongs to the claimed patient
+    if encrypted.patient_hash != input.patient_hash {
+        return Err(wasm_error!(WasmErrorInner::Guest(
+            "Patient hash mismatch — record belongs to a different patient".to_string()
+        )));
+    }
+
+    // Step 4: Derive key and decrypt (XChaCha20-Poly1305 with Poly1305 auth)
+    let sym_key = patient_encryption::derive_key(&input.patient_key);
+    let plaintext = patient_encryption::decrypt(&encrypted.ciphertext, &encrypted.nonce, &sym_key)
+        .map_err(|e| wasm_error!(WasmErrorInner::Guest(format!(
+            "Decryption failed (wrong key or data tampered): {}", e
+        ))))?;
+
+    // Step 5: Deserialize the lab result from MessagePack (ExternIO format)
+    let extern_io = ExternIO::from(plaintext);
+    let lab_result: LabResult = extern_io.decode()
+        .map_err(|e| wasm_error!(WasmErrorInner::Guest(format!(
+            "Deserialization failed: {}", e
+        ))))?;
+
+    // Step 6: Log the decryption access
+    log_data_access(
+        input.patient_hash,
+        vec![DataCategory::LabResults],
+        Permission::Read,
+        auth.consent_hash,
+        auth.emergency_override,
+        input.emergency_reason,
+    )?;
+
+    Ok(lab_result)
 }
 
 /// Input for getting patient lab results with access control
