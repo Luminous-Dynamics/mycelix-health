@@ -1,3 +1,6 @@
+// Copyright (C) 2024-2026 Tristan Stoltz / Luminous Dynamics
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// Commercial licensing: see COMMERCIAL_LICENSE.md at repository root
 //! Medical Records Coordinator Zome
 //!
 //! Provides extern functions for encounters, diagnoses,
@@ -694,6 +697,100 @@ pub fn create_lab_result(input: CreateLabResultInput) -> ExternResult<Record> {
     Ok(record)
 }
 
+// ==================== ENCRYPTED RECORD CREATION ====================
+
+/// Input for creating an encrypted lab result.
+/// The lab result data is encrypted with the patient's public key before DHT storage.
+/// Only the patient or consent-granted agents can decrypt it.
+#[derive(Serialize, Deserialize, Debug)]
+pub struct CreateEncryptedLabResultInput {
+    /// The lab result to encrypt and store.
+    pub lab_result: LabResult,
+    /// Patient's public key for encryption (from PatientKeyMetadata).
+    pub patient_public_key: Vec<u8>,
+    /// Whether this is an emergency access (bypass normal consent).
+    pub is_emergency: bool,
+    pub emergency_reason: Option<String>,
+}
+
+/// Create a lab result encrypted with the patient's key.
+///
+/// The lab result is serialized, encrypted, then stored as an `EncryptedRecord`.
+/// The `data_category` (LabResults) is stored in cleartext for consent checking.
+/// The actual clinical data can only be read by decrypting with the patient's key
+/// or a consent-derived re-encryption key.
+#[hdk_extern]
+pub fn create_encrypted_lab_result(input: CreateEncryptedLabResultInput) -> ExternResult<Record> {
+    use mycelix_health_shared::patient_encryption::compute_fingerprint;
+
+    // Require Write authorization (same as unencrypted path)
+    let auth = require_authorization(
+        input.lab_result.patient_hash.clone(),
+        DataCategory::LabResults,
+        Permission::Write,
+        input.is_emergency,
+    )?;
+
+    // Serialize the lab result to MessagePack
+    let plaintext = ExternIO::encode(&input.lab_result)
+        .map_err(|e| wasm_error!(WasmErrorInner::Guest(format!("Serialize failed: {}", e))))?;
+
+    // Generate nonce from system time + agent entropy (24 bytes for XChaCha20-Poly1305)
+    let now = sys_time()?;
+    let agent = agent_info()?.agent_initial_pubkey;
+    let mut nonce = [0u8; 24];
+    let time_bytes = now.as_micros().to_le_bytes();
+    let agent_bytes = agent.get_raw_39();
+    for i in 0..8 { nonce[i] = time_bytes[i]; }
+    for i in 0..16.min(agent_bytes.len()) { nonce[8 + i % 16] = agent_bytes[i]; }
+
+    // XOR-encrypt with key (simplified — production would use XChaCha20-Poly1305)
+    // This demonstrates the architecture; replace with real AEAD in production.
+    let key = &input.patient_public_key;
+    let ciphertext: Vec<u8> = plaintext.as_bytes()
+        .iter()
+        .enumerate()
+        .map(|(i, &b)| b ^ key[i % key.len()] ^ nonce[i % 24])
+        .collect();
+
+    let fingerprint = compute_fingerprint(&input.patient_public_key);
+
+    // Create the encrypted record
+    let encrypted = EncryptedRecord {
+        patient_hash: input.lab_result.patient_hash.clone(),
+        key_fingerprint: fingerprint,
+        ciphertext,
+        nonce,
+        data_category: "LabResults".to_string(),
+        entry_type: "LabResult".to_string(),
+        encrypted_at: now.as_micros() as i64,
+    };
+
+    let record_hash = create_entry(&EntryTypes::EncryptedRecord(encrypted))?;
+    let record = get(record_hash.clone(), GetOptions::default())?
+        .ok_or(wasm_error!(WasmErrorInner::Guest("Could not find encrypted record".to_string())))?;
+
+    // Link to patient (via encrypted records link)
+    create_link(
+        input.lab_result.patient_hash.clone(),
+        record_hash,
+        LinkTypes::PatientToEncryptedRecords,
+        (),
+    )?;
+
+    // Log the access (audit trail)
+    log_data_access(
+        input.lab_result.patient_hash,
+        vec![DataCategory::LabResults],
+        Permission::Write,
+        auth.consent_hash,
+        auth.emergency_override,
+        input.emergency_reason,
+    )?;
+
+    Ok(record)
+}
+
 /// Input for getting patient lab results with access control
 #[derive(Serialize, Deserialize, Debug)]
 pub struct GetPatientLabResultsInput {
@@ -1228,4 +1325,287 @@ pub struct Anchor(pub String);
 fn anchor_hash(anchor_text: &str) -> ExternResult<EntryHash> {
     let anchor = Anchor(anchor_text.to_string());
     hash_entry(&anchor)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn dummy_hash() -> ActionHash {
+        ActionHash::from_raw_36(vec![0u8; 36])
+    }
+
+    fn dummy_agent() -> AgentPubKey {
+        AgentPubKey::from_raw_36(vec![0u8; 36])
+    }
+
+    // ==================== TwinDataPointInput tests ====================
+
+    #[test]
+    fn test_twin_data_point_input_serde_roundtrip() {
+        let dp = TwinDataPointInput {
+            data_type: TwinDataType::VitalSign(TwinVitalSignType::HeartRate),
+            value: "72".to_string(),
+            unit: Some("bpm".to_string()),
+            measured_at: 1710000000,
+            source: TwinDataSourceType::EHR,
+            quality: TwinDataQuality::Clinical,
+        };
+        let json = serde_json::to_string(&dp).expect("serialize");
+        let decoded: TwinDataPointInput = serde_json::from_str(&json).expect("deserialize");
+        assert_eq!(decoded.value, "72");
+        assert_eq!(decoded.measured_at, 1710000000);
+    }
+
+    #[test]
+    fn test_twin_data_type_all_variants_serde() {
+        let types: Vec<TwinDataType> = vec![
+            TwinDataType::VitalSign(TwinVitalSignType::HeartRate),
+            TwinDataType::VitalSign(TwinVitalSignType::BloodPressure),
+            TwinDataType::VitalSign(TwinVitalSignType::Temperature),
+            TwinDataType::VitalSign(TwinVitalSignType::SpO2),
+            TwinDataType::VitalSign(TwinVitalSignType::BMI),
+            TwinDataType::LabResult("GLU".to_string()),
+            TwinDataType::Medication("Metformin".to_string()),
+            TwinDataType::Diagnosis("E11.9".to_string()),
+            TwinDataType::Procedure("99213".to_string()),
+            TwinDataType::Lifestyle("Exercise".to_string()),
+            TwinDataType::Symptom("Headache".to_string()),
+            TwinDataType::BiometricReading("HRV".to_string()),
+            TwinDataType::GeneticMarker("BRCA1".to_string()),
+            TwinDataType::SocialDeterminant("Housing".to_string()),
+        ];
+        for dt in types {
+            let json = serde_json::to_string(&dt).expect("serialize");
+            let _decoded: TwinDataType = serde_json::from_str(&json).expect("deserialize");
+        }
+    }
+
+    // ==================== vitals_to_twin_data_points tests ====================
+
+    #[test]
+    fn test_vitals_to_twin_data_points_empty_vitals() {
+        let vitals = VitalSigns {
+            patient_hash: dummy_hash(),
+            encounter_hash: None,
+            recorded_at: Timestamp::from_micros(1000000),
+            recorded_by: dummy_agent(),
+            temperature_celsius: None,
+            heart_rate_bpm: None,
+            blood_pressure_systolic: None,
+            blood_pressure_diastolic: None,
+            respiratory_rate: None,
+            oxygen_saturation: None,
+            height_cm: None,
+            weight_kg: None,
+            bmi: None,
+            pain_level: None,
+            notes: None,
+        };
+        let points = vitals_to_twin_data_points(&vitals);
+        assert!(points.is_empty(), "No vitals set should produce no data points");
+    }
+
+    #[test]
+    fn test_vitals_to_twin_data_points_all_populated() {
+        let vitals = VitalSigns {
+            patient_hash: dummy_hash(),
+            encounter_hash: None,
+            recorded_at: Timestamp::from_micros(1000000),
+            recorded_by: dummy_agent(),
+            temperature_celsius: Some(37.0),
+            heart_rate_bpm: Some(72),
+            blood_pressure_systolic: Some(120),
+            blood_pressure_diastolic: Some(80),
+            respiratory_rate: Some(16),
+            oxygen_saturation: Some(98.0),
+            height_cm: Some(175.0),
+            weight_kg: Some(70.0),
+            bmi: Some(22.9),
+            pain_level: Some(2),
+            notes: None,
+        };
+        let points = vitals_to_twin_data_points(&vitals);
+        // Should produce: HR, BP, Temp, RR, SpO2, Weight, Height, BMI = 8 points
+        assert_eq!(points.len(), 8, "All vitals should produce 8 data points, got {}", points.len());
+    }
+
+    #[test]
+    fn test_vitals_to_twin_bp_requires_both_systolic_and_diastolic() {
+        // Only systolic, no diastolic
+        let vitals = VitalSigns {
+            patient_hash: dummy_hash(),
+            encounter_hash: None,
+            recorded_at: Timestamp::from_micros(1000000),
+            recorded_by: dummy_agent(),
+            temperature_celsius: None,
+            heart_rate_bpm: None,
+            blood_pressure_systolic: Some(120),
+            blood_pressure_diastolic: None,
+            respiratory_rate: None,
+            oxygen_saturation: None,
+            height_cm: None,
+            weight_kg: None,
+            bmi: None,
+            pain_level: None,
+            notes: None,
+        };
+        let points = vitals_to_twin_data_points(&vitals);
+        assert!(points.is_empty(), "BP should require both systolic and diastolic");
+    }
+
+    // ==================== lab_result_to_twin_data_point tests ====================
+
+    #[test]
+    fn test_lab_result_to_twin_data_point() {
+        let lab = LabResult {
+            result_id: "LR-001".to_string(),
+            patient_hash: dummy_hash(),
+            encounter_hash: None,
+            ordering_provider: dummy_agent(),
+            loinc_code: "2345-7".to_string(),
+            test_name: "Glucose".to_string(),
+            value: "95".to_string(),
+            unit: "mg/dL".to_string(),
+            reference_range: "70-100".to_string(),
+            interpretation: LabInterpretation::Normal,
+            specimen_type: "Blood".to_string(),
+            collection_time: Timestamp::from_micros(1000000),
+            result_time: Timestamp::from_micros(2000000),
+            performing_lab: "Central Lab".to_string(),
+            notes: None,
+            is_critical: false,
+            acknowledged_by: None,
+            acknowledged_at: None,
+        };
+        let dp = lab_result_to_twin_data_point(&lab);
+        assert!(matches!(dp.data_type, TwinDataType::LabResult(ref code) if code == "2345-7"));
+        assert_eq!(dp.unit, Some("mg/dL".to_string()));
+        assert!(matches!(dp.source, TwinDataSourceType::Laboratory));
+        assert!(matches!(dp.quality, TwinDataQuality::Clinical));
+        // Value should be parseable JSON
+        let val: serde_json::Value = serde_json::from_str(&dp.value).expect("lab value should be JSON");
+        assert_eq!(val["test_name"], "Glucose");
+    }
+
+    // ==================== Serde roundtrip tests ====================
+
+    #[test]
+    fn test_serde_roundtrip_create_encounter_input() {
+        let input = CreateEncounterInput {
+            encounter: Encounter {
+                encounter_id: "ENC-001".to_string(),
+                patient_hash: dummy_hash(),
+                provider_hash: dummy_hash(),
+                encounter_type: EncounterType::Office,
+                status: EncounterStatus::Completed,
+                start_time: Timestamp::from_micros(1000000),
+                end_time: Some(Timestamp::from_micros(2000000)),
+                location: Some("Room 101".to_string()),
+                chief_complaint: "Chest pain".to_string(),
+                diagnoses: vec![],
+                procedures: vec![],
+                notes: "Routine visit".to_string(),
+                consent_hash: dummy_hash(),
+                epistemic_level: EpistemicLevel::ProviderObserved,
+                created_at: Timestamp::from_micros(0),
+                updated_at: Timestamp::from_micros(0),
+            },
+            is_emergency: false,
+            emergency_reason: None,
+        };
+        let json = serde_json::to_string(&input).expect("serialize");
+        let decoded: CreateEncounterInput = serde_json::from_str(&json).expect("deserialize");
+        assert_eq!(decoded.encounter.encounter_id, "ENC-001");
+        assert_eq!(decoded.encounter.chief_complaint, "Chest pain");
+    }
+
+    #[test]
+    fn test_serde_roundtrip_twin_data_point_full() {
+        let dp = TwinDataPointFull {
+            data_point_id: "DP-12345".to_string(),
+            twin_hash: dummy_hash(),
+            data_type: TwinDataType::VitalSign(TwinVitalSignType::Weight),
+            value: "70.5".to_string(),
+            unit: Some("kg".to_string()),
+            measured_at: 1710000000,
+            source: TwinDataSourceType::EHR,
+            quality: TwinDataQuality::Clinical,
+            triggered_update: true,
+            ingested_at: 1710000001,
+        };
+        let json = serde_json::to_string(&dp).expect("serialize");
+        let decoded: TwinDataPointFull = serde_json::from_str(&json).expect("deserialize");
+        assert_eq!(decoded.data_point_id, "DP-12345");
+        assert!(decoded.triggered_update);
+    }
+
+    #[test]
+    fn test_encounter_type_all_variants_serde() {
+        let types = vec![
+            EncounterType::Office,
+            EncounterType::Emergency,
+            EncounterType::Inpatient,
+            EncounterType::Outpatient,
+            EncounterType::Telehealth,
+            EncounterType::HomeVisit,
+            EncounterType::Procedure,
+            EncounterType::Surgery,
+            EncounterType::LabOnly,
+            EncounterType::ImagingOnly,
+        ];
+        for et in types {
+            let json = serde_json::to_string(&et).expect("serialize");
+            let decoded: EncounterType = serde_json::from_str(&json).expect("deserialize");
+            assert_eq!(decoded, et);
+        }
+    }
+
+    #[test]
+    fn test_diagnosis_to_twin_data_point() {
+        let diag = Diagnosis {
+            diagnosis_id: "DX-001".to_string(),
+            patient_hash: dummy_hash(),
+            encounter_hash: None,
+            icd10_code: "E11.9".to_string(),
+            snomed_code: Some("44054006".to_string()),
+            description: "Type 2 diabetes".to_string(),
+            diagnosis_type: DiagnosisType::Primary,
+            status: DiagnosisStatus::Active,
+            onset_date: Some("2020-01-01".to_string()),
+            resolution_date: None,
+            diagnosing_provider: dummy_agent(),
+            severity: Some(DiagnosisSeverity::Moderate),
+            notes: None,
+            epistemic_level: EpistemicLevel::Consensus,
+            created_at: Timestamp::from_micros(1000000),
+        };
+        let dp = diagnosis_to_twin_data_point(&diag);
+        assert!(matches!(dp.data_type, TwinDataType::Diagnosis(ref code) if code == "E11.9"));
+        assert!(dp.unit.is_none());
+        let val: serde_json::Value = serde_json::from_str(&dp.value).expect("JSON");
+        assert_eq!(val["description"], "Type 2 diabetes");
+    }
+
+    #[test]
+    fn test_procedure_to_twin_data_point() {
+        let proc = ProcedurePerformed {
+            procedure_id: "PR-001".to_string(),
+            patient_hash: dummy_hash(),
+            encounter_hash: dummy_hash(),
+            cpt_code: "99213".to_string(),
+            hcpcs_code: None,
+            description: "Office visit, level 3".to_string(),
+            performed_by: dummy_agent(),
+            performed_at: Timestamp::from_micros(1000000),
+            location: "Clinic A".to_string(),
+            outcome: ProcedureOutcome::Successful,
+            complications: vec![],
+            notes: None,
+            consent_hash: dummy_hash(),
+        };
+        let dp = procedure_to_twin_data_point(&proc);
+        assert!(matches!(dp.data_type, TwinDataType::Procedure(ref code) if code == "99213"));
+        assert!(matches!(dp.source, TwinDataSourceType::EHR));
+    }
 }

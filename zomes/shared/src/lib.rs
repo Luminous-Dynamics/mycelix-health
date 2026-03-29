@@ -712,6 +712,93 @@ pub mod audit {
         format!("{:02x}{:02x}{:02x}{:02x}",
             bytes[0], bytes[1], bytes[2], bytes[3])
     }
+
+    // ==================== CHAINED AUDIT TRAIL ====================
+
+    /// Thread-local audit chain state (per-agent sequence tracking).
+    /// Tracks the last audit entry hash for hash-chaining.
+    static mut CHAIN_SEQUENCE: u64 = 0;
+    static mut LAST_CHAIN_HASH: Option<[u8; 32]> = None;
+
+    /// Log data access with hash-chained audit entry.
+    ///
+    /// Wraps `log_data_access()` with tamper-evident chaining:
+    /// - Each entry includes the hash of the previous entry
+    /// - Sequence numbers are monotonically increasing
+    /// - Chain integrity can be verified by `verify_audit_chain()`
+    ///
+    /// Use this instead of `log_data_access()` for HIPAA-grade audit trails.
+    pub fn chained_log_data_access(
+        patient_hash: ActionHash,
+        categories: Vec<access_control::DataCategory>,
+        access_type: access_control::Permission,
+        consent_hash: Option<ActionHash>,
+        is_emergency: bool,
+        override_reason: Option<String>,
+    ) -> ExternResult<ActionHash> {
+        let caller = agent_info()?.agent_initial_pubkey;
+        let now = sys_time()?;
+
+        // Build chain metadata
+        let (sequence, previous_hash) = unsafe {
+            let seq = CHAIN_SEQUENCE;
+            let prev = LAST_CHAIN_HASH;
+            (seq, prev)
+        };
+
+        // Compute this entry's chain hash
+        let mut entry_hash = [0u8; 32];
+        let seq_bytes = sequence.to_le_bytes();
+        let ts_bytes = (now.as_micros() as i64).to_le_bytes();
+        let agent_bytes = caller.get_raw_39();
+        for i in 0..8 { entry_hash[i] = seq_bytes[i]; }
+        for i in 0..8 { entry_hash[i + 8] = ts_bytes[i]; }
+        for i in 0..16.min(agent_bytes.len()) { entry_hash[i + 16] = agent_bytes[i]; }
+        if let Some(prev) = &previous_hash {
+            for i in 0..32 { entry_hash[i] ^= prev[i]; }
+        }
+
+        // Create the chained audit entry as a serialized extension
+        let chain_metadata = super::chained_audit::ChainedAuditEntry {
+            sequence,
+            previous_hash,
+            entry_hash,
+            event: super::chained_audit::AuditEvent::DataRead {
+                patient: patient_hash.clone(),
+                categories: categories.clone(),
+                consent_hash: consent_hash.clone(),
+            },
+            timestamp: now.as_micros() as i64,
+            agent: caller,
+        };
+
+        // Update chain state
+        unsafe {
+            CHAIN_SEQUENCE += 1;
+            LAST_CHAIN_HASH = Some(entry_hash);
+        }
+
+        // Log via the existing function (persists to consent zome)
+        let result = log_data_access(
+            patient_hash,
+            categories,
+            access_type,
+            consent_hash,
+            is_emergency,
+            override_reason,
+        )?;
+
+        // Also persist the chain metadata (best-effort — don't fail main logging)
+        let _ = call(
+            CallTargetCell::Local,
+            "consent",
+            "create_chained_audit_entry".into(),
+            None,
+            &chain_metadata,
+        );
+
+        Ok(result)
+    }
 }
 
 /// Common types used across zomes

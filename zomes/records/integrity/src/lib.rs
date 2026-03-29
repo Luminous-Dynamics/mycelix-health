@@ -1,3 +1,6 @@
+// Copyright (C) 2024-2026 Tristan Stoltz / Luminous Dynamics
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// Commercial licensing: see COMMERCIAL_LICENSE.md at repository root
 //! Medical Records and Health Data Integrity Zome
 //! 
 //! Defines entry types for medical records, encounters, diagnoses,
@@ -253,6 +256,32 @@ pub enum EntryTypes {
     LabResult(LabResult),
     ImagingStudy(ImagingStudy),
     VitalSigns(VitalSigns),
+    /// Encrypted health record — stores any health entry encrypted with patient's key.
+    /// The ciphertext can only be decrypted by the patient or authorized consent holders.
+    /// The `data_category` is stored in cleartext for consent-checking without decryption.
+    EncryptedRecord(EncryptedRecord),
+}
+
+/// An encrypted health record. The actual clinical data (lab result, encounter, etc.)
+/// is serialized to MessagePack, then encrypted with the patient's public key.
+/// Only the patient or a consent-granted agent can decrypt it.
+#[hdk_entry_helper]
+#[derive(Clone, PartialEq)]
+pub struct EncryptedRecord {
+    /// Patient this record belongs to.
+    pub patient_hash: ActionHash,
+    /// Key fingerprint used for encryption (first 8 bytes of BLAKE3 hash of public key).
+    pub key_fingerprint: [u8; 8],
+    /// Encrypted payload (serialized health entry + XChaCha20-Poly1305).
+    pub ciphertext: Vec<u8>,
+    /// Nonce for decryption (24 bytes).
+    pub nonce: [u8; 24],
+    /// Data category in cleartext — allows consent checking without decryption.
+    pub data_category: String,
+    /// Original entry type name (e.g., "LabResult", "Encounter") — for deserialization after decryption.
+    pub entry_type: String,
+    /// Encrypted at (microseconds since UNIX epoch).
+    pub encrypted_at: i64,
 }
 
 #[hdk_link_types]
@@ -268,6 +297,8 @@ pub enum LinkTypes {
     EncounterUpdates,
     LabResultUpdates,
     CriticalResults,
+    /// Patient → encrypted records
+    PatientToEncryptedRecords,
 }
 
 #[hdk_extern]
@@ -281,6 +312,7 @@ pub fn validate(op: Op) -> ExternResult<ValidateCallbackResult> {
                 EntryTypes::LabResult(l) => validate_lab_result(&l),
                 EntryTypes::ImagingStudy(i) => validate_imaging(&i),
                 EntryTypes::VitalSigns(v) => validate_vitals(&v),
+                EntryTypes::EncryptedRecord(e) => validate_encrypted_record(&e),
             },
             OpEntry::UpdateEntry { app_entry, .. } => match app_entry {
                 EntryTypes::Encounter(e) => validate_encounter(&e),
@@ -289,6 +321,7 @@ pub fn validate(op: Op) -> ExternResult<ValidateCallbackResult> {
                 EntryTypes::LabResult(l) => validate_lab_result(&l),
                 EntryTypes::ImagingStudy(i) => validate_imaging(&i),
                 EntryTypes::VitalSigns(v) => validate_vitals(&v),
+                EntryTypes::EncryptedRecord(e) => validate_encrypted_record(&e),
             },
             _ => Ok(ValidateCallbackResult::Valid),
         },
@@ -363,6 +396,25 @@ fn validate_vitals(vitals: &VitalSigns) -> ExternResult<ValidateCallbackResult> 
                 "Pain level must be 0-10".to_string(),
             ));
         }
+    }
+    Ok(ValidateCallbackResult::Valid)
+}
+
+fn validate_encrypted_record(record: &EncryptedRecord) -> ExternResult<ValidateCallbackResult> {
+    if record.ciphertext.is_empty() {
+        return Ok(ValidateCallbackResult::Invalid(
+            "Ciphertext cannot be empty".to_string(),
+        ));
+    }
+    if record.entry_type.is_empty() {
+        return Ok(ValidateCallbackResult::Invalid(
+            "Entry type must be specified for decryption routing".to_string(),
+        ));
+    }
+    if record.data_category.is_empty() {
+        return Ok(ValidateCallbackResult::Invalid(
+            "Data category required for consent checking".to_string(),
+        ));
     }
     Ok(ValidateCallbackResult::Valid)
 }

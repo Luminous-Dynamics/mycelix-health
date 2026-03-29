@@ -44,6 +44,9 @@ members = [
     "zomes/dividends/integrity",
     "zomes/dividends/coordinator",
 
+    # ── Health FL Pipeline ──
+    "crates/health-fl",
+
     # ── ARCHIVED: Tier 3 remainder (20 zomes in _archive-2026-02-15/) ──
     # See _archive-2026-02-15/README.md for details
 ]

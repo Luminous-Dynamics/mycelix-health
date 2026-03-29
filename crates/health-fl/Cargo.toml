@@ -1,0 +1,11 @@
+[package]
+name = "mycelix-health-fl"
+version = "0.1.0"
+edition = "2021"
+license = "AGPL-3.0-or-later"
+description = "Federated learning pipeline for health data — privacy-preserving collective insights"
+
+[dependencies]
+mycelix-fl = { path = "../../../mycelix-core/libs/mycelix-fl", default-features = false }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
