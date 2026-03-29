@@ -6,6 +6,16 @@ use leptos::prelude::*;
 use crate::app::AppState;
 use crate::zome_clients::records::AccessEventType;
 
+/// Simulated FL round result for the UI.
+#[derive(Clone, Debug)]
+struct FlRoundResult {
+    loinc_family: String,
+    cohort_size: usize,
+    excluded: usize,
+    interpretation: String,
+    quality_pct: u32,
+}
+
 #[component]
 pub fn PrivacyPage() -> impl IntoView {
     let app = use_context::<AppState>().expect("AppState");
@@ -95,6 +105,61 @@ pub fn PrivacyPage() -> impl IntoView {
                 </button>
             </section>
 
+            // FL Research Projects
+            <section class="fl-section">
+                <h2>"Federated Learning"</h2>
+                <p class="fl-description">
+                    "Your data contributes to research without leaving your device. "
+                    "Only statistical gradients are shared — raw values stay here."
+                </p>
+
+                <FlProjectCard
+                    name="Type 2 Diabetes Cohort"
+                    loinc="Glucose (2345-7)"
+                    rounds_completed=7
+                    total_rounds=12
+                    app=app.clone()
+                />
+                <FlProjectCard
+                    name="Cardiovascular Risk"
+                    loinc="Cholesterol (2093-3)"
+                    rounds_completed=3
+                    total_rounds=10
+                    app=app.clone()
+                />
+            </section>
+
+            // Data export
+            <section class="export-section">
+                <h2>"Data Portability"</h2>
+                <button class="export-btn" on:click=move |_| {
+                    // Generate a JSON export of the patient's data
+                    let records = app.records.get();
+                    let consents = app.consents.get();
+                    let export = serde_json::json!({
+                        "export_version": "1.0",
+                        "export_date": "2026-03-29",
+                        "records_count": records.len(),
+                        "consents_count": consents.len(),
+                        "privacy_budget_remaining": app.privacy_budget.get(),
+                        "note": "Full FHIR R4 export requires conductor connection"
+                    });
+                    let text = serde_json::to_string_pretty(&export).unwrap_or_default();
+                    web_sys::console::log_1(&format!("Export:\n{}", text).into());
+                    // In production: trigger download via Blob URL
+                    let window = web_sys::window().unwrap();
+                    let _ = window.alert_with_message(&format!(
+                        "Export ready ({} records, {} consents). Check browser console for data.",
+                        records.len(), consents.len()
+                    ));
+                }>
+                    "Export My Health Data"
+                </button>
+                <p class="export-note">
+                    "HIPAA Right to Access (45 CFR 164.524) — you can export your data at any time."
+                </p>
+            </section>
+
             // Access log timeline
             <section class="access-timeline">
                 <h2>"Membrane Crossings"</h2>
@@ -124,6 +189,88 @@ pub fn PrivacyPage() -> impl IntoView {
                     </For>
                 </div>
             </section>
+        </div>
+    }
+}
+
+/// FL Project card — shows a federated learning research project.
+#[component]
+fn FlProjectCard(
+    name: &'static str,
+    loinc: &'static str,
+    rounds_completed: u32,
+    total_rounds: u32,
+    app: AppState,
+) -> impl IntoView {
+    let contributed = RwSignal::new(false);
+    let result: RwSignal<Option<FlRoundResult>> = RwSignal::new(None);
+    let progress_pct = (rounds_completed as f64 / total_rounds as f64 * 100.0) as u32;
+
+    let contribute = move |_| {
+        let budget = app.privacy_budget.get();
+        if budget < 1.0 { return; }
+
+        app.privacy_budget.set(budget - 1.0);
+        contributed.set(true);
+
+        // Simulate FL round result
+        result.set(Some(FlRoundResult {
+            loinc_family: loinc.chars().take(4).collect(),
+            cohort_size: 6,
+            excluded: 0,
+            interpretation: format!("{}: cohort values within normal range", loinc),
+            quality_pct: 100,
+        }));
+
+        app.access_events.update(|events| {
+            events.insert(0, crate::zome_clients::records::AccessEvent {
+                who: "Federated Learning".into(),
+                what: format!("contributed to {} (ε=1.0)", name),
+                when: "Just now".into(),
+                event_type: AccessEventType::FlContribution,
+            });
+        });
+    };
+
+    view! {
+        <div class="fl-project-card">
+            <div class="fl-project-header">
+                <span class="fl-project-name">{name}</span>
+                <span class="fl-project-loinc">{loinc}</span>
+            </div>
+            <div class="fl-progress">
+                <div class="fl-progress-bar">
+                    <div class="fl-progress-fill" style=format!("width: {}%", progress_pct) />
+                </div>
+                <span class="fl-progress-label">
+                    {format!("{}/{} rounds", rounds_completed, total_rounds)}
+                </span>
+            </div>
+
+            <Show when=move || result.get().is_some()>
+                <div class="fl-result">
+                    <span class="fl-result-label">"Latest insight:"</span>
+                    <span class="fl-result-text">
+                        {move || result.get().map(|r| r.interpretation).unwrap_or_default()}
+                    </span>
+                    <span class="fl-result-quality">
+                        {move || result.get().map(|r| format!("Quality: {}%", r.quality_pct)).unwrap_or_default()}
+                    </span>
+                </div>
+            </Show>
+
+            <Show when=move || !contributed.get()>
+                <button
+                    class="fl-contribute-btn"
+                    on:click=contribute
+                    disabled=move || app.privacy_budget.get() < 1.0
+                >
+                    "Contribute Gradient (ε=1.0)"
+                </button>
+            </Show>
+            <Show when=move || contributed.get()>
+                <div class="fl-contributed">"Contributed this session"</div>
+            </Show>
         </div>
     }
 }
