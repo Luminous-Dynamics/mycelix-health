@@ -370,6 +370,51 @@ body {
     animation: seed-ripple 3s ease-out infinite;
 }
 
+/* Guiding pulses — converge inward toward the seed from all directions */
+.first-breath-seed::before,
+.first-breath-seed::after {
+    content: "";
+    position: absolute;
+    border-radius: 50%;
+    border: 1px solid var(--bio-cyan);
+    opacity: 0;
+    pointer-events: none;
+}
+
+/* Outer ring converging inward */
+.first-breath-seed::before {
+    inset: -60px;
+    animation: guide-converge 4s ease-in infinite;
+}
+
+.first-breath-seed::after {
+    inset: -40px;
+    animation: guide-converge 4s ease-in infinite 1.3s;
+}
+
+/* Additional guide rings via box-shadows on the container */
+.first-breath-container::before {
+    content: "";
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 240px;
+    height: 240px;
+    margin: -120px 0 0 -120px;
+    border-radius: 50%;
+    border: 1px solid var(--bio-cyan);
+    opacity: 0;
+    pointer-events: none;
+    animation: guide-converge 4s ease-in infinite 2.6s;
+}
+
+@keyframes guide-converge {
+    0% { transform: scale(1.8); opacity: 0; }
+    30% { opacity: 0.3; }
+    80% { opacity: 0.15; }
+    100% { transform: scale(0.2); opacity: 0; }
+}
+
 @keyframes seed-breathe {
     0%, 100% { transform: scale(1); box-shadow: 0 0 30px var(--bio-cyan), 0 0 60px rgba(6, 214, 200, 0.3); }
     50% { transform: scale(1.15); box-shadow: 0 0 40px var(--bio-cyan), 0 0 80px rgba(6, 214, 200, 0.4); }
