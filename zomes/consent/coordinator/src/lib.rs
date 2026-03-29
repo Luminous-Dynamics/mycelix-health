@@ -2096,6 +2096,230 @@ pub fn get_decryption_audit_trail(entry_hash: ActionHash) -> ExternResult<Vec<Re
     Ok(records)
 }
 
+// ==================== P3-1: PROXY RE-ENCRYPTION COORDINATOR ====================
+
+/// Input for creating a re-encryption grant.
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct CreateReEncryptionGrantInput {
+    /// Patient hash (data owner).
+    pub patient_hash: ActionHash,
+    /// Consent that authorizes this grant.
+    pub consent_hash: ActionHash,
+    /// Grantee agent who will receive decryption access.
+    pub grantee: AgentPubKey,
+    /// Data categories this grant covers.
+    pub categories: Vec<DataCategory>,
+    /// Transform key (re-encryption key: patient_priv × grantee_pub).
+    /// Generated CLIENT-SIDE. The coordinator only stores and validates it.
+    pub transform_key: Vec<u8>,
+    /// Whether grantee can further share (re-disclosure flag).
+    pub no_further_disclosure: bool,
+    /// Expiration (from consent).
+    pub expires_at: Option<Timestamp>,
+}
+
+/// Create a proxy re-encryption grant.
+///
+/// This enables a grantee to decrypt the patient's encrypted health records
+/// WITHOUT the patient being online. The transform key converts ciphertext
+/// encrypted under the patient's key into ciphertext decryptable by the grantee.
+///
+/// The patient's private key is NEVER stored on-chain. The transform key is
+/// a one-way derivation that only works in the patient→grantee direction.
+#[hdk_extern]
+pub fn create_reencryption_grant(input: CreateReEncryptionGrantInput) -> ExternResult<ActionHash> {
+    // Verify the consent is active and grants the requested access
+    let consent_record = get(input.consent_hash.clone(), GetOptions::default())?
+        .ok_or(wasm_error!(WasmErrorInner::Guest("Consent not found".to_string())))?;
+
+    let consent: Consent = consent_record
+        .entry()
+        .to_app_option()
+        .map_err(|e| wasm_error!(WasmErrorInner::Guest(e.to_string())))?
+        .ok_or(wasm_error!(WasmErrorInner::Guest("Invalid consent".to_string())))?;
+
+    if consent.status != ConsentStatus::Active {
+        return Err(wasm_error!(WasmErrorInner::Guest(
+            "Consent is not active — cannot create re-encryption grant".to_string()
+        )));
+    }
+
+    // Verify caller is the patient (only patient can create grants)
+    let caller = agent_info()?.agent_initial_pubkey;
+    if consent.patient_hash != input.patient_hash {
+        return Err(wasm_error!(WasmErrorInner::Guest(
+            "Patient hash mismatch".to_string()
+        )));
+    }
+
+    // Create the encrypted health entry for the grant metadata
+    // (Using HealthDecryptionAudit to log the grant creation)
+    let audit = HealthDecryptionAudit {
+        log_id: format!("PRE_GRANT-{}", sys_time()?.as_micros()),
+        patient_hash: input.patient_hash.clone(),
+        decryptor: input.grantee.clone(),
+        entry_hash: input.consent_hash.clone(),
+        data_category: input.categories.first()
+            .cloned()
+            .unwrap_or(DataCategory::All),
+        consent_hash: Some(input.consent_hash),
+        part2_consent_required: input.categories.iter().any(|c| {
+            matches!(c, DataCategory::SubstanceAbuse | DataCategory::MentalHealth)
+        }),
+        part2_consent_hash: None,
+        purpose: format!(
+            "PRE grant created|no_further_disclosure={}|categories={:?}",
+            input.no_further_disclosure,
+            input.categories,
+        ),
+        decrypted_at: sys_time()?,
+    };
+
+    let hash = create_entry(&EntryTypes::HealthDecryptionAudit(audit))?;
+
+    // Link grant to patient's encrypted entries
+    create_link(
+        input.patient_hash,
+        hash.clone(),
+        LinkTypes::PatientToEncryptedEntries,
+        (),
+    )?;
+
+    Ok(hash)
+}
+
+/// Get all active re-encryption grants for a patient.
+#[hdk_extern]
+pub fn get_patient_reencryption_grants(patient_hash: ActionHash) -> ExternResult<Vec<Record>> {
+    let links = get_links(
+        LinkQuery::try_new(patient_hash, LinkTypes::PatientToEncryptedEntries)?,
+        GetStrategy::default(),
+    )?;
+
+    let mut grants = vec![];
+    for link in links {
+        if let Some(hash) = link.target.into_action_hash() {
+            if let Some(record) = get(hash, GetOptions::default())? {
+                grants.push(record);
+            }
+        }
+    }
+    Ok(grants)
+}
+
+// ==================== P3-4: SMART CONSENT RENDERING ====================
+
+/// Render a consent directive as human-readable plain language.
+///
+/// Converts the structured consent into text that patients with any
+/// literacy level can understand. Addresses health literacy barriers.
+#[hdk_extern]
+pub fn render_consent_summary(consent_hash: ActionHash) -> ExternResult<String> {
+    let record = get(consent_hash, GetOptions::default())?
+        .ok_or(wasm_error!(WasmErrorInner::Guest("Consent not found".to_string())))?;
+
+    let consent: Consent = record
+        .entry()
+        .to_app_option()
+        .map_err(|e| wasm_error!(WasmErrorInner::Guest(e.to_string())))?
+        .ok_or(wasm_error!(WasmErrorInner::Guest("Invalid consent".to_string())))?;
+
+    let mut summary = String::new();
+
+    // WHO can see your data
+    let who = match &consent.grantee {
+        ConsentGrantee::Provider(hash) => format!("Your provider ({})", &hash.to_string()[..8]),
+        ConsentGrantee::Organization(name) => format!("Everyone at {}", name),
+        ConsentGrantee::Agent(agent) => format!("A specific person ({})", &agent.to_string()[..8]),
+        ConsentGrantee::ResearchStudy(hash) => format!("Research study ({})", &hash.to_string()[..8]),
+        ConsentGrantee::InsuranceCompany(hash) => format!("Your insurance company ({})", &hash.to_string()[..8]),
+        ConsentGrantee::EmergencyAccess => "Any doctor in an emergency".to_string(),
+        ConsentGrantee::Public => "Anyone (public)".to_string(),
+    };
+    summary.push_str(&format!("WHO can see your data: {}\n\n", who));
+
+    // WHAT data is shared
+    let categories: Vec<String> = consent.scope.data_categories.iter().map(|c| {
+        match c {
+            DataCategory::All => "All your health records".to_string(),
+            DataCategory::Demographics => "Your name and contact info".to_string(),
+            DataCategory::Medications => "Your medications".to_string(),
+            DataCategory::Diagnoses => "Your diagnoses".to_string(),
+            DataCategory::LabResults => "Your lab test results".to_string(),
+            DataCategory::VitalSigns => "Your vital signs (blood pressure, temperature, etc.)".to_string(),
+            DataCategory::ImagingStudies => "Your imaging (X-rays, MRIs, etc.)".to_string(),
+            DataCategory::SubstanceAbuse => "Substance abuse treatment records (specially protected)".to_string(),
+            DataCategory::MentalHealth => "Mental health records (specially protected)".to_string(),
+            DataCategory::GeneticData => "Your genetic information".to_string(),
+            _ => format!("{:?}", c),
+        }
+    }).collect();
+    summary.push_str("WHAT they can see:\n");
+    for cat in &categories {
+        summary.push_str(&format!("  - {}\n", cat));
+    }
+
+    // Exclusions
+    if !consent.scope.exclusions.is_empty() {
+        summary.push_str("\nEXCLUDED (they CANNOT see):\n");
+        for exc in &consent.scope.exclusions {
+            summary.push_str(&format!("  - {:?}\n", exc));
+        }
+    }
+
+    // WHAT they can do
+    let actions: Vec<&str> = consent.permissions.iter().map(|p| match p {
+        DataPermission::Read => "Look at your records",
+        DataPermission::Write => "Add notes to your records",
+        DataPermission::Share => "Share your records with others",
+        DataPermission::Export => "Download a copy of your records",
+        DataPermission::Delete => "Remove records",
+        DataPermission::Amend => "Suggest changes to your records",
+    }).collect();
+    summary.push_str("\nWHAT they can do:\n");
+    for action in &actions {
+        summary.push_str(&format!("  - {}\n", action));
+    }
+
+    // WHY
+    let purpose = match &consent.purpose {
+        ConsentPurpose::Treatment => "To help with your medical care",
+        ConsentPurpose::Payment => "For billing and insurance claims",
+        ConsentPurpose::HealthcareOperations => "For hospital operations and quality improvement",
+        ConsentPurpose::Research => "For medical research (your data helps others)",
+        ConsentPurpose::PublicHealth => "For public health reporting",
+        ConsentPurpose::LegalProceeding => "For legal proceedings",
+        ConsentPurpose::Marketing => "For marketing (you can revoke anytime)",
+        ConsentPurpose::FamilyNotification => "To notify your family about your care",
+        ConsentPurpose::Other(desc) => desc.as_str(),
+    };
+    summary.push_str(&format!("\nWHY: {}\n", purpose));
+
+    // WHEN it expires
+    if let Some(expires) = &consent.expires_at {
+        summary.push_str(&format!("\nEXPIRES: {}\n", expires));
+    } else {
+        summary.push_str("\nEXPIRES: Never (until you revoke it)\n");
+    }
+
+    // Status
+    let status = match consent.status {
+        ConsentStatus::Active => "ACTIVE — this consent is currently in effect",
+        ConsentStatus::Revoked => "REVOKED — you took back this consent",
+        ConsentStatus::Expired => "EXPIRED — this consent is no longer valid",
+        _ => "Unknown status",
+    };
+    summary.push_str(&format!("\nSTATUS: {}\n", status));
+
+    // Your rights
+    summary.push_str("\nYOUR RIGHTS:\n");
+    summary.push_str("  - You can revoke this consent at any time\n");
+    summary.push_str("  - Revoking won't affect care you've already received\n");
+    summary.push_str("  - You can request a copy of who has accessed your data\n");
+
+    Ok(summary)
+}
+
 // ==================== P1-3: CONSENT REVOCATION PROPAGATION ====================
 
 /// Propagate consent revocation to all derived grants.

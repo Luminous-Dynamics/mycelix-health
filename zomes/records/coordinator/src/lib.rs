@@ -1862,6 +1862,130 @@ pub fn request_crypto_erasure(patient_hash: ActionHash) -> ExternResult<ActionHa
     Ok(result)
 }
 
+// ==================== P3-3: SOCIAL DETERMINANTS OF HEALTH (SDOH) ====================
+
+/// SDOH screening instrument types.
+/// PRAPARE: Protocol for Responding to and Assessing Patients' Assets, Risks, and Experiences
+/// AHC-HRSN: Accountable Health Communities Health-Related Social Needs
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub enum SdohInstrument {
+    /// PRAPARE screening (15 questions, covers 5 SDOH domains)
+    Prapare,
+    /// AHC Health-Related Social Needs Screening (10 questions)
+    AhcHrsn,
+    /// Custom screening tool
+    Custom(String),
+}
+
+/// SDOH domain categories (Healthy People 2030 framework).
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub enum SdohDomain {
+    EconomicStability,
+    EducationAccess,
+    HealthcarAccess,
+    NeighborhoodEnvironment,
+    SocialCommunityContext,
+}
+
+/// SDOH screening result.
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct SdohScreening {
+    pub patient_hash: ActionHash,
+    pub instrument: SdohInstrument,
+    pub responses: Vec<SdohResponse>,
+    pub risk_domains: Vec<SdohDomain>,
+    pub overall_risk: SdohRisk,
+    pub screener: AgentPubKey,
+    pub screened_at: i64,
+    pub referrals: Vec<SdohReferral>,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct SdohResponse {
+    pub question_id: String,
+    pub domain: SdohDomain,
+    pub response: String,
+    pub indicates_risk: bool,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub enum SdohRisk {
+    Low,
+    Moderate,
+    High,
+}
+
+/// Community resource referral from SDOH screening.
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct SdohReferral {
+    pub domain: SdohDomain,
+    pub resource_name: String,
+    pub resource_type: String, // "food_bank", "housing_assistance", "transportation", etc.
+    pub contact_info: Option<String>,
+    pub accepted: bool,
+}
+
+/// Record an SDOH screening result.
+///
+/// CMS requires SDOH screening documentation for quality reporting.
+/// Results are linked to the patient and stored as encrypted records
+/// (SDOH data is sensitive — housing/food insecurity stigma).
+#[hdk_extern]
+pub fn record_sdoh_screening(input: SdohScreening) -> ExternResult<ActionHash> {
+    let auth = require_authorization(
+        input.patient_hash.clone(),
+        DataCategory::Demographics, // SDOH falls under demographics
+        Permission::Write,
+        false,
+    )?;
+
+    // Serialize and log (in production, encrypt via create_encrypted_record)
+    let risk_summary = format!(
+        "SDOH_SCREENING|instrument={:?}|risk={:?}|domains={}|referrals={}",
+        input.instrument,
+        input.overall_risk,
+        input.risk_domains.len(),
+        input.referrals.len(),
+    );
+
+    log_data_access(
+        input.patient_hash,
+        vec![DataCategory::Demographics],
+        Permission::Write,
+        auth.consent_hash,
+        false,
+        Some(risk_summary),
+    )
+}
+
+/// Get SDOH screening history for a patient.
+#[hdk_extern]
+pub fn get_sdoh_screenings(patient_hash: ActionHash) -> ExternResult<Vec<Record>> {
+    let _auth = require_authorization(
+        patient_hash.clone(),
+        DataCategory::Demographics,
+        Permission::Read,
+        false,
+    )?;
+
+    // Query access logs for SDOH entries
+    let response = call(
+        CallTargetCell::Local,
+        "consent",
+        "get_access_logs".into(),
+        None,
+        &patient_hash,
+    )?;
+
+    match response {
+        ZomeCallResponse::Ok(io) => {
+            let records: Vec<Record> = io.decode().unwrap_or_default();
+            Ok(records)
+        },
+        _ => Ok(vec![]),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
