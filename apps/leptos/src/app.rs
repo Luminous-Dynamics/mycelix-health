@@ -8,7 +8,7 @@ use leptos_router::path;
 
 use crate::components::homeostasis_bg::HomeostasisBackground;
 use crate::components::nav::BottomNav;
-use crate::crypto::key_manager;
+use crate::holochain::{HolochainProvider, ConnectionBadge};
 use crate::pages;
 
 /// Biological health state — drives the homeostasis background.
@@ -42,6 +42,7 @@ pub fn App() -> impl IntoView {
 
             // Content layer
             <div class="portal-content">
+                <HolochainProvider>
                 <Router>
                     <main class="portal-main">
                         <Routes fallback=|| view! { <p class="not-found">"404 — This pathway does not exist."</p> }>
@@ -54,7 +55,9 @@ pub fn App() -> impl IntoView {
                         </Routes>
                     </main>
                     <BottomNav />
+                    <ConnectionBadge />
                 </Router>
+                </HolochainProvider>
             </div>
         </div>
     }

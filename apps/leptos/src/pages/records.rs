@@ -3,26 +3,12 @@
 //! Records — encrypted health tissue, each with a mycelial node.
 
 use leptos::prelude::*;
-use crate::components::mycelial_node::{MycelialNode, CryptoPathway};
+use crate::components::mycelial_node::MycelialNode;
+use crate::zome_clients::records::{mock_records, HealthRecord};
 
 #[component]
 pub fn RecordsPage() -> impl IntoView {
-    // Mock records — will be replaced with real zome calls
-    let records = vec![
-        ("Lab Results", "Glucose: within range", "2025-03-15", vec![
-            CryptoPathway { holder_name: "Dr. Sarah Chen".into(), active: true },
-            CryptoPathway { holder_name: "Valley Medical Lab".into(), active: true },
-        ]),
-        ("Encounter", "Annual physical exam", "2025-03-10", vec![
-            CryptoPathway { holder_name: "Dr. Sarah Chen".into(), active: true },
-        ]),
-        ("Vital Signs", "BP 120/80, HR 72", "2025-03-10", vec![
-            CryptoPathway { holder_name: "Dr. Sarah Chen".into(), active: true },
-        ]),
-        ("Immunization", "COVID-19 booster (Moderna)", "2025-01-20", vec![
-            CryptoPathway { holder_name: "CVS Pharmacy".into(), active: false },
-        ]),
-    ];
+    let records = mock_records();
 
     view! {
         <div class="page records-page">
@@ -32,21 +18,22 @@ pub fn RecordsPage() -> impl IntoView {
             </header>
 
             <div class="records-list">
-                {records.into_iter().map(|(category, summary, date, pathways)| {
-                    let (encrypted, _) = signal(true);
-                    let (pathways_signal, _) = signal(pathways.clone());
+                {records.into_iter().map(|record| {
+                    let (encrypted, _) = signal(record.encrypted);
+                    let (pathways, _) = signal(record.pathways.clone());
+                    let category = record.category.clone();
                     view! {
                         <div class="record-card">
                             <div class="record-header">
-                                <span class="record-category">{category}</span>
+                                <span class="record-category">{record.category.clone()}</span>
                                 <MycelialNode
                                     encrypted=encrypted
-                                    pathways=pathways_signal
-                                    category=category.to_string()
+                                    pathways=pathways
+                                    category=category
                                 />
                             </div>
-                            <div class="record-summary">{summary}</div>
-                            <div class="record-date">{date}</div>
+                            <div class="record-summary">{record.summary}</div>
+                            <div class="record-date">{record.date}</div>
                         </div>
                     }
                 }).collect::<Vec<_>>()}

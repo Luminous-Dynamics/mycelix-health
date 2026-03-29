@@ -638,6 +638,48 @@ body {
 }
 
 /* ═══════════════════════════════════════════
+   Connection Badge
+   ═══════════════════════════════════════════ */
+
+.connection-badge {
+    position: fixed;
+    top: 0.75rem;
+    right: 0.75rem;
+    z-index: 15;
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    padding: 0.25rem 0.6rem;
+    background: var(--bg-card);
+    backdrop-filter: blur(12px);
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    font-size: 0.65rem;
+    letter-spacing: 0.03em;
+}
+
+.badge-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+}
+
+.status-connected .badge-dot { background: var(--active); }
+.status-connecting .badge-dot { background: var(--amber); animation: badge-pulse 1s infinite; }
+.status-mock .badge-dot { background: var(--teal-glow); }
+.status-disconnected .badge-dot { background: var(--text-muted); }
+
+@keyframes badge-pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.3; }
+}
+
+.badge-label {
+    color: var(--text-secondary);
+    text-transform: uppercase;
+}
+
+/* ═══════════════════════════════════════════
    Accessibility
    ═══════════════════════════════════════════ */
 

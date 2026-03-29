@@ -7,9 +7,10 @@
 //! This visualizes the DHT's decentralized nature — sovereignty, not restriction.
 
 use leptos::prelude::*;
+use serde::{Serialize, Deserialize};
 
 /// State of a mycelial node's cryptographic connections.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct CryptoPathway {
     /// Name of the key holder (e.g., "Dr. Sarah Chen").
     pub holder_name: String,

@@ -10,7 +10,9 @@ use leptos::prelude::*;
 mod app;
 mod components;
 mod crypto;
+mod holochain;
 mod pages;
+mod zome_clients;
 
 fn main() {
     console_error_panic_hook::set_once();
