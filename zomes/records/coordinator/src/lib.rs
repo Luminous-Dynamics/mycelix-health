@@ -871,6 +871,215 @@ pub fn decrypt_lab_result(input: DecryptLabResultInput) -> ExternResult<LabResul
     Ok(lab_result)
 }
 
+// ==================== P1-1: GENERIC ENCRYPTED RECORD ====================
+// Encrypts ANY health entry type (encounter, diagnosis, vitals, imaging, procedure)
+// into a single EncryptedRecord. This ensures ALL PHI is encrypted at rest.
+
+/// Input for creating any encrypted health record.
+#[derive(Serialize, Deserialize, Debug)]
+pub struct CreateEncryptedRecordInput {
+    /// Patient this record belongs to.
+    pub patient_hash: ActionHash,
+    /// The serialized health entry (MessagePack bytes from client).
+    pub plaintext_entry: Vec<u8>,
+    /// Entry type name (e.g., "Encounter", "Diagnosis", "VitalSigns").
+    pub entry_type: String,
+    /// Data category for consent checking without decryption.
+    pub data_category: String,
+    /// 32-byte symmetric encryption key (derived client-side from secret material).
+    pub encryption_key: Vec<u8>,
+    /// Key fingerprint for identification.
+    pub key_fingerprint: [u8; 8],
+    /// Emergency access flag.
+    pub is_emergency: bool,
+    pub emergency_reason: Option<String>,
+}
+
+/// Create an encrypted health record for ANY entry type.
+///
+/// The plaintext entry is encrypted with XChaCha20-Poly1305 before DHT storage.
+/// The `data_category` and `entry_type` are stored in cleartext for consent
+/// checking and deserialization routing without decryption.
+///
+/// This single function replaces the need for separate `create_encrypted_encounter`,
+/// `create_encrypted_diagnosis`, `create_encrypted_vitals`, etc.
+#[hdk_extern]
+pub fn create_encrypted_record(input: CreateEncryptedRecordInput) -> ExternResult<Record> {
+    use mycelix_health_shared::patient_encryption;
+
+    // Map data_category string to DataCategory enum for authorization
+    let category = match input.data_category.as_str() {
+        "Demographics" => DataCategory::Demographics,
+        "Diagnoses" => DataCategory::Diagnoses,
+        "Procedures" => DataCategory::Procedures,
+        "LabResults" => DataCategory::LabResults,
+        "ImagingStudies" => DataCategory::ImagingStudies,
+        "VitalSigns" => DataCategory::VitalSigns,
+        "MentalHealth" => DataCategory::MentalHealth,
+        "SubstanceAbuse" => DataCategory::SubstanceAbuse,
+        "Medications" => DataCategory::Medications,
+        "Allergies" => DataCategory::Allergies,
+        _ => DataCategory::All,
+    };
+
+    // Require Write authorization
+    let auth = require_authorization(
+        input.patient_hash.clone(),
+        category.clone(),
+        Permission::Write,
+        input.is_emergency,
+    )?;
+
+    // Validate key
+    if input.encryption_key.len() != 32 {
+        return Err(wasm_error!(WasmErrorInner::Guest(format!(
+            "Encryption key must be 32 bytes, got {}", input.encryption_key.len()
+        ))));
+    }
+
+    // Encrypt with XChaCha20-Poly1305
+    let (ciphertext, nonce) = patient_encryption::encrypt(&input.plaintext_entry, &input.encryption_key)
+        .map_err(|e| wasm_error!(WasmErrorInner::Guest(format!("Encryption failed: {}", e))))?;
+
+    let now = sys_time()?;
+    let encrypted = EncryptedRecord {
+        patient_hash: input.patient_hash.clone(),
+        key_fingerprint: input.key_fingerprint,
+        ciphertext,
+        nonce,
+        data_category: input.data_category,
+        entry_type: input.entry_type,
+        encrypted_at: now.as_micros() as i64,
+    };
+
+    let record_hash = create_entry(&EntryTypes::EncryptedRecord(encrypted))?;
+    let record = get(record_hash.clone(), GetOptions::default())?
+        .ok_or(wasm_error!(WasmErrorInner::Guest("Could not find encrypted record".to_string())))?;
+
+    create_link(
+        input.patient_hash.clone(),
+        record_hash,
+        LinkTypes::PatientToEncryptedRecords,
+        (),
+    )?;
+
+    log_data_access(
+        input.patient_hash,
+        vec![category],
+        Permission::Write,
+        auth.consent_hash,
+        auth.emergency_override,
+        input.emergency_reason,
+    )?;
+
+    Ok(record)
+}
+
+/// Input for decrypting any encrypted health record.
+#[derive(Serialize, Deserialize, Debug)]
+pub struct DecryptRecordInput {
+    /// Hash of the EncryptedRecord.
+    pub encrypted_record_hash: ActionHash,
+    /// Patient hash for consent verification.
+    pub patient_hash: ActionHash,
+    /// 32-byte decryption key.
+    pub decryption_key: Vec<u8>,
+    /// Emergency access.
+    pub is_emergency: bool,
+    pub emergency_reason: Option<String>,
+}
+
+/// Decrypt any encrypted health record after consent verification.
+///
+/// Returns the raw plaintext bytes. The client deserializes based on
+/// the `entry_type` field from the EncryptedRecord.
+#[hdk_extern]
+pub fn decrypt_record(input: DecryptRecordInput) -> ExternResult<ExternIO> {
+    use mycelix_health_shared::patient_encryption;
+
+    // Retrieve encrypted record
+    let record = get(input.encrypted_record_hash, GetOptions::default())?
+        .ok_or(wasm_error!(WasmErrorInner::Guest("Encrypted record not found".to_string())))?;
+
+    let encrypted: EncryptedRecord = record
+        .entry()
+        .to_app_option()
+        .map_err(|e| wasm_error!(WasmErrorInner::Guest(format!("Invalid encrypted record: {}", e))))?
+        .ok_or(wasm_error!(WasmErrorInner::Guest("Not an EncryptedRecord".to_string())))?;
+
+    // Verify patient ownership
+    if encrypted.patient_hash != input.patient_hash {
+        return Err(wasm_error!(WasmErrorInner::Guest(
+            "Patient hash mismatch".to_string()
+        )));
+    }
+
+    // Map data_category for authorization
+    let category = match encrypted.data_category.as_str() {
+        "Demographics" => DataCategory::Demographics,
+        "Diagnoses" => DataCategory::Diagnoses,
+        "Procedures" => DataCategory::Procedures,
+        "LabResults" => DataCategory::LabResults,
+        "ImagingStudies" => DataCategory::ImagingStudies,
+        "VitalSigns" => DataCategory::VitalSigns,
+        "MentalHealth" => DataCategory::MentalHealth,
+        "SubstanceAbuse" => DataCategory::SubstanceAbuse,
+        _ => DataCategory::All,
+    };
+
+    // Verify consent BEFORE decryption
+    let auth = require_authorization(
+        input.patient_hash.clone(),
+        category.clone(),
+        Permission::Read,
+        input.is_emergency,
+    )?;
+
+    // Decrypt
+    let plaintext = patient_encryption::decrypt(&encrypted.ciphertext, &encrypted.nonce, &input.decryption_key)
+        .map_err(|e| wasm_error!(WasmErrorInner::Guest(format!(
+            "Decryption failed (wrong key or tampered): {}", e
+        ))))?;
+
+    // Log access
+    log_data_access(
+        input.patient_hash,
+        vec![category],
+        Permission::Read,
+        auth.consent_hash,
+        auth.emergency_override,
+        input.emergency_reason,
+    )?;
+
+    Ok(ExternIO::from(plaintext))
+}
+
+/// Get all encrypted records for a patient.
+#[hdk_extern]
+pub fn get_patient_encrypted_records(input: GetPatientLabResultsInput) -> ExternResult<Vec<Record>> {
+    let _auth = require_authorization(
+        input.patient_hash.clone(),
+        DataCategory::All,
+        Permission::Read,
+        input.is_emergency,
+    )?;
+
+    let links = get_links(
+        LinkQuery::try_new(input.patient_hash, LinkTypes::PatientToEncryptedRecords)?,
+        GetStrategy::default(),
+    )?;
+
+    let mut records = vec![];
+    for link in links {
+        if let Some(hash) = link.target.into_action_hash() {
+            if let Some(record) = get(hash, GetOptions::default())? {
+                records.push(record);
+            }
+        }
+    }
+    Ok(records)
+}
+
 /// Input for getting patient lab results with access control
 #[derive(Serialize, Deserialize, Debug)]
 pub struct GetPatientLabResultsInput {
