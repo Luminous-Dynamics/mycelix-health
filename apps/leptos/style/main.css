@@ -638,6 +638,75 @@ body {
 }
 
 /* ═══════════════════════════════════════════
+   Vault Warning + Interactive Elements
+   ═══════════════════════════════════════════ */
+
+.vault-warning {
+    display: block;
+    padding: 0.75rem 1rem;
+    background: var(--amber-glow);
+    border: 1px solid rgba(217, 119, 6, 0.3);
+    border-radius: var(--radius);
+    color: var(--amber);
+    text-decoration: none;
+    font-size: 0.85rem;
+    text-align: center;
+    margin-bottom: 1rem;
+    transition: background 0.15s;
+}
+
+.vault-warning:hover {
+    background: rgba(217, 119, 6, 0.2);
+}
+
+.section-title {
+    font-size: 0.8rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--text-secondary);
+    margin-bottom: 0.75rem;
+}
+
+.empty-state {
+    padding: 2rem;
+    text-align: center;
+    color: var(--text-muted);
+    font-size: 0.9rem;
+}
+
+.fl-contribute-btn {
+    display: block;
+    width: 100%;
+    padding: 0.625rem;
+    margin-top: 1rem;
+    background: var(--teal-surface);
+    border: 1px solid var(--border-active);
+    border-radius: var(--radius-sm);
+    color: var(--teal-glow);
+    font-size: 0.85rem;
+    cursor: pointer;
+    transition: background 0.15s, opacity 0.15s;
+}
+
+.fl-contribute-btn:hover:not(:disabled) {
+    background: rgba(20, 184, 166, 0.15);
+}
+
+.fl-contribute-btn:disabled {
+    opacity: 0.3;
+    cursor: not-allowed;
+}
+
+.break-glass .timeline-dot {
+    background: var(--revoked) !important;
+}
+
+.gauge-healthy { stroke: var(--teal-glow); }
+.gauge-caution { stroke: var(--amber); }
+.gauge-warning { stroke: #ea580c; }
+.gauge-critical { stroke: var(--revoked); }
+
+/* ═══════════════════════════════════════════
    Connection Badge
    ═══════════════════════════════════════════ */
 

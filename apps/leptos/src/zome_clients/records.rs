@@ -23,7 +23,7 @@ pub struct AccessEvent {
     pub event_type: AccessEventType,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq)]
 pub enum AccessEventType {
     DataAccess,
     FlContribution,
