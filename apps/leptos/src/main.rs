@@ -9,6 +9,7 @@ use leptos::prelude::*;
 
 mod app;
 mod components;
+mod crypto;
 mod pages;
 
 fn main() {

@@ -6,3 +6,4 @@ pub mod records;
 pub mod consent;
 pub mod privacy;
 pub mod metabolism;
+pub mod onboarding;

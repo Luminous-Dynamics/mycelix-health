@@ -23,7 +23,7 @@ web-sys = { version = "0.3", features = [
     "console", "Window", "Document", "HtmlCanvasElement", "HtmlInputElement",
     "WebGl2RenderingContext", "WebGlProgram", "WebGlShader", "WebGlBuffer",
     "WebGlUniformLocation", "EventTarget", "Navigator", "Storage", "Location",
-    "Performance", "CanvasRenderingContext2d",
+    "Performance", "CanvasRenderingContext2d", "Crypto",
 ] }
 console_error_panic_hook = "0.1"
 gloo-timers = { version = "0.3", features = ["futures"] }

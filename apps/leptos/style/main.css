@@ -660,6 +660,232 @@ body {
    Responsive
    ═══════════════════════════════════════════ */
 
+/* ═══════════════════════════════════════════
+   Onboarding
+   ═══════════════════════════════════════════ */
+
+.onboarding-page {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    min-height: 80vh;
+}
+
+.onboarding-card {
+    background: var(--bg-card);
+    backdrop-filter: blur(16px);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 2rem;
+    max-width: 480px;
+    width: 100%;
+    text-align: center;
+}
+
+.vault-icon {
+    margin-bottom: 1.5rem;
+}
+
+.onboarding-title {
+    font-size: 1.5rem;
+    font-weight: 600;
+    color: var(--text-primary);
+    margin-bottom: 0.5rem;
+}
+
+.onboarding-subtitle {
+    color: var(--teal-glow);
+    font-size: 1rem;
+    margin-bottom: 2rem;
+}
+
+.onboarding-points {
+    text-align: left;
+    margin-bottom: 2rem;
+}
+
+.point {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.75rem;
+    padding: 0.75rem 0;
+    font-size: 0.9rem;
+    color: var(--text-secondary);
+}
+
+.point-icon {
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    background: var(--teal-surface);
+    color: var(--teal-glow);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 600;
+    font-size: 0.8rem;
+    flex-shrink: 0;
+}
+
+.onboarding-cta {
+    display: inline-block;
+    padding: 0.875rem 2rem;
+    background: var(--teal-deep);
+    color: var(--text-primary);
+    border: none;
+    border-radius: var(--radius);
+    font-size: 1rem;
+    font-weight: 500;
+    cursor: pointer;
+    text-decoration: none;
+    transition: background 0.15s, box-shadow 0.15s;
+    width: 100%;
+}
+
+.onboarding-cta:hover {
+    background: var(--teal-glow);
+    box-shadow: 0 0 20px var(--bio-glow);
+}
+
+/* Creation animation */
+.creation-animation {
+    position: relative;
+    width: 120px;
+    height: 120px;
+    margin: 0 auto 1.5rem;
+}
+
+.creation-ring {
+    position: absolute;
+    inset: 0;
+    border-radius: 50%;
+    border: 1px solid var(--teal-glow);
+    opacity: 0.3;
+}
+
+.creation-ring.ring-1 {
+    animation: ring-grow 2s ease-in-out infinite;
+}
+.creation-ring.ring-2 {
+    animation: ring-grow 2s ease-in-out infinite 0.6s;
+}
+.creation-ring.ring-3 {
+    animation: ring-grow 2s ease-in-out infinite 1.2s;
+}
+
+@keyframes ring-grow {
+    0% { transform: scale(0.3); opacity: 0.8; }
+    100% { transform: scale(1.2); opacity: 0; }
+}
+
+.creation-core {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 16px;
+    height: 16px;
+    margin: -8px 0 0 -8px;
+    border-radius: 50%;
+    background: var(--bio-cyan);
+    box-shadow: 0 0 20px var(--bio-cyan);
+    animation: core-pulse 1s ease-in-out infinite;
+}
+
+@keyframes core-pulse {
+    0%, 100% { transform: scale(1); }
+    50% { transform: scale(1.3); }
+}
+
+.creating-text {
+    color: var(--text-secondary);
+    font-size: 0.9rem;
+    line-height: 1.6;
+}
+
+/* Seed phrase grid */
+.seed-warning {
+    color: var(--amber);
+    font-size: 0.85rem;
+    line-height: 1.5;
+    margin-bottom: 1.5rem;
+    padding: 0.75rem;
+    background: var(--amber-glow);
+    border-radius: var(--radius-sm);
+}
+
+.seed-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 0.5rem;
+    margin-bottom: 2rem;
+}
+
+.seed-word {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    padding: 0.4rem 0.5rem;
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    font-size: 0.8rem;
+}
+
+.seed-num {
+    color: var(--text-muted);
+    font-size: 0.65rem;
+    min-width: 1.2em;
+}
+
+.seed-text {
+    font-family: var(--font);
+    font-weight: 500;
+}
+
+/* Verification */
+.verify-field {
+    margin-bottom: 1rem;
+    text-align: left;
+}
+
+.verify-label {
+    display: block;
+    font-size: 0.8rem;
+    color: var(--text-secondary);
+    margin-bottom: 0.25rem;
+}
+
+.verify-input {
+    width: 100%;
+    padding: 0.6rem 0.75rem;
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    color: var(--text-primary);
+    font-size: 0.9rem;
+    font-family: var(--font);
+}
+
+.verify-input:focus {
+    outline: none;
+    border-color: var(--teal-glow);
+    box-shadow: 0 0 0 2px var(--bio-glow);
+}
+
+.verify-error {
+    color: var(--revoked);
+    font-size: 0.85rem;
+    padding: 0.5rem;
+    margin-bottom: 1rem;
+    background: rgba(220, 38, 38, 0.08);
+    border-radius: var(--radius-sm);
+}
+
+/* Complete */
+.complete-icon {
+    margin-bottom: 1.5rem;
+}
+
 @media (min-width: 768px) {
     .portal-main {
         padding: 2rem;

@@ -8,6 +8,7 @@ use leptos_router::path;
 
 use crate::components::homeostasis_bg::HomeostasisBackground;
 use crate::components::nav::BottomNav;
+use crate::crypto::key_manager;
 use crate::pages;
 
 /// Biological health state — drives the homeostasis background.
@@ -49,6 +50,7 @@ pub fn App() -> impl IntoView {
                             <Route path=path!("/consent") view=pages::consent::ConsentPage />
                             <Route path=path!("/privacy") view=pages::privacy::PrivacyPage />
                             <Route path=path!("/metabolism") view=pages::metabolism::MetabolismPage />
+                            <Route path=path!("/welcome") view=pages::onboarding::OnboardingPage />
                         </Routes>
                     </main>
                     <BottomNav />
