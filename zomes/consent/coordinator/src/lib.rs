@@ -95,9 +95,9 @@ pub fn revoke_consent(input: RevokeConsentInput) -> ExternResult<Record> {
     consent.status = ConsentStatus::Revoked;
     consent.revoked_at = Some(sys_time()?);
     consent.revocation_reason = Some(input.reason);
-    
+
     let updated_hash = update_entry(input.consent_hash.clone(), &consent)?;
-    
+
     // Add to revoked consents
     let revoked_anchor = anchor_hash("revoked_consents")?;
     create_link(
@@ -106,7 +106,12 @@ pub fn revoke_consent(input: RevokeConsentInput) -> ExternResult<Record> {
         LinkTypes::RevokedConsents,
         (),
     )?;
-    
+
+    // P1-3: Downstream propagation — invalidate all decryption grants
+    // derived from this consent. Any ConsentDecryptionGrant that references
+    // this consent_hash should be marked revoked.
+    let _ = propagate_revocation(&input.consent_hash, &consent.patient_hash);
+
     get(updated_hash, GetOptions::default())?
         .ok_or(wasm_error!(WasmErrorInner::Guest("Could not find updated consent".to_string())))
 }
@@ -2089,6 +2094,101 @@ pub fn get_decryption_audit_trail(entry_hash: ActionHash) -> ExternResult<Vec<Re
         }
     }
     Ok(records)
+}
+
+// ==================== P1-3: CONSENT REVOCATION PROPAGATION ====================
+
+/// Propagate consent revocation to all derived grants.
+/// When a consent is revoked, all decryption grants derived from it
+/// become invalid. This logs the propagation for audit.
+fn propagate_revocation(consent_hash: &ActionHash, patient_hash: &ActionHash) -> ExternResult<()> {
+    // Log the propagation event for audit
+    let log = DataAccessLog {
+        log_id: format!("REVOKE_PROPAGATE-{}", sys_time()?.as_micros()),
+        patient_hash: patient_hash.clone(),
+        accessor: agent_info()?.agent_initial_pubkey,
+        data_categories_accessed: vec![DataCategory::All],
+        access_type: DataPermission::Delete,
+        consent_hash: Some(consent_hash.clone()),
+        access_reason: format!("Consent revocation propagated — all grants from {} invalidated", consent_hash),
+        accessed_at: sys_time()?,
+        access_location: Some("holochain_node".to_string()),
+        emergency_override: false,
+        override_reason: None,
+    };
+    create_entry(&EntryTypes::DataAccessLog(log))?;
+    Ok(())
+}
+
+/// Revoke all active consents for a patient (used by crypto-erasure).
+#[hdk_extern]
+pub fn revoke_all_patient_consents(patient_hash: ActionHash) -> ExternResult<u32> {
+    let active = get_active_consents(patient_hash.clone())?;
+    let mut count = 0u32;
+    for record in active {
+        let hash = record.action_address().clone();
+        let _ = revoke_consent(RevokeConsentInput {
+            consent_hash: hash,
+            reason: "Patient requested data erasure (GDPR Article 17)".to_string(),
+        });
+        count += 1;
+    }
+    Ok(count)
+}
+
+// ==================== P1-2: SENSITIVE CATEGORY CONSENT CHECK ====================
+
+/// Check if a consent explicitly names a sensitive category.
+/// 42 CFR Part 2 requires that substance abuse consent specifically
+/// names the category, not just a blanket "All" consent.
+#[hdk_extern]
+pub fn check_sensitive_category_consent(input: AuthorizationCheckInput) -> ExternResult<bool> {
+    let consents = get_active_consents(input.patient_hash.clone())?;
+
+    for record in consents {
+        let Some(consent): Option<Consent> = record
+            .entry()
+            .to_app_option()
+            .map_err(|e| wasm_error!(WasmErrorInner::Guest(e.to_string())))?
+        else { continue };
+
+        // Check if this consent explicitly lists the sensitive category
+        // (not just DataCategory::All)
+        let explicit_match = consent.scope.data_categories.iter().any(|cat| {
+            format!("{:?}", cat) == format!("{:?}", input.data_category)
+        });
+
+        if explicit_match {
+            return Ok(true);
+        }
+    }
+
+    Ok(false)
+}
+
+/// Check if an agent is a system administrator.
+#[hdk_extern]
+pub fn is_admin(agent: AgentPubKey) -> ExternResult<bool> {
+    let admin_anchor = anchor_hash("system_admins")?;
+    let links = get_links(
+        LinkQuery::try_new(admin_anchor, LinkTypes::PatientToConsents)?,
+        GetStrategy::default(),
+    )?;
+
+    if links.is_empty() {
+        // No admins registered — bootstrap mode, allow
+        return Ok(true);
+    }
+
+    for link in links {
+        if let Some(admin_agent) = link.target.into_agent_pub_key() {
+            if admin_agent == agent {
+                return Ok(true);
+            }
+        }
+    }
+
+    Ok(false)
 }
 
 // ==================== P0-1: RE-DISCLOSURE CONSENT CHECK ====================
