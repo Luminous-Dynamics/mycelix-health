@@ -681,6 +681,107 @@ a.stat-link:hover {
     transition: width 1s ease;
 }
 
+/* Yield allocation sliders */
+.yield-pref-desc {
+    font-size: 0.85rem;
+    color: var(--text-secondary);
+    margin-bottom: 1rem;
+}
+
+.pref-slider {
+    margin-bottom: 1rem;
+}
+
+.pref-header {
+    display: flex;
+    justify-content: space-between;
+    margin-bottom: 0.35rem;
+}
+
+.pref-name {
+    font-size: 0.85rem;
+    color: var(--text-primary);
+}
+
+.pref-pct {
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: var(--teal-glow);
+}
+
+.pref-auto {
+    font-size: 0.7rem;
+    color: var(--text-muted);
+    font-style: italic;
+}
+
+.slider {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 100%;
+    height: 4px;
+    background: var(--border);
+    border-radius: 2px;
+    outline: none;
+}
+
+.slider::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 18px;
+    height: 18px;
+    border-radius: 50%;
+    background: var(--teal-glow);
+    cursor: pointer;
+    box-shadow: 0 0 8px var(--bio-glow);
+}
+
+.slider::-moz-range-thumb {
+    width: 18px;
+    height: 18px;
+    border-radius: 50%;
+    background: var(--teal-glow);
+    cursor: pointer;
+    border: none;
+}
+
+.allocation-bar {
+    display: flex;
+    height: 8px;
+    border-radius: 4px;
+    overflow: hidden;
+    margin-top: 1rem;
+}
+
+.alloc-care { background: var(--teal-glow); transition: width 0.3s; }
+.alloc-payout { background: var(--amber); transition: width 0.3s; }
+.alloc-community { background: var(--violet); transition: width 0.3s; }
+
+.alloc-legend {
+    display: flex;
+    gap: 1rem;
+    justify-content: center;
+    margin-top: 0.5rem;
+    font-size: 0.7rem;
+    color: var(--text-muted);
+}
+
+.legend-item {
+    display: flex;
+    align-items: center;
+    gap: 0.3rem;
+}
+
+.legend-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+}
+
+.legend-dot.care { background: var(--teal-glow); }
+.legend-dot.payout { background: var(--amber); }
+.legend-dot.community { background: var(--violet); }
+
 /* ═══════════════════════════════════════════
    Timeline
    ═══════════════════════════════════════════ */
