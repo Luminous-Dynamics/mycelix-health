@@ -793,6 +793,124 @@ body {
 .modal-confirm:hover { background: #b91c1c; }
 
 /* ═══════════════════════════════════════════
+   Consent Wizard
+   ═══════════════════════════════════════════ */
+
+.wizard-card {
+    background: var(--bg-card);
+    backdrop-filter: blur(16px);
+    border: 1px solid var(--border-active);
+    border-radius: var(--radius);
+    padding: 1.5rem;
+    max-width: 500px;
+    width: 100%;
+    animation: modal-in 0.2s ease-out;
+}
+
+.wizard-card h2 {
+    font-size: 1.1rem;
+    margin-bottom: 1rem;
+    color: var(--teal-glow);
+}
+
+.wizard-step-indicator {
+    font-size: 0.7rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--text-muted);
+    margin-bottom: 1rem;
+}
+
+.category-group {
+    margin-bottom: 1rem;
+}
+
+.category-group-label {
+    font-size: 0.75rem;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--text-secondary);
+    margin-bottom: 0.5rem;
+}
+
+.sensitive-group .category-group-label {
+    color: var(--sensitive);
+}
+
+.category-toggle {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.4rem 0;
+    font-size: 0.85rem;
+    color: var(--text-primary);
+    cursor: pointer;
+}
+
+.category-toggle.sensitive {
+    color: var(--sensitive);
+}
+
+.category-toggle.redisclosure {
+    margin-top: 1rem;
+    padding: 0.75rem;
+    background: rgba(6, 214, 200, 0.05);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    font-size: 0.8rem;
+}
+
+.category-toggle input[type="checkbox"],
+.duration-option input[type="radio"] {
+    accent-color: var(--teal-glow);
+    width: 16px;
+    height: 16px;
+}
+
+.duration-option {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 0.75rem;
+    margin-bottom: 0.5rem;
+    background: rgba(255, 255, 255, 0.02);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    font-size: 0.9rem;
+}
+
+.duration-option:has(input:checked) {
+    border-color: var(--teal-glow);
+    background: var(--teal-surface);
+}
+
+.wizard-summary {
+    padding: 1rem;
+    background: var(--teal-surface);
+    border-radius: var(--radius-sm);
+    font-size: 0.85rem;
+    color: var(--text-secondary);
+    margin-top: 1rem;
+    line-height: 1.5;
+}
+
+.wizard-nav {
+    display: flex;
+    gap: 0.75rem;
+    margin-top: 1.25rem;
+}
+
+.wizard-nav .modal-cancel {
+    flex: 0 0 auto;
+    min-width: 80px;
+}
+
+.wizard-nav .onboarding-cta {
+    flex: 1;
+}
+
+/* ═══════════════════════════════════════════
    Vault Warning + Interactive Elements
    ═══════════════════════════════════════════ */
 
@@ -901,6 +1019,77 @@ body {
 .badge-label {
     color: var(--text-secondary);
     text-transform: uppercase;
+}
+
+/* ═══════════════════════════════════════════
+   Break-Glass Alert
+   ═══════════════════════════════════════════ */
+
+.break-glass-alert {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.75rem;
+    padding: 1rem;
+    background: rgba(220, 38, 38, 0.08);
+    border: 1px solid rgba(220, 38, 38, 0.3);
+    border-left: 3px solid var(--revoked);
+    border-radius: var(--radius);
+    margin-bottom: 1rem;
+    animation: alert-slide-in 0.3s ease-out;
+}
+
+@keyframes alert-slide-in {
+    from { transform: translateY(-10px); opacity: 0; }
+    to { transform: translateY(0); opacity: 1; }
+}
+
+.break-glass-icon {
+    flex-shrink: 0;
+    padding-top: 2px;
+}
+
+.break-glass-content {
+    flex: 1;
+}
+
+.break-glass-title {
+    font-weight: 600;
+    color: var(--revoked);
+    font-size: 0.9rem;
+    margin-bottom: 0.25rem;
+}
+
+.break-glass-detail {
+    font-size: 0.85rem;
+    color: var(--text-primary);
+}
+
+.break-glass-reason {
+    font-size: 0.8rem;
+    color: var(--text-secondary);
+    margin-top: 0.25rem;
+}
+
+.break-glass-time {
+    font-size: 0.7rem;
+    color: var(--text-muted);
+    margin-top: 0.25rem;
+}
+
+.break-glass-ack {
+    padding: 0.4rem 0.75rem;
+    background: transparent;
+    border: 1px solid var(--revoked);
+    border-radius: var(--radius-sm);
+    color: var(--revoked);
+    font-size: 0.75rem;
+    cursor: pointer;
+    white-space: nowrap;
+    align-self: center;
+}
+
+.break-glass-ack:hover {
+    background: rgba(220, 38, 38, 0.1);
 }
 
 /* ═══════════════════════════════════════════

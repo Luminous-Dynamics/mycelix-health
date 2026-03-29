@@ -5,6 +5,7 @@
 use leptos::prelude::*;
 use crate::app::AppState;
 use crate::zome_clients::consent::ConsentStatus;
+use crate::pages::consent_wizard::ConsentWizard;
 
 /// ID of the consent pending revocation (for confirmation modal).
 #[derive(Clone, Debug, PartialEq)]
@@ -33,6 +34,7 @@ pub fn ConsentPage() -> impl IntoView {
 
     let active_count = move || active_consents().len();
     let pending_revoke: RwSignal<Option<PendingRevocation>> = RwSignal::new(None);
+    let show_wizard = RwSignal::new(false);
 
     view! {
         <div class="page consent-page">
@@ -129,7 +131,28 @@ pub fn ConsentPage() -> impl IntoView {
                 </section>
             </Show>
 
-            <button class="consent-new">"Form New Symbiotic Link"</button>
+            <button class="consent-new" on:click=move |_| show_wizard.set(true)>
+                "Form New Symbiotic Link"
+            </button>
+
+            // Consent creation wizard
+            <Show when=move || show_wizard.get()>
+                <ConsentWizard
+                    on_complete=Box::new(move |consent| {
+                        app.consents.update(|c| c.push(consent));
+                        app.access_events.update(|events| {
+                            events.insert(0, crate::zome_clients::records::AccessEvent {
+                                who: "You".into(),
+                                what: "formed a new symbiotic connection".into(),
+                                when: "Just now".into(),
+                                event_type: crate::zome_clients::records::AccessEventType::ConsentChange,
+                            });
+                        });
+                        show_wizard.set(false);
+                    })
+                    on_cancel=Box::new(move || show_wizard.set(false))
+                />
+            </Show>
 
             // Confirmation modal
             <Show when=move || pending_revoke.get().is_some()>

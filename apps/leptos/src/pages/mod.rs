@@ -4,6 +4,7 @@
 pub mod home;
 pub mod records;
 pub mod consent;
+pub mod consent_wizard;
 pub mod privacy;
 pub mod metabolism;
 pub mod onboarding;
