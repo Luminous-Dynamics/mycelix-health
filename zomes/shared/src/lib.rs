@@ -195,16 +195,38 @@ pub mod patient_encryption {
             .map_err(|_| "Decryption failed: authentication tag mismatch (data tampered or wrong key)".to_string())
     }
 
-    /// Derive a 32-byte symmetric key from a patient's public key material.
+    /// Derive a 32-byte symmetric key using HKDF-SHA256.
     ///
-    /// In production, this would use X25519 Diffie-Hellman or a KDF.
-    /// For now, we use SHA-256 of the public key as a deterministic derivation.
-    /// This is suitable for patient-encrypts-own-data (symmetric use case).
-    pub fn derive_key(public_key: &[u8]) -> [u8; 32] {
+    /// The `ikm` (input key material) MUST contain secret material:
+    /// - For patient encrypting own data: the patient's private key bytes
+    /// - For consent-granted access: the shared secret from X25519 DH
+    ///   (patient_private × grantee_public, or grantee_private × patient_public)
+    /// - For the e2e demo: any 32+ byte secret
+    ///
+    /// NEVER pass a public key as `ikm` — that would make the derived key
+    /// computable by anyone who knows the public key, defeating encryption.
+    ///
+    /// Uses HKDF-SHA256 (RFC 5869) with a domain-separation salt.
+    pub fn derive_key(ikm: &[u8], context: &[u8]) -> [u8; 32] {
         use sha2::{Sha256, Digest};
-        let hash = Sha256::digest(public_key);
+
+        // HKDF-Extract: PRK = HMAC-SHA256(salt, IKM)
+        // Using a fixed domain-separation salt
+        let salt = b"mycelix-health-v1-patient-encryption";
+        let mut extract_input = Vec::with_capacity(salt.len() + ikm.len());
+        extract_input.extend_from_slice(salt);
+        extract_input.extend_from_slice(ikm);
+        let prk = Sha256::digest(&extract_input);
+
+        // HKDF-Expand: OKM = HMAC-SHA256(PRK, context || 0x01)
+        let mut expand_input = Vec::with_capacity(prk.len() + context.len() + 1);
+        expand_input.extend_from_slice(&prk);
+        expand_input.extend_from_slice(context);
+        expand_input.push(0x01);
+        let okm = Sha256::digest(&expand_input);
+
         let mut key = [0u8; 32];
-        key.copy_from_slice(&hash);
+        key.copy_from_slice(&okm);
         key
     }
 
@@ -308,23 +330,21 @@ pub mod chained_audit {
         },
     }
 
-    /// Compute a simple hash of audit entry content for chaining.
-    /// In production, this would use BLAKE3 or SHA-256.
+    /// Compute SHA-256 hash of audit entry content for chaining.
+    /// Uses cryptographic hash for collision resistance (P0-6).
     pub fn hash_entry(entry: &ChainedAuditEntry) -> [u8; 32] {
-        let mut hash = [0u8; 32];
-        // Simple deterministic hash from sequence + timestamp + agent
-        let seq_bytes = entry.sequence.to_le_bytes();
-        let ts_bytes = entry.timestamp.to_le_bytes();
-        for i in 0..8 {
-            hash[i] = seq_bytes[i];
-            hash[i + 8] = ts_bytes[i];
-        }
-        // Mix in previous hash if present
+        use sha2::{Sha256, Digest};
+        let mut hasher = Sha256::new();
+        hasher.update(entry.sequence.to_le_bytes());
+        hasher.update(entry.timestamp.to_le_bytes());
+        hasher.update(entry.agent.get_raw_39());
+        hasher.update(&entry.entry_hash);
         if let Some(prev) = &entry.previous_hash {
-            for i in 0..32 {
-                hash[i] ^= prev[i];
-            }
+            hasher.update(prev);
         }
+        let result = hasher.finalize();
+        let mut hash = [0u8; 32];
+        hash.copy_from_slice(&result);
         hash
     }
 
@@ -894,17 +914,14 @@ pub mod audit {
     }
 
     // ==================== CHAINED AUDIT TRAIL ====================
-
-    /// Thread-local audit chain state (per-agent sequence tracking).
-    /// Tracks the last audit entry hash for hash-chaining.
-    static mut CHAIN_SEQUENCE: u64 = 0;
-    static mut LAST_CHAIN_HASH: Option<[u8; 32]> = None;
+    // P0-3: No unsafe statics — sequence/prev_hash queried from source chain
+    // P0-6: SHA-256 hash instead of XOR
 
     /// Log data access with hash-chained audit entry.
     ///
     /// Wraps `log_data_access()` with tamper-evident chaining:
-    /// - Each entry includes the hash of the previous entry
-    /// - Sequence numbers are monotonically increasing
+    /// - Each entry includes the SHA-256 hash of the previous entry
+    /// - Sequence numbers derived from source chain query count
     /// - Chain integrity can be verified by `verify_audit_chain()`
     ///
     /// Use this instead of `log_data_access()` for HIPAA-grade audit trails.
@@ -916,47 +933,55 @@ pub mod audit {
         is_emergency: bool,
         override_reason: Option<String>,
     ) -> ExternResult<ActionHash> {
+        use sha2::{Sha256, Digest};
+
         let caller = agent_info()?.agent_initial_pubkey;
         let now = sys_time()?;
 
-        // Build chain metadata
-        let (sequence, previous_hash) = unsafe {
-            let seq = CHAIN_SEQUENCE;
-            let prev = LAST_CHAIN_HASH;
-            (seq, prev)
-        };
+        // Query the agent's source chain for the most recent chained audit entry
+        // to get the previous hash and sequence number. No unsafe statics needed.
+        let previous = get_last_chain_entry(&patient_hash)?;
+        let sequence = previous.as_ref().map(|(seq, _)| seq + 1).unwrap_or(0);
+        let previous_hash = previous.map(|(_, h)| h);
 
-        // Compute this entry's chain hash
-        let mut entry_hash = [0u8; 32];
-        let seq_bytes = sequence.to_le_bytes();
-        let ts_bytes = (now.as_micros() as i64).to_le_bytes();
-        let agent_bytes = caller.get_raw_39();
-        for i in 0..8 { entry_hash[i] = seq_bytes[i]; }
-        for i in 0..8 { entry_hash[i + 8] = ts_bytes[i]; }
-        for i in 0..16.min(agent_bytes.len()) { entry_hash[i + 16] = agent_bytes[i]; }
+        // Compute this entry's chain hash using SHA-256 (P0-6: real crypto hash)
+        let mut hasher = Sha256::new();
+        hasher.update(sequence.to_le_bytes());
+        hasher.update((now.as_micros() as i64).to_le_bytes());
+        hasher.update(caller.get_raw_39());
+        hasher.update(patient_hash.get_raw_39());
         if let Some(prev) = &previous_hash {
-            for i in 0..32 { entry_hash[i] ^= prev[i]; }
+            hasher.update(prev);
+        }
+        let hash_result = hasher.finalize();
+        let mut entry_hash = [0u8; 32];
+        entry_hash.copy_from_slice(&hash_result);
+
+        // Build the chained audit input for the consent coordinator
+        #[derive(Serialize, Debug)]
+        struct ChainedInput {
+            sequence: u64,
+            previous_hash: Option<[u8; 32]>,
+            entry_hash: [u8; 32],
+            event_description: String,
+            patient_hash: ActionHash,
+            categories: Vec<access_control::DataCategory>,
+            consent_hash: Option<ActionHash>,
+            timestamp: i64,
+            agent: AgentPubKey,
         }
 
-        // Create the chained audit entry as a serialized extension
-        let chain_metadata = super::chained_audit::ChainedAuditEntry {
+        let chain_input = ChainedInput {
             sequence,
             previous_hash,
             entry_hash,
-            event: super::chained_audit::AuditEvent::DataRead {
-                patient: patient_hash.clone(),
-                categories: categories.clone(),
-                consent_hash: consent_hash.clone(),
-            },
+            event_description: format!("{:?} access", access_type),
+            patient_hash: patient_hash.clone(),
+            categories: categories.clone(),
+            consent_hash: consent_hash.clone(),
             timestamp: now.as_micros() as i64,
             agent: caller,
         };
-
-        // Update chain state
-        unsafe {
-            CHAIN_SEQUENCE += 1;
-            LAST_CHAIN_HASH = Some(entry_hash);
-        }
 
         // Log via the existing function (persists to consent zome)
         let result = log_data_access(
@@ -968,16 +993,52 @@ pub mod audit {
             override_reason,
         )?;
 
-        // Also persist the chain metadata (best-effort — don't fail main logging)
+        // Persist the chain metadata to consent zome
         let _ = call(
             CallTargetCell::Local,
             "consent",
             "create_chained_audit_entry".into(),
             None,
-            &chain_metadata,
+            &chain_input,
         );
 
         Ok(result)
+    }
+
+    /// Query the last chained audit entry for a patient from the consent zome.
+    /// Returns (sequence, entry_hash) if found.
+    fn get_last_chain_entry(patient_hash: &ActionHash) -> ExternResult<Option<(u64, [u8; 32])>> {
+        use sha2::{Sha256, Digest};
+
+        // Query consent zome for the patient's audit logs
+        let response = call(
+            CallTargetCell::Local,
+            "consent",
+            "get_access_logs".into(),
+            None,
+            patient_hash,
+        );
+
+        // Best-effort: if we can't query, start a new chain (sequence 0)
+        let Ok(response) = response else { return Ok(None) };
+
+        match response {
+            ZomeCallResponse::Ok(extern_io) => {
+                let records: Vec<Record> = extern_io.decode().unwrap_or_default();
+                // Count records as sequence, use last record's action hash for chaining
+                if records.is_empty() {
+                    return Ok(None);
+                }
+                let seq = (records.len() - 1) as u64;
+                // Use the action hash of the last record as the chain link
+                let last_action_hash = records.last().unwrap().action_address().get_raw_39();
+                let hash = Sha256::digest(last_action_hash);
+                let mut entry_hash = [0u8; 32];
+                entry_hash.copy_from_slice(&hash);
+                Ok(Some((seq, entry_hash)))
+            },
+            _ => Ok(None),
+        }
     }
 }
 

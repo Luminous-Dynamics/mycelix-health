@@ -700,14 +700,20 @@ pub fn create_lab_result(input: CreateLabResultInput) -> ExternResult<Record> {
 // ==================== ENCRYPTED RECORD CREATION ====================
 
 /// Input for creating an encrypted lab result.
-/// The lab result data is encrypted with the patient's public key before DHT storage.
+/// The lab result data is encrypted before DHT storage.
 /// Only the patient or consent-granted agents can decrypt it.
 #[derive(Serialize, Deserialize, Debug)]
 pub struct CreateEncryptedLabResultInput {
     /// The lab result to encrypt and store.
     pub lab_result: LabResult,
-    /// Patient's public key for encryption (from PatientKeyMetadata).
-    pub patient_public_key: Vec<u8>,
+    /// 32-byte symmetric encryption key, derived CLIENT-SIDE from secret material.
+    ///
+    /// MUST be derived from the patient's private key or a DH shared secret.
+    /// NEVER derive this from the public key alone — that defeats encryption.
+    /// Use `patient_encryption::derive_key(private_key_bytes, b"lab-result")`.
+    pub encryption_key: Vec<u8>,
+    /// Patient's public key fingerprint (for key identification on decryption).
+    pub key_fingerprint: [u8; 8],
     /// Whether this is an emergency access (bypass normal consent).
     pub is_emergency: bool,
     pub emergency_reason: Option<String>,
@@ -737,14 +743,18 @@ pub fn create_encrypted_lab_result(input: CreateEncryptedLabResultInput) -> Exte
 
     let now = sys_time()?;
 
-    // Derive symmetric key from patient's public key material
-    let sym_key = patient_encryption::derive_key(&input.patient_public_key);
+    // Validate key length
+    if input.encryption_key.len() != 32 {
+        return Err(wasm_error!(WasmErrorInner::Guest(format!(
+            "Encryption key must be 32 bytes, got {}", input.encryption_key.len()
+        ))));
+    }
 
     // Encrypt with XChaCha20-Poly1305 (real AEAD — tamper detection via Poly1305 tag)
-    let (ciphertext, nonce) = patient_encryption::encrypt(plaintext.as_bytes(), &sym_key)
+    let (ciphertext, nonce) = patient_encryption::encrypt(plaintext.as_bytes(), &input.encryption_key)
         .map_err(|e| wasm_error!(WasmErrorInner::Guest(format!("Encryption failed: {}", e))))?;
 
-    let fingerprint = patient_encryption::compute_fingerprint(&input.patient_public_key);
+    let fingerprint = input.key_fingerprint;
 
     // Create the encrypted record
     let encrypted = EncryptedRecord {
@@ -789,8 +799,9 @@ pub struct DecryptLabResultInput {
     pub encrypted_record_hash: ActionHash,
     /// Patient hash (for consent verification).
     pub patient_hash: ActionHash,
-    /// Patient's key material (for deriving decryption key).
-    pub patient_key: Vec<u8>,
+    /// 32-byte decryption key, derived CLIENT-SIDE from secret material.
+    /// Must match the key used during encryption.
+    pub decryption_key: Vec<u8>,
     /// Whether this is emergency access.
     pub is_emergency: bool,
     pub emergency_reason: Option<String>,
@@ -834,9 +845,8 @@ pub fn decrypt_lab_result(input: DecryptLabResultInput) -> ExternResult<LabResul
         )));
     }
 
-    // Step 4: Derive key and decrypt (XChaCha20-Poly1305 with Poly1305 auth)
-    let sym_key = patient_encryption::derive_key(&input.patient_key);
-    let plaintext = patient_encryption::decrypt(&encrypted.ciphertext, &encrypted.nonce, &sym_key)
+    // Step 4: Decrypt (XChaCha20-Poly1305 with Poly1305 auth tag verification)
+    let plaintext = patient_encryption::decrypt(&encrypted.ciphertext, &encrypted.nonce, &input.decryption_key)
         .map_err(|e| wasm_error!(WasmErrorInner::Guest(format!(
             "Decryption failed (wrong key or data tampered): {}", e
         ))))?;

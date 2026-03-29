@@ -1,6 +1,7 @@
 // Copyright (C) 2024-2026 Tristan Stoltz / Luminous Dynamics
 // SPDX-License-Identifier: AGPL-3.0-or-later
-// Commercial licensing: see COMMERCIAL_LICENSE.md at repository root//! Consent Coordinator Zome
+// Commercial licensing: see COMMERCIAL_LICENSE.md at repository root
+//! Consent Coordinator Zome
 //! 
 //! Provides extern functions for consent management,
 //! access control, and audit logging.
@@ -2088,6 +2089,243 @@ pub fn get_decryption_audit_trail(entry_hash: ActionHash) -> ExternResult<Vec<Re
         }
     }
     Ok(records)
+}
+
+// ==================== P0-1: RE-DISCLOSURE CONSENT CHECK ====================
+// Called by shared crate's check_redisclosure() when Share/Export is attempted
+// on data received with no_further_disclosure=true.
+
+/// Input for re-disclosure consent check.
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct RedisclosureConsentInput {
+    pub patient_hash: ActionHash,
+    pub requestor: AgentPubKey,
+    pub original_consent: Option<ActionHash>,
+    pub categories: Vec<DataCategory>,
+}
+
+/// Check if the patient has granted explicit re-disclosure consent.
+///
+/// This is called when a Share/Export is attempted on data received
+/// with `no_further_disclosure=true`. Returns `true` only if the patient
+/// has created a specific consent granting the requestor Share permission
+/// for the specified categories.
+///
+/// 42 CFR Part 2, Section 2.32: Recipients of substance abuse records
+/// may not re-disclose without patient's explicit written consent.
+#[hdk_extern]
+pub fn check_redisclosure_consent(input: RedisclosureConsentInput) -> ExternResult<bool> {
+    // Query all active consents for this patient
+    let links = get_links(
+        LinkQuery::try_new(input.patient_hash.clone(), LinkTypes::PatientToConsents)?,
+        GetStrategy::default(),
+    )?;
+
+    for link in links {
+        let Some(hash) = link.target.into_action_hash() else { continue };
+        let Some(record) = get(hash, GetOptions::default())? else { continue };
+        let Some(consent): Option<Consent> = record
+            .entry()
+            .to_app_option()
+            .map_err(|e| wasm_error!(WasmErrorInner::Guest(e.to_string())))?
+        else { continue };
+
+        // Check grantee matches requestor
+        let grantee_matches = match &consent.grantee {
+            ConsentGrantee::Agent(agent) => *agent == input.requestor,
+            ConsentGrantee::EmergencyAccess => true,
+            ConsentGrantee::Public => true,
+            _ => false,
+        };
+        if !grantee_matches {
+            continue;
+        }
+
+        // Must include Share or Export permission
+        let has_share = consent.permissions.iter().any(|p| {
+            matches!(p, DataPermission::Share | DataPermission::Export)
+        });
+        if !has_share {
+            continue;
+        }
+
+        // Must cover all requested categories
+        let covers_categories = input.categories.iter().all(|cat| {
+            consent.scope.data_categories.contains(cat)
+                || consent.scope.data_categories.contains(&DataCategory::All)
+        });
+        if !covers_categories {
+            continue;
+        }
+
+        // Must be active
+        if consent.status == ConsentStatus::Revoked || consent.status == ConsentStatus::Expired {
+            continue;
+        }
+
+        // Check expiration
+        if let Some(expires) = &consent.expires_at {
+            if let Ok(now) = sys_time() {
+                let now_ts = Timestamp::from_micros(now.as_micros() as i64);
+                if now_ts > *expires {
+                    continue;
+                }
+            }
+        }
+
+        // If original consent specified, purpose must indicate re-disclosure
+        if input.original_consent.is_some() {
+            let is_redisclosure = match &consent.purpose {
+                ConsentPurpose::Other(desc) => {
+                    let lower = desc.to_lowercase();
+                    lower.contains("re-disclosure")
+                        || lower.contains("redisclosure")
+                        || lower.contains("further sharing")
+                },
+                _ => false,
+            };
+            if !is_redisclosure {
+                continue;
+            }
+        }
+
+        // Found a valid re-disclosure consent
+        return Ok(true);
+    }
+
+    Ok(false)
+}
+
+// ==================== P0-2: CHAINED AUDIT ENTRY ====================
+// Called by shared crate's chained_log_data_access() to persist hash-chained entries.
+
+/// A hash-chained audit entry for tamper-evident logging.
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct ChainedAuditEntryInput {
+    pub sequence: u64,
+    pub previous_hash: Option<[u8; 32]>,
+    pub entry_hash: [u8; 32],
+    pub event_description: String,
+    pub patient_hash: ActionHash,
+    pub categories: Vec<DataCategory>,
+    pub consent_hash: Option<ActionHash>,
+    pub timestamp: i64,
+    pub agent: AgentPubKey,
+}
+
+/// Persist a chained audit entry.
+///
+/// Creates a DataAccessLog entry with the chain metadata embedded in the
+/// access_reason field (serialized). This integrates with the existing
+/// audit infrastructure while adding tamper-evident chaining.
+#[hdk_extern]
+pub fn create_chained_audit_entry(input: ChainedAuditEntryInput) -> ExternResult<ActionHash> {
+    // Encode chain metadata into the log's access_reason for persistence
+    let chain_info = format!(
+        "CHAINED[seq={},prev={},hash={}]",
+        input.sequence,
+        input.previous_hash.map(|h| hex_encode(&h[..4])).unwrap_or_else(|| "GENESIS".to_string()),
+        hex_encode(&input.entry_hash[..4]),
+    );
+
+    let log_entry = DataAccessLog {
+        log_id: format!("CHAIN-{}-{}", input.sequence, input.timestamp),
+        patient_hash: input.patient_hash.clone(),
+        accessor: input.agent,
+        data_categories_accessed: input.categories,
+        access_type: DataPermission::Read, // Audit entries are read-triggered
+        consent_hash: input.consent_hash,
+        access_reason: chain_info,
+        accessed_at: Timestamp::from_micros(input.timestamp),
+        access_location: Some("holochain_node".to_string()),
+        emergency_override: false,
+        override_reason: None,
+    };
+
+    let hash = create_entry(&EntryTypes::DataAccessLog(log_entry))?;
+
+    // Link to patient's audit chain
+    create_link(
+        input.patient_hash,
+        hash.clone(),
+        LinkTypes::PatientToAccessLogs,
+        (),
+    )?;
+
+    Ok(hash)
+}
+
+/// Hex-encode first N bytes for display.
+fn hex_encode(bytes: &[u8]) -> String {
+    bytes.iter().map(|b| format!("{:02x}", b)).collect()
+}
+
+// ==================== P0-5: PATIENT KEY GENERATION ====================
+// Creates a HealthKeyBundle for the patient on registration.
+
+/// Register a patient's encryption public key.
+///
+/// Called during patient creation or first data encryption.
+/// The private key is generated client-side and NEVER stored on-chain.
+/// Only the public key is committed to the DHT via HealthKeyBundle.
+#[hdk_extern]
+pub fn register_patient_key(input: HealthKeyBundle) -> ExternResult<ActionHash> {
+    // Validate key bundle
+    if input.kem_public_key.is_empty() {
+        return Err(wasm_error!(WasmErrorInner::Guest(
+            "Public key cannot be empty".to_string()
+        )));
+    }
+
+    let hash = create_entry(&EntryTypes::HealthKeyBundle(input.clone()))?;
+
+    // Link to patient's key bundles
+    // The patient_did contains the patient hash for linking
+    let patient_anchor = anchor_hash(&format!("patient_keys:{}", input.patient_did))?;
+    create_link(
+        patient_anchor,
+        hash.clone(),
+        LinkTypes::PatientToKeyBundles,
+        (),
+    )?;
+
+    Ok(hash)
+}
+
+/// Get the active encryption key bundle for a patient.
+#[hdk_extern]
+pub fn get_patient_active_key(patient_did: String) -> ExternResult<Option<Record>> {
+    let patient_anchor = anchor_hash(&format!("patient_keys:{}", patient_did))?;
+    let links = get_links(
+        LinkQuery::try_new(patient_anchor, LinkTypes::PatientToKeyBundles)?,
+        GetStrategy::default(),
+    )?;
+
+    // Find the active key with the highest version
+    let mut best: Option<(u32, Record)> = None;
+    for link in links {
+        let Some(hash) = link.target.into_action_hash() else { continue };
+        let Some(record) = get(hash, GetOptions::default())? else { continue };
+        let Some(bundle): Option<HealthKeyBundle> = record
+            .entry()
+            .to_app_option()
+            .map_err(|e| wasm_error!(WasmErrorInner::Guest(e.to_string())))?
+        else { continue };
+
+        if bundle.active {
+            match &best {
+                Some((v, _)) if bundle.key_version > *v => {
+                    best = Some((bundle.key_version, record));
+                },
+                None => {
+                    best = Some((bundle.key_version, record));
+                },
+                _ => {},
+            }
+        }
+    }
+
+    Ok(best.map(|(_, r)| r))
 }
 
 #[cfg(test)]
