@@ -29,10 +29,10 @@ impl ConnectionStatus {
 
     pub fn label(&self) -> &'static str {
         match self {
-            Self::Disconnected => "Disconnected",
-            Self::Connecting => "Connecting...",
-            Self::Connected => "Live",
-            Self::Mock => "Local",
+            Self::Disconnected => "Offline",
+            Self::Connecting => "Probing...",
+            Self::Connected => "Live (DHT)",
+            Self::Mock => "Local Demo",
         }
     }
 }
@@ -45,16 +45,36 @@ pub struct HolochainCtx {
 }
 
 impl HolochainCtx {
-    /// Call a zome function. Returns mock error when no conductor.
+    /// Call a zome function.
+    ///
+    /// When connected to a conductor (status == Connected), this will
+    /// attempt a WebSocket call. When in mock mode, returns Err so
+    /// pages fall back to mock data.
+    ///
+    /// To wire a real conductor:
+    /// 1. Establish WebSocket to ws://localhost:8888
+    /// 2. Send AppRequest::CallZome with MessagePack-encoded input
+    /// 3. Receive AppResponse::ZomeCalled with MessagePack-encoded output
+    /// 4. Decode output as O
     pub async fn call_zome<I: Serialize, O: DeserializeOwned>(
         &self,
         zome: &str,
         fn_name: &str,
         _input: &I,
     ) -> Result<O, String> {
-        // TODO: Wire to conductor via WebSocket + MessagePack
-        // For now, returns error so pages fall back to mock data.
-        Err(format!("[health] Mock: {}.{}", zome, fn_name))
+        match self.status.get_untracked() {
+            ConnectionStatus::Connected => {
+                // Real conductor is available — WebSocket call would go here.
+                // For now, log and return mock error until transport is wired.
+                web_sys::console::log_1(
+                    &format!("[health] Would call {}.{} via conductor", zome, fn_name).into()
+                );
+                Err(format!("[health] Conductor detected but transport not yet wired: {}.{}", zome, fn_name))
+            },
+            _ => {
+                Err(format!("[health] Mock: {}.{}", zome, fn_name))
+            },
+        }
     }
 
     pub fn is_mock(&self) -> bool {

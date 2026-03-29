@@ -20,5 +20,29 @@
 </head>
 <body>
     <noscript>Mycelix Health requires JavaScript for the biological sovereignty portal.</noscript>
+    <script>
+        // Holochain conductor probe — checks if a conductor is running on port 8888.
+        // Sets window.__HC_STATUS for the WASM app to read on mount.
+        window.__HC_STATUS = "connecting";
+        (function() {
+            const ws = new WebSocket("ws://localhost:8888");
+            const timeout = setTimeout(() => {
+                ws.close();
+                window.__HC_STATUS = "mock";
+                console.log("[health] No conductor — running with mock data");
+            }, 3000);
+            ws.onopen = () => {
+                clearTimeout(timeout);
+                ws.close();
+                window.__HC_STATUS = "connected";
+                console.log("[health] Conductor detected on ws://localhost:8888");
+            };
+            ws.onerror = () => {
+                clearTimeout(timeout);
+                window.__HC_STATUS = "mock";
+                console.log("[health] No conductor — running with mock data");
+            };
+        })();
+    </script>
 </body>
 </html>
