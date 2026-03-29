@@ -1022,6 +1022,163 @@ body {
 }
 
 /* ═══════════════════════════════════════════
+   Records — Detail View + Locked State
+   ═══════════════════════════════════════════ */
+
+.records-locked-banner {
+    padding: 0.6rem 1rem;
+    background: var(--violet-glow);
+    border: 1px solid rgba(124, 58, 237, 0.3);
+    border-radius: var(--radius-sm);
+    font-size: 0.85rem;
+    color: var(--text-secondary);
+    margin-bottom: 1rem;
+    text-align: center;
+}
+
+.records-locked-banner a {
+    color: var(--violet);
+    text-decoration: underline;
+}
+
+.record-card.locked {
+    opacity: 0.7;
+}
+
+.record-card.selected {
+    border-color: var(--teal-glow);
+    background: var(--bg-card-hover);
+}
+
+.record-encrypted {
+    font-family: monospace;
+    color: var(--text-muted);
+    font-size: 0.85rem;
+    letter-spacing: 0.1em;
+    opacity: 0.4;
+}
+
+.record-detail {
+    margin-top: 0.75rem;
+    padding-top: 0.75rem;
+    border-top: 1px solid var(--border);
+    animation: detail-expand 0.2s ease-out;
+}
+
+@keyframes detail-expand {
+    from { opacity: 0; max-height: 0; }
+    to { opacity: 1; max-height: 500px; }
+}
+
+.detail-section {
+    display: flex;
+    justify-content: space-between;
+    padding: 0.35rem 0;
+    font-size: 0.8rem;
+}
+
+.detail-label {
+    color: var(--text-muted);
+}
+
+.detail-value {
+    color: var(--text-primary);
+    text-align: right;
+    max-width: 60%;
+}
+
+.record-action {
+    margin-top: 0.75rem;
+    padding: 0.5rem 1rem;
+    background: transparent;
+    border: 1px solid var(--teal-glow);
+    color: var(--teal-glow);
+    border-radius: var(--radius-sm);
+    font-size: 0.8rem;
+    cursor: pointer;
+    width: 100%;
+}
+
+.record-action:hover {
+    background: var(--teal-surface);
+}
+
+/* ═══════════════════════════════════════════
+   Settings Page
+   ═══════════════════════════════════════════ */
+
+.settings-section {
+    margin-bottom: 1.5rem;
+}
+
+.settings-card {
+    background: var(--bg-card);
+    backdrop-filter: blur(12px);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 0.75rem 1rem;
+    margin-bottom: 0.75rem;
+}
+
+.settings-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 0.5rem 0;
+}
+
+.settings-row + .settings-row {
+    border-top: 1px solid var(--border);
+}
+
+.settings-label {
+    font-size: 0.85rem;
+    color: var(--text-secondary);
+}
+
+.settings-value {
+    font-size: 0.85rem;
+    color: var(--text-primary);
+}
+
+.vault-unlocked { color: var(--active); }
+.vault-locked { color: var(--amber); }
+.vault-none { color: var(--text-muted); }
+
+.danger-section {
+    margin-top: 1rem;
+}
+
+.danger-summary {
+    font-size: 0.8rem;
+    color: var(--revoked);
+    cursor: pointer;
+    padding: 0.5rem 0;
+}
+
+.danger-text {
+    font-size: 0.8rem;
+    color: var(--text-secondary);
+    margin: 0.5rem 0;
+    line-height: 1.5;
+}
+
+.danger-btn {
+    padding: 0.5rem 1rem;
+    background: transparent;
+    border: 1px solid var(--revoked);
+    color: var(--revoked);
+    border-radius: var(--radius-sm);
+    font-size: 0.8rem;
+    cursor: pointer;
+    width: 100%;
+}
+
+.danger-btn:hover {
+    background: rgba(220, 38, 38, 0.1);
+}
+
+/* ═══════════════════════════════════════════
    Break-Glass Alert
    ═══════════════════════════════════════════ */
 

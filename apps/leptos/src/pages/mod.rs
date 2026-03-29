@@ -8,3 +8,4 @@ pub mod consent_wizard;
 pub mod privacy;
 pub mod metabolism;
 pub mod onboarding;
+pub mod settings;

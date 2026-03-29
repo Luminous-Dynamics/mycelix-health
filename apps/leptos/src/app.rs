@@ -117,6 +117,7 @@ pub fn App() -> impl IntoView {
                             <Route path=path!("/privacy") view=pages::privacy::PrivacyPage />
                             <Route path=path!("/metabolism") view=pages::metabolism::MetabolismPage />
                             <Route path=path!("/welcome") view=pages::onboarding::OnboardingPage />
+                            <Route path=path!("/settings") view=pages::settings::SettingsPage />
                         </Routes>
                     </main>
                     <BottomNav />
