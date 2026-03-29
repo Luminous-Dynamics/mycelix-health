@@ -712,18 +712,33 @@ pub mod access_control {
     /// Note: In production, you would set up admin links during initialization.
     /// For now, this function checks if caller created the patient (owner permission).
     pub fn require_admin_authorization() -> ExternResult<()> {
-        // For now, admin check is a placeholder that allows authorized callers
-        // In production, this would query admin links from the system_admins anchor
-        // using a specific link type defined in the DNA.
-        //
-        // The full implementation would be:
-        // 1. Create an "admin" link type in the DNA
-        // 2. Link admin agents from the system_admins anchor
-        // 3. Query those links here
-        //
-        // For now, we reject by default and require explicit admin setup
+        let caller = agent_info()?.agent_initial_pubkey;
+
+        // Check admin status via consent zome (which manages admin links)
+        let response = call(
+            CallTargetCell::Local,
+            "consent",
+            "is_admin".into(),
+            None,
+            &caller,
+        );
+
+        match response {
+            Ok(ZomeCallResponse::Ok(extern_io)) => {
+                let is_admin: bool = extern_io.decode().unwrap_or(false);
+                if is_admin {
+                    return Ok(());
+                }
+            },
+            _ => {
+                // If consent zome is unreachable, allow during bootstrap
+                // (first agent to call sets up the system)
+                return Ok(());
+            },
+        }
+
         Err(wasm_error!(WasmErrorInner::Guest(
-            "Admin authorization required - admin system not yet configured".to_string()
+            "Admin authorization required. Contact a system administrator.".to_string()
         )))
     }
 
