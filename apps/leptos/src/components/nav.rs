@@ -22,16 +22,17 @@ pub fn BottomNav() -> impl IntoView {
             {tabs.into_iter().map(|(href, label, bio_label)| {
                 let href_str = href.to_string();
                 let href_str2 = href_str.clone();
-                let is_active = move || {
-                    let path = location.pathname.get();
-                    if href_str == "/" { path == "/" } else { path.starts_with(&href_str) }
+                let check_active = move |href: &str, path: &str| -> bool {
+                    if href == "/" { path == "/" }
+                    else { path == href || path.starts_with(&format!("{}/", href)) }
+                };
+                let is_active = {
+                    let h = href_str.clone();
+                    move || check_active(&h, &location.pathname.get())
                 };
                 let is_active2 = {
-                    let href_str = href_str2.clone();
-                    move || {
-                        let path = location.pathname.get();
-                        if href_str == "/" { path == "/" } else { path.starts_with(&href_str) }
-                    }
+                    let h = href_str2.clone();
+                    move || check_active(&h, &location.pathname.get())
                 };
                 view! {
                     <a

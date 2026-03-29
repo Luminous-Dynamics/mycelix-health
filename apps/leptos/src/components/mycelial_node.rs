@@ -32,15 +32,21 @@ pub fn MycelialNode(
     let expanded = RwSignal::new(false);
     let pulsing = RwSignal::new(false);
 
-    let on_click = move |_| {
+    let activate = move || {
         if encrypted.get() {
-            // Trigger bioluminescent pulse
             pulsing.set(true);
             expanded.update(|e| *e = !*e);
-            // Reset pulse after animation
             gloo_timers::callback::Timeout::new(800, move || {
                 pulsing.set(false);
             }).forget();
+        }
+    };
+
+    let on_click = move |_| activate();
+    let on_keydown = move |ev: web_sys::KeyboardEvent| {
+        if ev.key() == "Enter" || ev.key() == " " {
+            ev.prevent_default();
+            activate();
         }
     };
 
@@ -55,7 +61,7 @@ pub fn MycelialNode(
     let cat = category;
 
     view! {
-        <div class=node_class on:click=on_click role="button" tabindex="0"
+        <div class=node_class on:click=on_click on:keydown=on_keydown role="button" tabindex="0"
              aria-label=format!("Encryption status for {}", cat)>
 
             // The node itself — SVG mycelial symbol

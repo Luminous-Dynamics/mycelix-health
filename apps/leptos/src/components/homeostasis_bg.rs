@@ -129,15 +129,15 @@ pub fn HomeostasisBackground() -> impl IntoView {
         canvas.set_width(w);
         canvas.set_height(h);
 
-        let gl: GL = canvas
+        let Some(gl): Option<GL> = canvas
             .get_context("webgl2")
             .ok()
             .flatten()
             .and_then(|ctx| ctx.dyn_into::<GL>().ok())
-            .unwrap_or_else(|| {
-                web_sys::console::warn_1(&"WebGL2 not available — falling back to static background".into());
-                return canvas.get_context("webgl2").unwrap().unwrap().dyn_into::<GL>().unwrap();
-            });
+        else {
+            web_sys::console::warn_1(&"WebGL2 not available — static background only".into());
+            return;
+        };
 
         // Compile shaders
         let vert = compile_shader(&gl, GL::VERTEX_SHADER, VERTEX_SHADER);

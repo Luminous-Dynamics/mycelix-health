@@ -5,8 +5,9 @@
 //! The seed phrase is the patient's ONLY backup for their health vault.
 //! 24 words → 256 bits of entropy → deterministic key derivation.
 
-/// BIP-39 English wordlist (2048 words, first 128 shown — full list in production).
-/// Each word maps to 11 bits of entropy. 24 words = 264 bits (256 entropy + 8 checksum).
+/// BIP-39 English wordlist (first 256 of 2048).
+/// Full BIP-39 wordlist has 2048 entries (11 bits each). We include 256 here
+/// and map indices via modulo. For production, embed the full wordlist.
 const WORDLIST: &[&str] = &[
     "abandon", "ability", "able", "about", "above", "absent", "absorb", "abstract",
     "absurd", "abuse", "access", "accident", "account", "accuse", "achieve", "acid",
@@ -40,6 +41,21 @@ const WORDLIST: &[&str] = &[
     "budget", "buffalo", "build", "bulb", "bulk", "bullet", "bundle", "bunny",
     "burden", "burger", "burst", "bus", "business", "busy", "butter", "buyer",
     "buzz", "cabbage", "cabin", "cable", "cactus", "cage", "cake", "call",
+    "calm", "camera", "camp", "can", "canal", "cancel", "candy", "cannon",
+    "canoe", "canvas", "canyon", "capable", "capital", "captain", "car", "carbon",
+    "card", "cargo", "carpet", "carry", "cart", "case", "cash", "casino",
+    "castle", "casual", "cat", "catalog", "catch", "category", "cattle", "caught",
+    "cause", "caution", "cave", "ceiling", "celery", "cement", "census", "century",
+    "cereal", "certain", "chair", "chalk", "champion", "change", "chaos", "chapter",
+    "charge", "chase", "cheap", "check", "cheese", "chef", "cherry", "chest",
+    "chicken", "chief", "child", "chimney", "choice", "choose", "chronic", "chuckle",
+    "chunk", "churn", "citizen", "city", "civil", "claim", "clap", "clarify",
+    "claw", "clay", "clean", "clerk", "clever", "click", "client", "cliff",
+    "climb", "clinic", "clip", "clock", "clog", "close", "cloth", "cloud",
+    "clown", "club", "clump", "cluster", "clutch", "coach", "coast", "coconut",
+    "code", "coffee", "coil", "coin", "collect", "color", "column", "combine",
+    "come", "comfort", "comic", "common", "company", "concert", "conduct", "confirm",
+    "congress", "connect", "consider", "control", "convince", "cook", "cool", "copper",
 ];
 
 /// Generate a 24-word seed phrase from 32 bytes of entropy.
@@ -55,12 +71,10 @@ pub fn entropy_to_phrase(entropy: &[u8; 32]) -> Vec<String> {
         }
     }
 
-    // Checksum: first 8 bits of SHA-256(entropy)
-    // Simple checksum for the demo — production would use proper SHA-256
-    let mut checksum: u8 = 0;
-    for byte in entropy.iter() {
-        checksum = checksum.wrapping_add(*byte);
-    }
+    // BIP-39 checksum: first 8 bits of SHA-256(entropy)
+    use sha2::{Sha256, Digest};
+    let hash = Sha256::digest(entropy);
+    let checksum = hash[0]; // First byte = first 8 bits of SHA-256
     for bit in (0..8).rev() {
         bits.push((checksum >> bit) & 1);
     }

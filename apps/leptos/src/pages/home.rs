@@ -64,16 +64,19 @@ fn AlignmentDashboard(
     // Allostatic load: the prediction error pushing the sphere off-center.
     // At 100% alignment, drift = 0 (perfect center).
     // At 0% alignment, drift = max offset (touching the boundary).
+    // Allostatic load → sphere drift. At 81%, load=0.19, drift ≈ 9px.
+    // At 50%, drift ≈ 24px. At 20%, drift ≈ 38px (near boundary).
+    // The angle rotates slowly so the drift direction shifts over time.
     let sphere_drift_x = move || {
-        let load = 1.0 - homeostasis.get().alignment; // 0.0 = centered, 1.0 = max drift
-        // Deterministic drift direction from alignment value
-        let angle = homeostasis.get().alignment * 7.3; // pseudo-random angle
-        (load * 40.0 * angle.cos()) as i32
+        let load = 1.0 - homeostasis.get().alignment;
+        // Use alignment to set angle — different alignments drift in different directions
+        let angle = homeostasis.get().alignment * 4.7 + 0.8;
+        (load * 48.0 * angle.cos()) as i32
     };
     let sphere_drift_y = move || {
         let load = 1.0 - homeostasis.get().alignment;
-        let angle = homeostasis.get().alignment * 7.3;
-        (load * 30.0 * angle.sin()) as i32
+        let angle = homeostasis.get().alignment * 4.7 + 0.8;
+        (load * 36.0 * angle.sin()) as i32
     };
 
     let active_consent_count = move || {

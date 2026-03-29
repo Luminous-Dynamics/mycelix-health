@@ -6,9 +6,15 @@
 //! to sustain the patient's own care.
 
 use leptos::prelude::*;
+use crate::app::{AppState, HomeostasisState};
 
 #[component]
 pub fn MetabolismPage() -> impl IntoView {
+    let homeostasis = use_context::<RwSignal<HomeostasisState>>()
+        .unwrap_or_else(|| RwSignal::new(HomeostasisState::default()));
+
+    let yield_value = move || format!("${:.0}", homeostasis.get().metabolic_yield);
+
     view! {
         <div class="page metabolism-page">
             <header class="page-header">
@@ -16,9 +22,9 @@ pub fn MetabolismPage() -> impl IntoView {
                 <p class="bio-subtitle">"Energy returning from the research ecosystem"</p>
             </header>
 
-            // Total yield — not "$847" but a living energy flow
+            // Total yield — reactive from AppState
             <section class="yield-hero">
-                <div class="yield-value">"$847"<span class="yield-unit">" TEND"</span></div>
+                <div class="yield-value">{yield_value}<span class="yield-unit">" TEND"</span></div>
                 <div class="yield-subtitle">"Lifetime metabolic return"</div>
                 <div class="yield-flow">
                     "Your data has nourished "

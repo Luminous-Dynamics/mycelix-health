@@ -190,25 +190,12 @@ pub fn destroy_vault() -> Result<(), String> {
     Ok(())
 }
 
-/// Simple SHA-256 implementation for WASM (no external crate dependency).
-/// Uses the SubtleCrypto API synchronously via a fallback hash.
+/// SHA-256 using the `sha2` crate (real cryptographic hash, WASM-compatible).
 fn simple_sha256(data: &[u8]) -> [u8; 32] {
-    // Fallback: deterministic hash when SubtleCrypto is unavailable synchronously.
-    // This is NOT cryptographic SHA-256 — it's a placeholder for the WASM build.
-    // In production, use the `sha2` crate compiled to WASM.
+    use sha2::{Sha256, Digest};
+    let result = Sha256::digest(data);
     let mut hash = [0u8; 32];
-    let mut state: u64 = 0x6a09e667f3bcc908;
-    for (i, &byte) in data.iter().enumerate() {
-        state = state.wrapping_mul(0x100000001b3).wrapping_add(byte as u64);
-        hash[i % 32] ^= (state >> ((i % 8) * 8)) as u8;
-    }
-    // Mix rounds
-    for _ in 0..4 {
-        for i in 0..32 {
-            let prev = hash[(i + 31) % 32];
-            hash[i] = hash[i].wrapping_add(prev.rotate_left(3));
-        }
-    }
+    hash.copy_from_slice(&result);
     hash
 }
 

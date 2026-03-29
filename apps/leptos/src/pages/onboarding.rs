@@ -16,6 +16,7 @@ enum OnboardingStep {
     Creating,
     SeedPhrase,
     Verify,
+    Passphrase,
     Complete,
 }
 
@@ -27,8 +28,10 @@ pub fn OnboardingPage() -> impl IntoView {
     let error_msg: RwSignal<Option<String>> = RwSignal::new(None);
 
     // Verification state
-    let verify_indices = RwSignal::new(vec![2usize, 7, 16, 21]); // Words 3, 8, 17, 22
+    let verify_indices = RwSignal::new(vec![2usize, 7, 16, 21]);
     let verify_inputs: RwSignal<Vec<String>> = RwSignal::new(vec![String::new(); 4]);
+    let passphrase_input = RwSignal::new(String::new());
+    let passphrase_confirm = RwSignal::new(String::new());
 
     let start_creation = move |_| {
         step.set(OnboardingStep::Creating);
@@ -63,11 +66,7 @@ pub fn OnboardingPage() -> impl IntoView {
         });
 
         if all_correct {
-            // Store the key (with a default passphrase for now — production asks for one)
-            if let Some(key) = vault_key.get() {
-                let _ = key_manager::store_wrapped_key(&key, "mycelix-default");
-            }
-            step.set(OnboardingStep::Complete);
+            step.set(OnboardingStep::Passphrase);
         } else {
             error_msg.set(Some("Some words don't match. Please check carefully.".into()));
         }
@@ -204,7 +203,81 @@ pub fn OnboardingPage() -> impl IntoView {
                 </div>
             </Show>
 
-            // Step 5: Complete
+            // Step 5: Set passphrase
+            <Show when=move || step.get() == OnboardingStep::Passphrase>
+                <div class="onboarding-card passphrase-step">
+                    <h2>"Protect Your Vault"</h2>
+                    <p class="passphrase-text">
+                        "Choose a passphrase to lock your vault on this device. "
+                        "You will need it each time you open your health data."
+                    </p>
+
+                    <div class="verify-field">
+                        <label class="verify-label">"Passphrase"</label>
+                        <input
+                            type="password"
+                            class="verify-input"
+                            placeholder="Enter passphrase..."
+                            autocomplete="new-password"
+                            on:input=move |ev| {
+                                passphrase_input.set(event_target_value(&ev));
+                            }
+                        />
+                    </div>
+
+                    <div class="verify-field">
+                        <label class="verify-label">"Confirm passphrase"</label>
+                        <input
+                            type="password"
+                            class="verify-input"
+                            placeholder="Confirm passphrase..."
+                            autocomplete="new-password"
+                            on:input=move |ev| {
+                                passphrase_confirm.set(event_target_value(&ev));
+                            }
+                        />
+                    </div>
+
+                    <Show when=move || error_msg.get().is_some()>
+                        <div class="verify-error">
+                            {move || error_msg.get().unwrap_or_default()}
+                        </div>
+                    </Show>
+
+                    <button
+                        class="onboarding-cta"
+                        on:click=move |_| {
+                            let pass = passphrase_input.get();
+                            let confirm = passphrase_confirm.get();
+
+                            if pass.len() < 8 {
+                                error_msg.set(Some("Passphrase must be at least 8 characters.".into()));
+                                return;
+                            }
+                            if pass != confirm {
+                                error_msg.set(Some("Passphrases do not match.".into()));
+                                return;
+                            }
+
+                            if let Some(key) = vault_key.get() {
+                                match key_manager::store_wrapped_key(&key, &pass) {
+                                    Ok(()) => {
+                                        error_msg.set(None);
+                                        step.set(OnboardingStep::Complete);
+                                    },
+                                    Err(e) => {
+                                        error_msg.set(Some(format!("Failed to store vault: {}", e)));
+                                    },
+                                }
+                            }
+                        }
+                    >
+                        "Seal Your Vault"
+                    </button>
+                </div>
+            </Show>
+
+            // Step 6: Complete
             <Show when=move || step.get() == OnboardingStep::Complete>
                 <div class="onboarding-card complete">
                     <div class="complete-icon">
