@@ -38,7 +38,7 @@
     /* Text */
     --text-primary: #E2E8F0;
     --text-secondary: #94A3B8;
-    --text-muted: #64748B;
+    --text-muted: #8B9DB5; /* Bumped from #64748B for WCAG AA 4.5:1 on dark bg */
 
     /* Borders */
     --border: rgba(148, 163, 184, 0.12);
@@ -709,6 +709,88 @@ body {
     font-size: 0.75rem;
     color: var(--text-muted);
 }
+
+/* ═══════════════════════════════════════════
+   Confirmation Modal
+   ═══════════════════════════════════════════ */
+
+.modal-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 50;
+    background: rgba(0, 0, 0, 0.6);
+    backdrop-filter: blur(4px);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 1rem;
+    animation: fade-in 0.15s ease-out;
+}
+
+@keyframes fade-in {
+    from { opacity: 0; }
+    to { opacity: 1; }
+}
+
+.modal-card {
+    background: var(--bg-card);
+    backdrop-filter: blur(16px);
+    border: 1px solid var(--border-active);
+    border-radius: var(--radius);
+    padding: 1.5rem;
+    max-width: 400px;
+    width: 100%;
+    animation: modal-in 0.2s ease-out;
+}
+
+@keyframes modal-in {
+    from { transform: scale(0.95); opacity: 0; }
+    to { transform: scale(1); opacity: 1; }
+}
+
+.modal-card h3 {
+    font-size: 1.1rem;
+    color: var(--revoked);
+    margin-bottom: 0.75rem;
+}
+
+.modal-warning {
+    font-size: 0.9rem;
+    color: var(--text-secondary);
+    line-height: 1.5;
+    margin-bottom: 1.25rem;
+}
+
+.modal-actions {
+    display: flex;
+    gap: 0.75rem;
+}
+
+.modal-cancel {
+    flex: 1;
+    padding: 0.625rem;
+    background: transparent;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    color: var(--text-secondary);
+    cursor: pointer;
+    font-size: 0.85rem;
+}
+
+.modal-confirm {
+    flex: 1;
+    padding: 0.625rem;
+    background: var(--revoked);
+    border: none;
+    border-radius: var(--radius-sm);
+    color: white;
+    cursor: pointer;
+    font-size: 0.85rem;
+    font-weight: 500;
+}
+
+.modal-cancel:hover { background: rgba(255, 255, 255, 0.05); }
+.modal-confirm:hover { background: #b91c1c; }
 
 /* ═══════════════════════════════════════════
    Vault Warning + Interactive Elements

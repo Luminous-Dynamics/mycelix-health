@@ -6,6 +6,13 @@ use leptos::prelude::*;
 use crate::app::AppState;
 use crate::zome_clients::consent::ConsentStatus;
 
+/// ID of the consent pending revocation (for confirmation modal).
+#[derive(Clone, Debug, PartialEq)]
+struct PendingRevocation {
+    id: String,
+    grantee_name: String,
+}
+
 #[component]
 pub fn ConsentPage() -> impl IntoView {
     let app = use_context::<AppState>().expect("AppState");
@@ -25,6 +32,7 @@ pub fn ConsentPage() -> impl IntoView {
     };
 
     let active_count = move || active_consents().len();
+    let pending_revoke: RwSignal<Option<PendingRevocation>> = RwSignal::new(None);
 
     view! {
         <div class="page consent-page">
@@ -80,22 +88,12 @@ pub fn ConsentPage() -> impl IntoView {
                                     class="consent-revoke"
                                     on:click={
                                         let id = consent_id.clone();
+                                        let name = consent.grantee_name.clone();
                                         move |_| {
-                                            // Revoke: update global state
-                                            app.consents.update(|consents| {
-                                                if let Some(c) = consents.iter_mut().find(|c| c.id == id) {
-                                                    c.status = ConsentStatus::Revoked;
-                                                }
-                                            });
-                                            // Add access event
-                                            app.access_events.update(|events| {
-                                                events.insert(0, crate::zome_clients::records::AccessEvent {
-                                                    who: "You".into(),
-                                                    what: "revoked a symbiotic connection".into(),
-                                                    when: "Just now".into(),
-                                                    event_type: crate::zome_clients::records::AccessEventType::ConsentChange,
-                                                });
-                                            });
+                                            pending_revoke.set(Some(PendingRevocation {
+                                                id: id.clone(),
+                                                grantee_name: name.clone(),
+                                            }));
                                         }
                                     }
                                 >
@@ -132,6 +130,56 @@ pub fn ConsentPage() -> impl IntoView {
             </Show>
 
             <button class="consent-new">"Form New Symbiotic Link"</button>
+
+            // Confirmation modal
+            <Show when=move || pending_revoke.get().is_some()>
+                <div class="modal-overlay" on:click=move |_| pending_revoke.set(None)>
+                    <div class="modal-card" on:click=|ev| ev.stop_propagation()>
+                        <h3>"Sever This Connection?"</h3>
+                        <p class="modal-warning">
+                            {move || {
+                                let pr = pending_revoke.get().unwrap();
+                                format!(
+                                    "{} will immediately lose access to your data. \
+                                     Any copies they already downloaded are not affected.",
+                                    pr.grantee_name
+                                )
+                            }}
+                        </p>
+                        <div class="modal-actions">
+                            <button
+                                class="modal-cancel"
+                                on:click=move |_| pending_revoke.set(None)
+                            >
+                                "Keep Connection"
+                            </button>
+                            <button
+                                class="modal-confirm"
+                                on:click=move |_| {
+                                    if let Some(pr) = pending_revoke.get() {
+                                        app.consents.update(|consents| {
+                                            if let Some(c) = consents.iter_mut().find(|c| c.id == pr.id) {
+                                                c.status = ConsentStatus::Revoked;
+                                            }
+                                        });
+                                        app.access_events.update(|events| {
+                                            events.insert(0, crate::zome_clients::records::AccessEvent {
+                                                who: "You".into(),
+                                                what: format!("severed connection with {}", pr.grantee_name),
+                                                when: "Just now".into(),
+                                                event_type: crate::zome_clients::records::AccessEventType::ConsentChange,
+                                            });
+                                        });
+                                        pending_revoke.set(None);
+                                    }
+                                }
+                            >
+                                "Sever Connection"
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </Show>
         </div>
     }
 }

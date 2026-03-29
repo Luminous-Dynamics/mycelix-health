@@ -108,13 +108,21 @@ pub fn store_wrapped_key(key: &[u8; 32], passphrase: &str) -> Result<(), String>
         .map_err(|_| "localStorage not available")?
         .ok_or("localStorage is null")?;
 
-    // Derive wrapping key from passphrase
-    let pass_hash = simple_sha256(passphrase.as_bytes());
+    // Derive wrapping key via iterated SHA-256 (PBKDF2-like stretching)
+    // 10,000 iterations to slow brute-force passphrase guessing
+    let salt = b"mycelix-health-vault-wrap-v1";
+    let mut pass_key = simple_sha256(passphrase.as_bytes());
+    for _ in 0..10_000 {
+        let mut input = Vec::with_capacity(32 + salt.len());
+        input.extend_from_slice(&pass_key);
+        input.extend_from_slice(salt);
+        pass_key = simple_sha256(&input);
+    }
 
-    // Wrap: XOR with passphrase hash (simplified — production uses AES-KW)
+    // Wrap key with stretched passphrase hash
     let mut wrapped = [0u8; 32];
     for i in 0..32 {
-        wrapped[i] = key[i] ^ pass_hash[i];
+        wrapped[i] = key[i] ^ pass_key[i];
     }
 
     // Store as hex
@@ -155,13 +163,20 @@ pub fn unwrap_key(passphrase: &str) -> Result<[u8; 32], String> {
         return Err("Stored key has wrong length".into());
     }
 
-    // Derive wrapping key from passphrase
-    let pass_hash = simple_sha256(passphrase.as_bytes());
+    // Derive wrapping key via iterated SHA-256 (same as store_wrapped_key)
+    let salt = b"mycelix-health-vault-wrap-v1";
+    let mut pass_key = simple_sha256(passphrase.as_bytes());
+    for _ in 0..10_000 {
+        let mut input = Vec::with_capacity(32 + salt.len());
+        input.extend_from_slice(&pass_key);
+        input.extend_from_slice(salt);
+        pass_key = simple_sha256(&input);
+    }
 
     // Unwrap
     let mut key = [0u8; 32];
     for i in 0..32 {
-        key[i] = wrapped[i] ^ pass_hash[i];
+        key[i] = wrapped[i] ^ pass_key[i];
     }
 
     // Verify fingerprint

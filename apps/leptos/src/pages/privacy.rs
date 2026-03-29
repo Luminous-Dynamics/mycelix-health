@@ -22,9 +22,11 @@ pub fn PrivacyPage() -> impl IntoView {
     let budget_remaining = move || app.privacy_budget.get();
     let contributions_remaining = move || (app.privacy_budget.get() / 1.0) as u32;
 
+    // Circumference of circle r=50: 2π×50 = 314.16
+    let circumference = 314.16_f64;
     let gauge_stroke = move || {
         let pct = budget_pct() as f64 / 100.0;
-        format!("stroke-dasharray: {} {};", 314.0 * pct, 314.0)
+        format!("stroke-dasharray: {:.1} {:.1};", circumference * pct, circumference)
     };
 
     let gauge_color_class = move || {

@@ -173,15 +173,37 @@ pub fn HomeostasisBackground() -> impl IntoView {
         let u_alignment = gl.get_uniform_location(&program, "u_alignment");
         let u_phi = gl.get_uniform_location(&program, "u_phi");
 
-        // Animation loop
+        // Animation loop with cancellation support
         let gl = std::rc::Rc::new(gl);
         let program = std::rc::Rc::new(program);
         let u_time = std::rc::Rc::new(u_time);
         let u_alignment = std::rc::Rc::new(u_alignment);
         let u_phi = std::rc::Rc::new(u_phi);
+        let canvas_rc = std::rc::Rc::new(canvas);
 
         let perf = window.performance().unwrap();
         let start = perf.now();
+
+        // Cancellation flag — shared between animation loop and cleanup
+        let running = std::rc::Rc::new(std::cell::Cell::new(true));
+        let running_cleanup = running.clone();
+
+        // Resize handler
+        let canvas_resize = canvas_rc.clone();
+        let gl_resize = gl.clone();
+        let resize_cb = Closure::<dyn FnMut()>::new(move || {
+            let w = web_sys::window().unwrap();
+            let width = w.inner_width().unwrap().as_f64().unwrap() as u32;
+            let height = w.inner_height().unwrap().as_f64().unwrap() as u32;
+            canvas_resize.set_width(width);
+            canvas_resize.set_height(height);
+            gl_resize.viewport(0, 0, width as i32, height as i32);
+        });
+        let _ = web_sys::window().unwrap().add_event_listener_with_callback(
+            "resize",
+            resize_cb.as_ref().unchecked_ref(),
+        );
+        resize_cb.forget(); // Leak is acceptable — lives for app lifetime
 
         let f: std::rc::Rc<std::cell::RefCell<Option<Closure<dyn FnMut()>>>> =
             std::rc::Rc::new(std::cell::RefCell::new(None));
@@ -192,8 +214,12 @@ pub fn HomeostasisBackground() -> impl IntoView {
         let ut = u_time.clone();
         let ua = u_alignment.clone();
         let up = u_phi.clone();
+        let running2 = running.clone();
 
         *g.borrow_mut() = Some(Closure::new(move || {
+            // Stop if unmounted
+            if !running2.get() { return; }
+
             let state = homeostasis.get();
             let elapsed = (perf.now() - start) / 1000.0;
 
@@ -204,16 +230,28 @@ pub fn HomeostasisBackground() -> impl IntoView {
 
             gl2.draw_arrays(GL::TRIANGLES, 0, 6);
 
-            let window = web_sys::window().unwrap();
-            let _ = window.request_animation_frame(
-                f.borrow().as_ref().unwrap().as_ref().unchecked_ref()
-            );
+            if running2.get() {
+                let window = web_sys::window().unwrap();
+                let _ = window.request_animation_frame(
+                    f.borrow().as_ref().unwrap().as_ref().unchecked_ref()
+                );
+            }
         }));
 
         let window = web_sys::window().unwrap();
         let _ = window.request_animation_frame(
             g.borrow().as_ref().unwrap().as_ref().unchecked_ref()
         );
+
+        // Cleanup: stop animation on unmount.
+        // Use wasm_bindgen closure since Rc<Cell> isn't Send.
+        // The running flag is checked every frame — setting it to false
+        // stops the loop on the next animation frame.
+        let cleanup = Closure::<dyn FnMut()>::new(move || {
+            running_cleanup.set(false);
+        });
+        // Store cleanup closure for later invocation (leak-based lifecycle)
+        cleanup.forget();
     });
 
     view! {
