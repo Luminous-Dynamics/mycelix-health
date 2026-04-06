@@ -24,6 +24,8 @@
 //! 5. Entry stored on DHT (proof bytes only, no private health data)
 
 pub mod circuits;
+pub mod prover;
+pub mod verifier;
 
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};

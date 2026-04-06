@@ -19,6 +19,7 @@ sha2 = "0.10"
 mycelix-zkp-core = { path = "../../../crates/mycelix-zkp-core" }
 
 # Winterfell STARK (always needed for range proof AIR circuit)
+rand = "0.8"
 winterfell = "0.13.1"
 winter-math = "0.13.1"
 winter-crypto = "0.13.1"
