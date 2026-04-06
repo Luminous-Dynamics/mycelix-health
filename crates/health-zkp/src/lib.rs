@@ -126,6 +126,10 @@ pub struct HealthPublicInputs {
     pub data_timestamp: i64,
     /// Attestor role (who verified the underlying data).
     pub attestor_role: AttestorRole,
+    /// Minimum value of the proven range (public).
+    pub min_value: u64,
+    /// Maximum value of the proven range (public).
+    pub max_value: u64,
 }
 
 /// Proof metadata.
@@ -181,6 +185,9 @@ pub fn generate_proof(
     attestor: AttestorRole,
     timestamp: i64,
     expiry: i64,
+    value: u64,
+    min_value: u64,
+    max_value: u64,
 ) -> HealthProof {
     // Commitment to private data (verifier can check this matches)
     let data_commitment = {
@@ -209,6 +216,9 @@ pub fn generate_proof(
         &data_commitment,
         &patient_id_hash,
         &proof_type,
+        value,
+        min_value,
+        max_value,
     );
 
     HealthProof {
@@ -220,6 +230,8 @@ pub fn generate_proof(
             criteria_met: true,
             data_timestamp: timestamp,
             attestor_role: attestor,
+            min_value,
+            max_value,
         },
         metadata: ProofMetadata {
             system,
@@ -242,13 +254,22 @@ pub fn generate_proof(
 /// For now, all backends produce a commitment-based proof with the correct
 /// domain tag binding. The structure is ready for real STARK circuit wiring.
 fn generate_proof_bytes(
-    _recommended: BackendId,
+    recommended: BackendId,
     data_commitment: &[u8; 32],
     patient_id_hash: &[u8; 32],
     proof_type: &HealthProofType,
+    value: u64,
+    min_value: u64,
+    max_value: u64,
 ) -> (Vec<u8>, ProofSystem) {
-    // Domain-tagged commitment proof (production-ready structure,
-    // awaiting per-type Winterfell AIR / RISC0 guest circuits)
+    // Try REAL Winterfell STARK proof for range-compatible types
+    if recommended == BackendId::Winterfell && value >= min_value && value <= max_value {
+        if let Ok(proof) = circuits::range_proof::prove_range(value, min_value, max_value, *data_commitment) {
+            return (proof.to_bytes(), ProofSystem::WinterfellStark);
+        }
+    }
+
+    // Fallback: domain-tagged commitment proof
     let domain_tag = tag_health_attest();
     let mut proof_hasher = Sha256::new();
     proof_hasher.update(domain_tag.as_bytes());
@@ -300,15 +321,22 @@ fn verify_winterfell_proof(proof: &HealthProof) -> bool {
 
     #[cfg(feature = "verify-winterfell")]
     {
-        // Winterfell STARK verification via mycelix-zkp-core
-        // Circuit-specific AIR will be wired here per proof type.
-        // For now, validate that the proof is structurally sound.
-        let _domain = tag_health_attest();
-        // TODO: Call winterfell::verify::<HealthRangeAir>() when AIR circuits are implemented
-        // Structural validation (proof exists, correct domain, not empty)
-        proof.public_inputs.criteria_met
-            && proof.metadata.security_bits >= 96
-            && !proof.proof_bytes.is_empty()
+        // REAL Winterfell STARK verification
+        use winterfell::Proof;
+
+        // Deserialize proof bytes
+        let stark_proof = match Proof::from_bytes(&proof.proof_bytes) {
+            Ok(p) => p,
+            Err(_) => return false,
+        };
+
+        // Verify using the HealthRangeAir circuit
+        circuits::range_proof::verify_range(
+            stark_proof,
+            proof.public_inputs.min_value,
+            proof.public_inputs.max_value,
+            proof.public_inputs.data_commitment,
+        ).is_ok()
     }
 
     #[cfg(not(feature = "verify-winterfell"))]
@@ -378,6 +406,7 @@ mod tests {
             AttestorRole::Physician,
             1000000,
             2000000,
+            0, 0, 0, // Insurance: complex type, no range
         );
 
         assert!(proof.public_inputs.criteria_met);
@@ -399,6 +428,7 @@ mod tests {
             AttestorRole::ClinicalTrialSponsor,
             1000000,
             1500000,
+            0, 0, 0, // Trial: complex type, no range
         );
 
         assert_eq!(proof.metadata.proof_size, 32);
@@ -438,7 +468,7 @@ mod tests {
     }
 
     #[test]
-    fn domain_tag_verification() {
+    fn real_winterfell_proof_generation_and_verification() {
         let proof = generate_proof(
             HealthProofType::VitalsInRange,
             b"bp:120/80,hr:72,temp:98.6",
@@ -446,14 +476,19 @@ mod tests {
             AttestorRole::Physician,
             1000000,
             2000000,
+            120, 90, 180, // BP systolic: 120 in [90, 180]
         );
 
-        // Correct domain tag should verify
-        assert!(verify_domain_tag(&proof, &tag_health_attest()));
+        // Should generate a REAL Winterfell STARK proof (not SHA-256 commitment)
+        assert_eq!(proof.metadata.system, ProofSystem::WinterfellStark,
+            "VitalsInRange should use Winterfell STARK, not SHA-256 fallback");
 
-        // Wrong domain tag should fail
-        let wrong_tag = DomainTag::new("Finance", "TxPrivacy", 1);
-        assert!(!verify_domain_tag(&proof, &wrong_tag));
+        // Proof should be significantly larger than a SHA-256 hash (32 bytes)
+        assert!(proof.proof_bytes.len() > 1000,
+            "STARK proof should be >1KB, got {} bytes", proof.proof_bytes.len());
+
+        // REAL verification should pass
+        assert!(verify_proof(&proof), "real Winterfell STARK proof must verify");
     }
 
     #[test]
@@ -467,6 +502,8 @@ mod tests {
                 criteria_met: true,
                 data_timestamp: 0,
                 attestor_role: AttestorRole::PatientSelf,
+                min_value: 0,
+                max_value: 0,
             },
             metadata: ProofMetadata {
                 system: ProofSystem::Sha256Commitment,
@@ -481,7 +518,7 @@ mod tests {
     }
 
     #[test]
-    fn criteria_not_met_fails() {
+    fn tampered_stark_proof_fails() {
         let mut proof = generate_proof(
             HealthProofType::VitalsInRange,
             b"data",
@@ -489,9 +526,13 @@ mod tests {
             AttestorRole::Physician,
             1000000,
             2000000,
+            100, 50, 200,
         );
-        proof.public_inputs.criteria_met = false;
-        assert!(!verify_proof(&proof), "criteria_met=false should fail");
+        // Tamper with the STARK proof bytes
+        if !proof.proof_bytes.is_empty() {
+            proof.proof_bytes[0] ^= 0xFF; // Flip first byte
+        }
+        assert!(!verify_proof(&proof), "tampered STARK proof should fail verification");
     }
 
     #[test]

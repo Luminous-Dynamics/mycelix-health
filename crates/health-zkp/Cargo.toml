@@ -8,7 +8,7 @@ description = "Zero-knowledge health attestations — STARK proofs for insurance
 [features]
 default = []
 # Enable actual STARK/RISC0 verification (requires mycelix-zkp-core backends)
-verify-winterfell = ["mycelix-zkp-core/backend-winterfell", "dep:winterfell", "dep:winter-math", "dep:winter-crypto"]
+verify-winterfell = ["mycelix-zkp-core/backend-winterfell"]
 verify-risc0 = ["mycelix-zkp-core/backend-risc0"]
 verify-dilithium = ["mycelix-zkp-core/dilithium"]
 verify-full = ["verify-winterfell", "verify-risc0", "verify-dilithium"]
@@ -18,7 +18,7 @@ serde = { version = "1", features = ["derive"] }
 sha2 = "0.10"
 mycelix-zkp-core = { path = "../../../crates/mycelix-zkp-core" }
 
-# Winterfell STARK (for real AIR circuits — range proofs, threshold proofs)
-winterfell = { version = "0.13.1", optional = true }
-winter-math = { version = "0.13.1", optional = true }
-winter-crypto = { version = "0.13.1", optional = true }
+# Winterfell STARK (always needed for range proof AIR circuit)
+winterfell = "0.13.1"
+winter-math = "0.13.1"
+winter-crypto = "0.13.1"
