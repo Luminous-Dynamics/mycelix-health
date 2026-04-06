@@ -1,0 +1,19 @@
+[package]
+name = "mycelix-health-zkp"
+version = "0.1.0"
+edition = "2021"
+license = "AGPL-3.0-or-later"
+description = "Zero-knowledge health attestations — STARK proofs for insurance, trials, employment"
+
+[features]
+default = []
+# Enable actual STARK/RISC0 verification (requires mycelix-zkp-core backends)
+verify-winterfell = ["mycelix-zkp-core/backend-winterfell"]
+verify-risc0 = ["mycelix-zkp-core/backend-risc0"]
+verify-dilithium = ["mycelix-zkp-core/dilithium"]
+verify-full = ["verify-winterfell", "verify-risc0", "verify-dilithium"]
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+sha2 = "0.10"
+mycelix-zkp-core = { path = "../../../crates/mycelix-zkp-core" }
