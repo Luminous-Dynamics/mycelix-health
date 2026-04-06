@@ -23,6 +23,8 @@
 //! 4. Integrity validation calls `verify_proof()` → checks STARK + Dilithium
 //! 5. Entry stored on DHT (proof bytes only, no private health data)
 
+pub mod circuits;
+
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
