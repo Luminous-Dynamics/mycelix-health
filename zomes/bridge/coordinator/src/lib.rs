@@ -449,20 +449,31 @@ pub fn submit_health_attestation(
         }
     }
 
-    // 3. Store on DHT via epistemic claim (reuse existing infrastructure)
+    // 3. Store on DHT via epistemic claim infrastructure
+    let agent_info = agent_info()?;
+    let now = sys_time()?;
+
     let claim = HealthEpistemicClaim {
-        claim_type: "zkp_health_attestation".to_string(),
-        content: format!(
-            "{{\"proof_type\":\"{}\",\"proof_size\":{},\"patient_id_hash_len\":{}}}",
+        claim_id: format!("zkp-{}-{}", input.proof_type, now.as_micros()),
+        claimant: agent_info.agent_initial_pubkey.clone(),
+        subject_hash: ActionHash::from_raw_36(agent_info.agent_initial_pubkey.get_raw_36().to_vec()), // Agent as subject
+        claim_type: HealthClaimType::ResearchFinding, // Closest match for ZKP attestation
+        claim_content: format!(
+            "ZKP health attestation: type={}, proof_size={}, commitment={}",
             input.proof_type,
             input.proof_bytes.len(),
-            input.patient_id_hash.len()
+            input.data_commitment.iter().map(|b| format!("{:02x}", b)).collect::<String>()
         ),
-        entity_hash: None,
-        supporting_evidence: vec![input.data_commitment.iter().map(|b| format!("{:02x}", b)).collect::<String>()],
-        empirical_level: 4, // E4: cryptographically verified
-        confidence: 1.0,
-        sources: vec!["DASTARK-Winterfell".to_string()],
+        evidence_hashes: vec![], // Proof bytes stored in claim_content reference
+        classification: EpistemicClassification {
+            empirical_level: 3, // E3: cryptographically verified
+            materiality_level: 2,
+            normative_level: 1,
+        },
+        matl_score: 0.9, // High trust for ZKP-verified claims
+        created_at: now,
+        verified: false, // Will be set true after off-chain STARK verification
+        verified_by: vec![],
     };
 
     match create_epistemic_claim(claim) {
