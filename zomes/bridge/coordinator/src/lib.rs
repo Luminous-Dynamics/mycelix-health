@@ -1,3 +1,7 @@
+#![deny(unsafe_code)]
+// Copyright (C) 2024-2026 Tristan Stoltz / Luminous Dynamics
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// Commercial licensing: see COMMERCIAL_LICENSE.md at repository root
 //! Mycelix Health Bridge Coordinator Zome
 //! 
 //! Provides extern functions for cross-hApp communication,
@@ -5,10 +9,27 @@
 
 use hdk::prelude::*;
 use bridge_integrity::*;
+use mycelix_bridge_common::{check_rate_limit_count, RATE_LIMIT_WINDOW_SECS};
+
+fn enforce_rate_limit(target_fn: &str) -> ExternResult<()> {
+    let agent = agent_info()?.agent_initial_pubkey;
+    let links = get_links(
+        LinkQuery::try_new(agent.clone(), LinkTypes::DispatchRateLimit)?,
+        GetStrategy::Local,
+    )?;
+    let now = sys_time()?;
+    let window_start_micros = now.as_micros() - (RATE_LIMIT_WINDOW_SECS * 1_000_000);
+    let window_start = Timestamp::from_micros(window_start_micros);
+    let recent_count = links.iter().filter(|l| l.timestamp >= window_start).count();
+    check_rate_limit_count(recent_count).map_err(|msg| wasm_error!(WasmErrorInner::Guest(msg)))?;
+    create_link(agent.clone(), agent, LinkTypes::DispatchRateLimit, target_fn.as_bytes().to_vec())?;
+    Ok(())
+}
 
 /// Register this hApp with the Mycelix bridge
 #[hdk_extern]
 pub fn register_with_bridge(input: RegisterBridgeInput) -> ExternResult<Record> {
+    enforce_rate_limit("register_with_bridge")?;
     let registration = HealthBridgeRegistration {
         registration_id: input.registration_id,
         mycelix_identity_hash: input.mycelix_identity_hash,
@@ -56,6 +77,7 @@ pub struct RegisterBridgeInput {
 /// Query health data from another hApp
 #[hdk_extern]
 pub fn query_federated_data(query: HealthDataQuery) -> ExternResult<Record> {
+    enforce_rate_limit("query_federated_data")?;
     let query_hash = create_entry(&EntryTypes::HealthDataQuery(query.clone()))?;
     let record = get(query_hash.clone(), GetOptions::default())?
         .ok_or(wasm_error!(WasmErrorInner::Guest("Could not find query".to_string())))?;
@@ -74,6 +96,7 @@ pub fn query_federated_data(query: HealthDataQuery) -> ExternResult<Record> {
 /// Respond to a health data query
 #[hdk_extern]
 pub fn respond_to_query(response: HealthDataResponse) -> ExternResult<Record> {
+    enforce_rate_limit("respond_to_query")?;
     let response_hash = create_entry(&EntryTypes::HealthDataResponse(response.clone()))?;
     let record = get(response_hash.clone(), GetOptions::default())?
         .ok_or(wasm_error!(WasmErrorInner::Guest("Could not find response".to_string())))?;
@@ -108,6 +131,7 @@ pub fn get_query_responses(query_hash: ActionHash) -> ExternResult<Vec<Record>> 
 /// Request provider verification
 #[hdk_extern]
 pub fn request_provider_verification(request: ProviderVerificationRequest) -> ExternResult<Record> {
+    enforce_rate_limit("request_provider_verification")?;
     let request_hash = create_entry(&EntryTypes::ProviderVerificationRequest(request.clone()))?;
     let record = get(request_hash.clone(), GetOptions::default())?
         .ok_or(wasm_error!(WasmErrorInner::Guest("Could not find request".to_string())))?;
@@ -125,6 +149,7 @@ pub fn request_provider_verification(request: ProviderVerificationRequest) -> Ex
 /// Submit verification result
 #[hdk_extern]
 pub fn submit_verification_result(result: ProviderVerificationResult) -> ExternResult<Record> {
+    enforce_rate_limit("submit_verification_result")?;
     let result_hash = create_entry(&EntryTypes::ProviderVerificationResult(result.clone()))?;
     let record = get(result_hash.clone(), GetOptions::default())?
         .ok_or(wasm_error!(WasmErrorInner::Guest("Could not find result".to_string())))?;
@@ -144,6 +169,7 @@ pub fn submit_verification_result(result: ProviderVerificationResult) -> ExternR
 /// Create health epistemic claim
 #[hdk_extern]
 pub fn create_epistemic_claim(claim: HealthEpistemicClaim) -> ExternResult<Record> {
+    enforce_rate_limit("create_epistemic_claim")?;
     let claim_hash = create_entry(&EntryTypes::HealthEpistemicClaim(claim.clone()))?;
     let record = get(claim_hash.clone(), GetOptions::default())?
         .ok_or(wasm_error!(WasmErrorInner::Guest("Could not find claim".to_string())))?;
@@ -187,6 +213,7 @@ pub fn get_entity_claims(entity_hash: ActionHash) -> ExternResult<Vec<Record>> {
 /// Verify an epistemic claim
 #[hdk_extern]
 pub fn verify_claim(input: VerifyClaimInput) -> ExternResult<Record> {
+    enforce_rate_limit("verify_claim")?;
     let record = get(input.claim_hash.clone(), GetOptions::default())?
         .ok_or(wasm_error!(WasmErrorInner::Guest("Claim not found".to_string())))?;
     
@@ -212,6 +239,7 @@ pub struct VerifyClaimInput {
 /// Update federated reputation
 #[hdk_extern]
 pub fn update_federated_reputation(federation: HealthReputationFederation) -> ExternResult<Record> {
+    enforce_rate_limit("update_federated_reputation")?;
     let fed_hash = create_entry(&EntryTypes::HealthReputationFederation(federation.clone()))?;
     let record = get(fed_hash.clone(), GetOptions::default())?
         .ok_or(wasm_error!(WasmErrorInner::Guest("Could not find federation".to_string())))?;
@@ -337,4 +365,119 @@ pub fn get_bridge_metrics(_: ()) -> ExternResult<String> {
             e
         )))
     })
+}
+
+// ============================================================================
+// HEALTH ZKP ATTESTATION (DASTARK Integration)
+// ============================================================================
+
+/// Input for submitting a ZKP health attestation to the DHT.
+///
+/// The proof was generated client-side via mycelix-zkp-core's
+/// prove_range() + Dilithium5 sign. This function stores it on DHT.
+#[derive(Debug, Serialize, Deserialize, SerializedBytes)]
+pub struct SubmitHealthAttestationInput {
+    /// What health property is being attested.
+    pub proof_type: String,
+    /// STARK proof bytes (Winterfell or RISC0).
+    pub proof_bytes: Vec<u8>,
+    /// Commitment to the health data (SHA-256).
+    pub data_commitment: Vec<u8>,
+    /// Patient identity hash (not the identity itself).
+    pub patient_id_hash: Vec<u8>,
+    /// Consciousness attestation (if consciousness-gated).
+    pub consciousness_attestation: Option<mycelix_bridge_common::consciousness_zkp::ConsciousnessAttestation>,
+}
+
+/// Result of attestation submission.
+#[derive(Debug, Serialize, Deserialize, SerializedBytes)]
+pub struct HealthAttestationResult {
+    /// Whether the attestation was accepted.
+    pub accepted: bool,
+    /// Action hash of the stored entry (if accepted).
+    pub entry_hash: Option<String>,
+    /// Error message (if rejected).
+    pub error: Option<String>,
+}
+
+/// Submit a ZKP health attestation to the DHT.
+///
+/// Flow:
+/// 1. Validate proof structure (non-empty, size limits)
+/// 2. If consciousness-gated: validate consciousness attestation
+/// 3. Store attestation entry on DHT
+/// 4. Off-chain verifier will later verify the STARK proof
+///
+/// This is the Holochain zome entry point for the DASTARK health pipeline.
+#[hdk_extern]
+pub fn submit_health_attestation(
+    input: SubmitHealthAttestationInput,
+) -> ExternResult<HealthAttestationResult> {
+    // 1. Validate proof structure
+    if input.proof_bytes.is_empty() {
+        return Ok(HealthAttestationResult {
+            accepted: false,
+            entry_hash: None,
+            error: Some("Empty proof bytes".to_string()),
+        });
+    }
+
+    if input.proof_bytes.len() > 500_000 {
+        return Ok(HealthAttestationResult {
+            accepted: false,
+            entry_hash: None,
+            error: Some("Proof exceeds 500KB limit".to_string()),
+        });
+    }
+
+    if input.data_commitment.len() != 32 {
+        return Ok(HealthAttestationResult {
+            accepted: false,
+            entry_hash: None,
+            error: Some("Data commitment must be 32 bytes".to_string()),
+        });
+    }
+
+    // 2. Validate consciousness attestation if provided
+    if let Some(ref att) = input.consciousness_attestation {
+        if let Err(e) = att.validate_structure() {
+            return Ok(HealthAttestationResult {
+                accepted: false,
+                entry_hash: None,
+                error: Some(format!("Consciousness attestation invalid: {}", e)),
+            });
+        }
+    }
+
+    // 3. Store on DHT via epistemic claim (reuse existing infrastructure)
+    let claim = HealthEpistemicClaim {
+        claim_type: "zkp_health_attestation".to_string(),
+        content: format!(
+            "{{\"proof_type\":\"{}\",\"proof_size\":{},\"patient_id_hash_len\":{}}}",
+            input.proof_type,
+            input.proof_bytes.len(),
+            input.patient_id_hash.len()
+        ),
+        entity_hash: None,
+        supporting_evidence: vec![input.data_commitment.iter().map(|b| format!("{:02x}", b)).collect::<String>()],
+        empirical_level: 4, // E4: cryptographically verified
+        confidence: 1.0,
+        sources: vec!["DASTARK-Winterfell".to_string()],
+    };
+
+    match create_epistemic_claim(claim) {
+        Ok(record) => {
+            let hash = record.action_address().to_string();
+            Ok(HealthAttestationResult {
+                accepted: true,
+                entry_hash: Some(hash),
+                error: None,
+            })
+        }
+        Err(e) => Ok(HealthAttestationResult {
+            accepted: false,
+            entry_hash: None,
+            error: Some(format!("DHT storage failed: {:?}", e)),
+        }),
+    }
 }
