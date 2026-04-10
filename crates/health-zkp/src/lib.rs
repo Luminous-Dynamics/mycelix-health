@@ -358,8 +358,12 @@ fn verify_risc0_proof(proof: &HealthProof) -> bool {
 
     #[cfg(feature = "verify-risc0")]
     {
-        // RISC0 receipt verification via mycelix-zkp-core
-        // TODO: Call risc0_zkvm::verify() with health guest image ID
+        // SECURITY: RISC-0 proofs are structural-only, not cryptographically verified.
+        // This checks metadata and non-empty proof bytes but does NOT call
+        // risc0_zkvm::verify() with the health guest image ID.
+        // Full verification requires implementing RISC-0 guest programs for each
+        // complex proof type (TrialEligibility, OrganDonorCompatibility, etc.).
+        // Estimated effort: 3-4 weeks of cryptographic engineering.
         proof.public_inputs.criteria_met
             && proof.metadata.security_bits >= 128
             && !proof.proof_bytes.is_empty()

@@ -1,3 +1,7 @@
+#![deny(unsafe_code)]
+// Copyright (C) 2024-2026 Tristan Stoltz / Luminous Dynamics
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// Commercial licensing: see COMMERCIAL_LICENSE.md at repository root
 //! Prescriptions Coordinator Zome
 //!
 //! Provides extern functions for prescription management,
@@ -150,6 +154,31 @@ pub fn create_prescription(input: CreatePrescriptionInput) -> ExternResult<Recor
         Permission::Write,
         input.is_emergency,
     )?;
+
+    // Best-effort safety check: runs CDS interaction check in the background.
+    // Does NOT block prescription creation — use create_prescription_with_safety
+    // for hard blocking on interactions. This ensures at minimum a warning signal
+    // is emitted if drug interactions or allergy conflicts are detected.
+    if let Ok(safety) = check_prescription_safety(CheckPrescriptionSafetyInput {
+        patient_hash: input.prescription.patient_hash.clone(),
+        new_medication_rxnorm: input.prescription.rxnorm_code.clone(),
+        patient_allergies: Vec::new(), // Caller should use _with_safety for allergen data
+    }) {
+        if !safety.is_safe {
+            let _ = emit_signal(&serde_json::json!({
+                "signal_type": "prescription_safety_warning",
+                "patient_hash": format!("{:?}", input.prescription.patient_hash),
+                "assessment": format!("{:?}", safety.safety_assessment),
+                "interactions": safety.drug_interactions.len(),
+                "allergy_conflicts": safety.allergy_conflicts.len(),
+            }));
+            debug!(
+                "CDS safety warning for new prescription: {:?} interactions, {:?} allergies",
+                safety.drug_interactions.len(),
+                safety.allergy_conflicts.len()
+            );
+        }
+    }
 
     let rx_hash = create_entry(&EntryTypes::Prescription(input.prescription.clone()))?;
     let record = get(rx_hash.clone(), GetOptions::default())?
