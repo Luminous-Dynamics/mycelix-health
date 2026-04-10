@@ -1,0 +1,110 @@
+[
+  {
+    "drug_rxnorm": "723",
+    "drug_name": "Amoxicillin",
+    "allergen_class": "Beta-lactam Antibiotics",
+    "cross_reactive_allergens": ["Penicillin", "Ampicillin", "Piperacillin", "Cephalosporins"],
+    "severity": "Severe",
+    "notes": "Cross-reactivity with penicillin allergy ~1-3%. Higher with 1st-gen cephalosporins. Skin testing recommended.",
+    "source": "FDA/AAAAI"
+  },
+  {
+    "drug_rxnorm": "2231",
+    "drug_name": "Cephalexin",
+    "allergen_class": "Beta-lactam Antibiotics",
+    "cross_reactive_allergens": ["Penicillin", "Amoxicillin", "Ampicillin", "Cefazolin"],
+    "severity": "Severe",
+    "notes": "First-generation cephalosporin. Higher cross-reactivity (~2%) with penicillin allergy than later generations.",
+    "source": "FDA/AAAAI"
+  },
+  {
+    "drug_rxnorm": "2551",
+    "drug_name": "Ciprofloxacin",
+    "allergen_class": "Fluoroquinolones",
+    "cross_reactive_allergens": ["Levofloxacin", "Moxifloxacin", "Ofloxacin"],
+    "severity": "Moderate",
+    "notes": "Cross-reactivity within fluoroquinolone class ~10%. Avoid all fluoroquinolones if prior anaphylaxis.",
+    "source": "PMID:18549932"
+  },
+  {
+    "drug_rxnorm": "36437",
+    "drug_name": "Fluoxetine",
+    "allergen_class": "SSRIs",
+    "cross_reactive_allergens": ["Sertraline", "Paroxetine", "Citalopram", "Escitalopram"],
+    "severity": "Mild",
+    "notes": "Cross-reactivity within SSRI class is rare but documented. Usually manifests as rash/urticaria.",
+    "source": "PMID:17636062"
+  },
+  {
+    "drug_rxnorm": "1191",
+    "drug_name": "Aspirin",
+    "allergen_class": "NSAIDs",
+    "cross_reactive_allergens": ["Ibuprofen", "Naproxen", "Indomethacin", "Diclofenac", "Ketorolac"],
+    "severity": "Severe",
+    "notes": "Aspirin-exacerbated respiratory disease (AERD) affects ~7% of asthmatics. All COX-1 inhibitors cross-react. Celecoxib usually safe.",
+    "source": "AAAAI/FDA"
+  },
+  {
+    "drug_rxnorm": "7984",
+    "drug_name": "Sulfonamide Antibiotics",
+    "allergen_class": "Sulfonamides",
+    "cross_reactive_allergens": ["Sulfamethoxazole", "Sulfasalazine"],
+    "severity": "Severe",
+    "notes": "Sulfonamide antibiotic allergy does NOT cross-react with non-antibiotic sulfonamides (thiazides, furosemide). Different mechanism.",
+    "source": "PMID:14657066"
+  },
+  {
+    "drug_rxnorm": "6809",
+    "drug_name": "Metformin",
+    "allergen_class": "Biguanides",
+    "cross_reactive_allergens": [],
+    "severity": "Mild",
+    "notes": "True metformin allergy is extremely rare. Most reported reactions are GI intolerance, not allergy. No cross-reactive class.",
+    "source": "PMID:26372387"
+  },
+  {
+    "drug_rxnorm": "3640",
+    "drug_name": "Codeine",
+    "allergen_class": "Opioids",
+    "cross_reactive_allergens": ["Morphine", "Hydrocodone", "Oxycodone", "Tramadol"],
+    "severity": "Moderate",
+    "notes": "True opioid allergy is rare (~2%). Most reactions are pseudo-allergic (direct mast cell degranulation). Cross-reactivity varies by chemical subclass.",
+    "source": "AAAAI/PMID:22257578"
+  },
+  {
+    "drug_rxnorm": "3498",
+    "drug_name": "Doxycycline",
+    "allergen_class": "Tetracyclines",
+    "cross_reactive_allergens": ["Tetracycline", "Minocycline", "Tigecycline"],
+    "severity": "Moderate",
+    "notes": "Cross-reactivity within tetracycline class is expected. Avoid all tetracyclines if prior allergic reaction.",
+    "source": "FDA"
+  },
+  {
+    "drug_rxnorm": "1311128",
+    "drug_name": "Iodinated Contrast Dye",
+    "allergen_class": "Iodinated Contrast Media",
+    "cross_reactive_allergens": ["Iohexol", "Iopamidol", "Ioversol", "Iodixanol"],
+    "severity": "Anaphylactic",
+    "notes": "Prior contrast reaction: 17-35% repeat reaction risk. Premedicate with steroids + antihistamines. Consider gadolinium-based alternative if safe.",
+    "source": "ACR Manual on Contrast Media"
+  },
+  {
+    "drug_rxnorm": "519",
+    "drug_name": "Ethanol (Alcohol)",
+    "allergen_class": "Alcohol",
+    "cross_reactive_allergens": ["Metronidazole", "Disulfiram", "Cefotetan"],
+    "severity": "Moderate",
+    "notes": "Not a true allergy cross-reactivity — these drugs cause disulfiram-like reactions with alcohol (aldehyde dehydrogenase inhibition).",
+    "source": "FDA"
+  },
+  {
+    "drug_rxnorm": "6851",
+    "drug_name": "Methotrexate",
+    "allergen_class": "Antimetabolites",
+    "cross_reactive_allergens": ["Pemetrexed"],
+    "severity": "Moderate",
+    "notes": "Both are folate antagonists. Cross-reactivity is theoretical but poorly studied. Desensitization protocols available.",
+    "source": "NCCN Guidelines"
+  }
+]
