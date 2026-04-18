@@ -24,7 +24,7 @@ Mycelix-Health is designed to work seamlessly with the broader Mycelix ecosystem
         │              │               │              │
         ▼              ▼               ▼              ▼
 ┌───────────────┐ ┌─────────┐ ┌───────────────┐ ┌───────────────┐
-│Mycelix-Finance│ │ MATL    │ │Mycelix-Justice│ │Mycelix-EduNet │
+│Mycelix-Finance│ │ MATL    │ │Mycelix-Justice│ │Mycelix-Praxis │
 │  (Payments)   │ │(Trust)  │ │  (Disputes)   │ │  (Learning)   │
 └───────────────┘ └─────────┘ └───────────────┘ └───────────────┘
 ```
@@ -344,7 +344,7 @@ Claim Creation → Evidence Attachment → Peer Verification
 - [ ] Mycelix-Finance: Healthcare payments
 - [ ] Mycelix-Justice: Dispute resolution
 - [ ] Mycelix-Marketplace: Medical supplies
-- [ ] Mycelix-EduNet: Provider education
+- [ ] Mycelix-Praxis: Provider education
 
 ### Testing Requirements
 - [ ] Bridge protocol conformance tests

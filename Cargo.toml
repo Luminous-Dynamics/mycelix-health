@@ -48,6 +48,10 @@ members = [
     # ── Health FL Pipeline ──
     "crates/health-fl",
 
+    # ── Post-Quantum + ZK Crypto ──
+    "crates/health-crypto",
+    "crates/health-zkp",
+
     # ── ARCHIVED: Tier 3 remainder (20 zomes in _archive-2026-02-15/) ──
     # See _archive-2026-02-15/README.md for details
 ]
@@ -97,3 +101,11 @@ codegen-units = 1
 panic = "abort"
 strip = true
 debug = false
+
+[workspace.lints.clippy]
+dbg_macro = "deny"
+todo = "deny"
+unimplemented = "deny"
+eq_op = "deny"
+cast_ptr_alignment = "deny"
+

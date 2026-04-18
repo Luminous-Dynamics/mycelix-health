@@ -1,3 +1,6 @@
+// Copyright (C) 2024-2026 Tristan Stoltz / Luminous Dynamics
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// Commercial licensing: see COMMERCIAL_LICENSE.md at repository root
 //! Formal Benchmarking Suite for HDC vs Traditional Sequence Alignment
 //!
 //! This module provides comprehensive benchmarks comparing HDC genetic encoding

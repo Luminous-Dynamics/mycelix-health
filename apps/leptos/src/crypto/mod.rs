@@ -5,5 +5,6 @@
 //! The patient's private key NEVER leaves the browser.
 //! Key generation, encryption, and decryption all happen in WASM.
 
+pub mod bip39_wordlist;
 pub mod key_manager;
 pub mod seed_phrase;

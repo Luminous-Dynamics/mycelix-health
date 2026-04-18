@@ -1,3 +1,7 @@
+#![deny(unsafe_code)]
+// Copyright (C) 2024-2026 Tristan Stoltz / Luminous Dynamics
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// Commercial licensing: see COMMERCIAL_LICENSE.md at repository root
 //! Mycelix Bridge for Cross-hApp Health Data Federation Integrity Zome
 //! 
 //! Defines entry types for cross-hApp communication, reputation federation,
@@ -299,6 +303,8 @@ pub enum LinkTypes {
     PendingQueries,
     ActiveRegistrations,
     ClaimsByType,
+    /// Rate limit tracking: agent → anchor per dispatch call
+    DispatchRateLimit,
 }
 
 #[hdk_extern]

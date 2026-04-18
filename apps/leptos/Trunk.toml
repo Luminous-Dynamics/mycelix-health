@@ -6,5 +6,5 @@ dist = "dist"
 watch = ["src", "style", "index.html"]
 
 [serve]
-address = "0.0.0.0"
+address = "127.0.0.1"
 port = 8094

@@ -1,3 +1,7 @@
+#![deny(unsafe_code)]
+// Copyright (C) 2024-2026 Tristan Stoltz / Luminous Dynamics
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// Commercial licensing: see COMMERCIAL_LICENSE.md at repository root
 //! Healthcare Provider Coordinator Zome
 //! 
 //! Provides extern functions for provider management,
@@ -344,4 +348,194 @@ pub struct Anchor(pub String);
 fn anchor_hash(anchor_text: &str) -> ExternResult<EntryHash> {
     let anchor = Anchor(anchor_text.to_string());
     hash_entry(&anchor)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn make_provider(first: &str, last: &str, title: &str, specialty: &str, trust: f64) -> Provider {
+        Provider {
+            npi: None,
+            provider_type: ProviderType::Physician,
+            first_name: first.to_string(),
+            last_name: last.to_string(),
+            title: title.to_string(),
+            specialty: specialty.to_string(),
+            sub_specialties: vec![],
+            organization: None,
+            locations: vec![],
+            contact: ProviderContact {
+                email: "doc@hospital.com".to_string(),
+                phone_office: "555-0100".to_string(),
+                phone_emergency: None,
+                website: None,
+            },
+            languages: vec!["en".to_string()],
+            accepting_patients: true,
+            telehealth_enabled: false,
+            mycelix_identity_hash: None,
+            matl_trust_score: trust,
+            epistemic_level: EpistemicLevel::PeerReviewed,
+            created_at: Timestamp::from_micros(0),
+            updated_at: Timestamp::from_micros(0),
+        }
+    }
+
+    #[test]
+    fn test_provider_construction_and_field_access() {
+        let p = make_provider("Jane", "Doe", "MD", "Cardiology", 0.9);
+        assert_eq!(p.first_name, "Jane");
+        assert_eq!(p.last_name, "Doe");
+        assert_eq!(p.title, "MD");
+        assert_eq!(p.specialty, "Cardiology");
+        assert!((p.matl_trust_score - 0.9).abs() < f64::EPSILON);
+        assert!(p.accepting_patients);
+        assert!(!p.telehealth_enabled);
+    }
+
+    #[test]
+    fn test_serde_roundtrip_provider() {
+        let p = make_provider("Jane", "Doe", "MD", "Cardiology", 0.9);
+        let json = serde_json::to_string(&p).expect("serialize provider");
+        let decoded: Provider = serde_json::from_str(&json).expect("deserialize provider");
+        assert_eq!(decoded.first_name, "Jane");
+        assert_eq!(decoded.specialty, "Cardiology");
+        assert_eq!(decoded.provider_type, ProviderType::Physician);
+    }
+
+    #[test]
+    fn test_serde_roundtrip_credential_verification_result() {
+        let result = CredentialVerificationResult {
+            provider_name: "Dr. Jane Doe".to_string(),
+            specialty: "Cardiology".to_string(),
+            has_active_license: true,
+            has_board_certification: true,
+            licenses_count: 2,
+            certifications_count: 1,
+            matl_trust_score: 0.95,
+            verified_at: Timestamp::from_micros(1000000),
+        };
+        let json = serde_json::to_string(&result).expect("serialize");
+        let decoded: CredentialVerificationResult = serde_json::from_str(&json).expect("deserialize");
+        assert_eq!(decoded.provider_name, "Dr. Jane Doe");
+        assert!(decoded.has_active_license);
+        assert_eq!(decoded.licenses_count, 2);
+    }
+
+    #[test]
+    fn test_serde_roundtrip_update_provider_input() {
+        let input = UpdateProviderInput {
+            original_hash: ActionHash::from_raw_36(vec![0u8; 36]),
+            updated_provider: make_provider("Bob", "Smith", "DO", "Family Medicine", 0.8),
+        };
+        let json = serde_json::to_string(&input).expect("serialize");
+        let decoded: UpdateProviderInput = serde_json::from_str(&json).expect("deserialize");
+        assert_eq!(decoded.updated_provider.first_name, "Bob");
+        assert_eq!(decoded.updated_provider.title, "DO");
+    }
+
+    #[test]
+    fn test_provider_type_variants_serde() {
+        let types = vec![
+            ProviderType::Physician,
+            ProviderType::Nurse,
+            ProviderType::NursePractitioner,
+            ProviderType::PhysicianAssistant,
+            ProviderType::Pharmacist,
+            ProviderType::Therapist,
+            ProviderType::Dentist,
+            ProviderType::Other("Midwife".to_string()),
+        ];
+        for pt in types {
+            let json = serde_json::to_string(&pt).expect("serialize");
+            let decoded: ProviderType = serde_json::from_str(&json).expect("deserialize");
+            assert_eq!(decoded, pt);
+        }
+    }
+
+    #[test]
+    fn test_license_status_variants_serde() {
+        let statuses = vec![
+            LicenseStatus::Active,
+            LicenseStatus::Expired,
+            LicenseStatus::Suspended,
+            LicenseStatus::Revoked,
+            LicenseStatus::Pending,
+            LicenseStatus::Restricted,
+        ];
+        for s in statuses {
+            let json = serde_json::to_string(&s).expect("serialize");
+            let decoded: LicenseStatus = serde_json::from_str(&json).expect("deserialize");
+            assert_eq!(decoded, s);
+        }
+    }
+
+    #[test]
+    fn test_certification_status_variants_serde() {
+        let statuses = vec![
+            CertificationStatus::Active,
+            CertificationStatus::Expired,
+            CertificationStatus::Pending,
+            CertificationStatus::Revoked,
+        ];
+        for s in statuses {
+            let json = serde_json::to_string(&s).expect("serialize");
+            let decoded: CertificationStatus = serde_json::from_str(&json).expect("deserialize");
+            assert_eq!(decoded, s);
+        }
+    }
+
+    #[test]
+    fn test_relationship_type_variants_serde() {
+        let types = vec![
+            RelationshipType::PrimaryCare,
+            RelationshipType::Specialist,
+            RelationshipType::Consultant,
+            RelationshipType::EmergencyOnly,
+            RelationshipType::Research,
+            RelationshipType::Other("Telehealth".to_string()),
+        ];
+        for rt in types {
+            let json = serde_json::to_string(&rt).expect("serialize");
+            let decoded: RelationshipType = serde_json::from_str(&json).expect("deserialize");
+            assert_eq!(decoded, rt);
+        }
+    }
+
+    #[test]
+    fn test_practice_location_serde() {
+        let loc = PracticeLocation {
+            name: "Main Office".to_string(),
+            address_line1: "123 Medical Dr".to_string(),
+            address_line2: Some("Suite 200".to_string()),
+            city: "Dallas".to_string(),
+            state_province: "TX".to_string(),
+            postal_code: "75001".to_string(),
+            country: "US".to_string(),
+            phone: "555-0100".to_string(),
+            fax: Some("555-0101".to_string()),
+            hours: Some("M-F 8am-5pm".to_string()),
+            is_primary: true,
+        };
+        let json = serde_json::to_string(&loc).expect("serialize");
+        let decoded: PracticeLocation = serde_json::from_str(&json).expect("deserialize");
+        assert_eq!(decoded.name, "Main Office");
+        assert!(decoded.is_primary);
+    }
+
+    #[test]
+    fn test_epistemic_level_serde() {
+        let levels = vec![
+            EpistemicLevel::Unverified,
+            EpistemicLevel::PeerReviewed,
+            EpistemicLevel::Replicated,
+            EpistemicLevel::Consensus,
+        ];
+        for el in levels {
+            let json = serde_json::to_string(&el).expect("serialize");
+            let decoded: EpistemicLevel = serde_json::from_str(&json).expect("deserialize");
+            assert_eq!(decoded, el);
+        }
+    }
 }

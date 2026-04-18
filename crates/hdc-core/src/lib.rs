@@ -1,3 +1,6 @@
+// Copyright (C) 2024-2026 Tristan Stoltz / Luminous Dynamics
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// Commercial licensing: see COMMERCIAL_LICENSE.md at repository root
 //! HDC Core - Hyperdimensional Computing Library
 //!
 //! Pure Rust implementation of hyperdimensional computing primitives
@@ -39,6 +42,9 @@ pub mod batch;
 #[cfg(feature = "dp")]
 pub mod differential_privacy;
 
+#[cfg(feature = "dp")]
+pub mod rare_disease_pipeline;
+
 #[cfg(feature = "gpu")]
 pub mod gpu;
 
@@ -61,6 +67,15 @@ pub use batch::{BatchEncoder, BatchConfig, BatchResult, BatchStats, SimilarityMa
 
 #[cfg(feature = "dp")]
 pub use differential_privacy::{DpParams, DpHypervector, PrivacyBudget, PrivacyError};
+
+#[cfg(feature = "dp")]
+pub use rare_disease_pipeline::{
+    RareDiseasePipeline, RareDiseaseVariant, PatientProfile, DiseaseSignature,
+    MatchResult, ClinicalSignificance, InheritancePattern,
+    build_reference_database, populate_reference_database,
+    hamming_similarity as rare_disease_hamming_similarity,
+    cosine_similarity_binary as rare_disease_cosine_similarity,
+};
 
 #[cfg(feature = "gpu")]
 pub use gpu::{GpuSimilarityEngine, GpuError};

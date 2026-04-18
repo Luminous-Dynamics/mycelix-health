@@ -1,3 +1,7 @@
+#![deny(unsafe_code)]
+// Copyright (C) 2024-2026 Tristan Stoltz / Luminous Dynamics
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// Commercial licensing: see COMMERCIAL_LICENSE.md at repository root
 //! Insurance Coordinator Zome
 //! 
 //! Provides extern functions for insurance plan management,
@@ -557,4 +561,295 @@ pub struct Anchor(pub String);
 fn anchor_hash(anchor_text: &str) -> ExternResult<EntryHash> {
     let anchor = Anchor(anchor_text.to_string());
     hash_entry(&anchor)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn dummy_hash() -> ActionHash {
+        ActionHash::from_raw_36(vec![0u8; 36])
+    }
+
+    // ==================== Serde roundtrip tests ====================
+
+    #[test]
+    fn test_serde_roundtrip_update_plan_input() {
+        let input = UpdatePlanInput {
+            original_hash: dummy_hash(),
+            updated_plan: InsurancePlan {
+                plan_id: "PLAN-001".to_string(),
+                patient_hash: dummy_hash(),
+                payer_name: "BlueCross".to_string(),
+                payer_id: "BC-001".to_string(),
+                member_id: "MEM-12345".to_string(),
+                group_number: Some("GRP-100".to_string()),
+                plan_type: PlanType::PPO,
+                coverage_type: CoverageType::Medical,
+                relationship: SubscriberRelationship::Self_,
+                subscriber_name: None,
+                subscriber_dob: None,
+                subscriber_id: None,
+                effective_date: "2025-01-01".to_string(),
+                termination_date: None,
+                status: PlanStatus::Active,
+                deductible: Some(1500.0),
+                deductible_met: Some(500.0),
+                out_of_pocket_max: Some(6000.0),
+                out_of_pocket_met: Some(800.0),
+                copay_primary: Some(25.0),
+                copay_specialist: Some(50.0),
+                copay_emergency: Some(250.0),
+                coinsurance_percent: Some(20.0),
+                coordination_order: 1,
+                matl_trust_score: 0.9,
+                created_at: Timestamp::from_micros(0),
+                updated_at: Timestamp::from_micros(0),
+            },
+        };
+        let json = serde_json::to_string(&input).expect("serialize");
+        let decoded: UpdatePlanInput = serde_json::from_str(&json).expect("deserialize");
+        assert_eq!(decoded.updated_plan.plan_id, "PLAN-001");
+        assert_eq!(decoded.updated_plan.payer_name, "BlueCross");
+        assert_eq!(decoded.updated_plan.coordination_order, 1);
+    }
+
+    #[test]
+    fn test_serde_roundtrip_update_claim_input() {
+        let input = UpdateClaimInput {
+            claim_hash: dummy_hash(),
+            new_status: ClaimStatus::Approved,
+            allowed_amount: Some(1200.0),
+            paid_amount: Some(960.0),
+            patient_responsibility: Some(240.0),
+            payer_claim_number: Some("PCN-99999".to_string()),
+        };
+        let json = serde_json::to_string(&input).expect("serialize");
+        let decoded: UpdateClaimInput = serde_json::from_str(&json).expect("deserialize");
+        assert_eq!(decoded.new_status, ClaimStatus::Approved);
+        assert!((decoded.allowed_amount.unwrap() - 1200.0).abs() < f64::EPSILON);
+    }
+
+    #[test]
+    fn test_serde_roundtrip_update_auth_input() {
+        let input = UpdateAuthInput {
+            auth_hash: dummy_hash(),
+            new_status: AuthStatus::Approved,
+            decision_by: Some("Dr. Smith".to_string()),
+            auth_number: Some("AUTH-001".to_string()),
+            effective_date: Some("2025-03-01".to_string()),
+            expiration_date: Some("2025-06-01".to_string()),
+            denial_reason: None,
+        };
+        let json = serde_json::to_string(&input).expect("serialize");
+        let decoded: UpdateAuthInput = serde_json::from_str(&json).expect("deserialize");
+        assert_eq!(decoded.new_status, AuthStatus::Approved);
+        assert_eq!(decoded.auth_number, Some("AUTH-001".to_string()));
+    }
+
+    // ==================== Plan type variants ====================
+
+    #[test]
+    fn test_plan_type_all_variants_serde() {
+        let types = vec![
+            PlanType::HMO,
+            PlanType::PPO,
+            PlanType::EPO,
+            PlanType::POS,
+            PlanType::HDHP,
+            PlanType::Medicare,
+            PlanType::MedicareAdvantage,
+            PlanType::Medicaid,
+            PlanType::Tricare,
+            PlanType::WorkersComp,
+            PlanType::AutoInsurance,
+            PlanType::Other("CHIP".to_string()),
+        ];
+        for pt in types {
+            let json = serde_json::to_string(&pt).expect("serialize");
+            let decoded: PlanType = serde_json::from_str(&json).expect("deserialize");
+            assert_eq!(decoded, pt);
+        }
+    }
+
+    #[test]
+    fn test_claim_status_all_variants_serde() {
+        let statuses = vec![
+            ClaimStatus::Draft,
+            ClaimStatus::Submitted,
+            ClaimStatus::Received,
+            ClaimStatus::InProcess,
+            ClaimStatus::Pending,
+            ClaimStatus::Approved,
+            ClaimStatus::PartiallyApproved,
+            ClaimStatus::Denied,
+            ClaimStatus::Appealed,
+            ClaimStatus::Paid,
+            ClaimStatus::Voided,
+        ];
+        for s in statuses {
+            let json = serde_json::to_string(&s).expect("serialize");
+            let decoded: ClaimStatus = serde_json::from_str(&json).expect("deserialize");
+            assert_eq!(decoded, s);
+        }
+    }
+
+    #[test]
+    fn test_auth_status_all_variants_serde() {
+        let statuses = vec![
+            AuthStatus::Draft,
+            AuthStatus::Submitted,
+            AuthStatus::PendingInfo,
+            AuthStatus::InReview,
+            AuthStatus::Approved,
+            AuthStatus::PartiallyApproved,
+            AuthStatus::Denied,
+            AuthStatus::Appealed,
+            AuthStatus::AppealApproved,
+            AuthStatus::AppealDenied,
+            AuthStatus::Expired,
+            AuthStatus::Cancelled,
+        ];
+        for s in statuses {
+            let json = serde_json::to_string(&s).expect("serialize");
+            let decoded: AuthStatus = serde_json::from_str(&json).expect("deserialize");
+            assert_eq!(decoded, s);
+        }
+    }
+
+    #[test]
+    fn test_coverage_type_all_variants_serde() {
+        let types = vec![
+            CoverageType::Medical,
+            CoverageType::Dental,
+            CoverageType::Vision,
+            CoverageType::Pharmacy,
+            CoverageType::Mental,
+            CoverageType::LongTermCare,
+            CoverageType::Disability,
+            CoverageType::Supplemental,
+        ];
+        for ct in types {
+            let json = serde_json::to_string(&ct).expect("serialize");
+            let decoded: CoverageType = serde_json::from_str(&json).expect("deserialize");
+            assert_eq!(decoded, ct);
+        }
+    }
+
+    // ==================== Claim line item tests ====================
+
+    #[test]
+    fn test_claim_line_item_serde_roundtrip() {
+        let item = ClaimLineItem {
+            line_number: 1,
+            procedure_code: "99213".to_string(),
+            modifiers: vec!["25".to_string()],
+            description: "Office visit, level 3".to_string(),
+            units: 1.0,
+            charge_amount: 150.0,
+            allowed_amount: Some(120.0),
+            paid_amount: Some(96.0),
+            denial_reason: None,
+            service_date: "2025-03-15".to_string(),
+            ndc: None,
+        };
+        let json = serde_json::to_string(&item).expect("serialize");
+        let decoded: ClaimLineItem = serde_json::from_str(&json).expect("deserialize");
+        assert_eq!(decoded.line_number, 1);
+        assert_eq!(decoded.procedure_code, "99213");
+        assert!((decoded.charge_amount - 150.0).abs() < f64::EPSILON);
+    }
+
+    #[test]
+    fn test_claim_line_item_with_pharmacy_ndc() {
+        let item = ClaimLineItem {
+            line_number: 1,
+            procedure_code: "J7030".to_string(),
+            modifiers: vec![],
+            description: "Normal saline IV".to_string(),
+            units: 1.0,
+            charge_amount: 25.0,
+            allowed_amount: None,
+            paid_amount: None,
+            denial_reason: None,
+            service_date: "2025-03-15".to_string(),
+            ndc: Some("00409488802".to_string()),
+        };
+        let json = serde_json::to_string(&item).expect("serialize");
+        let decoded: ClaimLineItem = serde_json::from_str(&json).expect("deserialize");
+        assert_eq!(decoded.ndc, Some("00409488802".to_string()));
+    }
+
+    // ==================== EOB tests ====================
+
+    #[test]
+    fn test_eob_line_detail_serde_roundtrip() {
+        let detail = EOBLineDetail {
+            service_date: "2025-03-15".to_string(),
+            procedure_code: "99213".to_string(),
+            description: "Office visit".to_string(),
+            billed_amount: 150.0,
+            allowed_amount: 120.0,
+            paid_amount: 96.0,
+            patient_responsibility: 24.0,
+            adjustment_reason: Some("Contractual adjustment".to_string()),
+        };
+        let json = serde_json::to_string(&detail).expect("serialize");
+        let decoded: EOBLineDetail = serde_json::from_str(&json).expect("deserialize");
+        assert!((decoded.billed_amount - 150.0).abs() < f64::EPSILON);
+        assert!((decoded.patient_responsibility - 24.0).abs() < f64::EPSILON);
+    }
+
+    // ==================== Edge cases ====================
+
+    #[test]
+    fn test_update_claim_denied_with_no_amounts() {
+        let input = UpdateClaimInput {
+            claim_hash: dummy_hash(),
+            new_status: ClaimStatus::Denied,
+            allowed_amount: None,
+            paid_amount: None,
+            patient_responsibility: None,
+            payer_claim_number: None,
+        };
+        let json = serde_json::to_string(&input).expect("serialize");
+        let decoded: UpdateClaimInput = serde_json::from_str(&json).expect("deserialize");
+        assert_eq!(decoded.new_status, ClaimStatus::Denied);
+        assert!(decoded.allowed_amount.is_none());
+        assert!(decoded.paid_amount.is_none());
+    }
+
+    #[test]
+    fn test_authorization_type_all_variants_serde() {
+        let types = vec![
+            AuthorizationType::Procedure,
+            AuthorizationType::Admission,
+            AuthorizationType::Medication,
+            AuthorizationType::DME,
+            AuthorizationType::Therapy,
+            AuthorizationType::Imaging,
+            AuthorizationType::SpecialistReferral,
+            AuthorizationType::OutOfNetwork,
+        ];
+        for at in types {
+            let json = serde_json::to_string(&at).expect("serialize");
+            let decoded: AuthorizationType = serde_json::from_str(&json).expect("deserialize");
+            assert_eq!(decoded, at);
+        }
+    }
+
+    #[test]
+    fn test_subscriber_relationship_all_variants_serde() {
+        let rels = vec![
+            SubscriberRelationship::Self_,
+            SubscriberRelationship::Spouse,
+            SubscriberRelationship::Child,
+            SubscriberRelationship::Other,
+        ];
+        for r in rels {
+            let json = serde_json::to_string(&r).expect("serialize");
+            let decoded: SubscriberRelationship = serde_json::from_str(&json).expect("deserialize");
+            assert_eq!(decoded, r);
+        }
+    }
 }

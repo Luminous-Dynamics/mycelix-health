@@ -43,3 +43,4 @@ crates/hdc-experiments/data/real/hla/*.fasta
 *.vcf
 *.vcf.gz
 !test*.vcf
+apps/leptos/target/

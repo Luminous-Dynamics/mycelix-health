@@ -1,3 +1,4 @@
+#![deny(unsafe_code)]
 // Copyright (C) 2024-2026 Tristan Stoltz / Luminous Dynamics
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Commercial licensing: see COMMERCIAL_LICENSE.md at repository root
@@ -215,7 +216,7 @@ pub fn check_authorization(input: AuthorizationCheckInput) -> ExternResult<Autho
             audited_at: None,
             audit_findings: None,
         };
-        let _ = create_entry(&EntryTypes::EmergencyAccess(emergency));
+        create_entry(&EntryTypes::EmergencyAccess(emergency))?;
 
         // Create notification for the patient
         let notification = AccessNotification {
@@ -233,7 +234,7 @@ pub fn check_authorization(input: AuthorizationCheckInput) -> ExternResult<Autho
             summary: "EMERGENCY: A provider accessed your data without consent. This access has been logged.".to_string(),
             access_log_hash: None,
         };
-        let _ = create_entry(&EntryTypes::AccessNotification(notification));
+        create_entry(&EntryTypes::AccessNotification(notification))?;
 
         return Ok(AuthorizationResult {
             authorized: true,

@@ -27,7 +27,7 @@
     "mycelix"
   ],
   "author": "Luminous Dynamics",
-  "license": "MIT",
+  "license": "AGPL-3.0-or-later",
   "dependencies": {
     "@holochain/client": "0.20.0",
     "@hono/node-server": "^1.8.0",

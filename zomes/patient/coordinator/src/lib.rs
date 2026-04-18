@@ -1,3 +1,7 @@
+#![deny(unsafe_code)]
+// Copyright (C) 2024-2026 Tristan Stoltz / Luminous Dynamics
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// Commercial licensing: see COMMERCIAL_LICENSE.md at repository root
 //! Patient Identity and Demographics Coordinator Zome
 //!
 //! Provides extern functions for patient CRUD operations,
@@ -655,4 +659,236 @@ pub struct Anchor(pub String);
 fn anchor_hash(anchor_text: &str) -> ExternResult<EntryHash> {
     let anchor = Anchor(anchor_text.to_string());
     hash_entry(&anchor)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use mycelix_health_shared::validation;
+
+    /// Helper to build a minimal valid Patient for testing
+    fn make_patient(first: &str, last: &str, patient_id: &str, dob: &str, trust: f64) -> Patient {
+        Patient {
+            patient_id: patient_id.to_string(),
+            mrn: None,
+            first_name: first.to_string(),
+            last_name: last.to_string(),
+            date_of_birth: dob.to_string(),
+            biological_sex: BiologicalSex::Unknown,
+            gender_identity: None,
+            blood_type: None,
+            contact: ContactInfo {
+                address_line1: None,
+                address_line2: None,
+                city: None,
+                state_province: None,
+                postal_code: None,
+                country: "US".to_string(),
+                phone_primary: None,
+                phone_secondary: None,
+                email: None,
+            },
+            emergency_contact: None,
+            primary_language: "en".to_string(),
+            allergies: vec![],
+            conditions: vec![],
+            medications: vec![],
+            mycelix_identity_hash: None,
+            matl_trust_score: trust,
+            created_at: Timestamp::from_micros(0),
+            updated_at: Timestamp::from_micros(0),
+        }
+    }
+
+    #[test]
+    fn test_validate_patient_valid() {
+        let patient = make_patient("Alice", "Smith", "P-001", "1990-01-15", 0.85);
+        let result = validate_patient(&patient);
+        assert!(result.is_valid(), "Valid patient should pass: {:?}", result.errors);
+    }
+
+    #[test]
+    fn test_validate_patient_empty_first_name() {
+        let patient = make_patient("", "Smith", "P-001", "1990-01-15", 0.5);
+        let result = validate_patient(&patient);
+        assert!(!result.is_valid());
+        assert!(result.errors.iter().any(|e| e.field == "first_name"));
+    }
+
+    #[test]
+    fn test_validate_patient_empty_last_name() {
+        let patient = make_patient("Alice", "", "P-001", "1990-01-15", 0.5);
+        let result = validate_patient(&patient);
+        assert!(!result.is_valid());
+        assert!(result.errors.iter().any(|e| e.field == "last_name"));
+    }
+
+    #[test]
+    fn test_validate_patient_whitespace_only_names() {
+        let patient = make_patient("   ", "  ", "P-001", "1990-01-15", 0.5);
+        let result = validate_patient(&patient);
+        assert!(!result.is_valid());
+        assert!(result.errors.iter().any(|e| e.field == "first_name"));
+        assert!(result.errors.iter().any(|e| e.field == "last_name"));
+    }
+
+    #[test]
+    fn test_validate_patient_empty_patient_id() {
+        let patient = make_patient("Alice", "Smith", "", "1990-01-15", 0.5);
+        let result = validate_patient(&patient);
+        assert!(!result.is_valid());
+        assert!(result.errors.iter().any(|e| e.field == "patient_id"));
+    }
+
+    #[test]
+    fn test_validate_patient_invalid_dob_format() {
+        // Wrong separator
+        let patient = make_patient("Alice", "Smith", "P-001", "1990/01/15", 0.5);
+        let result = validate_patient(&patient);
+        assert!(!result.is_valid());
+        assert!(result.errors.iter().any(|e| e.field == "date_of_birth"));
+    }
+
+    #[test]
+    fn test_validate_patient_invalid_dob_month_out_of_range() {
+        let patient = make_patient("Alice", "Smith", "P-001", "1990-13-15", 0.5);
+        let result = validate_patient(&patient);
+        assert!(!result.is_valid());
+        assert!(result.errors.iter().any(|e| e.field == "date_of_birth"));
+    }
+
+    #[test]
+    fn test_validate_patient_invalid_dob_day_zero() {
+        let patient = make_patient("Alice", "Smith", "P-001", "1990-01-00", 0.5);
+        let result = validate_patient(&patient);
+        assert!(!result.is_valid());
+    }
+
+    #[test]
+    fn test_validate_patient_matl_trust_boundary_values() {
+        // 0.0 is valid
+        let p = make_patient("A", "B", "P-1", "2000-06-15", 0.0);
+        assert!(validate_patient(&p).is_valid());
+
+        // 1.0 is valid
+        let p = make_patient("A", "B", "P-1", "2000-06-15", 1.0);
+        assert!(validate_patient(&p).is_valid());
+
+        // -0.01 is invalid
+        let p = make_patient("A", "B", "P-1", "2000-06-15", -0.01);
+        let result = validate_patient(&p);
+        assert!(!result.is_valid());
+
+        // 1.01 is invalid
+        let p = make_patient("A", "B", "P-1", "2000-06-15", 1.01);
+        let result = validate_patient(&p);
+        assert!(!result.is_valid());
+    }
+
+    #[test]
+    fn test_validate_patient_with_valid_mrn() {
+        let mut patient = make_patient("Alice", "Smith", "P-001", "1990-01-15", 0.5);
+        patient.mrn = Some("MRN-12345".to_string());
+        let result = validate_patient(&patient);
+        assert!(result.is_valid());
+    }
+
+    #[test]
+    fn test_validate_patient_with_invalid_mrn() {
+        let mut patient = make_patient("Alice", "Smith", "P-001", "1990-01-15", 0.5);
+        patient.mrn = Some("AB".to_string()); // too short
+        let result = validate_patient(&patient);
+        assert!(!result.is_valid());
+    }
+
+    #[test]
+    fn test_serde_roundtrip_update_patient_input() {
+        let input = UpdatePatientInput {
+            original_hash: ActionHash::from_raw_36(vec![0u8; 36]),
+            updated_patient: make_patient("Bob", "Jones", "P-002", "1985-03-20", 0.7),
+            is_emergency: false,
+            emergency_reason: None,
+        };
+        let json = serde_json::to_string(&input).expect("serialize");
+        let decoded: UpdatePatientInput = serde_json::from_str(&json).expect("deserialize");
+        assert_eq!(decoded.is_emergency, false);
+        assert_eq!(decoded.updated_patient.first_name, "Bob");
+    }
+
+    #[test]
+    fn test_serde_roundtrip_search_patients_input() {
+        let input = SearchPatientsInput { name: "alice".to_string() };
+        let json = serde_json::to_string(&input).expect("serialize");
+        let decoded: SearchPatientsInput = serde_json::from_str(&json).expect("deserialize");
+        assert_eq!(decoded.name, "alice");
+    }
+
+    #[test]
+    fn test_serde_roundtrip_link_identity_input() {
+        let input = LinkIdentityInput {
+            patient_hash: ActionHash::from_raw_36(vec![0u8; 36]),
+            did: "did:mycelix:abc123".to_string(),
+            identity_provider: "mycelix".to_string(),
+            verification_method: "ed25519".to_string(),
+            confidence_score: 0.95,
+        };
+        let json = serde_json::to_string(&input).expect("serialize");
+        let decoded: LinkIdentityInput = serde_json::from_str(&json).expect("deserialize");
+        assert_eq!(decoded.did, "did:mycelix:abc123");
+        assert!((decoded.confidence_score - 0.95).abs() < f64::EPSILON);
+    }
+
+    #[test]
+    fn test_serde_roundtrip_patient_did_info() {
+        let info = PatientDIDInfo {
+            patient_hash: ActionHash::from_raw_36(vec![0u8; 36]),
+            did: "did:web:example.com".to_string(),
+            identity_provider: "web".to_string(),
+            verified_at: Timestamp::from_micros(1000000),
+            confidence_score: 0.8,
+        };
+        let json = serde_json::to_string(&info).expect("serialize");
+        let decoded: PatientDIDInfo = serde_json::from_str(&json).expect("deserialize");
+        assert_eq!(decoded.did, "did:web:example.com");
+        assert_eq!(decoded.identity_provider, "web");
+    }
+
+    #[test]
+    fn test_validate_patient_accumulates_multiple_errors() {
+        // Patient with multiple issues: empty names, empty ID, bad trust score
+        let patient = make_patient("  ", "  ", "  ", "bad-date", 1.5);
+        let result = validate_patient(&patient);
+        assert!(!result.is_valid());
+        // Should have errors for first_name, last_name, and matl_trust_score at minimum
+        assert!(result.errors.len() >= 3, "Expected >= 3 errors, got {}: {:?}", result.errors.len(), result.errors);
+    }
+
+    #[test]
+    fn test_validate_patient_empty_dob_is_accepted() {
+        // Empty DOB should not fail (the validation only runs when DOB is non-empty)
+        let patient = make_patient("Alice", "Smith", "P-001", "", 0.5);
+        let result = validate_patient(&patient);
+        assert!(result.is_valid());
+    }
+
+    #[test]
+    fn test_validation_shared_mrn_rules() {
+        // Valid MRN
+        assert!(validation::validate_mrn("MRN-12345").is_valid());
+        // Empty
+        assert!(!validation::validate_mrn("").is_valid());
+        // Too short
+        assert!(!validation::validate_mrn("AB").is_valid());
+        // Special characters
+        assert!(!validation::validate_mrn("MRN@123!").is_valid());
+    }
+
+    #[test]
+    fn test_validation_shared_confidence_score() {
+        assert!(validation::validate_confidence_score(0.0, "test").is_valid());
+        assert!(validation::validate_confidence_score(1.0, "test").is_valid());
+        assert!(!validation::validate_confidence_score(-0.1, "test").is_valid());
+        assert!(!validation::validate_confidence_score(1.1, "test").is_valid());
+        assert!(!validation::validate_confidence_score(f64::NAN, "test").is_valid());
+    }
 }

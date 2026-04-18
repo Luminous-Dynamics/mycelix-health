@@ -16,6 +16,9 @@
 //! No individual lab result is ever exposed. The gradient is a lossy, one-way
 //! transformation that cannot be reversed to recover the original values.
 
+pub mod homomorphic;
+pub mod hdc_encrypted;
+
 use mycelix_fl::defenses::{Defense, TrimmedMean};
 use mycelix_fl::types::{AggregationResult, DefenseConfig, Gradient};
 use serde::{Deserialize, Serialize};

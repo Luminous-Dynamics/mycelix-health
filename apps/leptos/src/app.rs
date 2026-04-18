@@ -9,7 +9,10 @@ use leptos_router::path;
 use crate::components::homeostasis_bg::HomeostasisBackground;
 use crate::components::nav::BottomNav;
 use crate::crypto::key_manager;
-use crate::holochain::{HolochainProvider, ConnectionBadge};
+use mycelix_leptos_core::{
+    HolochainProviderAuto, HolochainProviderConfig, ConnectStrategy,
+    ConnectionBadge, StatusLabels,
+};
 use crate::pages;
 use crate::zome_clients::consent::{mock_consents, ConsentSummary, ConsentStatus};
 use crate::zome_clients::records::{mock_records, mock_access_events, HealthRecord, AccessEvent};
@@ -107,7 +110,18 @@ pub fn App() -> impl IntoView {
 
             // Content layer
             <div class="portal-content">
-                <HolochainProvider>
+                <HolochainProviderAuto config=HolochainProviderConfig {
+                    app_id: "health".to_string(),
+                    default_role: Some("health".to_string()),
+                    log_prefix: "[Health]",
+                    connect_strategy: ConnectStrategy::JsStatusOnly,
+                    status_labels: Some(StatusLabels {
+                        disconnected: "Offline",
+                        connecting: "Probing...",
+                        connected: "Live (DHT)",
+                        mock: "Local Demo",
+                    }),
+                }>
                 <Router>
                     <main class="portal-main">
                         <Routes fallback=|| view! { <p class="not-found">"404 — This pathway does not exist."</p> }>
@@ -123,7 +137,7 @@ pub fn App() -> impl IntoView {
                     <BottomNav />
                     <ConnectionBadge />
                 </Router>
-                </HolochainProvider>
+                </HolochainProviderAuto>
             </div>
         </div>
     }

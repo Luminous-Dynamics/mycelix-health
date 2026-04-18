@@ -11,9 +11,9 @@ license = "AGPL-3.0-or-later"
 description = "Patient health sovereignty portal — Biological Sovereignty design"
 
 [dependencies]
-leptos = { version = "0.7", features = ["csr"] }
-leptos_router = "0.7"
-leptos_meta = "0.7"
+leptos = { version = "0.8", features = ["csr"] }
+leptos_router = "0.8"
+leptos_meta = "0.8"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 wasm-bindgen = "0.2"
@@ -28,6 +28,9 @@ web-sys = { version = "0.3", features = [
 console_error_panic_hook = "0.1"
 sha2 = "0.10"
 gloo-timers = { version = "0.3", features = ["futures"] }
+
+# Shared Mycelix Leptos infrastructure
+mycelix-leptos-core = { path = "../../../crates/mycelix-leptos-core" }
 
 [profile.release]
 opt-level = "z"
