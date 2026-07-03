@@ -9,8 +9,8 @@ description = "Sweettest integration tests for HDC Genetics zome"
 # Holochain test framework
 holochain = { version = "0.6.0", default-features = false, features = ["test_utils"] }
 hdk = "0.6.0"
-holo_hash = "0.6.0"
-holochain_zome_types = "0.6.0"
+holo_hash = "=0.6.1"
+holochain_zome_types = "=0.6.1"
 
 # Async runtime
 tokio = { version = "1", features = ["full"] }
