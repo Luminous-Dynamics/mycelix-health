@@ -210,6 +210,10 @@ pub mod patient_encryption {
         type HmacSha256 = Hmac<Sha256>;
 
         // HKDF-Extract (RFC 5869 §2.2): PRK = HMAC-Hash(salt, IKM)
+        // `new_from_slice` only errors for HMAC variants with a fixed/limited key
+        // size; HMAC-SHA256 accepts any key length (per the `hmac`/RFC 2104
+        // block-size padding scheme), and `salt` here is a fixed, non-empty
+        // compile-time constant, not caller-controlled input — this can never fail.
         let salt = b"mycelix-health-v1-patient-encryption";
         let mut mac = HmacSha256::new_from_slice(salt)
             .expect("HMAC accepts any key length");
@@ -217,6 +221,8 @@ pub mod patient_encryption {
         let prk = mac.finalize().into_bytes();
 
         // HKDF-Expand (RFC 5869 §2.3): OKM = HMAC-Hash(PRK, info || 0x01)
+        // `prk` is the fixed-size (32-byte) output of the HMAC-SHA256 finalize
+        // above, never empty and never caller-controlled — same invariant as above.
         let mut mac = HmacSha256::new_from_slice(&prk)
             .expect("HMAC accepts any key length");
         mac.update(context);
@@ -1083,6 +1089,8 @@ pub mod audit {
                 }
                 let seq = (records.len() - 1) as u64;
                 // Hash the CONTENT of the last entry for tamper detection
+                // Safety: `records` is guaranteed non-empty here — we already
+                // returned early above when `records.is_empty()`.
                 let last = records.last().unwrap();
                 let mut hasher = Sha256::new();
                 hasher.update(last.action_address().get_raw_39());

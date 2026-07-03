@@ -1295,6 +1295,9 @@ pub fn calculate_mood_trend(patient_hash: ActionHash) -> ExternResult<MoodTrendA
     let common_coping_strategies: Vec<String> = common_coping.into_iter().take(5).map(|(s, _)| s).collect();
 
     // Calculate period in days
+    // Safety: `entries` is guaranteed non-empty here — we already returned early
+    // above when `entry_count < 3`, so at least 3 entries exist at this point
+    // (and the `!entries.is_empty()` check makes that explicit).
     let period_days = if !entries.is_empty() {
         let first_date = entries.first().unwrap().entry_date.as_micros();
         let last_date = entries.last().unwrap().entry_date.as_micros();

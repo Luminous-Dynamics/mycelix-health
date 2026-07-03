@@ -1142,7 +1142,8 @@ pub fn generate_notification_summary(input: GenerateSummaryInput) -> ExternResul
     } else if categories.len() == 2 {
         format!("{} and {}", categories[0], categories[1])
     } else {
-        let last = categories.last().unwrap();
+        let last = categories.last()
+            .ok_or(wasm_error!(WasmErrorInner::Guest("No data categories provided".to_string())))?;
         let others = &categories[..categories.len()-1];
         format!("{}, and {}", others.join(", "), last)
     };
@@ -1431,11 +1432,14 @@ pub fn create_care_team_from_template(input: CreateCareTeamInput) -> ExternResul
         .ok_or(wasm_error!(WasmErrorInner::Guest("Invalid template".to_string())))?;
 
     // Calculate expiration
-    let expires_at = template.default_duration_days.map(|days| {
-        let now = sys_time().unwrap();
-        let duration_micros = (days as i64) * 24 * 60 * 60 * 1_000_000;
-        Timestamp::from_micros(now.as_micros() + duration_micros)
-    });
+    let expires_at = match template.default_duration_days {
+        Some(days) => {
+            let now = sys_time()?;
+            let duration_micros = (days as i64) * 24 * 60 * 60 * 1_000_000;
+            Some(Timestamp::from_micros(now.as_micros() + duration_micros))
+        }
+        None => None,
+    };
 
     // Create the care team
     let care_team = CareTeam {

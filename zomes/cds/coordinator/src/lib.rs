@@ -835,6 +835,8 @@ pub fn check_pgx_interaction(input: CheckPgxInteractionInput) -> ExternResult<Ph
         });
     }
 
+    // Safety: `profile` is guaranteed `Some` here — we already returned early
+    // above when `profile.is_none()`.
     let profile = profile.unwrap();
     let mut gene_findings = Vec::new();
     let mut recommendations = Vec::new();
