@@ -138,7 +138,7 @@ pub struct MentalHealthScreening {
 pub struct MoodEntry {
     pub patient_hash: ActionHash,
     pub entry_date: Timestamp,
-    pub mood_score: u8, // 1-10
+    pub mood_score: u8,    // 1-10
     pub anxiety_score: u8, // 1-10
     pub sleep_quality: u8, // 1-10
     pub sleep_hours: Option<f32>,
@@ -450,23 +450,318 @@ pub enum LinkTypes {
 pub fn validate(op: Op) -> ExternResult<ValidateCallbackResult> {
     match op.flattened::<EntryTypes, LinkTypes>()? {
         FlatOp::StoreEntry(store_entry) => match store_entry {
-            OpEntry::CreateEntry { app_entry, .. } => validate_create_entry(app_entry),
-            OpEntry::UpdateEntry { app_entry, .. } => validate_create_entry(app_entry),
+            OpEntry::CreateEntry { app_entry, action } => validate_create_entry(action, app_entry),
+            OpEntry::UpdateEntry {
+                app_entry, action, ..
+            } => validate_update_entry(action, app_entry),
             _ => Ok(ValidateCallbackResult::Valid),
         },
+        // Deliberately left permissive: the coordinator never calls
+        // delete_link or delete_entry anywhere in this zome (confirmed
+        // via grep), so RegisterDeleteLink/RegisterDelete hardening
+        // would be pure defense-in-depth with zero functional impact --
+        // still worth doing given the pattern established elsewhere this
+        // pass, but this zome's flagged item was specifically about
+        // author-binding on create/update, so scoped narrowly here.
+        FlatOp::RegisterDeleteLink {
+            original_action,
+            action,
+            ..
+        } => {
+            if action.author != original_action.author {
+                return Ok(ValidateCallbackResult::Invalid(
+                    "Only the original link creator can delete a link".into(),
+                ));
+            }
+            Ok(ValidateCallbackResult::Valid)
+        }
+        FlatOp::RegisterUpdate(op_update) => match op_update {
+            // Previously left fully permissive (`Ok(Valid)` unconditionally
+            // via the catch-all `_` arm) -- the 16th confirmed instance of
+            // this exact bug pattern this pass. Found + fixed 2026-07-09
+            // during the P0 author-binding pass.
+            OpUpdate::Entry { app_entry, action } => validate_update_entry(action, app_entry),
+            _ => Ok(ValidateCallbackResult::Valid),
+        },
+        FlatOp::RegisterDelete(OpDelete { action }) => {
+            let original = must_get_action(action.deletes_address.clone())?;
+            if action.author != *original.action().author() {
+                return Ok(ValidateCallbackResult::Invalid(
+                    "Only the original entry author can delete an entry".into(),
+                ));
+            }
+            Ok(ValidateCallbackResult::Valid)
+        }
         _ => Ok(ValidateCallbackResult::Valid),
     }
 }
 
-fn validate_create_entry(entry: EntryTypes) -> ExternResult<ValidateCallbackResult> {
+fn validate_create_entry(
+    action: Create,
+    entry: EntryTypes,
+) -> ExternResult<ValidateCallbackResult> {
     match entry {
-        EntryTypes::CrisisEvent(event) => validate_crisis_event(&event),
+        EntryTypes::MentalHealthScreening(screening) => {
+            // Author-binding: create_screening already derives
+            // provider_hash from agent_info(), so this is
+            // belt-and-suspenders. Found + fixed 2026-07-09 during the
+            // P0 author-binding pass -- this entry type had NO
+            // validation at all before this fix.
+            if screening.provider_hash != action.author {
+                return Ok(ValidateCallbackResult::Invalid(
+                    "provider_hash must correspond to the committing agent".into(),
+                ));
+            }
+            Ok(ValidateCallbackResult::Valid)
+        }
+        // MoodEntry is patient self-report with no identity field to bind
+        // (patient_hash is an ActionHash reference, not an AgentPubKey).
+        EntryTypes::MoodEntry(_) => Ok(ValidateCallbackResult::Valid),
+        EntryTypes::MentalHealthTreatmentPlan(plan) => {
+            // Same belt-and-suspenders pattern as screening --
+            // create_treatment_plan already derives provider_hash.
+            if plan.provider_hash != action.author {
+                return Ok(ValidateCallbackResult::Invalid(
+                    "provider_hash must correspond to the committing agent".into(),
+                ));
+            }
+            Ok(ValidateCallbackResult::Valid)
+        }
+        EntryTypes::SafetyPlan(plan) => {
+            if plan.provider_hash != action.author {
+                return Ok(ValidateCallbackResult::Invalid(
+                    "provider_hash must correspond to the committing agent".into(),
+                ));
+            }
+            validate_safety_plan(&plan)
+        }
+        EntryTypes::CrisisEvent(event) => {
+            if event.reporter_hash != action.author {
+                return Ok(ValidateCallbackResult::Invalid(
+                    "reporter_hash must correspond to the committing agent".into(),
+                ));
+            }
+            validate_crisis_event(&event)
+        }
+        // Part2Consent has no agent-identity field (recipient_name/
+        // disclosing_program describe external parties, not committers).
         EntryTypes::Part2Consent(consent) => validate_part2_consent(&consent),
-        EntryTypes::SafetyPlan(plan) => validate_safety_plan(&plan),
-        EntryTypes::RecoveryCheckIn(check_in) => validate_recovery_check_in(&check_in),
+        EntryTypes::TherapyNote(note) => {
+            if note.provider_hash != action.author {
+                return Ok(ValidateCallbackResult::Invalid(
+                    "provider_hash must correspond to the committing agent".into(),
+                ));
+            }
+            Ok(ValidateCallbackResult::Valid)
+        }
+        // peer_specialist_hash is an ActionHash reference to a provider
+        // RECORD, not a directly comparable AgentPubKey -- no binding
+        // possible without an extra must_get lookup; not attempted here.
+        EntryTypes::PeerSupportConnection(_) => Ok(ValidateCallbackResult::Valid),
+        EntryTypes::RecoveryMilestone(milestone) => {
+            // verified_by is always None on create (log_milestone
+            // hardcodes it) -- this check is defense-in-depth should that
+            // ever change, matching the same "if Some, must equal
+            // author" idiom used for cds's ClinicalAlert.acknowledged_by.
+            if let Some(verified_by) = &milestone.verified_by {
+                if *verified_by != action.author {
+                    return Ok(ValidateCallbackResult::Invalid(
+                        "verified_by must correspond to the committing agent".into(),
+                    ));
+                }
+            }
+            Ok(ValidateCallbackResult::Valid)
+        }
+        // No agent-identity field.
         EntryTypes::RelapsePrevention(plan) => validate_relapse_prevention(&plan),
-        _ => Ok(ValidateCallbackResult::Valid),
+        EntryTypes::RecoveryCheckIn(check_in) => {
+            if check_in.checked_in_by != action.author {
+                return Ok(ValidateCallbackResult::Invalid(
+                    "checked_in_by must correspond to the committing agent".into(),
+                ));
+            }
+            validate_recovery_check_in(&check_in)
+        }
     }
+}
+
+/// Only three entry types have a live coordinator update path (confirmed
+/// via grep for `update_entry`): Part2Consent (revoke_part2_consent),
+/// MentalHealthTreatmentPlan (update_treatment_goal/close_treatment_plan),
+/// and RecoveryMilestone (verify_milestone). The other 8 entry types have
+/// no update call at all and are made explicitly immutable. Reviewed
+/// 2026-07-09 during the P0 author-binding pass -- previously ALL 11
+/// entry types routed updates through the same create-shaped validator
+/// (most of which did zero validation at all), so a modified coordinator
+/// could silently rewrite any field of any entry, including
+/// provider_hash on a therapy note or treatment plan.
+fn validate_update_entry(
+    action: Update,
+    entry: EntryTypes,
+) -> ExternResult<ValidateCallbackResult> {
+    match entry {
+        EntryTypes::Part2Consent(consent) => validate_update_part2_consent(action, consent),
+        EntryTypes::MentalHealthTreatmentPlan(plan) => validate_update_treatment_plan(action, plan),
+        EntryTypes::RecoveryMilestone(milestone) => validate_update_milestone(action, milestone),
+        EntryTypes::MentalHealthScreening(_) => Ok(ValidateCallbackResult::Invalid(
+            "Mental health screenings are immutable".into(),
+        )),
+        EntryTypes::MoodEntry(_) => Ok(ValidateCallbackResult::Invalid(
+            "Mood entries are immutable".into(),
+        )),
+        EntryTypes::SafetyPlan(_) => Ok(ValidateCallbackResult::Invalid(
+            "Safety plans are immutable; create a new one".into(),
+        )),
+        EntryTypes::CrisisEvent(_) => Ok(ValidateCallbackResult::Invalid(
+            "Crisis events are immutable".into(),
+        )),
+        EntryTypes::TherapyNote(_) => Ok(ValidateCallbackResult::Invalid(
+            "Therapy notes are immutable".into(),
+        )),
+        EntryTypes::PeerSupportConnection(_) => Ok(ValidateCallbackResult::Invalid(
+            "Peer support connections are immutable".into(),
+        )),
+        EntryTypes::RelapsePrevention(_) => Ok(ValidateCallbackResult::Invalid(
+            "Relapse prevention plans are immutable; create a new one".into(),
+        )),
+        EntryTypes::RecoveryCheckIn(_) => Ok(ValidateCallbackResult::Invalid(
+            "Recovery check-ins are immutable".into(),
+        )),
+    }
+}
+
+/// Content restricted to is_revoked/revocation_date -- the exact fields
+/// revoke_part2_consent changes. No author requirement: revocation is
+/// gated on require_authorization (patient-data write access), not on
+/// being the original consent's committer -- no established authority
+/// model here to bind against. Case (c).
+fn validate_update_part2_consent(
+    action: Update,
+    consent: Part2Consent,
+) -> ExternResult<ValidateCallbackResult> {
+    let original_record = must_get_valid_record(action.original_action_address.clone())?;
+    let original: Part2Consent = original_record
+        .entry()
+        .to_app_option()
+        .map_err(|e| wasm_error!(WasmErrorInner::Guest(e.to_string())))?
+        .ok_or(wasm_error!(WasmErrorInner::Guest(
+            "Original consent not found".into()
+        )))?;
+
+    if consent.patient_hash != original.patient_hash
+        || consent.consent_type != original.consent_type
+        || consent.disclosing_program != original.disclosing_program
+        || consent.recipient_name != original.recipient_name
+        || consent.recipient_hash != original.recipient_hash
+        || consent.purpose != original.purpose
+        || consent.information_to_disclose != original.information_to_disclose
+        || consent.substances_covered != original.substances_covered
+        || consent.effective_date != original.effective_date
+        || consent.expiration_date != original.expiration_date
+        || consent.right_to_revoke_explained != original.right_to_revoke_explained
+        || consent.patient_signature_date != original.patient_signature_date
+        || consent.witness_name != original.witness_name
+        || consent.created_at != original.created_at
+    {
+        return Ok(ValidateCallbackResult::Invalid(
+            "Only is_revoked/revocation_date can change on a Part 2 consent update".into(),
+        ));
+    }
+
+    Ok(ValidateCallbackResult::Valid)
+}
+
+/// Content restricted to treatment_goals (progress field only, per
+/// goal)/status/updated_at -- the exact fields update_treatment_goal/
+/// close_treatment_plan change. No author requirement: both are gated on
+/// require_authorization (patient-data write access), not on being the
+/// plan's original provider -- a different provider may legitimately
+/// take over a patient's care. Case (c).
+fn validate_update_treatment_plan(
+    action: Update,
+    plan: MentalHealthTreatmentPlan,
+) -> ExternResult<ValidateCallbackResult> {
+    let original_record = must_get_valid_record(action.original_action_address.clone())?;
+    let original: MentalHealthTreatmentPlan = original_record
+        .entry()
+        .to_app_option()
+        .map_err(|e| wasm_error!(WasmErrorInner::Guest(e.to_string())))?
+        .ok_or(wasm_error!(WasmErrorInner::Guest(
+            "Original treatment plan not found".into()
+        )))?;
+
+    let goals_match = plan.treatment_goals.len() == original.treatment_goals.len()
+        && plan
+            .treatment_goals
+            .iter()
+            .zip(original.treatment_goals.iter())
+            .all(|(new, old)| {
+                new.goal_id == old.goal_id
+                    && new.description == old.description
+                    && new.target_date == old.target_date
+                    && new.interventions == old.interventions
+            });
+
+    if !goals_match
+        || plan.patient_hash != original.patient_hash
+        || plan.provider_hash != original.provider_hash
+        || plan.primary_diagnosis_icd10 != original.primary_diagnosis_icd10
+        || plan.secondary_diagnoses != original.secondary_diagnoses
+        || plan.modalities != original.modalities
+        || plan.medications != original.medications
+        || plan.session_frequency != original.session_frequency
+        || plan.estimated_duration != original.estimated_duration
+        || plan.crisis_plan_hash != original.crisis_plan_hash
+        || plan.effective_date != original.effective_date
+        || plan.review_date != original.review_date
+        || plan.created_at != original.created_at
+    {
+        return Ok(ValidateCallbackResult::Invalid(
+            "Only goal progress/status/updated_at can change on a treatment plan update".into(),
+        ));
+    }
+
+    Ok(ValidateCallbackResult::Valid)
+}
+
+/// Content restricted to verified_by -- the exact field verify_milestone
+/// changes. Author-binding DOES apply here (unlike the two update
+/// validators above): verify_milestone always derives verified_by from
+/// agent_info(), so whoever names themselves as verifier must be the
+/// actual committing agent -- belt-and-suspenders.
+fn validate_update_milestone(
+    action: Update,
+    milestone: RecoveryMilestone,
+) -> ExternResult<ValidateCallbackResult> {
+    if let Some(verified_by) = &milestone.verified_by {
+        if *verified_by != action.author {
+            return Ok(ValidateCallbackResult::Invalid(
+                "verified_by must correspond to the committing agent".into(),
+            ));
+        }
+    }
+
+    let original_record = must_get_valid_record(action.original_action_address.clone())?;
+    let original: RecoveryMilestone = original_record
+        .entry()
+        .to_app_option()
+        .map_err(|e| wasm_error!(WasmErrorInner::Guest(e.to_string())))?
+        .ok_or(wasm_error!(WasmErrorInner::Guest(
+            "Original milestone not found".into()
+        )))?;
+
+    if milestone.patient_hash != original.patient_hash
+        || milestone.milestone_type != original.milestone_type
+        || milestone.achieved_at != original.achieved_at
+        || milestone.notes != original.notes
+        || milestone.created_at != original.created_at
+    {
+        return Ok(ValidateCallbackResult::Invalid(
+            "Only verified_by can change on a milestone update".into(),
+        ));
+    }
+
+    Ok(ValidateCallbackResult::Valid)
 }
 
 fn validate_crisis_event(event: &CrisisEvent) -> ExternResult<ValidateCallbackResult> {
@@ -573,4 +868,192 @@ fn validate_relapse_prevention(plan: &RelapsePrevention) -> ExternResult<Validat
         ));
     }
     Ok(ValidateCallbackResult::Valid)
+}
+
+#[cfg(test)]
+mod author_binding_tests {
+    use super::*;
+
+    fn create_action(author: AgentPubKey) -> Create {
+        Create {
+            author,
+            timestamp: Timestamp::from_micros(0),
+            action_seq: 0,
+            prev_action: ActionHash::from_raw_36(vec![0u8; 36]),
+            entry_type: EntryType::App(AppEntryDef::new(
+                EntryDefIndex::from(0),
+                0.into(),
+                EntryVisibility::Public,
+            )),
+            entry_hash: EntryHash::from_raw_36(vec![0u8; 36]),
+            weight: Default::default(),
+        }
+    }
+
+    fn update_action(author: AgentPubKey) -> Update {
+        Update {
+            author,
+            timestamp: Timestamp::from_micros(1),
+            action_seq: 1,
+            prev_action: ActionHash::from_raw_36(vec![0u8; 36]),
+            original_action_address: ActionHash::from_raw_36(vec![9u8; 36]),
+            original_entry_address: EntryHash::from_raw_36(vec![0u8; 36]),
+            entry_type: EntryType::App(AppEntryDef::new(
+                EntryDefIndex::from(0),
+                0.into(),
+                EntryVisibility::Public,
+            )),
+            entry_hash: EntryHash::from_raw_36(vec![0u8; 36]),
+            weight: Default::default(),
+        }
+    }
+
+    fn me() -> AgentPubKey {
+        AgentPubKey::from_raw_36(vec![0u8; 36])
+    }
+
+    fn other_agent() -> AgentPubKey {
+        AgentPubKey::from_raw_36(vec![1u8; 36])
+    }
+
+    fn valid_screening(provider_hash: AgentPubKey) -> MentalHealthScreening {
+        MentalHealthScreening {
+            patient_hash: ActionHash::from_raw_36(vec![2u8; 36]),
+            provider_hash,
+            instrument: MentalHealthInstrument::PHQ9,
+            screening_date: Timestamp::from_micros(0),
+            raw_score: 10,
+            severity: Severity::Moderate,
+            responses: vec![],
+            interpretation: "moderate".into(),
+            follow_up_recommended: true,
+            crisis_indicators_present: false,
+            notes: None,
+            created_at: Timestamp::from_micros(0),
+        }
+    }
+
+    #[test]
+    fn create_screening_valid_when_provider_matches_committer() {
+        let author = me();
+        let s = valid_screening(author.clone());
+        let result =
+            validate_create_entry(create_action(author), EntryTypes::MentalHealthScreening(s))
+                .unwrap();
+        assert_eq!(result, ValidateCallbackResult::Valid);
+    }
+
+    #[test]
+    fn create_screening_forgery_rejected() {
+        let s = valid_screening(me());
+        let result = validate_create_entry(
+            create_action(other_agent()),
+            EntryTypes::MentalHealthScreening(s),
+        )
+        .unwrap();
+        assert!(matches!(result, ValidateCallbackResult::Invalid(_)));
+    }
+
+    fn valid_crisis_event(reporter_hash: AgentPubKey) -> CrisisEvent {
+        CrisisEvent {
+            patient_hash: ActionHash::from_raw_36(vec![2u8; 36]),
+            reporter_hash,
+            event_date: Timestamp::from_micros(0),
+            crisis_level: CrisisLevel::ModerateRisk,
+            suicidal_ideation: false,
+            homicidal_ideation: false,
+            self_harm: false,
+            substance_intoxication: false,
+            psychotic_symptoms: false,
+            description: "desc".into(),
+            intervention_taken: "assessed".into(),
+            disposition: "Discharged home".into(),
+            follow_up_plan: "follow up".into(),
+            safety_plan_reviewed: true,
+            created_at: Timestamp::from_micros(0),
+        }
+    }
+
+    #[test]
+    fn create_crisis_event_forgery_rejected() {
+        let e = valid_crisis_event(me());
+        let result =
+            validate_create_entry(create_action(other_agent()), EntryTypes::CrisisEvent(e))
+                .unwrap();
+        assert!(matches!(result, ValidateCallbackResult::Invalid(_)));
+    }
+
+    fn valid_check_in(checked_in_by: AgentPubKey) -> RecoveryCheckIn {
+        RecoveryCheckIn {
+            patient_hash: ActionHash::from_raw_36(vec![2u8; 36]),
+            checked_in_by,
+            mood_score: 5,
+            craving_intensity: 2,
+            triggers_encountered: vec![],
+            coping_used: vec![],
+            sleep_quality: 7,
+            social_support_quality: 6,
+            notes: None,
+            timestamp: Timestamp::from_micros(0),
+        }
+    }
+
+    #[test]
+    fn create_check_in_forgery_rejected() {
+        let c = valid_check_in(me());
+        let result =
+            validate_create_entry(create_action(other_agent()), EntryTypes::RecoveryCheckIn(c))
+                .unwrap();
+        assert!(matches!(result, ValidateCallbackResult::Invalid(_)));
+    }
+
+    fn valid_milestone(verified_by: Option<AgentPubKey>) -> RecoveryMilestone {
+        RecoveryMilestone {
+            patient_hash: ActionHash::from_raw_36(vec![2u8; 36]),
+            milestone_type: MilestoneType::EmploymentMilestone,
+            achieved_at: Timestamp::from_micros(0),
+            verified_by,
+            notes: "".into(),
+            created_at: Timestamp::from_micros(0),
+        }
+    }
+
+    #[test]
+    fn create_milestone_valid_with_no_verifier() {
+        let m = valid_milestone(None);
+        let result =
+            validate_create_entry(create_action(me()), EntryTypes::RecoveryMilestone(m)).unwrap();
+        assert_eq!(result, ValidateCallbackResult::Valid);
+    }
+
+    #[test]
+    fn milestone_verify_forgery_rejected_before_must_get() {
+        // verified_by must match the committing agent; checked before
+        // must_get_valid_record, so testable without a live HDI host.
+        let m = valid_milestone(Some(me()));
+        let result = validate_update_milestone(update_action(other_agent()), m).unwrap();
+        assert!(matches!(result, ValidateCallbackResult::Invalid(_)));
+    }
+
+    #[test]
+    fn update_entry_rejects_mood_entry_update() {
+        let m = MoodEntry {
+            patient_hash: ActionHash::from_raw_36(vec![2u8; 36]),
+            entry_date: Timestamp::from_micros(0),
+            mood_score: 5,
+            anxiety_score: 3,
+            sleep_quality: 7,
+            sleep_hours: None,
+            energy_level: 6,
+            appetite: None,
+            medications_taken: true,
+            activities: vec![],
+            triggers: vec![],
+            coping_strategies_used: vec![],
+            notes: None,
+            created_at: Timestamp::from_micros(0),
+        };
+        let result = validate_update_entry(update_action(me()), EntryTypes::MoodEntry(m)).unwrap();
+        assert!(matches!(result, ValidateCallbackResult::Invalid(_)));
+    }
 }
