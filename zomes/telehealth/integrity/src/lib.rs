@@ -377,14 +377,53 @@ pub fn validate(op: Op) -> ExternResult<ValidateCallbackResult> {
     match op.flattened::<EntryTypes, LinkTypes>()? {
         FlatOp::StoreEntry(store_entry) => match store_entry {
             OpEntry::CreateEntry { app_entry, .. } => validate_create_entry(app_entry),
-            OpEntry::UpdateEntry { app_entry, .. } => validate_create_entry(app_entry),
+            OpEntry::UpdateEntry {
+                app_entry, action, ..
+            } => validate_update_entry(action, app_entry),
             _ => Ok(ValidateCallbackResult::Valid),
         },
         FlatOp::RegisterCreateLink { link_type, .. } => validate_link(link_type),
+        // Previously left fully permissive via the catch-all `_` arm --
+        // the 19th confirmed instance of the wide-open RegisterUpdate/
+        // RegisterDelete bug this pass. Found + fixed 2026-07-09 during
+        // the P0 author-binding pass. This coordinator never calls
+        // delete_link/delete_entry (confirmed via grep), so
+        // RegisterDeleteLink/RegisterDelete hardening below is pure
+        // defense-in-depth.
+        FlatOp::RegisterDeleteLink {
+            original_action,
+            action,
+            ..
+        } => {
+            if action.author != original_action.author {
+                return Ok(ValidateCallbackResult::Invalid(
+                    "Only the original link creator can delete a link".into(),
+                ));
+            }
+            Ok(ValidateCallbackResult::Valid)
+        }
+        FlatOp::RegisterUpdate(op_update) => match op_update {
+            OpUpdate::Entry { app_entry, action } => validate_update_entry(action, app_entry),
+            _ => Ok(ValidateCallbackResult::Valid),
+        },
+        FlatOp::RegisterDelete(OpDelete { action }) => {
+            let original = must_get_action(action.deletes_address.clone())?;
+            if action.author != *original.action().author() {
+                return Ok(ValidateCallbackResult::Invalid(
+                    "Only the original entry author can delete an entry".into(),
+                ));
+            }
+            Ok(ValidateCallbackResult::Valid)
+        }
         _ => Ok(ValidateCallbackResult::Valid),
     }
 }
 
+/// No entry type in this zome has a self-declared agent-identity field
+/// -- patient_hash/provider_hash are ActionHash references into the
+/// patient/provider_directory zomes, not directly comparable
+/// AgentPubKeys. Reviewed 2026-07-09 during the P0 author-binding pass;
+/// case (a) across the board.
 fn validate_create_entry(entry: EntryTypes) -> ExternResult<ValidateCallbackResult> {
     match entry {
         EntryTypes::TelehealthSession(session) => validate_telehealth_session(&session),
@@ -395,7 +434,122 @@ fn validate_create_entry(entry: EntryTypes) -> ExternResult<ValidateCallbackResu
     }
 }
 
-fn validate_telehealth_session(session: &TelehealthSession) -> ExternResult<ValidateCallbackResult> {
+/// TelehealthSession/WaitingRoomEntry/SessionDocumentation each have a
+/// live, narrow update flow (status transitions). AvailableSlot and
+/// SchedulingRequest have no live coordinator update call at all
+/// (confirmed via grep for `update_entry` -- SchedulingRequest has no
+/// live coordinator function referencing it at all beyond its entry-type
+/// declaration) and are made immutable. Reviewed 2026-07-09 during the
+/// P0 author-binding pass: not an author-forgery finding (no identity
+/// field exists anywhere in this zome), but the previous unconditional
+/// `Ok(Valid)` meant a modified coordinator could silently rewrite
+/// patient_hash/provider_hash on a live session -- a real
+/// patient/provider-record-mismatch vector.
+fn validate_update_entry(
+    action: Update,
+    entry: EntryTypes,
+) -> ExternResult<ValidateCallbackResult> {
+    match entry {
+        EntryTypes::TelehealthSession(session) => {
+            let original_record = must_get_valid_record(action.original_action_address.clone())?;
+            let original: TelehealthSession = original_record
+                .entry()
+                .to_app_option()
+                .map_err(|e| wasm_error!(WasmErrorInner::Guest(e.to_string())))?
+                .ok_or(wasm_error!(WasmErrorInner::Guest(
+                    "Original session not found".into()
+                )))?;
+            // Union of fields changed across start_session/end_session/
+            // cancel_session/join_waiting_room: status, actual_start,
+            // actual_end, meeting_url, provider_notes, follow_up_needed,
+            // follow_up_notes, updated_at. Everything else is immutable.
+            if session.session_id != original.session_id
+                || session.patient_hash != original.patient_hash
+                || session.provider_hash != original.provider_hash
+                || session.scheduled_start != original.scheduled_start
+                || session.scheduled_duration_minutes != original.scheduled_duration_minutes
+                || session.session_type != original.session_type
+                || session.visit_reason != original.visit_reason
+                || session.chief_complaint != original.chief_complaint
+                || session.platform != original.platform
+                || session.patient_symptoms != original.patient_symptoms
+                || session.prescription_hashes != original.prescription_hashes
+                || session.order_hashes != original.order_hashes
+                || session.created_at != original.created_at
+            {
+                return Ok(ValidateCallbackResult::Invalid(
+                    "Only status/timing/notes fields can change on a session update".into(),
+                ));
+            }
+            validate_telehealth_session(&session)
+        }
+        EntryTypes::WaitingRoomEntry(entry) => {
+            let original_record = must_get_valid_record(action.original_action_address.clone())?;
+            let original: WaitingRoomEntry = original_record
+                .entry()
+                .to_app_option()
+                .map_err(|e| wasm_error!(WasmErrorInner::Guest(e.to_string())))?
+                .ok_or(wasm_error!(WasmErrorInner::Guest(
+                    "Original waiting room entry not found".into()
+                )))?;
+            // Only call_patient updates this entry: status/called_at.
+            if entry.session_hash != original.session_hash
+                || entry.patient_hash != original.patient_hash
+                || entry.entered_at != original.entered_at
+                || entry.queue_position != original.queue_position
+                || entry.estimated_wait_minutes != original.estimated_wait_minutes
+                || entry.notes != original.notes
+            {
+                return Ok(ValidateCallbackResult::Invalid(
+                    "Only status/called_at can change on a waiting room entry update".into(),
+                ));
+            }
+            validate_waiting_room_entry(&entry)
+        }
+        EntryTypes::SessionDocumentation(doc) => {
+            let original_record = must_get_valid_record(action.original_action_address.clone())?;
+            let original: SessionDocumentation = original_record
+                .entry()
+                .to_app_option()
+                .map_err(|e| wasm_error!(WasmErrorInner::Guest(e.to_string())))?
+                .ok_or(wasm_error!(WasmErrorInner::Guest(
+                    "Original documentation not found".into()
+                )))?;
+            // Only sign_documentation updates this entry: signed/signed_at.
+            if doc.session_hash != original.session_hash
+                || doc.patient_hash != original.patient_hash
+                || doc.provider_hash != original.provider_hash
+                || doc.subjective != original.subjective
+                || doc.objective != original.objective
+                || doc.assessment != original.assessment
+                || doc.plan != original.plan
+                || doc.diagnosis_codes != original.diagnosis_codes
+                || doc.procedure_codes != original.procedure_codes
+                || doc.medications_prescribed != original.medications_prescribed
+                || doc.labs_ordered != original.labs_ordered
+                || doc.imaging_ordered != original.imaging_ordered
+                || doc.referrals != original.referrals
+                || doc.patient_education != original.patient_education
+                || doc.created_at != original.created_at
+            {
+                return Ok(ValidateCallbackResult::Invalid(
+                    "Only signed/signed_at can change on a documentation update".into(),
+                ));
+            }
+            Ok(ValidateCallbackResult::Valid)
+        }
+        EntryTypes::AvailableSlot(_) => Ok(ValidateCallbackResult::Invalid(
+            "Available slots are immutable; create a new one".into(),
+        )),
+        EntryTypes::SchedulingRequest(_) => Ok(ValidateCallbackResult::Invalid(
+            "Scheduling requests are immutable".into(),
+        )),
+    }
+}
+
+fn validate_telehealth_session(
+    session: &TelehealthSession,
+) -> ExternResult<ValidateCallbackResult> {
     // Validate session ID
     if session.session_id.is_empty() {
         return Ok(ValidateCallbackResult::Invalid(
@@ -452,7 +606,9 @@ fn validate_waiting_room_entry(entry: &WaitingRoomEntry) -> ExternResult<Validat
     Ok(ValidateCallbackResult::Valid)
 }
 
-fn validate_session_documentation(doc: &SessionDocumentation) -> ExternResult<ValidateCallbackResult> {
+fn validate_session_documentation(
+    doc: &SessionDocumentation,
+) -> ExternResult<ValidateCallbackResult> {
     // Must have at least one of SOAP components
     if doc.subjective.is_none()
         && doc.objective.is_none()
@@ -499,7 +655,9 @@ fn validate_available_slot(slot: &AvailableSlot) -> ExternResult<ValidateCallbac
     Ok(ValidateCallbackResult::Valid)
 }
 
-fn validate_scheduling_request(request: &SchedulingRequest) -> ExternResult<ValidateCallbackResult> {
+fn validate_scheduling_request(
+    request: &SchedulingRequest,
+) -> ExternResult<ValidateCallbackResult> {
     // Validate request ID
     if request.request_id.is_empty() {
         return Ok(ValidateCallbackResult::Invalid(
@@ -517,14 +675,16 @@ fn validate_scheduling_request(request: &SchedulingRequest) -> ExternResult<Vali
     // Validate preferred dates format
     for date in &request.preferred_dates {
         if !is_valid_date_format(date) {
-            return Ok(ValidateCallbackResult::Invalid(
-                format!("Invalid date format: {}. Use YYYY-MM-DD", date),
-            ));
+            return Ok(ValidateCallbackResult::Invalid(format!(
+                "Invalid date format: {}. Use YYYY-MM-DD",
+                date
+            )));
         }
     }
 
     // Validate status consistency
-    if request.status == SchedulingRequestStatus::Scheduled && request.assigned_slot_hash.is_none() {
+    if request.status == SchedulingRequestStatus::Scheduled && request.assigned_slot_hash.is_none()
+    {
         return Ok(ValidateCallbackResult::Invalid(
             "Scheduled request must have an assigned slot".to_string(),
         ));
@@ -558,6 +718,75 @@ fn is_valid_date_format(date: &str) -> bool {
     if parts.len() != 3 {
         return false;
     }
-    parts[0].len() == 4 && parts[1].len() == 2 && parts[2].len() == 2
+    parts[0].len() == 4
+        && parts[1].len() == 2
+        && parts[2].len() == 2
         && parts.iter().all(|p| p.chars().all(|c| c.is_ascii_digit()))
+}
+
+#[cfg(test)]
+mod content_integrity_tests {
+    use super::*;
+
+    fn update_action(author: AgentPubKey) -> Update {
+        Update {
+            author,
+            timestamp: Timestamp::from_micros(1),
+            action_seq: 1,
+            prev_action: ActionHash::from_raw_36(vec![0u8; 36]),
+            original_action_address: ActionHash::from_raw_36(vec![9u8; 36]),
+            original_entry_address: EntryHash::from_raw_36(vec![0u8; 36]),
+            entry_type: EntryType::App(AppEntryDef::new(
+                EntryDefIndex::from(0),
+                0.into(),
+                EntryVisibility::Public,
+            )),
+            entry_hash: EntryHash::from_raw_36(vec![0u8; 36]),
+            weight: Default::default(),
+        }
+    }
+
+    fn me() -> AgentPubKey {
+        AgentPubKey::from_raw_36(vec![0u8; 36])
+    }
+
+    #[test]
+    fn update_entry_rejects_available_slot_update() {
+        // No live update_entry call exists for AvailableSlot -- dead-path
+        // immutability, testable without must_get_valid_record.
+        let slot = AvailableSlot {
+            provider_hash: ActionHash::from_raw_36(vec![2u8; 36]),
+            start_time: Timestamp::from_micros(0),
+            duration_minutes: 30,
+            available_session_types: vec![SessionType::VideoConsult],
+            is_available: true,
+            booked_session_hash: None,
+            created_at: Timestamp::from_micros(0),
+        };
+        let result =
+            validate_update_entry(update_action(me()), EntryTypes::AvailableSlot(slot)).unwrap();
+        assert!(matches!(result, ValidateCallbackResult::Invalid(_)));
+    }
+
+    #[test]
+    fn update_entry_rejects_scheduling_request_update() {
+        let request = SchedulingRequest {
+            request_id: "r-1".into(),
+            patient_hash: ActionHash::from_raw_36(vec![2u8; 36]),
+            preferred_provider_hash: None,
+            session_type: SessionType::VideoConsult,
+            preferred_dates: vec![],
+            preferred_time: PreferredTime::AnyTime,
+            reason: "checkup".into(),
+            urgency: SchedulingUrgency::Routine,
+            status: SchedulingRequestStatus::Pending,
+            assigned_slot_hash: None,
+            created_at: Timestamp::from_micros(0),
+            updated_at: Timestamp::from_micros(0),
+        };
+        let result =
+            validate_update_entry(update_action(me()), EntryTypes::SchedulingRequest(request))
+                .unwrap();
+        assert!(matches!(result, ValidateCallbackResult::Invalid(_)));
+    }
 }
