@@ -365,19 +365,95 @@ pub fn validate(op: Op) -> ExternResult<ValidateCallbackResult> {
     match op.flattened::<EntryTypes, LinkTypes>()? {
         FlatOp::StoreEntry(store_entry) => match store_entry {
             OpEntry::CreateEntry { app_entry, .. } => validate_create_entry(app_entry),
-            OpEntry::UpdateEntry { app_entry, .. } => validate_create_entry(app_entry),
+            OpEntry::UpdateEntry {
+                app_entry, action, ..
+            } => validate_update_entry(action, app_entry),
             _ => Ok(ValidateCallbackResult::Valid),
         },
         FlatOp::RegisterCreateLink { link_type, .. } => validate_link(link_type),
+        // Previously left fully permissive via the catch-all `_` arm --
+        // the 18th confirmed instance of the wide-open RegisterUpdate/
+        // RegisterDelete bug this pass. Found + fixed 2026-07-09 during
+        // the P0 author-binding pass. This coordinator never calls
+        // delete_link/delete_entry (confirmed via grep), so
+        // RegisterDeleteLink/RegisterDelete hardening below is pure
+        // defense-in-depth.
+        FlatOp::RegisterDeleteLink {
+            original_action,
+            action,
+            ..
+        } => {
+            if action.author != original_action.author {
+                return Ok(ValidateCallbackResult::Invalid(
+                    "Only the original link creator can delete a link".into(),
+                ));
+            }
+            Ok(ValidateCallbackResult::Valid)
+        }
+        FlatOp::RegisterUpdate(op_update) => match op_update {
+            OpUpdate::Entry { app_entry, action } => validate_update_entry(action, app_entry),
+            _ => Ok(ValidateCallbackResult::Valid),
+        },
+        FlatOp::RegisterDelete(OpDelete { action }) => {
+            let original = must_get_action(action.deletes_address.clone())?;
+            if action.author != *original.action().author() {
+                return Ok(ValidateCallbackResult::Invalid(
+                    "Only the original entry author can delete an entry".into(),
+                ));
+            }
+            Ok(ValidateCallbackResult::Valid)
+        }
         _ => Ok(ValidateCallbackResult::Valid),
     }
 }
 
+/// None of this zome's entry types have a self-declared agent-identity
+/// field (ProviderProfile describes the provider themselves but has no
+/// "owner" AgentPubKey field at all; mycelix_identity_hash/provider_hash
+/// are ActionHash references to other records). Reviewed 2026-07-09
+/// during the P0 author-binding pass; case (a) across the board.
 fn validate_create_entry(entry: EntryTypes) -> ExternResult<ValidateCallbackResult> {
     match entry {
         EntryTypes::ProviderProfile(profile) => validate_provider_profile(&profile),
         EntryTypes::NpiVerification(verification) => validate_npi_verification(&verification),
         EntryTypes::ProviderAffiliation(affiliation) => validate_provider_affiliation(&affiliation),
+    }
+}
+
+/// Only `ProviderProfile` has a live coordinator update path
+/// (update_provider). Reviewed 2026-07-09 during the P0 author-binding
+/// pass: this IS a real authorization gap, just not a per-field
+/// author-binding one -- the coordinator's own check
+/// (`original_record.action().author() != &caller`) uses the REAL DHT
+/// author of the original create action (there being no self-declared
+/// owner field to forge), but only client-side. A modified coordinator
+/// could previously rewrite ANY other provider's profile. Fixed by
+/// comparing the committing agent to the ORIGINAL create action's real
+/// author via must_get_action -- the same "universal same-author-update"
+/// idiom used in several mycelix-identity zomes (did_registry,
+/// credential_schema, revocation). NpiVerification/ProviderAffiliation
+/// have no live update call at all (confirmed via grep) and are made
+/// immutable.
+fn validate_update_entry(
+    action: Update,
+    entry: EntryTypes,
+) -> ExternResult<ValidateCallbackResult> {
+    match entry {
+        EntryTypes::ProviderProfile(profile) => {
+            let original = must_get_action(action.original_action_address.clone())?;
+            if *original.action().author() != action.author {
+                return Ok(ValidateCallbackResult::Invalid(
+                    "Only the original provider profile creator can update it".into(),
+                ));
+            }
+            validate_provider_profile(&profile)
+        }
+        EntryTypes::NpiVerification(_) => Ok(ValidateCallbackResult::Invalid(
+            "NPI verification records are immutable; create a new one".into(),
+        )),
+        EntryTypes::ProviderAffiliation(_) => Ok(ValidateCallbackResult::Invalid(
+            "Provider affiliations are immutable; create a new one".into(),
+        )),
     }
 }
 
@@ -427,7 +503,9 @@ fn validate_provider_profile(profile: &ProviderProfile) -> ExternResult<Validate
     Ok(ValidateCallbackResult::Valid)
 }
 
-fn validate_npi_verification(verification: &NpiVerification) -> ExternResult<ValidateCallbackResult> {
+fn validate_npi_verification(
+    verification: &NpiVerification,
+) -> ExternResult<ValidateCallbackResult> {
     // Validate NPI format
     if !validate_npi_format(&verification.npi) {
         return Ok(ValidateCallbackResult::Invalid(
@@ -445,7 +523,9 @@ fn validate_npi_verification(verification: &NpiVerification) -> ExternResult<Val
     Ok(ValidateCallbackResult::Valid)
 }
 
-fn validate_provider_affiliation(affiliation: &ProviderAffiliation) -> ExternResult<ValidateCallbackResult> {
+fn validate_provider_affiliation(
+    affiliation: &ProviderAffiliation,
+) -> ExternResult<ValidateCallbackResult> {
     // Validate organization name
     if affiliation.organization_name.is_empty() {
         return Ok(ValidateCallbackResult::Invalid(
@@ -528,6 +608,71 @@ fn is_valid_date_format(date: &str) -> bool {
     if parts.len() != 3 {
         return false;
     }
-    parts[0].len() == 4 && parts[1].len() == 2 && parts[2].len() == 2
+    parts[0].len() == 4
+        && parts[1].len() == 2
+        && parts[2].len() == 2
         && parts.iter().all(|p| p.chars().all(|c| c.is_ascii_digit()))
+}
+
+#[cfg(test)]
+mod content_integrity_tests {
+    use super::*;
+
+    fn update_action(author: AgentPubKey) -> Update {
+        Update {
+            author,
+            timestamp: Timestamp::from_micros(1),
+            action_seq: 1,
+            prev_action: ActionHash::from_raw_36(vec![0u8; 36]),
+            original_action_address: ActionHash::from_raw_36(vec![9u8; 36]),
+            original_entry_address: EntryHash::from_raw_36(vec![0u8; 36]),
+            entry_type: EntryType::App(AppEntryDef::new(
+                EntryDefIndex::from(0),
+                0.into(),
+                EntryVisibility::Public,
+            )),
+            entry_hash: EntryHash::from_raw_36(vec![0u8; 36]),
+            weight: Default::default(),
+        }
+    }
+
+    fn me() -> AgentPubKey {
+        AgentPubKey::from_raw_36(vec![0u8; 36])
+    }
+
+    #[test]
+    fn update_entry_rejects_npi_verification_update() {
+        // No live update_entry call exists for NpiVerification --
+        // dead-path immutability, testable without must_get_action.
+        let v = NpiVerification {
+            npi: "1234567890".into(),
+            provider_hash: ActionHash::from_raw_36(vec![2u8; 36]),
+            source: "NPPES".into(),
+            status: NpiVerificationStatus::Valid,
+            registry_data: None,
+            verified_at: Timestamp::from_micros(0),
+            next_verification_due: None,
+            notes: None,
+        };
+        let result =
+            validate_update_entry(update_action(me()), EntryTypes::NpiVerification(v)).unwrap();
+        assert!(matches!(result, ValidateCallbackResult::Invalid(_)));
+    }
+
+    #[test]
+    fn update_entry_rejects_provider_affiliation_update() {
+        let a = ProviderAffiliation {
+            provider_hash: ActionHash::from_raw_36(vec![2u8; 36]),
+            organization_name: "General Hospital".into(),
+            organization_npi: None,
+            role: "Attending".into(),
+            department: None,
+            start_date: "2020-01-01".into(),
+            end_date: None,
+            is_current: true,
+        };
+        let result =
+            validate_update_entry(update_action(me()), EntryTypes::ProviderAffiliation(a)).unwrap();
+        assert!(matches!(result, ValidateCallbackResult::Invalid(_)));
+    }
 }
