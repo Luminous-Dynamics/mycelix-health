@@ -472,7 +472,9 @@ pub fn validate(op: Op) -> ExternResult<ValidateCallbackResult> {
     match op.flattened::<EntryTypes, LinkTypes>()? {
         FlatOp::StoreEntry(store_entry) => match store_entry {
             OpEntry::CreateEntry { app_entry, .. } => validate_create_entry(app_entry),
-            OpEntry::UpdateEntry { app_entry, .. } => validate_create_entry(app_entry),
+            OpEntry::UpdateEntry {
+                app_entry, action, ..
+            } => validate_update_entry(action, app_entry),
             _ => Ok(ValidateCallbackResult::Valid),
         },
         FlatOp::RegisterCreateLink { link_type, .. } => validate_link(link_type),
@@ -480,6 +482,13 @@ pub fn validate(op: Op) -> ExternResult<ValidateCallbackResult> {
     }
 }
 
+/// No entry type in this zome has a self-declared agent-identity field --
+/// FHIR mappings represent external-system records (recorder_reference/
+/// asserter_reference/requester_reference are FHIR-side string
+/// references to external practitioners, not Holochain agents), and
+/// TerminologyValidation/FhirBundleRecord are system-computed records.
+/// Reviewed 2026-07-09 during the P0 author-binding pass; case (a)
+/// across the board -- no author-binding applies anywhere in this zome.
 fn validate_create_entry(entry: EntryTypes) -> ExternResult<ValidateCallbackResult> {
     match entry {
         EntryTypes::FhirPatientMapping(mapping) => validate_fhir_patient_mapping(&mapping),
@@ -487,11 +496,94 @@ fn validate_create_entry(entry: EntryTypes) -> ExternResult<ValidateCallbackResu
         EntryTypes::FhirConditionMapping(mapping) => validate_fhir_condition_mapping(&mapping),
         EntryTypes::FhirMedicationMapping(mapping) => validate_fhir_medication_mapping(&mapping),
         EntryTypes::FhirBundleRecord(bundle) => validate_fhir_bundle(&bundle),
-        EntryTypes::TerminologyValidation(validation) => validate_terminology_validation(&validation),
+        EntryTypes::TerminologyValidation(validation) => {
+            validate_terminology_validation(&validation)
+        }
     }
 }
 
-fn validate_fhir_patient_mapping(mapping: &FhirPatientMapping) -> ExternResult<ValidateCallbackResult> {
+/// Only `FhirPatientMapping` has a live coordinator update path
+/// (update_patient_mapping_sync_status, confirmed via grep for
+/// `update_entry`). Every other entry type is immutable (no update
+/// call exists). Reviewed 2026-07-09 during the P0 author-binding pass:
+/// this isn't an author-forgery finding (no identity field exists to
+/// forge) but a genuine content-integrity gap -- previously ANY field of
+/// ANY entry type could be silently rewritten on update, including
+/// `internal_patient_hash`/`patient_hash`, which would let a modified
+/// coordinator re-point a mapping at a DIFFERENT patient's internal
+/// record -- a real patient-record-mismatch / data-leak vector in a
+/// healthcare system, arguably more severe than typical identity
+/// forgery.
+fn validate_update_entry(
+    action: Update,
+    entry: EntryTypes,
+) -> ExternResult<ValidateCallbackResult> {
+    match entry {
+        EntryTypes::FhirPatientMapping(mapping) => {
+            validate_update_fhir_patient_mapping(action, mapping)
+        }
+        EntryTypes::FhirObservationMapping(_) => Ok(ValidateCallbackResult::Invalid(
+            "FHIR observation mappings are immutable".into(),
+        )),
+        EntryTypes::FhirConditionMapping(_) => Ok(ValidateCallbackResult::Invalid(
+            "FHIR condition mappings are immutable".into(),
+        )),
+        EntryTypes::FhirMedicationMapping(_) => Ok(ValidateCallbackResult::Invalid(
+            "FHIR medication mappings are immutable".into(),
+        )),
+        EntryTypes::FhirBundleRecord(_) => Ok(ValidateCallbackResult::Invalid(
+            "FHIR bundle records are immutable".into(),
+        )),
+        EntryTypes::TerminologyValidation(_) => Ok(ValidateCallbackResult::Invalid(
+            "Terminology validations are immutable".into(),
+        )),
+    }
+}
+
+/// Content restricted to sync_status/last_synced/sync_errors -- the
+/// exact fields update_patient_mapping_sync_status actually changes.
+/// Everything else, especially internal_patient_hash, is immutable.
+fn validate_update_fhir_patient_mapping(
+    action: Update,
+    mapping: FhirPatientMapping,
+) -> ExternResult<ValidateCallbackResult> {
+    let original_record = must_get_valid_record(action.original_action_address.clone())?;
+    let original: FhirPatientMapping = original_record
+        .entry()
+        .to_app_option()
+        .map_err(|e| wasm_error!(WasmErrorInner::Guest(e.to_string())))?
+        .ok_or(wasm_error!(WasmErrorInner::Guest(
+            "Original mapping not found".into()
+        )))?;
+
+    if mapping.internal_patient_hash != original.internal_patient_hash
+        || mapping.fhir_patient_id != original.fhir_patient_id
+        || mapping.source_system != original.source_system
+        || mapping.fhir_identifiers != original.fhir_identifiers
+        || mapping.name != original.name
+        || mapping.telecom != original.telecom
+        || mapping.gender != original.gender
+        || mapping.birth_date != original.birth_date
+        || mapping.deceased != original.deceased
+        || mapping.address != original.address
+        || mapping.marital_status != original.marital_status
+        || mapping.communication != original.communication
+        || mapping.fhir_version_id != original.fhir_version_id
+        || mapping.fhir_last_updated != original.fhir_last_updated
+        || mapping.mapping_version != original.mapping_version
+    {
+        return Ok(ValidateCallbackResult::Invalid(
+            "Only sync_status/last_synced/sync_errors can change on a patient mapping update"
+                .into(),
+        ));
+    }
+
+    validate_fhir_patient_mapping(&mapping)
+}
+
+fn validate_fhir_patient_mapping(
+    mapping: &FhirPatientMapping,
+) -> ExternResult<ValidateCallbackResult> {
     // Validate FHIR patient ID is not empty
     if mapping.fhir_patient_id.is_empty() {
         return Ok(ValidateCallbackResult::Invalid(
@@ -523,7 +615,9 @@ fn validate_fhir_patient_mapping(mapping: &FhirPatientMapping) -> ExternResult<V
     Ok(ValidateCallbackResult::Valid)
 }
 
-fn validate_fhir_observation_mapping(mapping: &FhirObservationMapping) -> ExternResult<ValidateCallbackResult> {
+fn validate_fhir_observation_mapping(
+    mapping: &FhirObservationMapping,
+) -> ExternResult<ValidateCallbackResult> {
     // Validate FHIR observation ID
     if mapping.fhir_observation_id.is_empty() {
         return Ok(ValidateCallbackResult::Invalid(
@@ -539,11 +633,21 @@ fn validate_fhir_observation_mapping(mapping: &FhirObservationMapping) -> Extern
     }
 
     // Validate status is valid FHIR status
-    let valid_statuses = ["registered", "preliminary", "final", "amended", "corrected", "cancelled", "entered-in-error", "unknown"];
+    let valid_statuses = [
+        "registered",
+        "preliminary",
+        "final",
+        "amended",
+        "corrected",
+        "cancelled",
+        "entered-in-error",
+        "unknown",
+    ];
     if !valid_statuses.contains(&mapping.status.as_str()) {
-        return Ok(ValidateCallbackResult::Invalid(
-            format!("Invalid observation status: {}. Must be one of: {:?}", mapping.status, valid_statuses),
-        ));
+        return Ok(ValidateCallbackResult::Invalid(format!(
+            "Invalid observation status: {}. Must be one of: {:?}",
+            mapping.status, valid_statuses
+        )));
     }
 
     // Validate at least one value is provided
@@ -560,7 +664,9 @@ fn validate_fhir_observation_mapping(mapping: &FhirObservationMapping) -> Extern
     Ok(ValidateCallbackResult::Valid)
 }
 
-fn validate_fhir_condition_mapping(mapping: &FhirConditionMapping) -> ExternResult<ValidateCallbackResult> {
+fn validate_fhir_condition_mapping(
+    mapping: &FhirConditionMapping,
+) -> ExternResult<ValidateCallbackResult> {
     // Validate FHIR condition ID
     if mapping.fhir_condition_id.is_empty() {
         return Ok(ValidateCallbackResult::Invalid(
@@ -576,25 +682,43 @@ fn validate_fhir_condition_mapping(mapping: &FhirConditionMapping) -> ExternResu
     }
 
     // Validate clinical status
-    let valid_clinical = ["active", "recurrence", "relapse", "inactive", "remission", "resolved"];
+    let valid_clinical = [
+        "active",
+        "recurrence",
+        "relapse",
+        "inactive",
+        "remission",
+        "resolved",
+    ];
     if !valid_clinical.contains(&mapping.clinical_status.as_str()) {
-        return Ok(ValidateCallbackResult::Invalid(
-            format!("Invalid clinical status: {}. Must be one of: {:?}", mapping.clinical_status, valid_clinical),
-        ));
+        return Ok(ValidateCallbackResult::Invalid(format!(
+            "Invalid clinical status: {}. Must be one of: {:?}",
+            mapping.clinical_status, valid_clinical
+        )));
     }
 
     // Validate verification status
-    let valid_verification = ["unconfirmed", "provisional", "differential", "confirmed", "refuted", "entered-in-error"];
+    let valid_verification = [
+        "unconfirmed",
+        "provisional",
+        "differential",
+        "confirmed",
+        "refuted",
+        "entered-in-error",
+    ];
     if !valid_verification.contains(&mapping.verification_status.as_str()) {
-        return Ok(ValidateCallbackResult::Invalid(
-            format!("Invalid verification status: {}. Must be one of: {:?}", mapping.verification_status, valid_verification),
-        ));
+        return Ok(ValidateCallbackResult::Invalid(format!(
+            "Invalid verification status: {}. Must be one of: {:?}",
+            mapping.verification_status, valid_verification
+        )));
     }
 
     Ok(ValidateCallbackResult::Valid)
 }
 
-fn validate_fhir_medication_mapping(mapping: &FhirMedicationMapping) -> ExternResult<ValidateCallbackResult> {
+fn validate_fhir_medication_mapping(
+    mapping: &FhirMedicationMapping,
+) -> ExternResult<ValidateCallbackResult> {
     // Validate FHIR medication ID
     if mapping.fhir_medication_id.is_empty() {
         return Ok(ValidateCallbackResult::Invalid(
@@ -610,19 +734,39 @@ fn validate_fhir_medication_mapping(mapping: &FhirMedicationMapping) -> ExternRe
     }
 
     // Validate status
-    let valid_statuses = ["active", "on-hold", "cancelled", "completed", "entered-in-error", "stopped", "draft", "unknown"];
+    let valid_statuses = [
+        "active",
+        "on-hold",
+        "cancelled",
+        "completed",
+        "entered-in-error",
+        "stopped",
+        "draft",
+        "unknown",
+    ];
     if !valid_statuses.contains(&mapping.status.as_str()) {
-        return Ok(ValidateCallbackResult::Invalid(
-            format!("Invalid medication status: {}. Must be one of: {:?}", mapping.status, valid_statuses),
-        ));
+        return Ok(ValidateCallbackResult::Invalid(format!(
+            "Invalid medication status: {}. Must be one of: {:?}",
+            mapping.status, valid_statuses
+        )));
     }
 
     // Validate intent
-    let valid_intents = ["proposal", "plan", "order", "original-order", "reflex-order", "filler-order", "instance-order", "option"];
+    let valid_intents = [
+        "proposal",
+        "plan",
+        "order",
+        "original-order",
+        "reflex-order",
+        "filler-order",
+        "instance-order",
+        "option",
+    ];
     if !valid_intents.contains(&mapping.intent.as_str()) {
-        return Ok(ValidateCallbackResult::Invalid(
-            format!("Invalid medication intent: {}. Must be one of: {:?}", mapping.intent, valid_intents),
-        ));
+        return Ok(ValidateCallbackResult::Invalid(format!(
+            "Invalid medication intent: {}. Must be one of: {:?}",
+            mapping.intent, valid_intents
+        )));
     }
 
     Ok(ValidateCallbackResult::Valid)
@@ -637,23 +781,39 @@ fn validate_fhir_bundle(bundle: &FhirBundleRecord) -> ExternResult<ValidateCallb
     }
 
     // Validate bundle type
-    let valid_types = ["document", "message", "transaction", "transaction-response", "batch", "batch-response", "history", "searchset", "collection"];
+    let valid_types = [
+        "document",
+        "message",
+        "transaction",
+        "transaction-response",
+        "batch",
+        "batch-response",
+        "history",
+        "searchset",
+        "collection",
+    ];
     if !valid_types.contains(&bundle.bundle_type.as_str()) {
-        return Ok(ValidateCallbackResult::Invalid(
-            format!("Invalid bundle type: {}. Must be one of: {:?}", bundle.bundle_type, valid_types),
-        ));
+        return Ok(ValidateCallbackResult::Invalid(format!(
+            "Invalid bundle type: {}. Must be one of: {:?}",
+            bundle.bundle_type, valid_types
+        )));
     }
 
     Ok(ValidateCallbackResult::Valid)
 }
 
-fn validate_terminology_validation(validation: &TerminologyValidation) -> ExternResult<ValidateCallbackResult> {
+fn validate_terminology_validation(
+    validation: &TerminologyValidation,
+) -> ExternResult<ValidateCallbackResult> {
     // Validate code system is supported
-    let supported_systems = ["loinc", "snomed", "icd10", "icd10-cm", "rxnorm", "ndc", "cpt"];
+    let supported_systems = [
+        "loinc", "snomed", "icd10", "icd10-cm", "rxnorm", "ndc", "cpt",
+    ];
     if !supported_systems.contains(&validation.code_system.to_lowercase().as_str()) {
-        return Ok(ValidateCallbackResult::Invalid(
-            format!("Unsupported code system: {}. Supported: {:?}", validation.code_system, supported_systems),
-        ));
+        return Ok(ValidateCallbackResult::Invalid(format!(
+            "Unsupported code system: {}. Supported: {:?}",
+            validation.code_system, supported_systems
+        )));
     }
 
     // Validate code is not empty
@@ -677,5 +837,78 @@ fn validate_link(link_type: LinkTypes) -> ExternResult<ValidateCallbackResult> {
         LinkTypes::AllFhirPatientMappings => Ok(ValidateCallbackResult::Valid),
         LinkTypes::BundleToEntries => Ok(ValidateCallbackResult::Valid),
         LinkTypes::FhirMappingUpdates => Ok(ValidateCallbackResult::Valid),
+    }
+}
+
+#[cfg(test)]
+mod content_integrity_tests {
+    use super::*;
+
+    fn update_action(author: AgentPubKey) -> Update {
+        Update {
+            author,
+            timestamp: Timestamp::from_micros(1),
+            action_seq: 1,
+            prev_action: ActionHash::from_raw_36(vec![0u8; 36]),
+            original_action_address: ActionHash::from_raw_36(vec![9u8; 36]),
+            original_entry_address: EntryHash::from_raw_36(vec![0u8; 36]),
+            entry_type: EntryType::App(AppEntryDef::new(
+                EntryDefIndex::from(0),
+                0.into(),
+                EntryVisibility::Public,
+            )),
+            entry_hash: EntryHash::from_raw_36(vec![0u8; 36]),
+            weight: Default::default(),
+        }
+    }
+
+    fn me() -> AgentPubKey {
+        AgentPubKey::from_raw_36(vec![0u8; 36])
+    }
+
+    fn valid_bundle() -> FhirBundleRecord {
+        FhirBundleRecord {
+            bundle_id: "b-1".into(),
+            bundle_type: "batch".into(),
+            total: 1,
+            timestamp: Timestamp::from_micros(0),
+            patient_hash: None,
+            resource_summary: vec![],
+            status: BundleStatus::Pending,
+            errors: vec![],
+        }
+    }
+
+    #[test]
+    fn update_entry_rejects_bundle_update() {
+        // No live update_entry call exists for FhirBundleRecord --
+        // dead-path immutability, testable without must_get_valid_record.
+        let result = validate_update_entry(
+            update_action(me()),
+            EntryTypes::FhirBundleRecord(valid_bundle()),
+        )
+        .unwrap();
+        assert!(matches!(result, ValidateCallbackResult::Invalid(_)));
+    }
+
+    fn valid_terminology_validation() -> TerminologyValidation {
+        TerminologyValidation {
+            code_system: "loinc".into(),
+            code: "1234-5".into(),
+            display: None,
+            is_valid: true,
+            message: None,
+            validated_at: Timestamp::from_micros(0),
+        }
+    }
+
+    #[test]
+    fn update_entry_rejects_terminology_validation_update() {
+        let result = validate_update_entry(
+            update_action(me()),
+            EntryTypes::TerminologyValidation(valid_terminology_validation()),
+        )
+        .unwrap();
+        assert!(matches!(result, ValidateCallbackResult::Invalid(_)));
     }
 }
