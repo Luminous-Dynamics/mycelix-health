@@ -11,11 +11,10 @@
 //!
 //! All data access enforces consent-based access control.
 
-use hdk::prelude::*;
 use cds_integrity::*;
+use hdk::prelude::*;
 use mycelix_health_shared::{
-    require_authorization, log_data_access,
-    DataCategory, Permission, anchor_hash,
+    anchor_hash, log_data_access, require_authorization, DataCategory, Permission,
 };
 
 // ============================================================================
@@ -26,15 +25,26 @@ use mycelix_health_shared::{
 #[hdk_extern]
 pub fn create_drug_interaction(interaction: DrugInteraction) -> ExternResult<Record> {
     let hash = create_entry(&EntryTypes::DrugInteraction(interaction.clone()))?;
-    let record = get(hash.clone(), GetOptions::default())?
-        .ok_or(wasm_error!(WasmErrorInner::Guest("Could not find drug interaction".to_string())))?;
+    let record = get(hash.clone(), GetOptions::default())?.ok_or(wasm_error!(
+        WasmErrorInner::Guest("Could not find drug interaction".to_string())
+    ))?;
 
     // Link from both drugs to this interaction for efficient lookup
     let drug_a_anchor = anchor_hash(&format!("drug_{}", interaction.drug_a_rxnorm))?;
     let drug_b_anchor = anchor_hash(&format!("drug_{}", interaction.drug_b_rxnorm))?;
 
-    create_link(drug_a_anchor, hash.clone(), LinkTypes::DrugToInteractions, ())?;
-    create_link(drug_b_anchor, hash.clone(), LinkTypes::DrugToInteractions, ())?;
+    create_link(
+        drug_a_anchor,
+        hash.clone(),
+        LinkTypes::DrugToInteractions,
+        (),
+    )?;
+    create_link(
+        drug_b_anchor,
+        hash.clone(),
+        LinkTypes::DrugToInteractions,
+        (),
+    )?;
 
     // Link to all interactions anchor
     let all_anchor = anchor_hash("all_drug_interactions")?;
@@ -51,7 +61,9 @@ pub struct CheckDrugInteractionsInput {
 
 /// Check for interactions between a list of medications
 #[hdk_extern]
-pub fn check_drug_interactions(input: CheckDrugInteractionsInput) -> ExternResult<Vec<FoundInteraction>> {
+pub fn check_drug_interactions(
+    input: CheckDrugInteractionsInput,
+) -> ExternResult<Vec<FoundInteraction>> {
     let mut found_interactions = Vec::new();
 
     // Check each pair of medications
@@ -63,15 +75,24 @@ pub fn check_drug_interactions(input: CheckDrugInteractionsInput) -> ExternResul
             // Look up interactions for drug_a
             let drug_anchor = anchor_hash(&format!("drug_{}", drug_a))?;
             let links = get_links(
-                LinkQuery::try_new(drug_anchor, LinkTypes::DrugToInteractions)?, GetStrategy::default())?;
+                LinkQuery::try_new(drug_anchor, LinkTypes::DrugToInteractions)?,
+                GetStrategy::default(),
+            )?;
 
             for link in links {
                 if let Some(hash) = link.target.into_action_hash() {
                     if let Some(record) = get(hash, GetOptions::default())? {
-                        if let Some(interaction) = record.entry().to_app_option::<DrugInteraction>().ok().flatten() {
+                        if let Some(interaction) = record
+                            .entry()
+                            .to_app_option::<DrugInteraction>()
+                            .ok()
+                            .flatten()
+                        {
                             // Check if this interaction involves both drugs
-                            if (interaction.drug_a_rxnorm == *drug_a && interaction.drug_b_rxnorm == *drug_b)
-                                || (interaction.drug_a_rxnorm == *drug_b && interaction.drug_b_rxnorm == *drug_a)
+                            if (interaction.drug_a_rxnorm == *drug_a
+                                && interaction.drug_b_rxnorm == *drug_b)
+                                || (interaction.drug_a_rxnorm == *drug_b
+                                    && interaction.drug_b_rxnorm == *drug_a)
                             {
                                 found_interactions.push(FoundInteraction {
                                     drug_a_rxnorm: interaction.drug_a_rxnorm,
@@ -95,10 +116,13 @@ pub fn check_drug_interactions(input: CheckDrugInteractionsInput) -> ExternResul
 
 /// Create a drug-allergy interaction record
 #[hdk_extern]
-pub fn create_drug_allergy_interaction(interaction: DrugAllergyInteraction) -> ExternResult<Record> {
+pub fn create_drug_allergy_interaction(
+    interaction: DrugAllergyInteraction,
+) -> ExternResult<Record> {
     let hash = create_entry(&EntryTypes::DrugAllergyInteraction(interaction.clone()))?;
-    let record = get(hash.clone(), GetOptions::default())?
-        .ok_or(wasm_error!(WasmErrorInner::Guest("Could not find drug allergy interaction".to_string())))?;
+    let record = get(hash.clone(), GetOptions::default())?.ok_or(wasm_error!(
+        WasmErrorInner::Guest("Could not find drug allergy interaction".to_string())
+    ))?;
 
     // Link from drug to allergy interaction
     let drug_anchor = anchor_hash(&format!("drug_{}", interaction.drug_rxnorm))?;
@@ -116,22 +140,37 @@ pub struct CheckAllergyConflictsInput {
 
 /// Check for conflicts between medications and patient allergies
 #[hdk_extern]
-pub fn check_allergy_conflicts(input: CheckAllergyConflictsInput) -> ExternResult<Vec<FoundAllergyConflict>> {
+pub fn check_allergy_conflicts(
+    input: CheckAllergyConflictsInput,
+) -> ExternResult<Vec<FoundAllergyConflict>> {
     let mut conflicts = Vec::new();
 
     for drug_code in &input.medication_rxnorm_codes {
         let drug_anchor = anchor_hash(&format!("drug_{}", drug_code))?;
         let links = get_links(
-            LinkQuery::try_new(drug_anchor, LinkTypes::DrugToAllergyInteractions)?, GetStrategy::default())?;
+            LinkQuery::try_new(drug_anchor, LinkTypes::DrugToAllergyInteractions)?,
+            GetStrategy::default(),
+        )?;
 
         for link in links {
             if let Some(hash) = link.target.into_action_hash() {
                 if let Some(record) = get(hash, GetOptions::default())? {
-                    if let Some(interaction) = record.entry().to_app_option::<DrugAllergyInteraction>().ok().flatten() {
+                    if let Some(interaction) = record
+                        .entry()
+                        .to_app_option::<DrugAllergyInteraction>()
+                        .ok()
+                        .flatten()
+                    {
                         // Check if patient has this allergen or cross-reactive allergen
                         for allergy in &input.patient_allergies {
-                            if interaction.allergen_class.to_lowercase().contains(&allergy.to_lowercase())
-                                || interaction.cross_reactive_allergens.iter().any(|a| a.to_lowercase().contains(&allergy.to_lowercase()))
+                            if interaction
+                                .allergen_class
+                                .to_lowercase()
+                                .contains(&allergy.to_lowercase())
+                                || interaction
+                                    .cross_reactive_allergens
+                                    .iter()
+                                    .any(|a| a.to_lowercase().contains(&allergy.to_lowercase()))
                             {
                                 conflicts.push(FoundAllergyConflict {
                                     drug_rxnorm: interaction.drug_rxnorm.clone(),
@@ -139,7 +178,10 @@ pub fn check_allergy_conflicts(input: CheckAllergyConflictsInput) -> ExternResul
                                     allergen: allergy.clone(),
                                     cross_reactivity: interaction.allergen_class.clone(),
                                     severity: interaction.severity.clone(),
-                                    recommendation: format!("Consider alternative medication. {}", interaction.notes),
+                                    recommendation: format!(
+                                        "Consider alternative medication. {}",
+                                        interaction.notes
+                                    ),
                                 });
                             }
                         }
@@ -202,8 +244,9 @@ pub fn create_clinical_alert(input: CreateAlertInput) -> ExternResult<Record> {
     };
 
     let hash = create_entry(&EntryTypes::ClinicalAlert(alert))?;
-    let record = get(hash.clone(), GetOptions::default())?
-        .ok_or(wasm_error!(WasmErrorInner::Guest("Could not find clinical alert".to_string())))?;
+    let record = get(hash.clone(), GetOptions::default())?.ok_or(wasm_error!(
+        WasmErrorInner::Guest("Could not find clinical alert".to_string())
+    ))?;
 
     // Link from patient to alert
     create_link(
@@ -247,13 +290,20 @@ pub fn get_patient_alerts(input: GetPatientAlertsInput) -> ExternResult<Vec<Reco
     )?;
 
     let links = get_links(
-        LinkQuery::try_new(input.patient_hash.clone(), LinkTypes::PatientToAlerts)?, GetStrategy::default())?;
+        LinkQuery::try_new(input.patient_hash.clone(), LinkTypes::PatientToAlerts)?,
+        GetStrategy::default(),
+    )?;
 
     let mut alerts = Vec::new();
     for link in links {
         if let Some(hash) = link.target.into_action_hash() {
             if let Some(record) = get(hash, GetOptions::default())? {
-                if let Some(alert) = record.entry().to_app_option::<ClinicalAlert>().ok().flatten() {
+                if let Some(alert) = record
+                    .entry()
+                    .to_app_option::<ClinicalAlert>()
+                    .ok()
+                    .flatten()
+                {
                     // Filter based on input criteria
                     let include = (input.include_acknowledged || !alert.acknowledged)
                         && (input.include_resolved || !alert.resolved);
@@ -289,14 +339,17 @@ pub struct AcknowledgeAlertInput {
 /// Acknowledge a clinical alert
 #[hdk_extern]
 pub fn acknowledge_alert(input: AcknowledgeAlertInput) -> ExternResult<Record> {
-    let record = get(input.alert_hash.clone(), GetOptions::default())?
-        .ok_or(wasm_error!(WasmErrorInner::Guest("Alert not found".to_string())))?;
+    let record = get(input.alert_hash.clone(), GetOptions::default())?.ok_or(wasm_error!(
+        WasmErrorInner::Guest("Alert not found".to_string())
+    ))?;
 
     let mut alert: ClinicalAlert = record
         .entry()
         .to_app_option()
         .map_err(|e| wasm_error!(WasmErrorInner::Guest(e.to_string())))?
-        .ok_or(wasm_error!(WasmErrorInner::Guest("Invalid alert entry".to_string())))?;
+        .ok_or(wasm_error!(WasmErrorInner::Guest(
+            "Invalid alert entry".to_string()
+        )))?;
 
     let patient_hash = alert.patient_hash.clone();
     let auth = require_authorization(
@@ -312,8 +365,9 @@ pub fn acknowledge_alert(input: AcknowledgeAlertInput) -> ExternResult<Record> {
     alert.acknowledgment_notes = input.notes;
 
     let updated_hash = update_entry(input.alert_hash.clone(), &alert)?;
-    let updated_record = get(updated_hash.clone(), GetOptions::default())?
-        .ok_or(wasm_error!(WasmErrorInner::Guest("Could not find updated alert".to_string())))?;
+    let updated_record = get(updated_hash.clone(), GetOptions::default())?.ok_or(wasm_error!(
+        WasmErrorInner::Guest("Could not find updated alert".to_string())
+    ))?;
 
     create_link(input.alert_hash, updated_hash, LinkTypes::AlertUpdates, ())?;
 
@@ -339,14 +393,17 @@ pub struct ResolveAlertInput {
 /// Resolve a clinical alert
 #[hdk_extern]
 pub fn resolve_alert(input: ResolveAlertInput) -> ExternResult<Record> {
-    let record = get(input.alert_hash.clone(), GetOptions::default())?
-        .ok_or(wasm_error!(WasmErrorInner::Guest("Alert not found".to_string())))?;
+    let record = get(input.alert_hash.clone(), GetOptions::default())?.ok_or(wasm_error!(
+        WasmErrorInner::Guest("Alert not found".to_string())
+    ))?;
 
     let mut alert: ClinicalAlert = record
         .entry()
         .to_app_option()
         .map_err(|e| wasm_error!(WasmErrorInner::Guest(e.to_string())))?
-        .ok_or(wasm_error!(WasmErrorInner::Guest("Invalid alert entry".to_string())))?;
+        .ok_or(wasm_error!(WasmErrorInner::Guest(
+            "Invalid alert entry".to_string()
+        )))?;
 
     let patient_hash = alert.patient_hash.clone();
     let auth = require_authorization(
@@ -360,8 +417,9 @@ pub fn resolve_alert(input: ResolveAlertInput) -> ExternResult<Record> {
     alert.resolution_notes = Some(input.resolution_notes);
 
     let updated_hash = update_entry(input.alert_hash.clone(), &alert)?;
-    let updated_record = get(updated_hash.clone(), GetOptions::default())?
-        .ok_or(wasm_error!(WasmErrorInner::Guest("Could not find updated alert".to_string())))?;
+    let updated_record = get(updated_hash.clone(), GetOptions::default())?.ok_or(wasm_error!(
+        WasmErrorInner::Guest("Could not find updated alert".to_string())
+    ))?;
 
     create_link(input.alert_hash, updated_hash, LinkTypes::AlertUpdates, ())?;
 
@@ -385,8 +443,9 @@ pub fn resolve_alert(input: ResolveAlertInput) -> ExternResult<Record> {
 #[hdk_extern]
 pub fn create_clinical_guideline(guideline: ClinicalGuideline) -> ExternResult<Record> {
     let hash = create_entry(&EntryTypes::ClinicalGuideline(guideline.clone()))?;
-    let record = get(hash.clone(), GetOptions::default())?
-        .ok_or(wasm_error!(WasmErrorInner::Guest("Could not find guideline".to_string())))?;
+    let record = get(hash.clone(), GetOptions::default())?.ok_or(wasm_error!(
+        WasmErrorInner::Guest("Could not find guideline".to_string())
+    ))?;
 
     // Link to all active guidelines anchor
     if guideline.is_active {
@@ -397,7 +456,12 @@ pub fn create_clinical_guideline(guideline: ClinicalGuideline) -> ExternResult<R
     // Link to applicable conditions
     for condition_code in &guideline.applicable_conditions {
         let condition_anchor = anchor_hash(&format!("condition_{}", condition_code))?;
-        create_link(condition_anchor, hash.clone(), LinkTypes::GuidelineToConditions, ())?;
+        create_link(
+            condition_anchor,
+            hash.clone(),
+            LinkTypes::GuidelineToConditions,
+            (),
+        )?;
     }
 
     Ok(record)
@@ -408,7 +472,9 @@ pub fn create_clinical_guideline(guideline: ClinicalGuideline) -> ExternResult<R
 pub fn get_all_active_guidelines(_: ()) -> ExternResult<Vec<Record>> {
     let anchor = anchor_hash("all_active_guidelines")?;
     let links = get_links(
-        LinkQuery::try_new(anchor, LinkTypes::AllActiveGuidelines)?, GetStrategy::default())?;
+        LinkQuery::try_new(anchor, LinkTypes::AllActiveGuidelines)?,
+        GetStrategy::default(),
+    )?;
 
     let mut guidelines = Vec::new();
     for link in links {
@@ -430,10 +496,14 @@ pub struct GetGuidelinesForConditionInput {
 
 /// Get guidelines applicable to a specific condition
 #[hdk_extern]
-pub fn get_guidelines_for_condition(input: GetGuidelinesForConditionInput) -> ExternResult<Vec<Record>> {
+pub fn get_guidelines_for_condition(
+    input: GetGuidelinesForConditionInput,
+) -> ExternResult<Vec<Record>> {
     let condition_anchor = anchor_hash(&format!("condition_{}", input.condition_icd10))?;
     let links = get_links(
-        LinkQuery::try_new(condition_anchor, LinkTypes::GuidelineToConditions)?, GetStrategy::default())?;
+        LinkQuery::try_new(condition_anchor, LinkTypes::GuidelineToConditions)?,
+        GetStrategy::default(),
+    )?;
 
     let mut guidelines = Vec::new();
     for link in links {
@@ -457,8 +527,9 @@ pub fn update_patient_guideline_status(status: PatientGuidelineStatus) -> Extern
         false,
     )?;
     let hash = create_entry(&EntryTypes::PatientGuidelineStatus(status.clone()))?;
-    let record = get(hash.clone(), GetOptions::default())?
-        .ok_or(wasm_error!(WasmErrorInner::Guest("Could not find guideline status".to_string())))?;
+    let record = get(hash.clone(), GetOptions::default())?.ok_or(wasm_error!(
+        WasmErrorInner::Guest("Could not find guideline status".to_string())
+    ))?;
 
     // Link from patient to guideline status
     create_link(
@@ -490,7 +561,9 @@ pub struct GetPatientGuidelineStatusInput {
 
 /// Get guideline compliance status for a patient
 #[hdk_extern]
-pub fn get_patient_guideline_statuses(input: GetPatientGuidelineStatusInput) -> ExternResult<Vec<Record>> {
+pub fn get_patient_guideline_statuses(
+    input: GetPatientGuidelineStatusInput,
+) -> ExternResult<Vec<Record>> {
     // Require authorization
     let auth = require_authorization(
         input.patient_hash.clone(),
@@ -500,7 +573,12 @@ pub fn get_patient_guideline_statuses(input: GetPatientGuidelineStatusInput) -> 
     )?;
 
     let links = get_links(
-        LinkQuery::try_new(input.patient_hash.clone(), LinkTypes::PatientToGuidelineStatuses)?, GetStrategy::default())?;
+        LinkQuery::try_new(
+            input.patient_hash.clone(),
+            LinkTypes::PatientToGuidelineStatuses,
+        )?,
+        GetStrategy::default(),
+    )?;
 
     let mut statuses = Vec::new();
     for link in links {
@@ -537,6 +615,17 @@ pub fn perform_interaction_check(request: InteractionCheckRequest) -> ExternResu
         Permission::Write,
         false,
     )?;
+
+    // requested_by/requested_at are derived from the real caller rather
+    // than trusted from input -- fixed 2026-07-09 during the P0
+    // author-binding pass (previously any agent could forge a victim
+    // agent as requester).
+    let request = InteractionCheckRequest {
+        requested_by: agent_info()?.agent_initial_pubkey,
+        requested_at: sys_time()?,
+        ..request
+    };
+
     // Save the request (hash available for future use, e.g., linking request to response)
     let _request_hash = create_entry(&EntryTypes::InteractionCheckRequest(request.clone()))?;
 
@@ -563,11 +652,8 @@ pub fn perform_interaction_check(request: InteractionCheckRequest) -> ExternResu
     };
 
     // Determine safety assessment based on all findings
-    let safety_assessment = determine_safety_assessment(
-        &drug_interactions,
-        &allergy_conflicts,
-        &duplicate_therapies,
-    );
+    let safety_assessment =
+        determine_safety_assessment(&drug_interactions, &allergy_conflicts, &duplicate_therapies);
 
     // Generate recommendations from all findings
     let mut recommendations = Vec::new();
@@ -599,8 +685,9 @@ pub fn perform_interaction_check(request: InteractionCheckRequest) -> ExternResu
     };
 
     let response_hash = create_entry(&EntryTypes::InteractionCheckResponse(response))?;
-    let response_record = get(response_hash.clone(), GetOptions::default())?
-        .ok_or(wasm_error!(WasmErrorInner::Guest("Could not find response".to_string())))?;
+    let response_record = get(response_hash.clone(), GetOptions::default())?.ok_or(wasm_error!(
+        WasmErrorInner::Guest("Could not find response".to_string())
+    ))?;
 
     // Link from patient to interaction check
     create_link(
@@ -629,40 +716,61 @@ fn determine_safety_assessment(
     duplicate_therapies: &[DuplicateTherapy],
 ) -> SafetyAssessment {
     // Check for contraindicated drug interactions
-    if drug_interactions.iter().any(|i| matches!(i.severity, InteractionSeverity::Contraindicated)) {
+    if drug_interactions
+        .iter()
+        .any(|i| matches!(i.severity, InteractionSeverity::Contraindicated))
+    {
         return SafetyAssessment::Contraindicated;
     }
 
     // Check for anaphylactic allergy risk (highest severity)
-    if allergy_conflicts.iter().any(|c| matches!(c.severity, AllergySeverity::Anaphylactic)) {
+    if allergy_conflicts
+        .iter()
+        .any(|c| matches!(c.severity, AllergySeverity::Anaphylactic))
+    {
         return SafetyAssessment::Contraindicated;
     }
 
     // Check for severe allergy risk
-    if allergy_conflicts.iter().any(|c| matches!(c.severity, AllergySeverity::Severe)) {
+    if allergy_conflicts
+        .iter()
+        .any(|c| matches!(c.severity, AllergySeverity::Severe))
+    {
         return SafetyAssessment::HighRisk;
     }
 
     // Check for major drug interactions
-    if drug_interactions.iter().any(|i| matches!(i.severity, InteractionSeverity::Major)) {
+    if drug_interactions
+        .iter()
+        .any(|i| matches!(i.severity, InteractionSeverity::Major))
+    {
         return SafetyAssessment::HighRisk;
     }
 
     // Check for moderate allergy risk
-    if allergy_conflicts.iter().any(|c| matches!(c.severity, AllergySeverity::Moderate)) {
+    if allergy_conflicts
+        .iter()
+        .any(|c| matches!(c.severity, AllergySeverity::Moderate))
+    {
         return SafetyAssessment::CautionRecommended;
     }
 
     // Check for moderate drug interactions or any duplicate therapies
-    if drug_interactions.iter().any(|i| matches!(i.severity, InteractionSeverity::Moderate))
+    if drug_interactions
+        .iter()
+        .any(|i| matches!(i.severity, InteractionSeverity::Moderate))
         || !duplicate_therapies.is_empty()
     {
         return SafetyAssessment::CautionRecommended;
     }
 
     // Check for mild allergies or minor interactions
-    if allergy_conflicts.iter().any(|c| matches!(c.severity, AllergySeverity::Mild))
-        || drug_interactions.iter().any(|i| matches!(i.severity, InteractionSeverity::Minor))
+    if allergy_conflicts
+        .iter()
+        .any(|c| matches!(c.severity, AllergySeverity::Mild))
+        || drug_interactions
+            .iter()
+            .any(|i| matches!(i.severity, InteractionSeverity::Minor))
     {
         return SafetyAssessment::CautionRecommended;
     }
@@ -709,8 +817,9 @@ pub fn create_pgx_profile(input: CreatePgxProfileInput) -> ExternResult<Record> 
     };
 
     let hash = create_entry(&EntryTypes::PharmacogenomicProfile(profile))?;
-    let record = get(hash.clone(), GetOptions::default())?
-        .ok_or(wasm_error!(WasmErrorInner::Guest("Could not find PGx profile".to_string())))?;
+    let record = get(hash.clone(), GetOptions::default())?.ok_or(wasm_error!(
+        WasmErrorInner::Guest("Could not find PGx profile".to_string())
+    ))?;
 
     // Link from patient to profile
     create_link(
@@ -751,7 +860,9 @@ pub fn get_pgx_profile(input: GetPgxProfileInput) -> ExternResult<Option<Record>
     )?;
 
     let links = get_links(
-        LinkQuery::try_new(input.patient_hash.clone(), LinkTypes::PatientToPgxProfile)?, GetStrategy::default())?;
+        LinkQuery::try_new(input.patient_hash.clone(), LinkTypes::PatientToPgxProfile)?,
+        GetStrategy::default(),
+    )?;
 
     let result = if let Some(link) = links.last() {
         if let Some(hash) = link.target.clone().into_action_hash() {
@@ -779,12 +890,18 @@ pub fn get_pgx_profile(input: GetPgxProfileInput) -> ExternResult<Option<Record>
 #[hdk_extern]
 pub fn create_drug_gene_interaction(interaction: DrugGeneInteraction) -> ExternResult<Record> {
     let hash = create_entry(&EntryTypes::DrugGeneInteraction(interaction.clone()))?;
-    let record = get(hash.clone(), GetOptions::default())?
-        .ok_or(wasm_error!(WasmErrorInner::Guest("Could not find drug-gene interaction".to_string())))?;
+    let record = get(hash.clone(), GetOptions::default())?.ok_or(wasm_error!(
+        WasmErrorInner::Guest("Could not find drug-gene interaction".to_string())
+    ))?;
 
     // Link from drug to interaction
     let drug_anchor = anchor_hash(&format!("drug_pgx_{}", interaction.drug_rxnorm))?;
-    create_link(drug_anchor, hash.clone(), LinkTypes::DrugToGeneInteractions, ())?;
+    create_link(
+        drug_anchor,
+        hash.clone(),
+        LinkTypes::DrugToGeneInteractions,
+        (),
+    )?;
 
     // Link from gene to interaction
     let gene_anchor = anchor_hash(&format!("gene_{}", interaction.gene))?;
@@ -805,7 +922,9 @@ pub struct CheckPgxInteractionInput {
 
 /// Check pharmacogenomic implications for a drug and patient
 #[hdk_extern]
-pub fn check_pgx_interaction(input: CheckPgxInteractionInput) -> ExternResult<PharmacogenomicCheckResult> {
+pub fn check_pgx_interaction(
+    input: CheckPgxInteractionInput,
+) -> ExternResult<PharmacogenomicCheckResult> {
     // Get patient's PGx profile
     let profile_record = get_pgx_profile(GetPgxProfileInput {
         patient_hash: input.patient_hash.clone(),
@@ -814,7 +933,11 @@ pub fn check_pgx_interaction(input: CheckPgxInteractionInput) -> ExternResult<Ph
     })?;
 
     let profile = match profile_record {
-        Some(rec) => rec.entry().to_app_option::<PharmacogenomicProfile>().ok().flatten(),
+        Some(rec) => rec
+            .entry()
+            .to_app_option::<PharmacogenomicProfile>()
+            .ok()
+            .flatten(),
         None => None,
     };
 
@@ -845,24 +968,41 @@ pub fn check_pgx_interaction(input: CheckPgxInteractionInput) -> ExternResult<Ph
     // Look up drug-gene interactions for this drug
     let drug_anchor = anchor_hash(&format!("drug_pgx_{}", input.drug_rxnorm))?;
     let interaction_links = get_links(
-        LinkQuery::try_new(drug_anchor, LinkTypes::DrugToGeneInteractions)?, GetStrategy::default())?;
+        LinkQuery::try_new(drug_anchor, LinkTypes::DrugToGeneInteractions)?,
+        GetStrategy::default(),
+    )?;
 
     for link in interaction_links {
         if let Some(hash) = link.target.into_action_hash() {
             if let Some(record) = get(hash, GetOptions::default())? {
-                if let Some(interaction) = record.entry().to_app_option::<DrugGeneInteraction>().ok().flatten() {
+                if let Some(interaction) = record
+                    .entry()
+                    .to_app_option::<DrugGeneInteraction>()
+                    .ok()
+                    .flatten()
+                {
                     // Check if patient has this gene in their profile
-                    if let Some(patient_variant) = profile.gene_variants.iter().find(|v| v.gene == interaction.gene) {
+                    if let Some(patient_variant) = profile
+                        .gene_variants
+                        .iter()
+                        .find(|v| v.gene == interaction.gene)
+                    {
                         // Find the implication for patient's phenotype
-                        if let Some(implication) = interaction.phenotype_implications.iter()
+                        if let Some(implication) = interaction
+                            .phenotype_implications
+                            .iter()
                             .find(|i| i.phenotype == patient_variant.phenotype)
                         {
                             let impact = match &implication.recommendation {
                                 DosingRecommendation::Avoid => DrugImpact::IncreasedToxicity,
                                 DosingRecommendation::ReducedDose => DrugImpact::AlteredMetabolism,
                                 DosingRecommendation::IncreasedDose => DrugImpact::ReducedEfficacy,
-                                DosingRecommendation::UseAlternative => DrugImpact::IncreasedToxicity,
-                                DosingRecommendation::MonitorClosely => DrugImpact::AlteredMetabolism,
+                                DosingRecommendation::UseAlternative => {
+                                    DrugImpact::IncreasedToxicity
+                                }
+                                DosingRecommendation::MonitorClosely => {
+                                    DrugImpact::AlteredMetabolism
+                                }
                                 _ => DrugImpact::NoImpact,
                             };
 
@@ -900,7 +1040,11 @@ pub fn check_pgx_interaction(input: CheckPgxInteractionInput) -> ExternResult<Ph
             "Found {} gene(s) affecting {} metabolism: {}",
             gene_findings.len(),
             input.drug_name,
-            gene_findings.iter().map(|f| f.gene.as_str()).collect::<Vec<_>>().join(", ")
+            gene_findings
+                .iter()
+                .map(|f| f.gene.as_str())
+                .collect::<Vec<_>>()
+                .join(", ")
         )
     };
 
@@ -935,16 +1079,23 @@ fn worse_recommendation(a: DosingRecommendation, b: DosingRecommendation) -> Dos
         DosingRecommendation::StandardDose => 1,
     };
 
-    if severity(&a) >= severity(&b) { a } else { b }
+    if severity(&a) >= severity(&b) {
+        a
+    } else {
+        b
+    }
 }
 
 /// Check for duplicate therapies (medications in the same therapeutic class)
-fn check_duplicate_therapies(medication_rxnorm_codes: &[String]) -> ExternResult<Vec<DuplicateTherapy>> {
+fn check_duplicate_therapies(
+    medication_rxnorm_codes: &[String],
+) -> ExternResult<Vec<DuplicateTherapy>> {
     let mut duplicates = Vec::new();
 
     // Define common therapeutic classes by RxNorm prefixes/patterns
     // In production, this would use a comprehensive drug classification database
-    let therapy_classes: Vec<(&str, Vec<&str>, &str)> = vec![
+    let therapy_classes: Vec<(&str, Vec<&str>, &str)> =
+        vec![
         // (class_name, [rxnorm_prefixes], recommendation)
         ("ACE Inhibitors", vec!["198188", "261962", "308962"],
          "Multiple ACE inhibitors detected. Consider reviewing for therapeutic duplication."),

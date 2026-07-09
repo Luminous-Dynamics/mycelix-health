@@ -613,8 +613,12 @@ pub enum LinkTypes {
 pub fn validate(op: Op) -> ExternResult<ValidateCallbackResult> {
     match op.flattened::<EntryTypes, LinkTypes>()? {
         FlatOp::StoreEntry(store_entry) => match store_entry {
-            OpEntry::CreateEntry { app_entry, .. } => validate_create_entry(app_entry),
-            OpEntry::UpdateEntry { app_entry, .. } => validate_create_entry(app_entry),
+            OpEntry::CreateEntry { app_entry, action } => {
+                validate_create_entry(EntryCreationAction::Create(action), app_entry)
+            }
+            OpEntry::UpdateEntry {
+                app_entry, action, ..
+            } => validate_update_entry(action, app_entry),
             _ => Ok(ValidateCallbackResult::Valid),
         },
         FlatOp::RegisterCreateLink { link_type, .. } => validate_link(link_type),
@@ -622,21 +626,115 @@ pub fn validate(op: Op) -> ExternResult<ValidateCallbackResult> {
     }
 }
 
-fn validate_create_entry(entry: EntryTypes) -> ExternResult<ValidateCallbackResult> {
+fn validate_create_entry(
+    action: EntryCreationAction,
+    entry: EntryTypes,
+) -> ExternResult<ValidateCallbackResult> {
     match entry {
         EntryTypes::DrugInteraction(interaction) => validate_drug_interaction(&interaction),
-        EntryTypes::DrugAllergyInteraction(interaction) => validate_allergy_interaction(&interaction),
-        EntryTypes::ClinicalAlert(alert) => validate_clinical_alert(&alert),
+        EntryTypes::DrugAllergyInteraction(interaction) => {
+            validate_allergy_interaction(&interaction)
+        }
+        EntryTypes::ClinicalAlert(alert) => validate_clinical_alert(&action, &alert),
         EntryTypes::ClinicalGuideline(guideline) => validate_clinical_guideline(&guideline),
         EntryTypes::PatientGuidelineStatus(status) => validate_guideline_status(&status),
-        EntryTypes::InteractionCheckRequest(request) => validate_interaction_request(&request),
+        EntryTypes::InteractionCheckRequest(request) => {
+            validate_interaction_request(&action, &request)
+        }
         EntryTypes::InteractionCheckResponse(response) => validate_interaction_response(&response),
         EntryTypes::PharmacogenomicProfile(profile) => validate_pgx_profile(&profile),
-        EntryTypes::DrugGeneInteraction(interaction) => validate_drug_gene_interaction(&interaction),
+        EntryTypes::DrugGeneInteraction(interaction) => {
+            validate_drug_gene_interaction(&interaction)
+        }
     }
 }
 
-fn validate_drug_interaction(interaction: &DrugInteraction) -> ExternResult<ValidateCallbackResult> {
+/// Only `ClinicalAlert` has a live update path (acknowledge_alert/
+/// resolve_alert). Every other entry type here is reference/library
+/// content or a one-shot request record with no coordinator update call
+/// at all (confirmed via grep for `update_entry`) -- made explicitly
+/// immutable. Reviewed 2026-07-09 during the P0 author-binding pass:
+/// previously ALL 9 entry types routed updates through the same
+/// create-shaped validator with no comparison to the original, so a
+/// modified coordinator could silently rewrite any field of any entry
+/// (drug interaction data, clinical guidelines, etc.), not just forge an
+/// identity field.
+fn validate_update_entry(
+    action: Update,
+    entry: EntryTypes,
+) -> ExternResult<ValidateCallbackResult> {
+    match entry {
+        EntryTypes::ClinicalAlert(alert) => validate_update_clinical_alert(action, alert),
+        EntryTypes::DrugInteraction(_) => Ok(ValidateCallbackResult::Invalid(
+            "Drug interactions are immutable".into(),
+        )),
+        EntryTypes::DrugAllergyInteraction(_) => Ok(ValidateCallbackResult::Invalid(
+            "Drug-allergy interactions are immutable".into(),
+        )),
+        EntryTypes::ClinicalGuideline(_) => Ok(ValidateCallbackResult::Invalid(
+            "Clinical guidelines are immutable".into(),
+        )),
+        EntryTypes::PatientGuidelineStatus(_) => Ok(ValidateCallbackResult::Invalid(
+            "Patient guideline statuses are immutable".into(),
+        )),
+        EntryTypes::InteractionCheckRequest(_) => Ok(ValidateCallbackResult::Invalid(
+            "Interaction check requests are immutable".into(),
+        )),
+        EntryTypes::InteractionCheckResponse(_) => Ok(ValidateCallbackResult::Invalid(
+            "Interaction check responses are immutable".into(),
+        )),
+        EntryTypes::PharmacogenomicProfile(_) => Ok(ValidateCallbackResult::Invalid(
+            "Pharmacogenomic profiles are immutable".into(),
+        )),
+        EntryTypes::DrugGeneInteraction(_) => Ok(ValidateCallbackResult::Invalid(
+            "Drug-gene interactions are immutable".into(),
+        )),
+    }
+}
+
+/// Content is restricted to acknowledged/acknowledged_by/acknowledged_at/
+/// acknowledgment_notes/resolved/resolution_notes -- the exact fields
+/// acknowledge_alert/resolve_alert actually change. No author requirement
+/// tied to the ORIGINAL alert's creator (a different clinician may
+/// legitimately acknowledge/resolve someone else's alert), but see
+/// validate_update_clinical_alert's own acknowledged_by check below.
+fn validate_update_clinical_alert(
+    action: Update,
+    alert: ClinicalAlert,
+) -> ExternResult<ValidateCallbackResult> {
+    let original_record = must_get_valid_record(action.original_action_address.clone())?;
+    let original: ClinicalAlert = original_record
+        .entry()
+        .to_app_option()
+        .map_err(|e| wasm_error!(WasmErrorInner::Guest(e.to_string())))?
+        .ok_or(wasm_error!(WasmErrorInner::Guest(
+            "Original alert not found".into()
+        )))?;
+
+    if alert.alert_id != original.alert_id
+        || alert.patient_hash != original.patient_hash
+        || alert.alert_type != original.alert_type
+        || alert.priority != original.priority
+        || alert.category != original.category
+        || alert.message != original.message
+        || alert.details != original.details
+        || alert.trigger != original.trigger
+        || alert.recommended_actions != original.recommended_actions
+        || alert.created_at != original.created_at
+        || alert.expires_at != original.expires_at
+        || alert.related_data != original.related_data
+    {
+        return Ok(ValidateCallbackResult::Invalid(
+            "Only acknowledgment/resolution fields can change on an alert update".into(),
+        ));
+    }
+
+    validate_clinical_alert(&EntryCreationAction::Update(action), &alert)
+}
+
+fn validate_drug_interaction(
+    interaction: &DrugInteraction,
+) -> ExternResult<ValidateCallbackResult> {
     if interaction.interaction_id.is_empty() {
         return Ok(ValidateCallbackResult::Invalid(
             "Interaction ID cannot be empty".to_string(),
@@ -670,7 +768,9 @@ fn validate_drug_interaction(interaction: &DrugInteraction) -> ExternResult<Vali
     Ok(ValidateCallbackResult::Valid)
 }
 
-fn validate_allergy_interaction(interaction: &DrugAllergyInteraction) -> ExternResult<ValidateCallbackResult> {
+fn validate_allergy_interaction(
+    interaction: &DrugAllergyInteraction,
+) -> ExternResult<ValidateCallbackResult> {
     if interaction.drug_rxnorm.is_empty() {
         return Ok(ValidateCallbackResult::Invalid(
             "Drug RxNorm code is required".to_string(),
@@ -686,7 +786,10 @@ fn validate_allergy_interaction(interaction: &DrugAllergyInteraction) -> ExternR
     Ok(ValidateCallbackResult::Valid)
 }
 
-fn validate_clinical_alert(alert: &ClinicalAlert) -> ExternResult<ValidateCallbackResult> {
+fn validate_clinical_alert(
+    action: &EntryCreationAction,
+    alert: &ClinicalAlert,
+) -> ExternResult<ValidateCallbackResult> {
     if alert.alert_id.is_empty() {
         return Ok(ValidateCallbackResult::Invalid(
             "Alert ID cannot be empty".to_string(),
@@ -712,10 +815,27 @@ fn validate_clinical_alert(alert: &ClinicalAlert) -> ExternResult<ValidateCallba
         ));
     }
 
+    // Author-binding: on create, acknowledged_by is always None
+    // (create_clinical_alert hardcodes it); on update, acknowledge_alert
+    // already derives it from agent_info(). Either way, whoever names
+    // themselves as acknowledger must be the actual committing agent --
+    // found + fixed 2026-07-09 during the P0 author-binding pass (the
+    // dispatcher previously discarded `action` entirely, so this field
+    // was never checked against anything).
+    if let Some(acknowledged_by) = &alert.acknowledged_by {
+        if *acknowledged_by != *action.author() {
+            return Ok(ValidateCallbackResult::Invalid(
+                "acknowledged_by must correspond to the committing agent".to_string(),
+            ));
+        }
+    }
+
     Ok(ValidateCallbackResult::Valid)
 }
 
-fn validate_clinical_guideline(guideline: &ClinicalGuideline) -> ExternResult<ValidateCallbackResult> {
+fn validate_clinical_guideline(
+    guideline: &ClinicalGuideline,
+) -> ExternResult<ValidateCallbackResult> {
     if guideline.guideline_id.is_empty() {
         return Ok(ValidateCallbackResult::Invalid(
             "Guideline ID cannot be empty".to_string(),
@@ -737,15 +857,18 @@ fn validate_clinical_guideline(guideline: &ClinicalGuideline) -> ExternResult<Va
     // Validate evidence grade
     let valid_grades = ["A", "B", "C", "D", "E", "I"];
     if !valid_grades.contains(&guideline.evidence_grade.to_uppercase().as_str()) {
-        return Ok(ValidateCallbackResult::Invalid(
-            format!("Invalid evidence grade: {}. Must be one of: {:?}", guideline.evidence_grade, valid_grades),
-        ));
+        return Ok(ValidateCallbackResult::Invalid(format!(
+            "Invalid evidence grade: {}. Must be one of: {:?}",
+            guideline.evidence_grade, valid_grades
+        )));
     }
 
     Ok(ValidateCallbackResult::Valid)
 }
 
-fn validate_guideline_status(status: &PatientGuidelineStatus) -> ExternResult<ValidateCallbackResult> {
+fn validate_guideline_status(
+    status: &PatientGuidelineStatus,
+) -> ExternResult<ValidateCallbackResult> {
     if status.guideline_id.is_empty() {
         return Ok(ValidateCallbackResult::Invalid(
             "Guideline ID is required".to_string(),
@@ -761,7 +884,22 @@ fn validate_guideline_status(status: &PatientGuidelineStatus) -> ExternResult<Va
     Ok(ValidateCallbackResult::Valid)
 }
 
-fn validate_interaction_request(request: &InteractionCheckRequest) -> ExternResult<ValidateCallbackResult> {
+fn validate_interaction_request(
+    action: &EntryCreationAction,
+    request: &InteractionCheckRequest,
+) -> ExternResult<ValidateCallbackResult> {
+    // Author-binding: the coordinator's perform_interaction_check
+    // currently takes the FULL InteractionCheckRequest (including
+    // requested_by) straight from caller input with ZERO derivation from
+    // agent_info() -- any agent could forge a victim agent as requester.
+    // Found + fixed 2026-07-09 during the P0 author-binding pass
+    // (coordinator-side fix applied alongside this).
+    if request.requested_by != *action.author() {
+        return Ok(ValidateCallbackResult::Invalid(
+            "requested_by must correspond to the committing agent".to_string(),
+        ));
+    }
+
     if request.request_id.is_empty() {
         return Ok(ValidateCallbackResult::Invalid(
             "Request ID cannot be empty".to_string(),
@@ -777,7 +915,9 @@ fn validate_interaction_request(request: &InteractionCheckRequest) -> ExternResu
     Ok(ValidateCallbackResult::Valid)
 }
 
-fn validate_interaction_response(response: &InteractionCheckResponse) -> ExternResult<ValidateCallbackResult> {
+fn validate_interaction_response(
+    response: &InteractionCheckResponse,
+) -> ExternResult<ValidateCallbackResult> {
     if response.request_id.is_empty() {
         return Ok(ValidateCallbackResult::Invalid(
             "Response must reference a request ID".to_string(),
@@ -814,16 +954,19 @@ fn validate_pgx_profile(profile: &PharmacogenomicProfile) -> ExternResult<Valida
             ));
         }
         if variant.diplotype.is_empty() {
-            return Ok(ValidateCallbackResult::Invalid(
-                format!("Diplotype required for gene {}", variant.gene),
-            ));
+            return Ok(ValidateCallbackResult::Invalid(format!(
+                "Diplotype required for gene {}",
+                variant.gene
+            )));
         }
     }
 
     Ok(ValidateCallbackResult::Valid)
 }
 
-fn validate_drug_gene_interaction(interaction: &DrugGeneInteraction) -> ExternResult<ValidateCallbackResult> {
+fn validate_drug_gene_interaction(
+    interaction: &DrugGeneInteraction,
+) -> ExternResult<ValidateCallbackResult> {
     if interaction.interaction_id.is_empty() {
         return Ok(ValidateCallbackResult::Invalid(
             "Interaction ID cannot be empty".to_string(),
@@ -865,5 +1008,159 @@ fn validate_link(link_type: LinkTypes) -> ExternResult<ValidateCallbackResult> {
         LinkTypes::PatientToPgxProfile => Ok(ValidateCallbackResult::Valid),
         LinkTypes::DrugToGeneInteractions => Ok(ValidateCallbackResult::Valid),
         LinkTypes::GeneToDrugInteractions => Ok(ValidateCallbackResult::Valid),
+    }
+}
+
+#[cfg(test)]
+mod author_binding_tests {
+    use super::*;
+
+    fn create_action(author: AgentPubKey) -> EntryCreationAction {
+        EntryCreationAction::Create(Create {
+            author,
+            timestamp: Timestamp::from_micros(0),
+            action_seq: 0,
+            prev_action: ActionHash::from_raw_36(vec![0u8; 36]),
+            entry_type: EntryType::App(AppEntryDef::new(
+                EntryDefIndex::from(0),
+                0.into(),
+                EntryVisibility::Public,
+            )),
+            entry_hash: EntryHash::from_raw_36(vec![0u8; 36]),
+            weight: Default::default(),
+        })
+    }
+
+    fn update_action(author: AgentPubKey) -> Update {
+        Update {
+            author,
+            timestamp: Timestamp::from_micros(1),
+            action_seq: 1,
+            prev_action: ActionHash::from_raw_36(vec![0u8; 36]),
+            original_action_address: ActionHash::from_raw_36(vec![9u8; 36]),
+            original_entry_address: EntryHash::from_raw_36(vec![0u8; 36]),
+            entry_type: EntryType::App(AppEntryDef::new(
+                EntryDefIndex::from(0),
+                0.into(),
+                EntryVisibility::Public,
+            )),
+            entry_hash: EntryHash::from_raw_36(vec![0u8; 36]),
+            weight: Default::default(),
+        }
+    }
+
+    fn me() -> AgentPubKey {
+        AgentPubKey::from_raw_36(vec![0u8; 36])
+    }
+
+    fn other_agent() -> AgentPubKey {
+        AgentPubKey::from_raw_36(vec![1u8; 36])
+    }
+
+    fn valid_request(requested_by: AgentPubKey) -> InteractionCheckRequest {
+        InteractionCheckRequest {
+            request_id: "r-1".into(),
+            patient_hash: ActionHash::from_raw_36(vec![2u8; 36]),
+            medication_rxnorm_codes: vec!["12345".into()],
+            patient_allergies: vec![],
+            check_allergies: false,
+            check_duplicates: false,
+            check_dosages: false,
+            requested_by,
+            requested_at: Timestamp::from_micros(0),
+        }
+    }
+
+    #[test]
+    fn create_request_valid_when_requester_matches_committer() {
+        let author = me();
+        let r = valid_request(author.clone());
+        let result = validate_interaction_request(&create_action(author), &r).unwrap();
+        assert_eq!(result, ValidateCallbackResult::Valid);
+    }
+
+    #[test]
+    fn create_request_forgery_rejected() {
+        let r = valid_request(me());
+        let result = validate_interaction_request(&create_action(other_agent()), &r).unwrap();
+        assert!(matches!(result, ValidateCallbackResult::Invalid(_)));
+    }
+
+    fn valid_alert(acknowledged_by: Option<AgentPubKey>) -> ClinicalAlert {
+        ClinicalAlert {
+            alert_id: "a-1".into(),
+            patient_hash: ActionHash::from_raw_36(vec![2u8; 36]),
+            alert_type: AlertType::DrugInteraction,
+            priority: AlertPriority::High,
+            category: AlertCategory::Safety,
+            message: "Interaction detected".into(),
+            details: None,
+            trigger: "drug pair".into(),
+            recommended_actions: vec![],
+            acknowledged: acknowledged_by.is_some(),
+            acknowledged_by,
+            acknowledged_at: None,
+            acknowledgment_notes: None,
+            resolved: false,
+            resolution_notes: None,
+            created_at: Timestamp::from_micros(0),
+            expires_at: None,
+            related_data: vec![],
+        }
+    }
+
+    #[test]
+    fn create_alert_valid_with_no_acknowledger() {
+        let a = valid_alert(None);
+        let result = validate_clinical_alert(&create_action(me()), &a).unwrap();
+        assert_eq!(result, ValidateCallbackResult::Valid);
+    }
+
+    #[test]
+    fn acknowledge_alert_valid_when_acknowledger_matches_committer() {
+        let author = me();
+        let a = valid_alert(Some(author.clone()));
+        let result = validate_clinical_alert(&create_action(author), &a).unwrap();
+        assert_eq!(result, ValidateCallbackResult::Valid);
+    }
+
+    #[test]
+    fn acknowledge_alert_forgery_rejected() {
+        let a = valid_alert(Some(me()));
+        let result = validate_clinical_alert(&create_action(other_agent()), &a).unwrap();
+        assert!(matches!(result, ValidateCallbackResult::Invalid(_)));
+    }
+
+    #[test]
+    fn update_entry_rejects_drug_interaction_update() {
+        let interaction = DrugInteraction {
+            interaction_id: "i-1".into(),
+            drug_a_rxnorm: "1".into(),
+            drug_a_name: "A".into(),
+            drug_b_rxnorm: "2".into(),
+            drug_b_name: "B".into(),
+            severity: InteractionSeverity::Major,
+            description: "desc".into(),
+            clinical_effects: vec![],
+            management: "manage".into(),
+            evidence_references: vec![],
+            source: "source".into(),
+            last_reviewed: Timestamp::from_micros(0),
+        };
+        let result = validate_update_entry(
+            update_action(me()),
+            EntryTypes::DrugInteraction(interaction),
+        )
+        .unwrap();
+        assert!(matches!(result, ValidateCallbackResult::Invalid(_)));
+    }
+
+    #[test]
+    fn update_entry_rejects_interaction_request_update() {
+        let r = valid_request(me());
+        let result =
+            validate_update_entry(update_action(me()), EntryTypes::InteractionCheckRequest(r))
+                .unwrap();
+        assert!(matches!(result, ValidateCallbackResult::Invalid(_)));
     }
 }
