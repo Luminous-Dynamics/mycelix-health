@@ -45,6 +45,13 @@ members = [
     "zomes/dividends/integrity",
     "zomes/dividends/coordinator",
 
+    # ── Health Credentials (added to workspace 2026-07-09 -- source
+    #    existed on disk but was never a workspace member, so it never
+    #    compiled and was never packaged into the DNA; see P0
+    #    author-binding pass notes) ──
+    "zomes/credentials/integrity",
+    "zomes/credentials/coordinator",
+
     # ── Health FL Pipeline ──
     "crates/health-fl",
 

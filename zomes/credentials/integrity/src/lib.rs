@@ -171,7 +171,7 @@ pub fn validate(op: Op) -> ExternResult<ValidateCallbackResult> {
                 ));
             }
             Ok(ValidateCallbackResult::Valid)
-        },
+        }
         FlatOp::RegisterDelete(OpDelete { action, .. }) => {
             let original = must_get_action(action.deletes_address.clone())?;
             if *original.action().author() != action.author {
@@ -180,18 +180,20 @@ pub fn validate(op: Op) -> ExternResult<ValidateCallbackResult> {
                 ));
             }
             Ok(ValidateCallbackResult::Valid)
-        },
+        }
     }
 }
 
 fn validate_create_entry(
-    _action: EntryCreationAction,
+    action: EntryCreationAction,
     app_entry: EntryTypes,
 ) -> ExternResult<ValidateCallbackResult> {
     match app_entry {
         EntryTypes::Anchor(anchor) => validate_anchor(anchor),
-        EntryTypes::HealthCredential(credential) => validate_health_credential(credential),
-        EntryTypes::CredentialRevocation(revocation) => validate_credential_revocation(revocation),
+        EntryTypes::HealthCredential(credential) => validate_health_credential(action, credential),
+        EntryTypes::CredentialRevocation(revocation) => {
+            validate_credential_revocation(action, revocation)
+        }
     }
 }
 
@@ -209,7 +211,26 @@ fn validate_anchor(anchor: Anchor) -> ExternResult<ValidateCallbackResult> {
     Ok(ValidateCallbackResult::Valid)
 }
 
-fn validate_health_credential(credential: HealthCredential) -> ExternResult<ValidateCallbackResult> {
+/// holder_did is deliberately NOT bound to the committer: it's a
+/// third-party field by design (the issuer commits the entry but names a
+/// DIFFERENT agent, the patient/practitioner, as holder). Reviewed
+/// 2026-07-09 during the P0 author-binding pass; case (b).
+fn validate_health_credential(
+    action: EntryCreationAction,
+    credential: HealthCredential,
+) -> ExternResult<ValidateCallbackResult> {
+    // Author-binding: the coordinator's issue_credential already derives
+    // issuer_did from get_my_did() (agent_info()-based), so this is
+    // belt-and-suspenders against a modified coordinator forging a victim
+    // agent as issuer. Found + fixed 2026-07-09 during the P0
+    // author-binding pass.
+    let expected_issuer = format!("did:mycelix:{}", action.author());
+    if credential.issuer_did != expected_issuer {
+        return Ok(ValidateCallbackResult::Invalid(
+            "issuer_did must correspond to the committing agent".into(),
+        ));
+    }
+
     // Validate holder DID
     let result = validate_did(&credential.holder_did, "holder_did")?;
     if let ValidateCallbackResult::Invalid(_) = result {
@@ -248,9 +269,42 @@ fn validate_health_credential(credential: HealthCredential) -> ExternResult<Vali
     Ok(ValidateCallbackResult::Valid)
 }
 
+/// Author-binding + cross-entry authorization check. The coordinator's
+/// revoke_credential already derives revoker_did from get_my_did() and
+/// checks (client-side only, bypassable by a modified coordinator) that
+/// the caller is the credential's issuer before creating this entry.
+/// Found + fixed 2026-07-09 during the P0 author-binding pass: this is
+/// the real DHT-level enforcement of BOTH checks -- revoker_did must
+/// correspond to the committing agent, AND the committing agent must
+/// actually be the ORIGINAL credential's issuer (fetched via
+/// must_get_valid_record), not merely claim to be. Without the second
+/// check, a modified coordinator could forge a valid-looking revocation
+/// of someone else's credential from a non-issuer agent.
 fn validate_credential_revocation(
+    action: EntryCreationAction,
     revocation: CredentialRevocation,
 ) -> ExternResult<ValidateCallbackResult> {
+    let expected_revoker = format!("did:mycelix:{}", action.author());
+    if revocation.revoker_did != expected_revoker {
+        return Ok(ValidateCallbackResult::Invalid(
+            "revoker_did must correspond to the committing agent".into(),
+        ));
+    }
+
+    let credential_record = must_get_valid_record(revocation.credential_hash.clone())?;
+    let credential: HealthCredential = credential_record
+        .entry()
+        .to_app_option()
+        .map_err(|e| wasm_error!(WasmErrorInner::Guest(e.to_string())))?
+        .ok_or(wasm_error!(WasmErrorInner::Guest(
+            "Referenced credential not found".into()
+        )))?;
+    if credential.issuer_did != revocation.revoker_did {
+        return Ok(ValidateCallbackResult::Invalid(
+            "Only the credential's issuer can revoke it".into(),
+        ));
+    }
+
     // Validate revoker DID
     let result = validate_did(&revocation.revoker_did, "revoker_did")?;
     if let ValidateCallbackResult::Invalid(_) = result {
@@ -297,11 +351,91 @@ fn validate_delete_link(
 ) -> ExternResult<ValidateCallbackResult> {
     match link_type {
         // Revocation links cannot be deleted (immutable audit trail)
-        LinkTypes::CredentialToRevocation | LinkTypes::IssuerToRevocations => {
-            Ok(ValidateCallbackResult::Invalid(
-                "Revocation links cannot be deleted".into(),
-            ))
-        }
+        LinkTypes::CredentialToRevocation | LinkTypes::IssuerToRevocations => Ok(
+            ValidateCallbackResult::Invalid("Revocation links cannot be deleted".into()),
+        ),
         _ => Ok(ValidateCallbackResult::Valid),
+    }
+}
+
+#[cfg(test)]
+mod author_binding_tests {
+    use super::*;
+
+    fn create_action(author: AgentPubKey) -> EntryCreationAction {
+        EntryCreationAction::Create(Create {
+            author,
+            timestamp: Timestamp::from_micros(0),
+            action_seq: 0,
+            prev_action: ActionHash::from_raw_36(vec![0u8; 36]),
+            entry_type: EntryType::App(AppEntryDef::new(
+                EntryDefIndex::from(0),
+                0.into(),
+                EntryVisibility::Public,
+            )),
+            entry_hash: EntryHash::from_raw_36(vec![0u8; 36]),
+            weight: Default::default(),
+        })
+    }
+
+    fn me() -> AgentPubKey {
+        AgentPubKey::from_raw_36(vec![0u8; 36])
+    }
+
+    fn other_agent() -> AgentPubKey {
+        AgentPubKey::from_raw_36(vec![1u8; 36])
+    }
+
+    fn valid_credential(issuer_did: String) -> HealthCredential {
+        HealthCredential {
+            holder_did: "did:mycelix:some-patient-agent-pubkey".into(),
+            credential_type: CredentialType::VaccinationProof,
+            issuer_did,
+            claims: "{}".into(),
+            issued: Timestamp::from_micros(0),
+            expires: None,
+        }
+    }
+
+    #[test]
+    fn create_credential_valid_when_issuer_matches_committer() {
+        let author = me();
+        let c = valid_credential(format!("did:mycelix:{}", author));
+        let result = validate_health_credential(create_action(author), c).unwrap();
+        assert_eq!(result, ValidateCallbackResult::Valid);
+    }
+
+    #[test]
+    fn create_credential_issuer_forgery_rejected() {
+        let c = valid_credential(format!("did:mycelix:{}", me()));
+        let result = validate_health_credential(create_action(other_agent()), c).unwrap();
+        assert!(matches!(result, ValidateCallbackResult::Invalid(_)));
+    }
+
+    #[test]
+    fn create_credential_holder_third_party_allowed() {
+        // holder_did naming a different agent than the committer/issuer is
+        // the expected case, not forgery.
+        let author = me();
+        let c = valid_credential(format!("did:mycelix:{}", author));
+        assert_ne!(c.holder_did, format!("did:mycelix:{}", author));
+        let result = validate_health_credential(create_action(author), c).unwrap();
+        assert_eq!(result, ValidateCallbackResult::Valid);
+    }
+
+    #[test]
+    fn create_revocation_revoker_forgery_rejected_before_must_get() {
+        // revoker_did must match the committing agent; this is checked
+        // before must_get_valid_record, so it's testable without a live
+        // HDI host.
+        let revocation = CredentialRevocation {
+            credential_hash: ActionHash::from_raw_36(vec![2u8; 36]),
+            revoker_did: format!("did:mycelix:{}", me()),
+            reason: "expired".into(),
+            revoked_at: Timestamp::from_micros(0),
+        };
+        let result =
+            validate_credential_revocation(create_action(other_agent()), revocation).unwrap();
+        assert!(matches!(result, ValidateCallbackResult::Invalid(_)));
     }
 }
