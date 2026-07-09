@@ -10,8 +10,8 @@
 //! Integrates with the health-food SDK bridge module.
 
 use hdk::prelude::*;
+use mycelix_health_shared::{log_data_access, require_authorization, DataCategory, Permission};
 use nutrition_integrity::*;
-use mycelix_health_shared::{require_authorization, log_data_access, DataCategory, Permission};
 
 // ============================================================================
 // Anchor Entry for Indexing
@@ -98,8 +98,9 @@ pub fn add_dietary_restriction(restriction: DietaryRestriction) -> ExternResult<
         )?;
     }
 
-    let record = get(action_hash, GetOptions::default())?
-        .ok_or(wasm_error!(WasmErrorInner::Guest("Failed to get created restriction".into())))?;
+    let record = get(action_hash, GetOptions::default())?.ok_or(wasm_error!(
+        WasmErrorInner::Guest("Failed to get created restriction".into())
+    ))?;
 
     log_data_access(
         restriction.patient_hash,
@@ -116,14 +117,17 @@ pub fn add_dietary_restriction(restriction: DietaryRestriction) -> ExternResult<
 /// Update a dietary restriction
 #[hdk_extern]
 pub fn update_dietary_restriction(input: UpdateRestrictionInput) -> ExternResult<Record> {
-    let record = get(input.original_hash.clone(), GetOptions::default())?
-        .ok_or(wasm_error!(WasmErrorInner::Guest("Restriction not found".into())))?;
+    let record = get(input.original_hash.clone(), GetOptions::default())?.ok_or(wasm_error!(
+        WasmErrorInner::Guest("Restriction not found".into())
+    ))?;
 
     let existing: DietaryRestriction = record
         .entry()
         .to_app_option()
         .map_err(|e| wasm_error!(WasmErrorInner::Guest(e.to_string())))?
-        .ok_or(wasm_error!(WasmErrorInner::Guest("Invalid restriction entry".into())))?;
+        .ok_or(wasm_error!(WasmErrorInner::Guest(
+            "Invalid restriction entry".into()
+        )))?;
 
     if existing.patient_hash != input.updated_restriction.patient_hash {
         return Err(wasm_error!(WasmErrorInner::Guest(
@@ -140,8 +144,9 @@ pub fn update_dietary_restriction(input: UpdateRestrictionInput) -> ExternResult
 
     let updated_hash = update_entry(input.original_hash.clone(), &input.updated_restriction)?;
 
-    let updated_record = get(updated_hash, GetOptions::default())?
-        .ok_or(wasm_error!(WasmErrorInner::Guest("Failed to get updated restriction".into())))?;
+    let updated_record = get(updated_hash, GetOptions::default())?.ok_or(wasm_error!(
+        WasmErrorInner::Guest("Failed to get updated restriction".into())
+    ))?;
 
     log_data_access(
         input.updated_restriction.patient_hash,
@@ -164,14 +169,17 @@ pub struct UpdateRestrictionInput {
 /// Deactivate a dietary restriction
 #[hdk_extern]
 pub fn deactivate_restriction(restriction_hash: ActionHash) -> ExternResult<Record> {
-    let record = get(restriction_hash.clone(), GetOptions::default())?
-        .ok_or(wasm_error!(WasmErrorInner::Guest("Restriction not found".into())))?;
+    let record = get(restriction_hash.clone(), GetOptions::default())?.ok_or(wasm_error!(
+        WasmErrorInner::Guest("Restriction not found".into())
+    ))?;
 
     let mut restriction: DietaryRestriction = record
         .entry()
         .to_app_option()
         .map_err(|e| wasm_error!(WasmErrorInner::Guest(e.to_string())))?
-        .ok_or(wasm_error!(WasmErrorInner::Guest("Invalid restriction entry".into())))?;
+        .ok_or(wasm_error!(WasmErrorInner::Guest(
+            "Invalid restriction entry".into()
+        )))?;
 
     restriction.active = false;
     restriction.updated_at = sys_time()?;
@@ -184,8 +192,9 @@ pub fn deactivate_restriction(restriction_hash: ActionHash) -> ExternResult<Reco
     )?;
 
     let updated_hash = update_entry(restriction_hash, &restriction)?;
-    let updated_record = get(updated_hash, GetOptions::default())?
-        .ok_or(wasm_error!(WasmErrorInner::Guest("Failed to get updated restriction".into())))?;
+    let updated_record = get(updated_hash, GetOptions::default())?.ok_or(wasm_error!(
+        WasmErrorInner::Guest("Failed to get updated restriction".into())
+    ))?;
 
     log_data_access(
         restriction.patient_hash,
@@ -229,6 +238,18 @@ pub fn get_drug_food_interactions(medication_name: String) -> ExternResult<Vec<R
 /// Add a drug-food interaction entry
 #[hdk_extern]
 pub fn add_drug_food_interaction(interaction: DrugFoodInteraction) -> ExternResult<Record> {
+    // created_by/created_at are derived from the real caller rather than
+    // trusted from input -- fixed 2026-07-09 during the P0
+    // author-binding pass (previously any agent could forge a victim
+    // agent as the interaction's creator).
+    let now = sys_time()?;
+    let interaction = DrugFoodInteraction {
+        created_by: agent_info()?.agent_initial_pubkey,
+        created_at: now,
+        updated_at: now,
+        ..interaction
+    };
+
     let action_hash = create_entry(&EntryTypes::DrugFoodInteraction(interaction.clone()))?;
 
     // Link from medication anchor
@@ -258,8 +279,9 @@ pub fn add_drug_food_interaction(interaction: DrugFoodInteraction) -> ExternResu
         (),
     )?;
 
-    get(action_hash, GetOptions::default())?
-        .ok_or(wasm_error!(WasmErrorInner::Guest("Failed to get created interaction".into())))
+    get(action_hash, GetOptions::default())?.ok_or(wasm_error!(WasmErrorInner::Guest(
+        "Failed to get created interaction".into()
+    )))
 }
 
 /// Get all drug-food interactions
@@ -456,8 +478,9 @@ pub fn create_nutrition_goal(goal: NutritionGoal) -> ExternResult<Record> {
         (),
     )?;
 
-    let record = get(action_hash, GetOptions::default())?
-        .ok_or(wasm_error!(WasmErrorInner::Guest("Failed to get created goal".into())))?;
+    let record = get(action_hash, GetOptions::default())?.ok_or(wasm_error!(
+        WasmErrorInner::Guest("Failed to get created goal".into())
+    ))?;
 
     log_data_access(
         goal.patient_hash,
@@ -481,7 +504,9 @@ pub fn update_nutrition_goal(input: UpdateGoalInput) -> ExternResult<Record> {
         .entry()
         .to_app_option()
         .map_err(|e| wasm_error!(WasmErrorInner::Guest(e.to_string())))?
-        .ok_or(wasm_error!(WasmErrorInner::Guest("Invalid goal entry".into())))?;
+        .ok_or(wasm_error!(WasmErrorInner::Guest(
+            "Invalid goal entry".into()
+        )))?;
 
     if existing.patient_hash != input.updated_goal.patient_hash {
         return Err(wasm_error!(WasmErrorInner::Guest(
@@ -498,8 +523,9 @@ pub fn update_nutrition_goal(input: UpdateGoalInput) -> ExternResult<Record> {
 
     let updated_hash = update_entry(input.original_hash, &input.updated_goal)?;
 
-    let updated_record = get(updated_hash, GetOptions::default())?
-        .ok_or(wasm_error!(WasmErrorInner::Guest("Failed to get updated goal".into())))?;
+    let updated_record = get(updated_hash, GetOptions::default())?.ok_or(wasm_error!(
+        WasmErrorInner::Guest("Failed to get updated goal".into())
+    ))?;
 
     log_data_access(
         input.updated_goal.patient_hash,
@@ -542,8 +568,9 @@ pub fn log_meal(meal: MealLog) -> ExternResult<Record> {
         (),
     )?;
 
-    let record = get(action_hash, GetOptions::default())?
-        .ok_or(wasm_error!(WasmErrorInner::Guest("Failed to get created meal log".into())))?;
+    let record = get(action_hash, GetOptions::default())?.ok_or(wasm_error!(
+        WasmErrorInner::Guest("Failed to get created meal log".into())
+    ))?;
 
     log_data_access(
         meal.patient_hash,
@@ -575,12 +602,7 @@ pub fn get_patient_meals(input: GetMealsInput) -> ExternResult<Vec<Record>> {
     for link in links {
         if let Some(hash) = link.target.into_action_hash() {
             if let Some(record) = get(hash, GetOptions::default())? {
-                if let Some(meal) = record
-                    .entry()
-                    .to_app_option::<MealLog>()
-                    .ok()
-                    .flatten()
-                {
+                if let Some(meal) = record.entry().to_app_option::<MealLog>().ok().flatten() {
                     // Filter by date range
                     let meal_time = meal.timestamp.as_micros();
                     if meal_time >= input.start_date && meal_time <= input.end_date {
@@ -614,7 +636,9 @@ pub struct GetMealsInput {
 
 /// Get daily nutrition summary
 #[hdk_extern]
-pub fn get_daily_nutrition_summary(input: DailySummaryInput) -> ExternResult<DailyNutritionSummary> {
+pub fn get_daily_nutrition_summary(
+    input: DailySummaryInput,
+) -> ExternResult<DailyNutritionSummary> {
     // Get meals for the day
     let day_start = input.date;
     let day_end = input.date + 86_400_000_000; // 24 hours in microseconds
@@ -635,12 +659,7 @@ pub fn get_daily_nutrition_summary(input: DailySummaryInput) -> ExternResult<Dai
     let mut restriction_violations = Vec::new();
 
     for record in &meals {
-        if let Some(meal) = record
-            .entry()
-            .to_app_option::<MealLog>()
-            .ok()
-            .flatten()
-        {
+        if let Some(meal) = record.entry().to_app_option::<MealLog>().ok().flatten() {
             meal_count += 1;
             total_calories += meal.total_calories.unwrap_or(0);
             total_protein += meal.total_protein_g.unwrap_or(0.0);
@@ -755,10 +774,7 @@ pub fn get_patient_recommendations(patient_hash: ActionHash) -> ExternResult<Vec
                     .flatten()
                 {
                     // Filter for non-expired, non-acknowledged
-                    let not_expired = rec
-                        .expires_at
-                        .map(|e| e.as_micros() > now)
-                        .unwrap_or(true);
+                    let not_expired = rec.expires_at.map(|e| e.as_micros() > now).unwrap_or(true);
                     if not_expired && !rec.acknowledged {
                         records.push(record);
                     }
@@ -799,8 +815,9 @@ pub fn create_recommendation(rec: NutritionRecommendation) -> ExternResult<Recor
         (),
     )?;
 
-    let record = get(action_hash, GetOptions::default())?
-        .ok_or(wasm_error!(WasmErrorInner::Guest("Failed to get created recommendation".into())))?;
+    let record = get(action_hash, GetOptions::default())?.ok_or(wasm_error!(
+        WasmErrorInner::Guest("Failed to get created recommendation".into())
+    ))?;
 
     log_data_access(
         rec.patient_hash,
@@ -817,14 +834,17 @@ pub fn create_recommendation(rec: NutritionRecommendation) -> ExternResult<Recor
 /// Acknowledge a recommendation
 #[hdk_extern]
 pub fn acknowledge_recommendation(rec_hash: ActionHash) -> ExternResult<Record> {
-    let record = get(rec_hash.clone(), GetOptions::default())?
-        .ok_or(wasm_error!(WasmErrorInner::Guest("Recommendation not found".into())))?;
+    let record = get(rec_hash.clone(), GetOptions::default())?.ok_or(wasm_error!(
+        WasmErrorInner::Guest("Recommendation not found".into())
+    ))?;
 
     let mut rec: NutritionRecommendation = record
         .entry()
         .to_app_option()
         .map_err(|e| wasm_error!(WasmErrorInner::Guest(e.to_string())))?
-        .ok_or(wasm_error!(WasmErrorInner::Guest("Invalid recommendation entry".into())))?;
+        .ok_or(wasm_error!(WasmErrorInner::Guest(
+            "Invalid recommendation entry".into()
+        )))?;
 
     rec.acknowledged = true;
     rec.acknowledged_at = Some(sys_time()?);
@@ -838,8 +858,9 @@ pub fn acknowledge_recommendation(rec_hash: ActionHash) -> ExternResult<Record> 
 
     let updated_hash = update_entry(rec_hash, &rec)?;
 
-    let updated_record = get(updated_hash, GetOptions::default())?
-        .ok_or(wasm_error!(WasmErrorInner::Guest("Failed to get updated recommendation".into())))?;
+    let updated_record = get(updated_hash, GetOptions::default())?.ok_or(wasm_error!(
+        WasmErrorInner::Guest("Failed to get updated recommendation".into())
+    ))?;
 
     log_data_access(
         rec.patient_hash,

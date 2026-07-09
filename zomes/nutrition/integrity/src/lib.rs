@@ -353,21 +353,165 @@ pub enum LinkTypes {
 pub fn validate(op: Op) -> ExternResult<ValidateCallbackResult> {
     match op.flattened::<EntryTypes, LinkTypes>()? {
         FlatOp::StoreEntry(store_entry) => match store_entry {
-            OpEntry::CreateEntry { app_entry, .. } => validate_create_entry(app_entry),
-            OpEntry::UpdateEntry { app_entry, .. } => validate_create_entry(app_entry),
+            OpEntry::CreateEntry { app_entry, action } => validate_create_entry(action, app_entry),
+            OpEntry::UpdateEntry {
+                app_entry, action, ..
+            } => validate_update_entry(action, app_entry),
             _ => Ok(ValidateCallbackResult::Valid),
         },
+        // Previously left fully permissive via the catch-all `_` arm --
+        // the 17th confirmed instance of the wide-open RegisterUpdate/
+        // RegisterDelete bug this pass. Found + fixed 2026-07-09 during
+        // the P0 author-binding pass. This coordinator never calls
+        // delete_link/delete_entry (confirmed via grep), so the
+        // RegisterDeleteLink/RegisterDelete hardening below is pure
+        // defense-in-depth.
+        FlatOp::RegisterDeleteLink {
+            original_action,
+            action,
+            ..
+        } => {
+            if action.author != original_action.author {
+                return Ok(ValidateCallbackResult::Invalid(
+                    "Only the original link creator can delete a link".into(),
+                ));
+            }
+            Ok(ValidateCallbackResult::Valid)
+        }
+        FlatOp::RegisterUpdate(op_update) => match op_update {
+            OpUpdate::Entry { app_entry, action } => validate_update_entry(action, app_entry),
+            _ => Ok(ValidateCallbackResult::Valid),
+        },
+        FlatOp::RegisterDelete(OpDelete { action }) => {
+            let original = must_get_action(action.deletes_address.clone())?;
+            if action.author != *original.action().author() {
+                return Ok(ValidateCallbackResult::Invalid(
+                    "Only the original entry author can delete an entry".into(),
+                ));
+            }
+            Ok(ValidateCallbackResult::Valid)
+        }
         _ => Ok(ValidateCallbackResult::Valid),
     }
 }
 
-fn validate_create_entry(entry: EntryTypes) -> ExternResult<ValidateCallbackResult> {
+fn validate_create_entry(
+    action: Create,
+    entry: EntryTypes,
+) -> ExternResult<ValidateCallbackResult> {
     match entry {
+        // No agent-identity field: diagnosed_by/verified_by are
+        // Option<ActionHash> references to other records, not a
+        // directly comparable AgentPubKey. Case (a).
         EntryTypes::DietaryRestriction(r) => validate_restriction(&r),
-        EntryTypes::DrugFoodInteraction(i) => validate_interaction(&i),
+        EntryTypes::DrugFoodInteraction(i) => {
+            // Author-binding: the coordinator's add_drug_food_interaction
+            // previously took the FULL struct straight from caller input
+            // with ZERO derivation from agent_info() -- any agent could
+            // forge a victim as created_by. Found + fixed 2026-07-09
+            // during the P0 author-binding pass (coordinator-side fix
+            // applied alongside this).
+            if i.created_by != action.author {
+                return Ok(ValidateCallbackResult::Invalid(
+                    "created_by must correspond to the committing agent".into(),
+                ));
+            }
+            validate_interaction(&i)
+        }
+        // No agent-identity field: prescribed_by is Option<ActionHash>.
         EntryTypes::NutritionGoal(g) => validate_goal(&g),
+        // No agent-identity field.
         EntryTypes::MealLog(m) => validate_meal_log(&m),
+        // No agent-identity field: source_hash is Option<ActionHash>.
         EntryTypes::NutritionRecommendation(r) => validate_recommendation(&r),
+    }
+}
+
+/// DietaryRestriction and NutritionGoal both have a live, intentionally
+/// broad "edit almost anything" update flow -- the coordinator itself
+/// only guards patient_hash from changing (client-side only, previously
+/// bypassable). NutritionRecommendation's only update path
+/// (acknowledge_recommendation) is narrow (acknowledged/acknowledged_at
+/// only). MealLog and DrugFoodInteraction have no live update call at
+/// all (confirmed via grep for `update_entry`) and are made immutable.
+/// Reviewed 2026-07-09 during the P0 author-binding pass: this isn't an
+/// author-forgery finding for these types (no identity field exists),
+/// but the previous unconditional `Ok(Valid)` meant a modified
+/// coordinator could silently re-point ANY of these at a different
+/// patient via patient_hash -- a genuine patient-record-mismatch vector.
+fn validate_update_entry(
+    action: Update,
+    entry: EntryTypes,
+) -> ExternResult<ValidateCallbackResult> {
+    match entry {
+        EntryTypes::DietaryRestriction(r) => {
+            let original_record = must_get_valid_record(action.original_action_address.clone())?;
+            let original: DietaryRestriction = original_record
+                .entry()
+                .to_app_option()
+                .map_err(|e| wasm_error!(WasmErrorInner::Guest(e.to_string())))?
+                .ok_or(wasm_error!(WasmErrorInner::Guest(
+                    "Original restriction not found".into()
+                )))?;
+            if r.patient_hash != original.patient_hash {
+                return Ok(ValidateCallbackResult::Invalid(
+                    "patient_hash cannot change on a restriction update".into(),
+                ));
+            }
+            validate_restriction(&r)
+        }
+        EntryTypes::NutritionGoal(g) => {
+            let original_record = must_get_valid_record(action.original_action_address.clone())?;
+            let original: NutritionGoal = original_record
+                .entry()
+                .to_app_option()
+                .map_err(|e| wasm_error!(WasmErrorInner::Guest(e.to_string())))?
+                .ok_or(wasm_error!(WasmErrorInner::Guest(
+                    "Original goal not found".into()
+                )))?;
+            if g.patient_hash != original.patient_hash {
+                return Ok(ValidateCallbackResult::Invalid(
+                    "patient_hash cannot change on a goal update".into(),
+                ));
+            }
+            validate_goal(&g)
+        }
+        EntryTypes::NutritionRecommendation(r) => {
+            let original_record = must_get_valid_record(action.original_action_address.clone())?;
+            let original: NutritionRecommendation = original_record
+                .entry()
+                .to_app_option()
+                .map_err(|e| wasm_error!(WasmErrorInner::Guest(e.to_string())))?
+                .ok_or(wasm_error!(WasmErrorInner::Guest(
+                    "Original recommendation not found".into()
+                )))?;
+            if r.recommendation_id != original.recommendation_id
+                || r.patient_hash != original.patient_hash
+                || r.source != original.source
+                || r.source_hash != original.source_hash
+                || r.recommendation_type != original.recommendation_type
+                || r.title != original.title
+                || r.description != original.description
+                || r.rationale != original.rationale
+                || r.linked_conditions != original.linked_conditions
+                || r.linked_medications != original.linked_medications
+                || r.priority != original.priority
+                || r.created_at != original.created_at
+                || r.expires_at != original.expires_at
+            {
+                return Ok(ValidateCallbackResult::Invalid(
+                    "Only acknowledged/acknowledged_at can change on a recommendation update"
+                        .into(),
+                ));
+            }
+            Ok(ValidateCallbackResult::Valid)
+        }
+        EntryTypes::MealLog(_) => Ok(ValidateCallbackResult::Invalid(
+            "Meal logs are immutable".into(),
+        )),
+        EntryTypes::DrugFoodInteraction(_) => Ok(ValidateCallbackResult::Invalid(
+            "Drug-food interactions are immutable".into(),
+        )),
     }
 }
 
@@ -439,4 +583,125 @@ fn validate_recommendation(r: &NutritionRecommendation) -> ExternResult<Validate
         ));
     }
     Ok(ValidateCallbackResult::Valid)
+}
+
+#[cfg(test)]
+mod author_binding_tests {
+    use super::*;
+
+    fn create_action(author: AgentPubKey) -> Create {
+        Create {
+            author,
+            timestamp: Timestamp::from_micros(0),
+            action_seq: 0,
+            prev_action: ActionHash::from_raw_36(vec![0u8; 36]),
+            entry_type: EntryType::App(AppEntryDef::new(
+                EntryDefIndex::from(0),
+                0.into(),
+                EntryVisibility::Public,
+            )),
+            entry_hash: EntryHash::from_raw_36(vec![0u8; 36]),
+            weight: Default::default(),
+        }
+    }
+
+    fn update_action(author: AgentPubKey) -> Update {
+        Update {
+            author,
+            timestamp: Timestamp::from_micros(1),
+            action_seq: 1,
+            prev_action: ActionHash::from_raw_36(vec![0u8; 36]),
+            original_action_address: ActionHash::from_raw_36(vec![9u8; 36]),
+            original_entry_address: EntryHash::from_raw_36(vec![0u8; 36]),
+            entry_type: EntryType::App(AppEntryDef::new(
+                EntryDefIndex::from(0),
+                0.into(),
+                EntryVisibility::Public,
+            )),
+            entry_hash: EntryHash::from_raw_36(vec![0u8; 36]),
+            weight: Default::default(),
+        }
+    }
+
+    fn me() -> AgentPubKey {
+        AgentPubKey::from_raw_36(vec![0u8; 36])
+    }
+
+    fn other_agent() -> AgentPubKey {
+        AgentPubKey::from_raw_36(vec![1u8; 36])
+    }
+
+    fn valid_interaction(created_by: AgentPubKey) -> DrugFoodInteraction {
+        DrugFoodInteraction {
+            interaction_id: "i-1".into(),
+            medication_name: "warfarin".into(),
+            medication_rxcui: None,
+            food_category: FoodCategory::Other,
+            specific_foods: vec![],
+            interaction_type: InteractionType::MonitorClosely,
+            severity: InteractionSeverity::Moderate,
+            description: "vitamin K interaction".into(),
+            mechanism: None,
+            clinical_effect: None,
+            recommendation: "monitor INR".into(),
+            evidence_level: EvidenceLevel::Established,
+            sources: vec![],
+            created_by,
+            created_at: Timestamp::from_micros(0),
+            updated_at: Timestamp::from_micros(0),
+        }
+    }
+
+    #[test]
+    fn create_interaction_valid_when_creator_matches_committer() {
+        let author = me();
+        let i = valid_interaction(author.clone());
+        let result =
+            validate_create_entry(create_action(author), EntryTypes::DrugFoodInteraction(i))
+                .unwrap();
+        assert_eq!(result, ValidateCallbackResult::Valid);
+    }
+
+    #[test]
+    fn create_interaction_forgery_rejected() {
+        let i = valid_interaction(me());
+        let result = validate_create_entry(
+            create_action(other_agent()),
+            EntryTypes::DrugFoodInteraction(i),
+        )
+        .unwrap();
+        assert!(matches!(result, ValidateCallbackResult::Invalid(_)));
+    }
+
+    #[test]
+    fn update_entry_rejects_drug_food_interaction_update() {
+        let i = valid_interaction(me());
+        let result =
+            validate_update_entry(update_action(me()), EntryTypes::DrugFoodInteraction(i)).unwrap();
+        assert!(matches!(result, ValidateCallbackResult::Invalid(_)));
+    }
+
+    #[test]
+    fn update_entry_rejects_meal_log_update() {
+        let m = MealLog {
+            log_id: "l-1".into(),
+            patient_hash: ActionHash::from_raw_36(vec![2u8; 36]),
+            meal_type: MealType::Lunch,
+            timestamp: Timestamp::from_micros(0),
+            foods: vec![],
+            total_calories: None,
+            total_protein_g: None,
+            total_carbs_g: None,
+            total_fat_g: None,
+            total_fiber_g: None,
+            total_sodium_mg: None,
+            notes: None,
+            photo_hash: None,
+            location: None,
+            flagged_restrictions: vec![],
+            created_at: Timestamp::from_micros(0),
+        };
+        let result = validate_update_entry(update_action(me()), EntryTypes::MealLog(m)).unwrap();
+        assert!(matches!(result, ValidateCallbackResult::Invalid(_)));
+    }
 }
