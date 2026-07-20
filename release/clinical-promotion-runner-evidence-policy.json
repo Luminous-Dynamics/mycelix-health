@@ -1,0 +1,49 @@
+{
+  "allowed_events": [
+    "push",
+    "workflow_dispatch"
+  ],
+  "allowed_report_kinds": [
+    "preflight",
+    "rehearsal",
+    "promotion-refusal",
+    "promotion-explanation"
+  ],
+  "allowed_source_refs": [
+    "refs/heads/main"
+  ],
+  "allowed_workflows": [
+    ".github/workflows/ci.yml",
+    ".github/workflows/countersigning-lab.yml",
+    ".github/workflows/clinical-promotion-rehearsal.yml"
+  ],
+  "package_limits": {
+    "maximum_file_bytes": 1048576,
+    "maximum_file_count": 16,
+    "maximum_report_count": 8,
+    "maximum_total_bytes": 4194304
+  },
+  "policy_id": "mycelix-health-clinical-promotion-runner-evidence-v1",
+  "release_id": "health-v1",
+  "required_claims": {
+    "package_is_create_only": true,
+    "promotion_decision_is_not_implied": true,
+    "raw_command_output_is_excluded": true,
+    "reports_are_sanitized": true,
+    "secrets_are_excluded": true
+  },
+  "required_context_fields": [
+    "repository",
+    "source_revision",
+    "source_ref",
+    "workflow",
+    "event_name",
+    "run_id",
+    "run_attempt",
+    "runner_os",
+    "runner_arch",
+    "source_ref_head",
+    "source_ref_ancestry_verified"
+  ],
+  "schema_version": 1
+}

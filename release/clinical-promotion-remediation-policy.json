@@ -1,0 +1,106 @@
+{
+  "allowed_action_types": {
+    "choose_fresh_output": {
+      "instruction": "Select a new empty create-only decision or refusal path.",
+      "mutation_class": "output-path-only",
+      "owner": "release-operator"
+    },
+    "investigate_policy_refusal": {
+      "instruction": "Identify the failed policy input and route it to its authoritative owner for regeneration.",
+      "mutation_class": "investigation-only",
+      "owner": "release-governance"
+    },
+    "provide_authoritative_input": {
+      "instruction": "Stage a fresh authoritative input with owner-only permissions and rerun preflight.",
+      "mutation_class": "input-staging-only",
+      "owner": "release-operator"
+    },
+    "rebuild_exact_revision": {
+      "instruction": "Perform two clean builds from the exact source revision and investigate any differing bytes.",
+      "mutation_class": "clean-rebuild-only",
+      "owner": "build-reproducibility"
+    },
+    "regenerate_authoritative_report": {
+      "instruction": "Rerun the named authoritative producer from the exact source revision.",
+      "mutation_class": "producer-rerun-only",
+      "owner": "artifact-producer"
+    },
+    "regenerate_supply_chain_evidence": {
+      "instruction": "Regenerate the policy-bound audit report and SBOM from the reviewed lockfiles.",
+      "mutation_class": "producer-rerun-only",
+      "owner": "supply-chain"
+    },
+    "repair_deterministic_tooling": {
+      "instruction": "Patch the deterministic tooling through normal review, then regenerate all affected reports.",
+      "mutation_class": "reviewed-source-change",
+      "owner": "release-engineering"
+    },
+    "rerun_attestation_verification": {
+      "instruction": "Verify the exact release subjects against the trusted repository, ref, workflow, and revision.",
+      "mutation_class": "verification-only",
+      "owner": "release-infrastructure"
+    },
+    "rerun_empirical_suite": {
+      "instruction": "Run the canonical five-conductor suite and preserve contradictions without editing evidence.",
+      "mutation_class": "canonical-lab-only",
+      "owner": "clinical-assurance"
+    },
+    "restore_prerequisite": {
+      "instruction": "Restore the pinned external service or tool, then rerun the authoritative producer.",
+      "mutation_class": "infrastructure-only",
+      "owner": "release-infrastructure"
+    }
+  },
+  "claims": {
+    "plan_cannot_authorize_promotion": true,
+    "plan_executes_no_commands": true,
+    "plan_is_advisory": true,
+    "plan_mutates_no_evidence": true,
+    "protected_policy_is_never_an_automatic_fix_target": true
+  },
+  "forbidden_plan_content": [
+    "edit signed evidence",
+    "rewrite evidence",
+    "disable gate",
+    "skip verification",
+    "weaken policy",
+    "ignore failure",
+    "force promotion"
+  ],
+  "plan_statuses": [
+    "no-action-required",
+    "operator-action-required",
+    "infrastructure-action-required",
+    "engineering-action-required"
+  ],
+  "policy_id": "mycelix-health-clinical-promotion-remediation-v1",
+  "protected_paths": [
+    "release/clinical-promotion-policy.json",
+    "release/clinical-promotion-diagnostics-policy.json",
+    "release/clinical-promotion-runner-evidence-policy.json",
+    "release/clinical-promotion-remediation-policy.json",
+    "release/supply-chain-policy.json",
+    "release/health-v1.sbom.cdx.json",
+    "release/github-actions-lock.json",
+    "release/trusted-release-signers.json"
+  ],
+  "reason_action_map": {
+    "ARTIFACT_DIGEST_MISMATCH": "rebuild_exact_revision",
+    "ATTESTATION_UNAVAILABLE": "rerun_attestation_verification",
+    "CURRENT_MATERIAL_DIGEST_MISMATCH": "regenerate_supply_chain_evidence",
+    "EMPIRICAL_SUITE_INELIGIBLE": "rerun_empirical_suite",
+    "INPUT_INVALID_JSON": "regenerate_authoritative_report",
+    "INPUT_MISSING": "provide_authoritative_input",
+    "INPUT_UNSAFE": "provide_authoritative_input",
+    "INTERNAL_ERROR": "repair_deterministic_tooling",
+    "ONLINE_AUDIT_UNAVAILABLE": "restore_prerequisite",
+    "PREREQUISITE_TOOL_MISSING": "restore_prerequisite",
+    "PROMOTION_OUTPUT_EXISTS": "choose_fresh_output",
+    "PROMOTION_POLICY_REFUSAL": "investigate_policy_refusal",
+    "REPORT_NOT_VERIFIED": "regenerate_authoritative_report",
+    "SOURCE_REVISION_MISMATCH": "rebuild_exact_revision",
+    "UNRESOLVED_PLACEHOLDER": "rebuild_exact_revision"
+  },
+  "release_id": "health-v1",
+  "schema_version": 1
+}

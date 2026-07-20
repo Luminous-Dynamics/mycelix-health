@@ -8,9 +8,34 @@ POLICY=ROOT/"release/clinical-promotion-policy.json"
 SPEC=importlib.util.spec_from_file_location("health_release_evidence",ROOT/"scripts/release-evidence.py")
 assert SPEC and SPEC.loader
 release_evidence=importlib.util.module_from_spec(SPEC); SPEC.loader.exec_module(release_evidence)
-class PromotionError(ValueError): pass
+DIAGNOSTICS_SPEC=importlib.util.spec_from_file_location("health_promotion_diagnostics",ROOT/"scripts/clinical-promotion-diagnostics.py")
+assert DIAGNOSTICS_SPEC and DIAGNOSTICS_SPEC.loader
+promotion_diagnostics=importlib.util.module_from_spec(DIAGNOSTICS_SPEC); DIAGNOSTICS_SPEC.loader.exec_module(promotion_diagnostics)
 
-def fail(message:str)->NoReturn: raise PromotionError(message)
+class PromotionError(ValueError):
+    def __init__(self,message:str,*,code:str|None=None,stage:str|None=None):
+        self.code=code
+        self.stage=stage
+        super().__init__(message)
+
+def classify_failure(message:str)->tuple[str,str]:
+    value=message.lower()
+    if "overwrite" in value or "output" in value and "exists" in value: return "PROMOTION_OUTPUT_EXISTS","promotion"
+    if "placeholder" in value or "unresolved" in value: return "UNRESOLVED_PLACEHOLDER","release_evidence"
+    if "release signer" in value or "signature" in value or "release evidence" in value or "release id" in value: return "PROMOTION_POLICY_REFUSAL","release_evidence"
+    if "compatibility report" in value or "migration" in value: return "REPORT_NOT_VERIFIED","compatibility"
+    if "supply-chain" in value or "sbom" in value or "github_actions_lock" in value or "github actions lock" in value: return "CURRENT_MATERIAL_DIGEST_MISMATCH","supply_chain"
+    if "reproducibility" in value or "non-identical" in value or "nix context" in value: return "ARTIFACT_DIGEST_MISMATCH","reproducibility"
+    if "attestation" in value or "attested" in value: return "ARTIFACT_DIGEST_MISMATCH","attestation"
+    if "empirical" in value or "fault matrix" in value: return "EMPIRICAL_SUITE_INELIGIBLE","empirical_suite"
+    if "source revision" in value: return "SOURCE_REVISION_MISMATCH","source_coherence"
+    if "digest differs" in value or "wasm differs" in value or "dna digest" in value: return "ARTIFACT_DIGEST_MISMATCH","reproducibility"
+    if "not verified" in value: return "REPORT_NOT_VERIFIED","promotion"
+    return "PROMOTION_POLICY_REFUSAL","promotion"
+
+def fail(message:str,*,code:str|None=None,stage:str|None=None)->NoReturn:
+    classified_code,classified_stage=classify_failure(message)
+    raise PromotionError(message,code=code or classified_code,stage=stage or classified_stage)
 def load(path:pathlib.Path)->dict[str,Any]:
     value=json.loads(path.read_text())
     if not isinstance(value,dict): fail(f"{path} must contain an object")
@@ -92,8 +117,81 @@ def write_output(root:pathlib.Path,decision:dict[str,Any])->None:
     path=root/"MANIFEST.json"
     with path.open("x") as h: json.dump(manifest,h,indent=2,sort_keys=True); h.write("\n")
     os.chmod(path,0o600)
+def refusal_inputs(a:argparse.Namespace)->dict[str,pathlib.Path]:
+    return {
+        "promotion_policy":a.policy,
+        "release_bundle":a.release_bundle,
+        "compatibility_report":a.compatibility_report,
+        "supply_chain_report":a.supply_chain_report,
+        "reproducibility_report":a.reproducibility_report,
+        "reproducibility_provenance":a.reproducibility_provenance,
+        "attestation_subjects":a.attestation_subjects,
+        "attestation_report":a.attestation_report,
+        "suite_root":a.suite_root,
+    }
+
+def refusal_source_revision(a:argparse.Namespace)->str|None:
+    try:
+        signed=load(a.release_bundle.resolve()/"health-v1.signed-evidence.json")
+        evidence=signed.get("evidence")
+        value=evidence.get("source_revision") if isinstance(evidence,dict) else None
+        return value if isinstance(value,str) else None
+    except (OSError,ValueError,TypeError,KeyError,json.JSONDecodeError):
+        return None
+
+def build_refusal_report(a:argparse.Namespace,error:Exception)->dict[str,Any]:
+    policy=promotion_diagnostics.load_policy()
+    code=getattr(error,"code",None)
+    stage=getattr(error,"stage",None)
+    if code not in policy.get("reason_codes",{}): code="INTERNAL_ERROR"
+    if stage not in policy.get("stage_order",[]): stage="promotion"
+    item=promotion_diagnostics.reason(policy,code,str(error),stage=stage)
+    identity={
+        "policy_sha256":sha256(a.policy.resolve()) if a.policy.exists() else None,
+        "source_revision":refusal_source_revision(a),
+        "reason":item,
+        "inputs":promotion_diagnostics.build_input_manifest(refusal_inputs(a)),
+    }
+    digest=hashlib.sha256(canonical(identity)).hexdigest()
+    return {
+        "schema_version":1,
+        "report_kind":"promotion-refusal",
+        "report_id":f"health-promotion-refusal-{digest[:24]}",
+        "status":"refused",
+        "release_id":"health-v1",
+        "source_revision":identity["source_revision"],
+        "reason":item,
+        "inputs":identity["inputs"],
+        "promotion_output_created":a.output_dir.exists(),
+        "report_digest_sha256":digest,
+    }
+
+def parse_args()->argparse.Namespace:
+    p=argparse.ArgumentParser(); p.add_argument("--policy",type=pathlib.Path,default=POLICY); p.add_argument("--release-bundle",type=pathlib.Path,required=True); p.add_argument("--compatibility-report",type=pathlib.Path,required=True); p.add_argument("--supply-chain-report",type=pathlib.Path,required=True); p.add_argument("--reproducibility-report",type=pathlib.Path,required=True); p.add_argument("--reproducibility-provenance",type=pathlib.Path,required=True); p.add_argument("--attestation-subjects",type=pathlib.Path,required=True); p.add_argument("--attestation-report",type=pathlib.Path,required=True); p.add_argument("--suite-root",type=pathlib.Path,required=True); p.add_argument("--output-dir",type=pathlib.Path,required=True); p.add_argument("--refusal-output",type=pathlib.Path); return p.parse_args()
+
+def refusal_path_is_separate(a:argparse.Namespace)->bool:
+    if not a.refusal_output: return False
+    refusal=a.refusal_output.resolve(); output=a.output_dir.resolve()
+    return refusal!=output and output not in refusal.parents
+
 def main()->int:
-    p=argparse.ArgumentParser(); p.add_argument("--policy",type=pathlib.Path,default=POLICY); p.add_argument("--release-bundle",type=pathlib.Path,required=True); p.add_argument("--compatibility-report",type=pathlib.Path,required=True); p.add_argument("--supply-chain-report",type=pathlib.Path,required=True); p.add_argument("--reproducibility-report",type=pathlib.Path,required=True); p.add_argument("--reproducibility-provenance",type=pathlib.Path,required=True); p.add_argument("--attestation-subjects",type=pathlib.Path,required=True); p.add_argument("--attestation-report",type=pathlib.Path,required=True); p.add_argument("--suite-root",type=pathlib.Path,required=True); p.add_argument("--output-dir",type=pathlib.Path,required=True); a=p.parse_args(); decision=promote(a); write_output(a.output_dir.resolve(),decision); print(a.output_dir.resolve()); return 0
-if __name__=="__main__":
-    try: raise SystemExit(main())
-    except (PromotionError,OSError,KeyError,ValueError,TypeError,json.JSONDecodeError,release_evidence.EvidenceError) as e: print(f"clinical release promotion failed: {e}"); raise SystemExit(1)
+    a=parse_args()
+    try:
+        if a.refusal_output and not refusal_path_is_separate(a):
+            fail("refusal output must be outside the promotion output directory",code="INPUT_UNSAFE",stage="promotion")
+        decision=promote(a); write_output(a.output_dir.resolve(),decision); print(a.output_dir.resolve()); return 0
+    except (PromotionError,OSError,KeyError,ValueError,TypeError,json.JSONDecodeError,release_evidence.EvidenceError,promotion_diagnostics.DiagnosticError) as error:
+        normalized=error if isinstance(error,PromotionError) else PromotionError(str(error),code="INTERNAL_ERROR",stage="promotion")
+        diagnostic_error=None
+        if a.refusal_output and refusal_path_is_separate(a):
+            try:
+                report=build_refusal_report(a,normalized)
+                promotion_diagnostics.write_create_only(a.refusal_output.resolve(),report)
+                print(a.refusal_output.resolve())
+            except (OSError,ValueError,TypeError,KeyError,json.JSONDecodeError,promotion_diagnostics.DiagnosticError) as report_error:
+                diagnostic_error=promotion_diagnostics.sanitize_text(report_error,promotion_diagnostics.load_policy())
+        print(f"clinical release promotion failed: {normalized}")
+        if diagnostic_error: print(f"clinical refusal evidence was not written: {diagnostic_error}")
+        return 1
+
+if __name__=="__main__": raise SystemExit(main())

@@ -1,0 +1,159 @@
+{
+  "schema_version": 1,
+  "policy_id": "mycelix-health-clinical-promotion-diagnostics-v1",
+  "release_id": "health-v1",
+  "statuses": [
+    "verified",
+    "refused",
+    "unavailable",
+    "skipped"
+  ],
+  "stage_order": [
+    "preflight",
+    "release_evidence",
+    "compatibility",
+    "supply_chain",
+    "reproducibility",
+    "attestation",
+    "empirical_suite",
+    "source_coherence",
+    "promotion"
+  ],
+  "stage_dependencies": {
+    "preflight": [],
+    "release_evidence": ["preflight"],
+    "compatibility": ["preflight", "release_evidence"],
+    "supply_chain": ["preflight"],
+    "reproducibility": ["preflight"],
+    "attestation": ["preflight", "reproducibility"],
+    "empirical_suite": ["preflight"],
+    "source_coherence": [
+      "release_evidence",
+      "supply_chain",
+      "reproducibility",
+      "attestation",
+      "empirical_suite"
+    ],
+    "promotion": [
+      "release_evidence",
+      "compatibility",
+      "supply_chain",
+      "reproducibility",
+      "attestation",
+      "empirical_suite",
+      "source_coherence"
+    ]
+  },
+  "reason_codes": {
+    "PREREQUISITE_TOOL_MISSING": {
+      "default_status": "unavailable",
+      "owner": "release-infrastructure",
+      "remediation": "Install or expose the pinned release tool before retrying."
+    },
+    "INPUT_MISSING": {
+      "default_status": "refused",
+      "owner": "release-operator",
+      "remediation": "Provide the complete create-only promotion input set."
+    },
+    "INPUT_UNSAFE": {
+      "default_status": "refused",
+      "owner": "release-security",
+      "remediation": "Replace symlinked, non-regular, or group/world-writable inputs."
+    },
+    "INPUT_INVALID_JSON": {
+      "default_status": "refused",
+      "owner": "artifact-producer",
+      "remediation": "Regenerate the malformed report from its authoritative producer."
+    },
+    "UNRESOLVED_PLACEHOLDER": {
+      "default_status": "refused",
+      "owner": "release-operator",
+      "remediation": "Build and sign real release artifacts; source-checkout placeholders cannot be promoted."
+    },
+    "REPORT_NOT_VERIFIED": {
+      "default_status": "refused",
+      "owner": "artifact-producer",
+      "remediation": "Resolve the producing gate instead of editing the report by hand."
+    },
+    "SOURCE_REVISION_MISMATCH": {
+      "default_status": "refused",
+      "owner": "release-operator",
+      "remediation": "Regenerate every report and artifact from one exact source revision."
+    },
+    "CURRENT_MATERIAL_DIGEST_MISMATCH": {
+      "default_status": "refused",
+      "owner": "supply-chain",
+      "remediation": "Regenerate policy, SBOM, action-lock, and supply-chain evidence together."
+    },
+    "ARTIFACT_DIGEST_MISMATCH": {
+      "default_status": "refused",
+      "owner": "build-reproducibility",
+      "remediation": "Investigate the divergent build or artifact; do not re-sign mismatched bytes."
+    },
+    "EMPIRICAL_SUITE_INELIGIBLE": {
+      "default_status": "refused",
+      "owner": "clinical-assurance",
+      "remediation": "Resolve empirical contradictions or missing happy-path evidence in the canonical lab."
+    },
+    "ATTESTATION_UNAVAILABLE": {
+      "default_status": "unavailable",
+      "owner": "release-infrastructure",
+      "remediation": "Restore GitHub attestation verification and rerun against the exact subjects."
+    },
+    "ONLINE_AUDIT_UNAVAILABLE": {
+      "default_status": "unavailable",
+      "owner": "release-infrastructure",
+      "remediation": "Restore the public registry or advisory service; an unavailable audit is not a clean audit."
+    },
+    "PROMOTION_OUTPUT_EXISTS": {
+      "default_status": "refused",
+      "owner": "release-operator",
+      "remediation": "Choose a fresh create-only output path; never overwrite a prior decision."
+    },
+    "PROMOTION_POLICY_REFUSAL": {
+      "default_status": "refused",
+      "owner": "release-governance",
+      "remediation": "Repair the failed policy input; do not weaken the policy to obtain promotion."
+    },
+    "INTERNAL_ERROR": {
+      "default_status": "refused",
+      "owner": "release-engineering",
+      "remediation": "Preserve the refusal report and fix the deterministic promotion tooling."
+    }
+  },
+  "tool_requirements": {
+    "core": ["python3", "openssl"],
+    "canonical_release": [
+      "cargo",
+      "rustc",
+      "nix",
+      "node",
+      "npm",
+      "gh",
+      "hc",
+      "holochain",
+      "lair-keystore"
+    ]
+  },
+  "forbidden_values": [
+    "UNCONFIGURED",
+    "UNRESOLVED-HEALTH-DNA"
+  ],
+  "output_limits": {
+    "maximum_message_characters": 2048,
+    "maximum_command_output_characters": 8192,
+    "maximum_reason_count": 64
+  },
+  "redaction": {
+    "environment_name_fragments": [
+      "TOKEN",
+      "SECRET",
+      "PASSWORD",
+      "PASSPHRASE",
+      "PRIVATE_KEY",
+      "AUTHORIZATION",
+      "COOKIE"
+    ],
+    "replacement": "[REDACTED]"
+  }
+}

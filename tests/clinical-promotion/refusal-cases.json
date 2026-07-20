@@ -1,0 +1,65 @@
+{
+  "schema_version": 1,
+  "cases": [
+    {
+      "message": "release bundle contains an unresolved placeholder",
+      "expected_code": "UNRESOLVED_PLACEHOLDER",
+      "expected_stage": "release_evidence"
+    },
+    {
+      "message": "release evidence Ed25519 signature is invalid",
+      "expected_code": "PROMOTION_POLICY_REFUSAL",
+      "expected_stage": "release_evidence"
+    },
+    {
+      "message": "compatibility report is not verified",
+      "expected_code": "REPORT_NOT_VERIFIED",
+      "expected_stage": "compatibility"
+    },
+    {
+      "message": "supply-chain report does not bind current sbom",
+      "expected_code": "CURRENT_MATERIAL_DIGEST_MISMATCH",
+      "expected_stage": "supply_chain"
+    },
+    {
+      "message": "reproducibility report contains a non-identical artifact",
+      "expected_code": "ARTIFACT_DIGEST_MISMATCH",
+      "expected_stage": "reproducibility"
+    },
+    {
+      "message": "attestation report differs for health-sdk",
+      "expected_code": "ARTIFACT_DIGEST_MISMATCH",
+      "expected_stage": "attestation"
+    },
+    {
+      "message": "empirical suite is not clinically release eligible",
+      "expected_code": "EMPIRICAL_SUITE_INELIGIBLE",
+      "expected_stage": "empirical_suite"
+    },
+    {
+      "message": "fault matrix is incomplete",
+      "expected_code": "EMPIRICAL_SUITE_INELIGIBLE",
+      "expected_stage": "empirical_suite"
+    },
+    {
+      "message": "promotion inputs do not share one source revision",
+      "expected_code": "SOURCE_REVISION_MISMATCH",
+      "expected_stage": "source_coherence"
+    },
+    {
+      "message": "signed DNA digest differs from reproducible build",
+      "expected_code": "ARTIFACT_DIGEST_MISMATCH",
+      "expected_stage": "reproducibility"
+    },
+    {
+      "message": "refusing to overwrite clinical-promotion",
+      "expected_code": "PROMOTION_OUTPUT_EXISTS",
+      "expected_stage": "promotion"
+    },
+    {
+      "message": "unexpected policy condition",
+      "expected_code": "PROMOTION_POLICY_REFUSAL",
+      "expected_stage": "promotion"
+    }
+  ]
+}

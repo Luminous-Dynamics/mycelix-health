@@ -1,0 +1,65 @@
+{
+  "cases": [
+    {
+      "expected_action_type": "rebuild_exact_revision",
+      "reason_code": "ARTIFACT_DIGEST_MISMATCH"
+    },
+    {
+      "expected_action_type": "rerun_attestation_verification",
+      "reason_code": "ATTESTATION_UNAVAILABLE"
+    },
+    {
+      "expected_action_type": "regenerate_supply_chain_evidence",
+      "reason_code": "CURRENT_MATERIAL_DIGEST_MISMATCH"
+    },
+    {
+      "expected_action_type": "rerun_empirical_suite",
+      "reason_code": "EMPIRICAL_SUITE_INELIGIBLE"
+    },
+    {
+      "expected_action_type": "regenerate_authoritative_report",
+      "reason_code": "INPUT_INVALID_JSON"
+    },
+    {
+      "expected_action_type": "provide_authoritative_input",
+      "reason_code": "INPUT_MISSING"
+    },
+    {
+      "expected_action_type": "provide_authoritative_input",
+      "reason_code": "INPUT_UNSAFE"
+    },
+    {
+      "expected_action_type": "repair_deterministic_tooling",
+      "reason_code": "INTERNAL_ERROR"
+    },
+    {
+      "expected_action_type": "restore_prerequisite",
+      "reason_code": "ONLINE_AUDIT_UNAVAILABLE"
+    },
+    {
+      "expected_action_type": "restore_prerequisite",
+      "reason_code": "PREREQUISITE_TOOL_MISSING"
+    },
+    {
+      "expected_action_type": "choose_fresh_output",
+      "reason_code": "PROMOTION_OUTPUT_EXISTS"
+    },
+    {
+      "expected_action_type": "investigate_policy_refusal",
+      "reason_code": "PROMOTION_POLICY_REFUSAL"
+    },
+    {
+      "expected_action_type": "regenerate_authoritative_report",
+      "reason_code": "REPORT_NOT_VERIFIED"
+    },
+    {
+      "expected_action_type": "rebuild_exact_revision",
+      "reason_code": "SOURCE_REVISION_MISMATCH"
+    },
+    {
+      "expected_action_type": "rebuild_exact_revision",
+      "reason_code": "UNRESOLVED_PLACEHOLDER"
+    }
+  ],
+  "schema_version": 1
+}
