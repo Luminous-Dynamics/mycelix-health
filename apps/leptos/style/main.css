@@ -109,6 +109,64 @@ body {
     width: 100%;
 }
 
+
+/* Runtime truth boundary — transport state is not data provenance. */
+.runtime-truth-banner {
+    display: flex;
+    align-items: baseline;
+    gap: 0.75rem;
+    width: calc(100% - 2rem);
+    max-width: 768px;
+    margin: 1rem auto 0;
+    padding: 0.75rem 1rem;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    background: rgba(10, 20, 22, 0.92);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    font-size: 0.78rem;
+    line-height: 1.45;
+}
+
+.runtime-truth-title {
+    flex: 0 0 auto;
+    font-size: 0.72rem;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+}
+
+.runtime-truth-detail {
+    color: var(--text-secondary);
+}
+
+.runtime-truth-banner.truth-demo {
+    border-color: rgba(217, 119, 6, 0.42);
+    background: rgba(55, 32, 8, 0.82);
+}
+
+.runtime-truth-banner.truth-demo .runtime-truth-title {
+    color: #F59E0B;
+}
+
+.runtime-truth-banner.truth-live {
+    border-color: rgba(5, 150, 105, 0.42);
+    background: rgba(4, 43, 34, 0.82);
+}
+
+.runtime-truth-banner.truth-live .runtime-truth-title {
+    color: #34D399;
+}
+
+.runtime-truth-banner.truth-blocked {
+    border-color: rgba(220, 38, 38, 0.42);
+    background: rgba(58, 12, 18, 0.82);
+}
+
+.runtime-truth-banner.truth-blocked .runtime-truth-title {
+    color: #F87171;
+}
+
 /* ═══════════════════════════════════════════
    Navigation — Bottom Tab Bar
    ═══════════════════════════════════════════ */
@@ -1829,5 +1887,14 @@ a.stat-link:hover {
     .portal-main {
         margin-left: 200px;
         max-width: 900px;
+    }
+}
+
+
+@media (max-width: 560px) {
+    .runtime-truth-banner {
+        align-items: flex-start;
+        flex-direction: column;
+        gap: 0.25rem;
     }
 }

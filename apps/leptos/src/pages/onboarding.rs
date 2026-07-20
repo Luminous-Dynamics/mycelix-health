@@ -251,8 +251,8 @@ pub fn OnboardingPage() -> impl IntoView {
                             let pass = passphrase_input.get();
                             let confirm = passphrase_confirm.get();
 
-                            if pass.len() < 8 {
-                                error_msg.set(Some("Passphrase must be at least 8 characters.".into()));
+                            if pass.chars().count() < 12 {
+                                error_msg.set(Some("Passphrase must be at least 12 characters.".into()));
                                 return;
                             }
                             if pass != confirm {

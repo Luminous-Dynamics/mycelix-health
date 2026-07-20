@@ -271,6 +271,9 @@ pub enum EntryTypes {
 #[hdk_entry_helper]
 #[derive(Clone, PartialEq)]
 pub struct EncryptedRecord {
+    /// Envelope format version. Version 1 authenticates all cleartext metadata
+    /// as XChaCha20-Poly1305 associated data.
+    pub envelope_version: u8,
     /// Patient this record belongs to.
     pub patient_hash: ActionHash,
     /// Key fingerprint used for encryption (first 8 bytes of BLAKE3 hash of public key).
@@ -285,6 +288,32 @@ pub struct EncryptedRecord {
     pub entry_type: String,
     /// Encrypted at (microseconds since UNIX epoch).
     pub encrypted_at: i64,
+}
+
+/// Canonical cleartext metadata authenticated by an encrypted-record envelope.
+/// Clients must serialize this value with the same Holochain serialization used
+/// by `ExternIO::encode` and pass the resulting bytes as AEAD associated data.
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+pub struct EncryptedRecordAad {
+    pub envelope_version: u8,
+    pub patient_hash: ActionHash,
+    pub key_fingerprint: [u8; 8],
+    pub data_category: String,
+    pub entry_type: String,
+    pub encrypted_at: i64,
+}
+
+impl EncryptedRecord {
+    pub fn aad(&self) -> EncryptedRecordAad {
+        EncryptedRecordAad {
+            envelope_version: self.envelope_version,
+            patient_hash: self.patient_hash.clone(),
+            key_fingerprint: self.key_fingerprint,
+            data_category: self.data_category.clone(),
+            entry_type: self.entry_type.clone(),
+            encrypted_at: self.encrypted_at,
+        }
+    }
 }
 
 /// Amendment request (HIPAA 45 CFR 164.526).
@@ -365,31 +394,64 @@ pub enum LinkTypes {
 pub fn validate(op: Op) -> ExternResult<ValidateCallbackResult> {
     match op.flattened::<EntryTypes, LinkTypes>()? {
         FlatOp::StoreEntry(store_entry) => match store_entry {
-            OpEntry::CreateEntry { app_entry, .. } => match app_entry {
-                EntryTypes::Encounter(e) => validate_encounter(&e),
-                EntryTypes::Diagnosis(d) => validate_diagnosis(&d),
-                EntryTypes::ProcedurePerformed(p) => validate_procedure(&p),
-                EntryTypes::LabResult(l) => validate_lab_result(&l),
-                EntryTypes::ImagingStudy(i) => validate_imaging(&i),
-                EntryTypes::VitalSigns(v) => validate_vitals(&v),
-                EntryTypes::EncryptedRecord(e) => validate_encrypted_record(&e),
-                EntryTypes::AmendmentRequest(_) => Ok(ValidateCallbackResult::Valid),
-                EntryTypes::SdohScreening(_) => Ok(ValidateCallbackResult::Valid),
-            },
-            OpEntry::UpdateEntry { app_entry, .. } => match app_entry {
-                EntryTypes::Encounter(e) => validate_encounter(&e),
-                EntryTypes::Diagnosis(d) => validate_diagnosis(&d),
-                EntryTypes::ProcedurePerformed(p) => validate_procedure(&p),
-                EntryTypes::LabResult(l) => validate_lab_result(&l),
-                EntryTypes::ImagingStudy(i) => validate_imaging(&i),
-                EntryTypes::VitalSigns(v) => validate_vitals(&v),
-                EntryTypes::EncryptedRecord(e) => validate_encrypted_record(&e),
-                EntryTypes::AmendmentRequest(_) => Ok(ValidateCallbackResult::Valid),
-                EntryTypes::SdohScreening(_) => Ok(ValidateCallbackResult::Valid),
-            },
+            OpEntry::CreateEntry { app_entry, .. } => validate_entry(app_entry),
+            OpEntry::UpdateEntry { app_entry, .. } => validate_entry(app_entry),
             _ => Ok(ValidateCallbackResult::Valid),
         },
         _ => Ok(ValidateCallbackResult::Valid),
+    }
+}
+
+fn validate_entry(entry: EntryTypes) -> ExternResult<ValidateCallbackResult> {
+    match entry {
+        EntryTypes::EncryptedRecord(record) => validate_encrypted_record(&record),
+        EntryTypes::Encounter(entry) => {
+            validate_plaintext_phi("Encounter", || validate_encounter(&entry))
+        }
+        EntryTypes::Diagnosis(entry) => {
+            validate_plaintext_phi("Diagnosis", || validate_diagnosis(&entry))
+        }
+        EntryTypes::ProcedurePerformed(entry) => {
+            validate_plaintext_phi("ProcedurePerformed", || validate_procedure(&entry))
+        }
+        EntryTypes::LabResult(entry) => {
+            validate_plaintext_phi("LabResult", || validate_lab_result(&entry))
+        }
+        EntryTypes::ImagingStudy(entry) => {
+            validate_plaintext_phi("ImagingStudy", || validate_imaging(&entry))
+        }
+        EntryTypes::VitalSigns(entry) => {
+            validate_plaintext_phi("VitalSigns", || validate_vitals(&entry))
+        }
+        EntryTypes::AmendmentRequest(_) => {
+            validate_plaintext_phi("AmendmentRequest", || Ok(ValidateCallbackResult::Valid))
+        }
+        EntryTypes::SdohScreening(_) => {
+            validate_plaintext_phi("SdohScreening", || Ok(ValidateCallbackResult::Valid))
+        }
+    }
+}
+
+fn validate_plaintext_phi<F>(
+    entry_type: &str,
+    validation: F,
+) -> ExternResult<ValidateCallbackResult>
+where
+    F: FnOnce() -> ExternResult<ValidateCallbackResult>,
+{
+    #[cfg(feature = "dangerous-plaintext-phi")]
+    {
+        let _ = entry_type;
+        validation()
+    }
+
+    #[cfg(not(feature = "dangerous-plaintext-phi"))]
+    {
+        let _ = validation;
+        Ok(ValidateCallbackResult::Invalid(format!(
+            "Plaintext PHI entry {} is disabled; commit an EncryptedRecord envelope",
+            entry_type
+        )))
     }
 }
 
@@ -465,20 +527,68 @@ fn validate_vitals(vitals: &VitalSigns) -> ExternResult<ValidateCallbackResult> 
 }
 
 fn validate_encrypted_record(record: &EncryptedRecord) -> ExternResult<ValidateCallbackResult> {
-    if record.ciphertext.is_empty() {
+    if record.envelope_version != 1 {
         return Ok(ValidateCallbackResult::Invalid(
-            "Ciphertext cannot be empty".to_string(),
+            "Unsupported encrypted record envelope version".to_string(),
         ));
     }
-    if record.entry_type.is_empty() {
+    if record.ciphertext.len() < 16 {
         return Ok(ValidateCallbackResult::Invalid(
-            "Entry type must be specified for decryption routing".to_string(),
+            "Ciphertext must include an AEAD authentication tag".to_string(),
         ));
     }
-    if record.data_category.is_empty() {
+    if record.key_fingerprint == [0u8; 8] {
         return Ok(ValidateCallbackResult::Invalid(
-            "Data category required for consent checking".to_string(),
+            "Key fingerprint cannot be all zeroes".to_string(),
         ));
+    }
+    if record.encrypted_at <= 0 {
+        return Ok(ValidateCallbackResult::Invalid(
+            "Encrypted timestamp must be positive".to_string(),
+        ));
+    }
+    if !encrypted_route_is_valid(&record.entry_type, &record.data_category) {
+        return Ok(ValidateCallbackResult::Invalid(format!(
+            "Unsupported or mismatched encrypted route {} / {}",
+            record.entry_type, record.data_category
+        )));
     }
     Ok(ValidateCallbackResult::Valid)
+}
+
+fn encrypted_route_is_valid(entry_type: &str, data_category: &str) -> bool {
+    matches!(
+        (entry_type, data_category),
+        ("Encounter", "Procedures")
+            | ("Diagnosis", "Diagnoses")
+            | ("ProcedurePerformed", "Procedures")
+            | ("LabResult", "LabResults")
+            | ("ImagingStudy", "ImagingStudies")
+            | ("VitalSigns", "VitalSigns")
+            | ("SdohScreening", "Demographics")
+    )
+}
+
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn encrypted_routes_are_exact_and_fail_closed() {
+        assert!(encrypted_route_is_valid("LabResult", "LabResults"));
+        assert!(encrypted_route_is_valid("SdohScreening", "Demographics"));
+        assert!(!encrypted_route_is_valid("LabResult", "MentalHealth"));
+        assert!(!encrypted_route_is_valid("Unknown", "All"));
+    }
+
+    #[cfg(not(feature = "dangerous-plaintext-phi"))]
+    #[test]
+    fn plaintext_phi_is_rejected_by_default() {
+        let result = validate_plaintext_phi("LabResult", || {
+            Ok(ValidateCallbackResult::Valid)
+        })
+        .expect("validation result");
+        assert!(matches!(result, ValidateCallbackResult::Invalid(_)));
+    }
 }

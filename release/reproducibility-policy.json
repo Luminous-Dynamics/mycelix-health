@@ -1,0 +1,30 @@
+{
+  "comparison": "byte_identical_sha256",
+  "forbid_extra_artifacts": true,
+  "policy_id": "mycelix-health-release-reproducibility-v1",
+  "release_id": "health-v1",
+  "require_distinct_build_roots": true,
+  "require_nix_closure_match": true,
+  "require_source_date_epoch": true,
+  "required_artifacts": [
+    "wasm/patient_integrity.wasm",
+    "wasm/provider_integrity.wasm",
+    "wasm/records_integrity.wasm",
+    "wasm/prescriptions_integrity.wasm",
+    "wasm/consent_integrity.wasm",
+    "wasm/bridge_integrity.wasm",
+    "wasm/patient.wasm",
+    "wasm/provider.wasm",
+    "wasm/records.wasm",
+    "wasm/prescriptions.wasm",
+    "wasm/consent.wasm",
+    "wasm/health_bridge.wasm",
+    "health.dna",
+    "mycelix-health.happ"
+  ],
+  "required_context_files": [
+    "build-context.json",
+    "nix-closure.json"
+  ],
+  "schema_version": 1
+}

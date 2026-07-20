@@ -2,8 +2,9 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 //! Health proof generation pipeline: Winterfell STARK + Dilithium5 signing.
 //!
-//! Complete prove-and-sign flow:
-//! 1. Generate REAL Winterfell STARK range proof
+//! Experimental prove-and-sign flow:
+//! 1. Generate a Winterfell STARK range proof only when the explicit
+//!    `experimental-unbound-range-proofs` feature is enabled
 //! 2. Wrap in AuthenticatedProof with domain tag
 //! 3. Sign with CRYSTALS-Dilithium5 (post-quantum)
 //!
@@ -47,7 +48,7 @@ pub struct HealthProofRequest {
 /// Output from the prove-and-sign pipeline.
 #[derive(Debug)]
 pub struct HealthProofOutput {
-    /// The health proof with REAL Winterfell STARK bytes.
+    /// The health proof, or a non-verifiable commitment placeholder in default builds.
     pub health_proof: HealthProof,
     /// The authenticated proof with Dilithium5 signature (if signing enabled).
     pub authenticated_proof: Option<AuthenticatedProof>,
@@ -59,9 +60,10 @@ pub struct HealthProofOutput {
     pub total_time_ms: f64,
 }
 
-/// Generate a REAL Winterfell STARK health proof.
+/// Generate a health attestation candidate.
 ///
-/// This calls `prove_range()` with actual Winterfell AIR circuit — not a stub.
+/// Default builds emit a commitment placeholder that verification rejects. The
+/// experimental feature emits the current unbound Winterfell range proof.
 pub fn prove(request: &HealthProofRequest) -> HealthProofOutput {
     let total_start = Instant::now();
 
@@ -72,7 +74,7 @@ pub fn prove(request: &HealthProofRequest) -> HealthProofOutput {
 
     let expiry = timestamp + 86400; // 24 hours
 
-    // Generate REAL Winterfell STARK proof
+    // Generate an experimental STARK or a default-deny placeholder.
     let prove_start = Instant::now();
     let health_proof = generate_proof(
         request.proof_type.clone(),
@@ -98,7 +100,10 @@ pub fn prove(request: &HealthProofRequest) -> HealthProofOutput {
     }
 }
 
-/// Generate a REAL proof AND sign with Dilithium5.
+/// Generate an attestation candidate and sign its bytes with Dilithium5.
+///
+/// A valid signature authenticates the candidate but does not make an unbound
+/// or placeholder proof semantically valid.
 ///
 /// Returns both the health proof and an AuthenticatedProof with PQ signature.
 #[cfg(feature = "verify-dilithium")]
@@ -115,7 +120,7 @@ pub fn prove_and_sign(
 
     let expiry = timestamp + 86400;
 
-    // 1. Generate REAL Winterfell STARK proof
+    // 1. Generate an experimental STARK or a default-deny placeholder.
     let prove_start = Instant::now();
     let health_proof = generate_proof(
         request.proof_type.clone(),
@@ -176,8 +181,31 @@ pub fn prove_and_sign(
 mod tests {
     use super::*;
 
+    #[cfg(not(feature = "experimental-unbound-range-proofs"))]
     #[test]
-    fn test_prove_vitals() {
+    fn default_generation_is_a_non_verifiable_placeholder() {
+        let request = HealthProofRequest {
+            proof_type: HealthProofType::VitalsInRange,
+            value: 120,
+            min: 90,
+            max: 180,
+            patient_id: "did:mycelix:patient001".to_string(),
+            health_data: b"bp:120/80,hr:72".to_vec(),
+            attestor: AttestorRole::Physician,
+        };
+
+        let output = prove(&request);
+        assert_eq!(
+            output.health_proof.metadata.system,
+            crate::ProofSystem::Sha256Commitment
+        );
+        assert_eq!(output.health_proof.metadata.security_bits, 0);
+        assert!(!crate::verify_proof(&output.health_proof));
+    }
+
+    #[cfg(feature = "experimental-unbound-range-proofs")]
+    #[test]
+    fn test_prove_vitals_experimental() {
         let request = HealthProofRequest {
             proof_type: HealthProofType::VitalsInRange,
             value: 120,
@@ -196,7 +224,10 @@ mod tests {
             output.prove_time_ms, output.health_proof.proof_bytes.len());
     }
 
-    #[cfg(feature = "verify-dilithium")]
+    #[cfg(all(
+        feature = "verify-dilithium",
+        feature = "experimental-unbound-range-proofs"
+    ))]
     #[test]
     fn test_prove_and_sign() {
         let keypair = DilithiumKeypair::generate();

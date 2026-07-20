@@ -1,0 +1,111 @@
+{
+  "schema_version": 1,
+  "required_conductors": ["patient", "provider", "reviewer", "validator_a", "validator_b"],
+  "scenarios": [
+    {
+      "id": "sensitive-release-happy-path",
+      "operation": "sensitive_record_release",
+      "participants": ["patient", "provider"],
+      "faults": [],
+      "expected": "completed"
+    },
+    {
+      "id": "provider-correction-happy-path",
+      "operation": "provider_correction",
+      "participants": ["provider", "reviewer"],
+      "faults": [],
+      "expected": "completed"
+    },
+    {
+      "id": "break-glass-three-party",
+      "operation": "break_glass_acknowledgement",
+      "participants": ["patient", "provider", "reviewer"],
+      "faults": [],
+      "expected": "completed"
+    },
+    {
+      "id": "patient-restart-after-accept",
+      "operation": "sensitive_record_release",
+      "participants": ["patient", "provider"],
+      "faults": ["restart:patient:accepted"],
+      "expected": "recover_or_manual_review"
+    },
+    {
+      "id": "provider-restart-after-commit",
+      "operation": "sensitive_record_release",
+      "participants": ["patient", "provider"],
+      "faults": ["restart:provider:committed"],
+      "expected": "recover_or_manual_review"
+    },
+    {
+      "id": "delayed-signature-gossip",
+      "operation": "sensitive_record_release",
+      "participants": ["patient", "provider"],
+      "faults": ["delay_gossip:provider:120000"],
+      "expected": "wait_then_complete"
+    },
+    {
+      "id": "partition-with-complete-authority-evidence",
+      "operation": "sensitive_record_release",
+      "participants": ["patient", "provider"],
+      "faults": ["partition:patient:provider", "authority_decision:complete"],
+      "expected": "manual_review_without_force_policy"
+    },
+    {
+      "id": "partition-with-abandoned-authority-evidence",
+      "operation": "sensitive_record_release",
+      "participants": ["patient", "provider"],
+      "faults": ["partition:patient:provider", "authority_decision:abandoned"],
+      "expected": "manual_review_without_force_policy"
+    },
+    {
+      "id": "mixed-complete-and-abandoned-authorities",
+      "operation": "sensitive_record_release",
+      "participants": ["patient", "provider"],
+      "faults": ["authority_decision:mixed"],
+      "expected": "manual_review"
+    },
+    {
+      "id": "preflight-session-substitution",
+      "operation": "sensitive_record_release",
+      "participants": ["patient", "provider"],
+      "faults": ["tamper:preflight_bytes"],
+      "expected": "rejected"
+    },
+    {
+      "id": "countersigned-entry-substitution",
+      "operation": "sensitive_record_release",
+      "participants": ["patient", "provider"],
+      "faults": ["tamper:app_entry"],
+      "expected": "rejected"
+    },
+    {
+      "id": "wrong-deployment-digest",
+      "operation": "sensitive_record_release",
+      "participants": ["patient", "provider"],
+      "faults": ["tamper:deployment_digest"],
+      "expected": "rejected"
+    },
+    {
+      "id": "stale-validator-policy",
+      "operation": "sensitive_record_release",
+      "participants": ["patient", "provider"],
+      "faults": ["policy:rollback"],
+      "expected": "rejected"
+    },
+    {
+      "id": "revoked-provider-key",
+      "operation": "sensitive_record_release",
+      "participants": ["patient", "provider"],
+      "faults": ["identity:provider_revoked"],
+      "expected": "rejected"
+    },
+    {
+      "id": "expired-session-replay",
+      "operation": "break_glass_acknowledgement",
+      "participants": ["patient", "provider", "reviewer"],
+      "faults": ["replay:after_session_end"],
+      "expected": "rejected"
+    }
+  ]
+}

@@ -47,7 +47,6 @@ describe('ZomeConnector', () => {
       const result = await connector.checkConsent(patientHash, categories);
 
       expect(mockClient.callZome).toHaveBeenCalledWith({
-        cap_secret: null,
         role_name: 'health',
         zome_name: 'consent',
         fn_name: 'check_authorization',
@@ -336,7 +335,6 @@ describe('ZomeConnector', () => {
       await connector.registerExternalId(patientHash, 'epic', 'E999');
 
       expect(mockClient.callZome).toHaveBeenCalledWith({
-        cap_secret: null,
         role_name: 'health',
         zome_name: 'patient',
         fn_name: 'add_external_id',
@@ -442,7 +440,6 @@ describe('ZomeConnector', () => {
       );
 
       expect(mockClient.callZome).toHaveBeenCalledWith({
-        cap_secret: null,
         role_name: 'health',
         zome_name: 'fhir_bridge',
         fn_name: 'validate_fhir_resource',
@@ -480,6 +477,7 @@ describe('ZomeConnector', () => {
       mockClient.callZome
         .mockResolvedValueOnce({ action_hash: new Uint8Array(39), npi: '1234567890' })
         .mockResolvedValueOnce([{ licenseType: 'MD', status: 'Active' }])
+        .mockResolvedValueOnce({ composite_score: 0.9 })
         // Patient lookup
         .mockResolvedValueOnce({
           action_hash: new Uint8Array(39),
@@ -523,6 +521,7 @@ describe('ZomeConnector', () => {
       mockClient.callZome
         .mockResolvedValueOnce({ action_hash: new Uint8Array(39), npi: '123' })
         .mockResolvedValueOnce([{ status: 'Active' }])
+        .mockResolvedValueOnce({ composite_score: 0.9 })
         // Patient not found
         .mockResolvedValueOnce(null);
 
@@ -541,6 +540,7 @@ describe('ZomeConnector', () => {
       mockClient.callZome
         .mockResolvedValueOnce({ action_hash: new Uint8Array(39), npi: '123' })
         .mockResolvedValueOnce([{ status: 'Active' }])
+        .mockResolvedValueOnce({ composite_score: 0.9 })
         // Patient found
         .mockResolvedValueOnce({
           action_hash: new Uint8Array(39),
@@ -573,6 +573,7 @@ describe('ZomeConnector', () => {
       mockClient.callZome
         .mockResolvedValueOnce({ action_hash: new Uint8Array(39), npi: '123' })
         .mockResolvedValueOnce([{ status: 'Active' }])
+        .mockResolvedValueOnce({ composite_score: 0.9 })
         // Consent check
         .mockResolvedValueOnce({
           authorized: true,

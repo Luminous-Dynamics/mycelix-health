@@ -99,7 +99,6 @@ export class ZomeConnector {
   ): Promise<ConsentCheckResult> {
     try {
       const result = await this.client.callZome({
-        cap_secret: null,
         role_name: this.roleName,
         zome_name: 'consent',
         fn_name: 'check_authorization',
@@ -193,16 +192,14 @@ export class ZomeConnector {
 
       if (providerNpi) {
         providerRecord = await this.client.callZome({
-          cap_secret: null,
-          role_name: this.roleName,
+            role_name: this.roleName,
           zome_name: 'provider',
           fn_name: 'get_provider_by_npi',
           payload: providerNpi,
         });
       } else if (providerAgentKey) {
         providerRecord = await this.client.callZome({
-          cap_secret: null,
-          role_name: this.roleName,
+            role_name: this.roleName,
           zome_name: 'provider',
           fn_name: 'get_provider_by_agent',
           payload: providerAgentKey,
@@ -210,8 +207,7 @@ export class ZomeConnector {
       } else {
         // Get current agent's provider record
         providerRecord = await this.client.callZome({
-          cap_secret: null,
-          role_name: this.roleName,
+            role_name: this.roleName,
           zome_name: 'provider',
           fn_name: 'get_my_provider_profile',
           payload: null,
@@ -228,7 +224,6 @@ export class ZomeConnector {
 
       // Verify licenses are active
       const licenses = await this.client.callZome({
-        cap_secret: null,
         role_name: this.roleName,
         zome_name: 'provider',
         fn_name: 'get_provider_licenses',
@@ -251,8 +246,7 @@ export class ZomeConnector {
       let trustScore: number | undefined;
       try {
         const matlResult = await this.client.callZome({
-          cap_secret: null,
-          role_name: this.roleName,
+            role_name: this.roleName,
           zome_name: 'bridge',
           fn_name: 'get_provider_trust_score',
           payload: (providerRecord as any).action_hash,
@@ -295,8 +289,7 @@ export class ZomeConnector {
 
       if (mrn) {
         result = await this.client.callZome({
-          cap_secret: null,
-          role_name: this.roleName,
+            role_name: this.roleName,
           zome_name: 'patient',
           fn_name: 'get_patient_by_mrn',
           payload: {
@@ -306,8 +299,7 @@ export class ZomeConnector {
         });
       } else if (externalSystem && externalId) {
         result = await this.client.callZome({
-          cap_secret: null,
-          role_name: this.roleName,
+            role_name: this.roleName,
           zome_name: 'patient',
           fn_name: 'get_patient_by_external_id',
           payload: {
@@ -347,7 +339,6 @@ export class ZomeConnector {
     externalId: string
   ): Promise<void> {
     await this.client.callZome({
-      cap_secret: null,
       role_name: this.roleName,
       zome_name: 'patient',
       fn_name: 'add_external_id',
@@ -369,7 +360,6 @@ export class ZomeConnector {
   async logSyncOperation(entry: AuditLogEntry): Promise<void> {
     try {
       await this.client.callZome({
-        cap_secret: null,
         role_name: this.roleName,
         zome_name: 'consent',
         fn_name: 'create_access_log',
@@ -426,7 +416,6 @@ export class ZomeConnector {
   ): Promise<{ valid: boolean; errors: string[] }> {
     try {
       const result = await this.client.callZome({
-        cap_secret: null,
         role_name: this.roleName,
         zome_name: 'fhir_bridge',
         fn_name: 'validate_fhir_resource',

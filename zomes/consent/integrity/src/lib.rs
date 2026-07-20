@@ -877,15 +877,43 @@ fn validate_emergency_access(
             "Emergency access requires reason and clinical justification".to_string(),
         ));
     }
-    let patient_ref = validate_patient_reference(&emergency.patient_hash)?;
-    if !matches!(patient_ref, ValidateCallbackResult::Valid) {
-        return Ok(patient_ref);
+    let ownership = validate_patient_reference_and_ownership(
+        &emergency.patient_hash,
+        author,
+        "pre-authorize emergency access",
+    )?;
+    if !matches!(ownership, ValidateCallbackResult::Valid) {
+        return Ok(ownership);
     }
-    if &emergency.accessor != author {
+
+    let Some(approver) = emergency.approved_by.as_ref() else {
         return Ok(ValidateCallbackResult::Invalid(
-            "Emergency access accessor must match the action author".to_string(),
+            "Emergency access must be pre-authorized by the patient".to_string(),
+        ));
+    };
+    if approver != author {
+        return Ok(ValidateCallbackResult::Invalid(
+            "Emergency access approver must match the action author".to_string(),
         ));
     }
+    if &emergency.accessor == approver {
+        return Ok(ValidateCallbackResult::Invalid(
+            "Emergency access cannot be self-approved".to_string(),
+        ));
+    }
+    if emergency.access_duration_minutes == 0 || emergency.access_duration_minutes > 60 {
+        return Ok(ValidateCallbackResult::Invalid(
+            "Emergency access duration must be between 1 and 60 minutes".to_string(),
+        ));
+    }
+    if emergency.data_accessed.is_empty()
+        || emergency.data_accessed.contains(&DataCategory::All)
+    {
+        return Ok(ValidateCallbackResult::Invalid(
+            "Emergency access must name one or more concrete data categories".to_string(),
+        ));
+    }
+
     Ok(ValidateCallbackResult::Valid)
 }
 

@@ -1,0 +1,36 @@
+{
+  "schema_version": 1,
+  "fixture_set_id": "mycelix-health-synthetic-clinical-fixtures-v1",
+  "classification": "synthetic_non_phi",
+  "patient": {
+    "conductor": "patient",
+    "patient_id": "LAB-PATIENT-001",
+    "mrn": "LABMRN001",
+    "first_name": "Synthetic",
+    "last_name": "Patient",
+    "date_of_birth": "1990-01-01",
+    "biological_sex": "Unknown",
+    "primary_language": "en",
+    "country": "ZA"
+  },
+  "providers": [
+    {
+      "conductor": "provider",
+      "first_name": "Synthetic",
+      "last_name": "Provider",
+      "title": "MD",
+      "specialty": "Internal Medicine",
+      "provider_type": "Physician",
+      "organization": "Mycelix Health Lab"
+    },
+    {
+      "conductor": "reviewer",
+      "first_name": "Synthetic",
+      "last_name": "Reviewer",
+      "title": "MD",
+      "specialty": "Clinical Review",
+      "provider_type": {"Other": "ClinicalReviewer"},
+      "organization": "Mycelix Health Lab"
+    }
+  ]
+}

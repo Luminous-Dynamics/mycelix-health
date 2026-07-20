@@ -20,3 +20,7 @@ mycelix-health-shared = { path = "../../shared" }
 
 [features]
 default = []
+# Migration-only escape hatch. Production DNAs must not enable this.
+dangerous-plaintext-phi = ["records_integrity/dangerous-plaintext-phi"]
+# Migration-only: allows plaintext and decryption keys to enter zome calls.
+dangerous-server-side-phi = []

@@ -1,0 +1,39 @@
+{
+  "schema_version": 2,
+  "policy_id": "mycelix-health-clinical-promotion-v2",
+  "release_id": "health-v1",
+  "required_reports": [
+    "release-compatibility-report.json",
+    "clinical-supply-chain-report.json",
+    "reproducibility-report.json",
+    "reproducible-build-provenance.json",
+    "attestation-subjects.json",
+    "github-attestation-verification.json",
+    "SUITE-LEDGER.json",
+    "SUITE-MANIFEST.json"
+  ],
+  "requirements": {
+    "release_evidence_status": "verified",
+    "schema_compatibility_status": "verified",
+    "supply_chain_status": "verified",
+    "reproducibility_status": "verified",
+    "github_attestation_status": "verified",
+    "clinical_release_eligible": true,
+    "require_fault_matrix_complete": false,
+    "require_nix_closure_match": true,
+    "require_exact_action_lock": true,
+    "require_current_policy_and_sbom": true,
+    "require_unexpired_reviewed_exceptions": true,
+    "require_single_source_revision": true,
+    "require_create_only_decision": true
+  },
+  "trusted_attestation": {
+    "source_ref": "refs/heads/main",
+    "signer_workflow": ".github/workflows/ci.yml",
+    "required_subject_names": ["health-happ", "health-sdk"]
+  },
+  "forbidden_source_placeholders": [
+    "UNCONFIGURED",
+    "UNRESOLVED-HEALTH-DNA"
+  ]
+}

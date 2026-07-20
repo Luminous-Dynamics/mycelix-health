@@ -20,8 +20,17 @@
 //! 1. Client generates proof (Winterfell or RISC0, depending on complexity)
 //! 2. Client signs with Dilithium5 → `AuthenticatedProof`
 //! 3. Zome receives `HealthProof` containing `AuthenticatedProof`
-//! 4. Integrity validation calls `verify_proof()` → checks STARK + Dilithium
-//! 5. Entry stored on DHT (proof bytes only, no private health data)
+//! 4. A production verifier calls `verify_proof()` and rejects unsupported or
+//!    unbound proof systems by default
+//! 5. Only a fully verified attestation may be stored or used for policy
+//!
+//! ## Security status
+//!
+//! The current Winterfell range AIR is cryptographic but still experimental:
+//! it does not bind the hidden range value to `data_commitment`. Consequently,
+//! default verification rejects it. The opt-in
+//! `experimental-unbound-range-proofs` feature exists only for research and
+//! benchmark continuity and must not gate clinical or financial decisions.
 
 pub mod circuits;
 pub mod prover;
@@ -176,7 +185,9 @@ impl ProofSystem {
 ///
 /// For simple proofs, uses Winterfell STARK AIR circuits.
 /// For complex proofs, uses RISC0 zkVM guest programs.
-/// Falls back to SHA-256 commitment when backends are not available.
+/// Emits a domain-tagged SHA-256 commitment placeholder when a proof backend
+/// is not available. Commitment placeholders are never accepted by
+/// [`verify_proof`].
 ///
 /// In production, proof generation happens CLIENT-SIDE (portal or mobile app).
 /// This function is the reference implementation.
@@ -212,7 +223,8 @@ pub fn generate_proof(
 
     let recommended = proof_type.recommended_backend();
 
-    // Determine proof system: try real backend, fall back to commitment
+    // Determine proof system: try an experimental backend, otherwise emit a
+    // non-verifiable commitment placeholder for migration/debugging only.
     let (proof_bytes, system) = generate_proof_bytes(
         recommended,
         &data_commitment,
@@ -229,7 +241,7 @@ pub fn generate_proof(
         public_inputs: HealthPublicInputs {
             patient_id_hash,
             data_commitment,
-            criteria_met: true,
+            criteria_met: value >= min_value && value <= max_value,
             data_timestamp: timestamp,
             attestor_role: attestor,
             min_value,
@@ -238,11 +250,11 @@ pub fn generate_proof(
         metadata: ProofMetadata {
             system,
             security_bits: match system {
-                ProofSystem::WinterfellStark => 96,  // Standard security
-                ProofSystem::Risc0ZkVm => 128,       // RISC0 default
-                ProofSystem::Sha256Commitment => 128, // SHA-256 collision
+                ProofSystem::WinterfellStark => 96,
+                ProofSystem::Risc0ZkVm => 0, // No health guest verifier is wired.
+                ProofSystem::Sha256Commitment => 0, // Commitment is not a proof.
             },
-            post_quantum: true, // STARKs and SHA-256 are PQ-safe
+            post_quantum: matches!(system, ProofSystem::WinterfellStark),
             generated_at: timestamp,
             expires_at: expiry,
             proof_size: proof_bytes.len(),
@@ -252,9 +264,9 @@ pub fn generate_proof(
 
 /// Internal: generate proof bytes using the recommended backend.
 ///
-/// Circuit-specific AIR implementations will be added per proof type.
-/// For now, all backends produce a commitment-based proof with the correct
-/// domain tag binding. The structure is ready for real STARK circuit wiring.
+/// Default builds emit only a non-verifiable commitment placeholder. The
+/// explicit research feature enables the current unbound Winterfell range AIR.
+/// Complex RISC0 proof types remain unsupported.
 fn generate_proof_bytes(
     recommended: BackendId,
     data_commitment: &[u8; 32],
@@ -264,14 +276,24 @@ fn generate_proof_bytes(
     min_value: u64,
     max_value: u64,
 ) -> (Vec<u8>, ProofSystem) {
-    // Try REAL Winterfell STARK proof for range-compatible types
+    // The current range AIR is available only as an explicit research opt-in.
+    // Default builds do not even emit an unbound STARK that another component
+    // might accidentally treat as production evidence.
+    #[cfg(feature = "experimental-unbound-range-proofs")]
     if recommended == BackendId::Winterfell && value >= min_value && value <= max_value {
-        if let Ok(proof) = circuits::range_proof::prove_range(value, min_value, max_value, *data_commitment) {
+        if let Ok(proof) =
+            circuits::range_proof::prove_range(value, min_value, max_value, *data_commitment)
+        {
             return (proof.to_bytes(), ProofSystem::WinterfellStark);
         }
     }
 
-    // Fallback: domain-tagged commitment proof
+    #[cfg(not(feature = "experimental-unbound-range-proofs"))]
+    let _ = (recommended, value, min_value, max_value);
+
+    // Fallback: domain-tagged commitment placeholder. This is retained only so
+    // callers can migrate without silently receiving an accepted proof.
+    // Verification always rejects this system.
     let domain_tag = tag_health_attest();
     let mut proof_hasher = Sha256::new();
     proof_hasher.update(domain_tag.as_bytes());
@@ -283,105 +305,109 @@ fn generate_proof_bytes(
     (proof_hash.to_vec(), ProofSystem::Sha256Commitment)
 }
 
-/// Verify a health proof.
+/// Verify a health proof using the current wall-clock time.
 ///
-/// Dispatches to the appropriate backend based on proof system:
-/// - `WinterfellStark`: Verifies Winterfell STARK proof via mycelix-zkp-core
-/// - `Risc0ZkVm`: Verifies RISC0 receipt via mycelix-zkp-core
-/// - `Sha256Commitment`: Legacy commitment check (backward compat)
-///
-/// In Holochain zomes, this is called from integrity validation.
+/// Verification is fail-closed:
+/// - expired or internally inconsistent metadata is rejected;
+/// - commitment placeholders are rejected;
+/// - RISC0 receipts are rejected until a health guest image and journal binding
+///   are implemented;
+/// - the current unbound Winterfell range AIR is rejected unless the explicitly
+///   experimental feature is enabled.
 pub fn verify_proof(proof: &HealthProof) -> bool {
-    // Check expiry
-    if proof.metadata.expires_at > 0 && proof.metadata.generated_at > proof.metadata.expires_at {
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs() as i64;
+    verify_proof_at(proof, now)
+}
+
+/// Deterministic verification entry point for tests and policy engines that
+/// already have a trusted timestamp.
+pub fn verify_proof_at(proof: &HealthProof, now: i64) -> bool {
+    if proof.metadata.proof_size != proof.proof_bytes.len()
+        || proof.metadata.generated_at <= 0
+        || proof.metadata.expires_at <= proof.metadata.generated_at
+        || now < proof.metadata.generated_at
+        || now > proof.metadata.expires_at
+        || proof.public_inputs.data_timestamp > proof.metadata.generated_at
+        || proof.public_inputs.data_timestamp > now
+    {
         return false;
     }
 
     match proof.metadata.system {
         ProofSystem::WinterfellStark => {
+            if !proof.metadata.post_quantum || proof.metadata.security_bits != 96 {
+                return false;
+            }
             verify_winterfell_proof(proof)
         }
         ProofSystem::Risc0ZkVm => {
+            if proof.metadata.post_quantum || proof.metadata.security_bits != 0 {
+                return false;
+            }
             verify_risc0_proof(proof)
         }
         ProofSystem::Sha256Commitment => {
-            // Legacy: verify commitment structure
+            if proof.metadata.post_quantum || proof.metadata.security_bits != 0 {
+                return false;
+            }
             verify_commitment_proof(proof)
         }
     }
 }
 
-/// Verify a Winterfell STARK health proof.
+/// Verify the experimental Winterfell range proof.
 ///
-/// When `verify-winterfell` feature is enabled, this calls the actual
-/// Winterfell verifier with the health-specific AIR constraints.
-/// Without the feature, validates proof structure only.
+/// The actual Winterfell proof is always deserialized and cryptographically
+/// checked when the research feature is enabled. Without that feature this
+/// returns false rather than degrading to metadata inspection.
 fn verify_winterfell_proof(proof: &HealthProof) -> bool {
-    if proof.proof_bytes.is_empty() {
+    #[cfg(not(feature = "experimental-unbound-range-proofs"))]
+    {
+        let _ = proof;
         return false;
     }
 
-    #[cfg(feature = "verify-winterfell")]
+    #[cfg(feature = "experimental-unbound-range-proofs")]
     {
-        // REAL Winterfell STARK verification
         use winterfell::Proof;
 
-        // Deserialize proof bytes
+        if proof.proof_bytes.is_empty()
+            || !proof.public_inputs.criteria_met
+            || proof.metadata.security_bits != 96
+        {
+            return false;
+        }
+
         let stark_proof = match Proof::from_bytes(&proof.proof_bytes) {
-            Ok(p) => p,
+            Ok(proof) => proof,
             Err(_) => return false,
         };
 
-        // Verify using the HealthRangeAir circuit
         circuits::range_proof::verify_range(
             stark_proof,
             proof.public_inputs.min_value,
             proof.public_inputs.max_value,
             proof.public_inputs.data_commitment,
-        ).is_ok()
-    }
-
-    #[cfg(not(feature = "verify-winterfell"))]
-    {
-        // Without backend, validate structure only
-        proof.public_inputs.criteria_met
-            && proof.metadata.security_bits >= 96
-            && !proof.proof_bytes.is_empty()
+        )
+        .is_ok()
     }
 }
 
-/// Verify a RISC0 zkVM health proof.
+/// RISC0 health verification is not implemented. Merely having receipt bytes,
+/// claimed security bits, or `criteria_met = true` is never authorization.
 fn verify_risc0_proof(proof: &HealthProof) -> bool {
-    if proof.proof_bytes.is_empty() {
-        return false;
-    }
-
-    #[cfg(feature = "verify-risc0")]
-    {
-        // SECURITY: RISC-0 proofs are structural-only, not cryptographically verified.
-        // This checks metadata and non-empty proof bytes but does NOT call
-        // risc0_zkvm::verify() with the health guest image ID.
-        // Full verification requires implementing RISC-0 guest programs for each
-        // complex proof type (TrialEligibility, OrganDonorCompatibility, etc.).
-        // Estimated effort: 3-4 weeks of cryptographic engineering.
-        proof.public_inputs.criteria_met
-            && proof.metadata.security_bits >= 128
-            && !proof.proof_bytes.is_empty()
-    }
-
-    #[cfg(not(feature = "verify-risc0"))]
-    {
-        proof.public_inputs.criteria_met
-            && proof.metadata.security_bits >= 128
-            && !proof.proof_bytes.is_empty()
-    }
+    let _ = proof;
+    false
 }
 
-/// Verify a legacy SHA-256 commitment proof (backward compatibility).
+/// SHA-256 commitments provide data integrity, not zero-knowledge statement
+/// verification. They remain parseable for migration but are never accepted.
 fn verify_commitment_proof(proof: &HealthProof) -> bool {
-    !proof.proof_bytes.is_empty()
-        && proof.public_inputs.criteria_met
-        && proof.metadata.security_bits >= 128
+    let _ = proof;
+    false
 }
 
 /// Verify a proof's domain tag matches the health attestation tag.
@@ -416,9 +442,10 @@ mod tests {
         );
 
         assert!(proof.public_inputs.criteria_met);
-        assert!(proof.metadata.post_quantum);
+        assert!(!proof.metadata.post_quantum);
         assert!(!proof.proof_bytes.is_empty());
-        assert!(verify_proof(&proof));
+        assert_eq!(proof.metadata.system, ProofSystem::Sha256Commitment);
+        assert!(!verify_proof_at(&proof, 1_500_000));
     }
 
     #[test]
@@ -438,7 +465,8 @@ mod tests {
         );
 
         assert_eq!(proof.metadata.proof_size, 32);
-        assert!(verify_proof(&proof));
+        assert_eq!(proof.metadata.security_bits, 0);
+        assert!(!verify_proof_at(&proof, 1_250_000));
     }
 
     #[test]
@@ -473,8 +501,9 @@ mod tests {
         );
     }
 
+    #[cfg(feature = "experimental-unbound-range-proofs")]
     #[test]
-    fn real_winterfell_proof_generation_and_verification() {
+    fn experimental_winterfell_proof_generation_and_verification() {
         let proof = generate_proof(
             HealthProofType::VitalsInRange,
             b"bp:120/80,hr:72,temp:98.6",
@@ -494,7 +523,10 @@ mod tests {
             "STARK proof should be >1KB, got {} bytes", proof.proof_bytes.len());
 
         // REAL verification should pass
-        assert!(verify_proof(&proof), "real Winterfell STARK proof must verify");
+        assert!(
+            verify_proof_at(&proof, 1_500_000),
+            "experimental Winterfell STARK proof must verify cryptographically"
+        );
     }
 
     #[test]
@@ -523,6 +555,7 @@ mod tests {
         assert!(!verify_proof(&proof), "empty proof should fail");
     }
 
+    #[cfg(feature = "experimental-unbound-range-proofs")]
     #[test]
     fn tampered_stark_proof_fails() {
         let mut proof = generate_proof(
@@ -538,7 +571,61 @@ mod tests {
         if !proof.proof_bytes.is_empty() {
             proof.proof_bytes[0] ^= 0xFF; // Flip first byte
         }
-        assert!(!verify_proof(&proof), "tampered STARK proof should fail verification");
+        assert!(
+            !verify_proof_at(&proof, 1_500_000),
+            "tampered STARK proof should fail verification"
+        );
+    }
+
+    #[test]
+    fn expired_proof_is_rejected_against_trusted_time() {
+        let proof = generate_proof(
+            HealthProofType::VitalsInRange,
+            b"data",
+            b"patient",
+            AttestorRole::Physician,
+            1_000,
+            2_000,
+            100,
+            50,
+            200,
+        );
+        assert!(!verify_proof_at(&proof, 2_001));
+    }
+
+    #[test]
+    fn future_issued_proof_is_rejected() {
+        let proof = generate_proof(
+            HealthProofType::Custom {
+                description: "future".into(),
+            },
+            b"data",
+            b"patient",
+            AttestorRole::PatientSelf,
+            2_000,
+            3_000,
+            1,
+            0,
+            2,
+        );
+        assert!(!verify_proof_at(&proof, 1_999));
+    }
+
+    #[test]
+    fn commitment_placeholder_is_never_treated_as_a_proof() {
+        let proof = generate_proof(
+            HealthProofType::Custom { description: "placeholder".into() },
+            b"data",
+            b"patient",
+            AttestorRole::PatientSelf,
+            1_000,
+            2_000,
+            0,
+            0,
+            0,
+        );
+        assert_eq!(proof.metadata.system, ProofSystem::Sha256Commitment);
+        assert!(!verify_proof_at(&proof, 1_500));
     }
 
     #[test]

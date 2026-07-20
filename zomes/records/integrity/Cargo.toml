@@ -17,3 +17,5 @@ serde_json = { workspace = true }
 
 [features]
 default = []
+# Migration-only escape hatch. Production DNAs must not enable this.
+dangerous-plaintext-phi = []

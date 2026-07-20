@@ -1,11 +1,14 @@
 // Copyright (C) 2024-2026 Tristan Stoltz / Luminous Dynamics
 // SPDX-License-Identifier: AGPL-3.0-or-later
-//! Health proof verification pipeline: Winterfell STARK verify + Dilithium5 check + Ed25519 attest.
+//! Health proof verification pipeline with fail-closed backend dispatch.
 //!
-//! Complete verify-and-attest flow:
-//! 1. Deserialize and verify REAL Winterfell STARK proof
-//! 2. Verify Dilithium5 prover signature (if present)
-//! 3. Sign attestation result with Ed25519 (for DHT storage)
+//! Verification flow:
+//! 1. Reject unsupported, expired, placeholder, or unbound proofs by default
+//! 2. With the explicit research feature, deserialize and verify the current
+//!    Winterfell range proof
+//! 3. Verify a Dilithium5 prover signature when present
+//! 4. Emit an attestation only when both semantic proof verification and any
+//!    required signature verification succeed
 //!
 //! This is the off-chain verifier component of the DASTARK health attestation pipeline.
 //! Follows the attribution cluster pattern: proof verified off-chain, attestation stored on-chain.
@@ -21,7 +24,7 @@ use mycelix_zkp_core::dilithium;
 /// Output from the verify-and-attest pipeline.
 #[derive(Debug)]
 pub struct VerificationOutput {
-    /// Whether the STARK proof is cryptographically valid.
+    /// Whether the selected proof system is both supported and valid.
     pub proof_valid: bool,
     /// Whether the Dilithium5 signature is valid (None if no signature).
     pub signature_valid: Option<bool>,
@@ -35,9 +38,9 @@ pub struct VerificationOutput {
     pub proof_size_bytes: usize,
 }
 
-/// Verify a health proof using REAL Winterfell STARK verification.
+/// Verify a health proof under the crate's fail-closed policy.
 ///
-/// This calls `winterfell::verify()` under the hood — not a structural stub.
+/// Default builds reject the current unbound range proof and all placeholders.
 pub fn verify(health_proof: &HealthProof) -> VerificationOutput {
     let total_start = Instant::now();
 
@@ -102,8 +105,9 @@ mod tests {
     use crate::prover::{self, HealthProofRequest};
     use crate::{AttestorRole, HealthProofType};
 
+    #[cfg(feature = "experimental-unbound-range-proofs")]
     #[test]
-    fn test_verify_real_proof() {
+    fn test_verify_experimental_range_proof() {
         let request = HealthProofRequest {
             proof_type: HealthProofType::VitalsInRange,
             value: 120,
@@ -122,7 +126,10 @@ mod tests {
         println!("Verify time: {:.1}ms", verification.verify_time_ms);
     }
 
-    #[cfg(feature = "verify-dilithium")]
+    #[cfg(all(
+        feature = "verify-dilithium",
+        feature = "experimental-unbound-range-proofs"
+    ))]
     #[test]
     fn test_verify_with_dilithium_signature() {
         use mycelix_zkp_core::dilithium::DilithiumKeypair;

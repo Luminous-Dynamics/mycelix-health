@@ -5,8 +5,9 @@
 //! These tests exercise the COMPLETE pipeline:
 //!   prove_range() → Dilithium5 sign → winterfell::verify() → Dilithium verify
 //!
-//! Every operation uses REAL cryptographic primitives — not mocked.
-//! This is the reproducible benchmark for the paper.
+//! The range AIR is cryptographically exercised only behind
+//! `experimental-unbound-range-proofs`; it is not a production authorization
+//! proof because the hidden value is not yet bound to the data commitment.
 
 use mycelix_health_zkp::prover::{self, HealthProofRequest};
 use mycelix_health_zkp::verifier;
@@ -19,6 +20,7 @@ use mycelix_zkp_core::dilithium::DilithiumKeypair;
 // E2E: Prove + Verify (Winterfell STARK only)
 // ═══════════════════════════════════════════════════════════════════
 
+#[cfg(feature = "experimental-unbound-range-proofs")]
 #[test]
 fn e2e_vitals_in_range() {
     println!("\n=== E2E: Blood Pressure 120 ∈ [90, 180] ===");
@@ -50,6 +52,7 @@ fn e2e_vitals_in_range() {
     println!("  PASSED");
 }
 
+#[cfg(feature = "experimental-unbound-range-proofs")]
 #[test]
 fn e2e_age_range() {
     println!("\n=== E2E: Age 35 ∈ [18, 65] ===");
@@ -75,6 +78,7 @@ fn e2e_age_range() {
     println!("  PASSED");
 }
 
+#[cfg(feature = "experimental-unbound-range-proofs")]
 #[test]
 fn e2e_lab_threshold() {
     println!("\n=== E2E: A1C 54 (5.4%) ∈ [0, 70] ===");
@@ -102,6 +106,31 @@ fn e2e_lab_threshold() {
     println!("  Prove:  {:.1} ms", proof_output.prove_time_ms);
     println!("  Verify: {:.1} ms", verify_output.verify_time_ms);
     println!("  PASSED");
+}
+
+#[cfg(not(feature = "experimental-unbound-range-proofs"))]
+#[test]
+fn e2e_unbound_range_proof_is_rejected_by_default() {
+    let request = HealthProofRequest {
+        proof_type: HealthProofType::VitalsInRange,
+        value: 120,
+        min: 90,
+        max: 180,
+        patient_id: "did:mycelix:patient001".to_string(),
+        health_data: b"bp_systolic:120".to_vec(),
+        attestor: AttestorRole::Physician,
+    };
+
+    let proof_output = prover::prove(&request);
+    assert_eq!(
+        proof_output.health_proof.metadata.system,
+        ProofSystem::Sha256Commitment
+    );
+    assert_eq!(proof_output.health_proof.metadata.security_bits, 0);
+    assert!(
+        !verify_proof(&proof_output.health_proof),
+        "default placeholder output must never be accepted as a proof"
+    );
 }
 
 #[test]
@@ -136,7 +165,10 @@ fn e2e_tampered_proof_rejected() {
 // E2E: Prove + Sign + Verify + Signature Check (Full DASTARK pipeline)
 // ═══════════════════════════════════════════════════════════════════
 
-#[cfg(feature = "verify-dilithium")]
+#[cfg(all(
+    feature = "verify-dilithium",
+    feature = "experimental-unbound-range-proofs"
+))]
 #[test]
 fn e2e_full_dastark_pipeline() {
     println!("\n=== E2E: Full DASTARK Pipeline (STARK + Dilithium5) ===");
@@ -184,7 +216,10 @@ fn e2e_full_dastark_pipeline() {
     println!("  PASSED — All REAL, nothing mocked");
 }
 
-#[cfg(feature = "verify-dilithium")]
+#[cfg(all(
+    feature = "verify-dilithium",
+    feature = "experimental-unbound-range-proofs"
+))]
 #[test]
 fn e2e_wrong_dilithium_key_rejected() {
     println!("\n=== E2E: Wrong Dilithium Key Rejection ===");

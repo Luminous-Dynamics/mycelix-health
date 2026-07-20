@@ -15,11 +15,11 @@ use serde::{Deserialize, Serialize};
 
 // Re-export commonly used items
 pub use access_control::*;
-pub use audit::*;
-pub use types::*;
 pub use anchors::*;
-pub use validation::*;
+pub use audit::*;
 pub use batch::*;
+pub use types::*;
+pub use validation::*;
 
 /// Formal Differential Privacy module
 ///
@@ -125,7 +125,7 @@ pub mod patient_encryption {
 
     /// Compute key fingerprint (SHA-256, first 8 bytes).
     pub fn compute_fingerprint(public_key: &[u8]) -> [u8; 8] {
-        use sha2::{Sha256, Digest};
+        use sha2::{Digest, Sha256};
         let hash = Sha256::digest(public_key);
         let mut fp = [0u8; 8];
         fp.copy_from_slice(&hash[..8]);
@@ -134,18 +134,27 @@ pub mod patient_encryption {
 
     /// Encrypt plaintext bytes using XChaCha20-Poly1305.
     ///
-    /// Uses a 32-byte symmetric key derived from the patient's key material.
-    /// Returns (ciphertext, nonce). The ciphertext includes a 16-byte Poly1305
-    /// authentication tag — any tampering is detected on decryption.
-    ///
-    /// # Arguments
-    /// * `plaintext` — data to encrypt
-    /// * `key_bytes` — 32-byte symmetric key (derived from patient keypair)
-    ///
-    /// # Errors
-    /// Returns error if key is not 32 bytes or encryption fails.
+    /// This compatibility wrapper uses empty associated data. New health-record
+    /// envelopes should call [`encrypt_with_aad`] so routing metadata is
+    /// authenticated together with the ciphertext.
     pub fn encrypt(plaintext: &[u8], key_bytes: &[u8]) -> Result<(Vec<u8>, [u8; 24]), String> {
-        use chacha20poly1305::{XChaCha20Poly1305, KeyInit, aead::Aead};
+        encrypt_with_aad(plaintext, &[], key_bytes)
+    }
+
+    /// Encrypt plaintext and authenticate cleartext envelope metadata.
+    ///
+    /// Associated data is not encrypted, but any modification causes
+    /// decryption to fail. Callers must reconstruct the exact same byte string
+    /// during decryption.
+    pub fn encrypt_with_aad(
+        plaintext: &[u8],
+        aad: &[u8],
+        key_bytes: &[u8],
+    ) -> Result<(Vec<u8>, [u8; 24]), String> {
+        use chacha20poly1305::{
+            aead::{Aead, Payload},
+            KeyInit, XChaCha20Poly1305,
+        };
 
         if key_bytes.len() != 32 {
             return Err(format!("Key must be 32 bytes, got {}", key_bytes.len()));
@@ -154,33 +163,46 @@ pub mod patient_encryption {
         let key = chacha20poly1305::Key::from_slice(key_bytes);
         let cipher = XChaCha20Poly1305::new(key);
 
-        // Generate random nonce via getrandom (24 bytes for XChaCha20)
         let mut nonce_arr = [0u8; 24];
         getrandom::fill(&mut nonce_arr)
             .map_err(|e| format!("Nonce generation failed: {}", e))?;
         let nonce = chacha20poly1305::XNonce::from_slice(&nonce_arr);
 
         let ciphertext = cipher
-            .encrypt(nonce, plaintext)
+            .encrypt(
+                nonce,
+                Payload {
+                    msg: plaintext,
+                    aad,
+                },
+            )
             .map_err(|e| format!("Encryption failed: {}", e))?;
 
         Ok((ciphertext, nonce_arr))
     }
 
-    /// Decrypt ciphertext using XChaCha20-Poly1305.
+    /// Decrypt ciphertext created without associated data.
     ///
-    /// Verifies the Poly1305 authentication tag — returns error if data
-    /// was tampered with. This is the AEAD guarantee.
-    ///
-    /// # Arguments
-    /// * `ciphertext` — encrypted data (includes auth tag)
-    /// * `nonce` — 24-byte nonce used during encryption
-    /// * `key_bytes` — 32-byte symmetric key
-    ///
-    /// # Errors
-    /// Returns error if authentication fails (data tampered) or key is wrong.
-    pub fn decrypt(ciphertext: &[u8], nonce: &[u8; 24], key_bytes: &[u8]) -> Result<Vec<u8>, String> {
-        use chacha20poly1305::{XChaCha20Poly1305, KeyInit, aead::Aead};
+    /// New health-record envelopes should call [`decrypt_with_aad`].
+    pub fn decrypt(
+        ciphertext: &[u8],
+        nonce: &[u8; 24],
+        key_bytes: &[u8],
+    ) -> Result<Vec<u8>, String> {
+        decrypt_with_aad(ciphertext, nonce, &[], key_bytes)
+    }
+
+    /// Decrypt ciphertext while authenticating cleartext envelope metadata.
+    pub fn decrypt_with_aad(
+        ciphertext: &[u8],
+        nonce: &[u8; 24],
+        aad: &[u8],
+        key_bytes: &[u8],
+    ) -> Result<Vec<u8>, String> {
+        use chacha20poly1305::{
+            aead::{Aead, Payload},
+            KeyInit, XChaCha20Poly1305,
+        };
 
         if key_bytes.len() != 32 {
             return Err(format!("Key must be 32 bytes, got {}", key_bytes.len()));
@@ -191,8 +213,17 @@ pub mod patient_encryption {
         let nonce = chacha20poly1305::XNonce::from_slice(nonce);
 
         cipher
-            .decrypt(nonce, ciphertext)
-            .map_err(|_| "Decryption failed: authentication tag mismatch (data tampered or wrong key)".to_string())
+            .decrypt(
+                nonce,
+                Payload {
+                    msg: ciphertext,
+                    aad,
+                },
+            )
+            .map_err(|_| {
+                "Decryption failed: authentication tag mismatch (ciphertext, metadata, or key is invalid)"
+                    .to_string()
+            })
     }
 
     /// Derive a 32-byte symmetric key using HKDF-SHA256 (RFC 5869).
@@ -215,16 +246,14 @@ pub mod patient_encryption {
         // block-size padding scheme), and `salt` here is a fixed, non-empty
         // compile-time constant, not caller-controlled input — this can never fail.
         let salt = b"mycelix-health-v1-patient-encryption";
-        let mut mac = HmacSha256::new_from_slice(salt)
-            .expect("HMAC accepts any key length");
+        let mut mac = HmacSha256::new_from_slice(salt).expect("HMAC accepts any key length");
         mac.update(ikm);
         let prk = mac.finalize().into_bytes();
 
         // HKDF-Expand (RFC 5869 §2.3): OKM = HMAC-Hash(PRK, info || 0x01)
         // `prk` is the fixed-size (32-byte) output of the HMAC-SHA256 finalize
         // above, never empty and never caller-controlled — same invariant as above.
-        let mut mac = HmacSha256::new_from_slice(&prk)
-            .expect("HMAC accepts any key length");
+        let mut mac = HmacSha256::new_from_slice(&prk).expect("HMAC accepts any key length");
         mac.update(context);
         mac.update(&[0x01]);
         let okm = mac.finalize().into_bytes();
@@ -337,7 +366,7 @@ pub mod chained_audit {
     /// Compute SHA-256 hash of audit entry content for chaining.
     /// Uses cryptographic hash for collision resistance (P0-6).
     pub fn hash_entry(entry: &ChainedAuditEntry) -> [u8; 32] {
-        use sha2::{Sha256, Digest};
+        use sha2::{Digest, Sha256};
         let mut hasher = Sha256::new();
         hasher.update(entry.sequence.to_le_bytes());
         hasher.update(entry.timestamp.to_le_bytes());
@@ -507,94 +536,107 @@ pub mod access_control {
 
         // Decode the ZomeCallResponse
         let auth_result: AuthorizationResult = match response {
-            ZomeCallResponse::Ok(extern_io) => {
-                extern_io.decode()
-                    .map_err(|e| wasm_error!(WasmErrorInner::Guest(
-                        format!("Failed to decode authorization response: {:?}", e)
-                    )))?
-            },
+            ZomeCallResponse::Ok(extern_io) => extern_io.decode().map_err(|e| {
+                wasm_error!(WasmErrorInner::Guest(format!(
+                    "Failed to decode authorization response: {:?}",
+                    e
+                )))
+            })?,
             ZomeCallResponse::Unauthorized(_, _, _, _) => {
                 return Err(wasm_error!(WasmErrorInner::Guest(
                     "Unauthorized to call consent zome".to_string()
                 )));
-            },
+            }
             ZomeCallResponse::NetworkError(err) => {
-                return Err(wasm_error!(WasmErrorInner::Guest(
-                    format!("Network error checking authorization: {}", err)
-                )));
-            },
+                return Err(wasm_error!(WasmErrorInner::Guest(format!(
+                    "Network error checking authorization: {}",
+                    err
+                ))));
+            }
             ZomeCallResponse::CountersigningSession(err) => {
-                return Err(wasm_error!(WasmErrorInner::Guest(
-                    format!("Countersigning error: {}", err)
-                )));
-            },
+                return Err(wasm_error!(WasmErrorInner::Guest(format!(
+                    "Countersigning error: {}",
+                    err
+                ))));
+            }
             ZomeCallResponse::AuthenticationFailed(_, _) => {
                 return Err(wasm_error!(WasmErrorInner::Guest(
                     "Authentication failed for consent zome call".to_string()
                 )));
-            },
+            }
         };
 
-        // P1-2: Segregated access control for sensitive categories
-        // 42 CFR Part 2 requires stricter consent for substance abuse records.
-        // Mental health and sexual health also require elevated consent.
-        if matches!(
+        // P1-2: Segregated access control for sensitive categories.
+        // Sensitive records require an explicit category-specific consent. A blanket
+        // `All` consent is intentionally insufficient, and every transport/decoding
+        // failure is treated as a denial.
+        let sensitive_category = matches!(
             category,
             DataCategory::SubstanceAbuse | DataCategory::MentalHealth | DataCategory::SexualHealth
-        ) {
-            // For sensitive categories, require EXPLICIT category-specific consent
-            // (not just a general "All" consent)
-            if auth_result.authorized {
-                let has_specific = auth_result.reason.contains("specific_category")
-                    || auth_result.reason.contains("Part2");
-                if !has_specific && !is_emergency {
-                    // Fall through to check if the consent explicitly names this category
-                    // via a separate verification call
-                    let sensitive_check = call(
-                        CallTargetCell::Local,
-                        "consent",
-                        "check_sensitive_category_consent".into(),
-                        None,
-                        &AuthorizationInput {
-                            patient_hash: patient_hash.clone(),
-                            requestor: caller.clone(),
-                            data_category: category.clone(),
-                            permission: permission.clone(),
-                            is_emergency: false,
-                        },
-                    );
-                    // If the sensitive check fails or returns false, we still allow
-                    // if the general authorization passed — but log the elevated access
-                    if let Ok(ZomeCallResponse::Ok(io)) = sensitive_check {
-                        let _has_sensitive: bool = io.decode().unwrap_or(true);
-                        // Even if sensitive consent is missing, we allow with general
-                        // consent but the audit trail will flag it
-                    }
+        );
+        if auth_result.authorized && sensitive_category && !is_emergency {
+            let sensitive_response = call(
+                CallTargetCell::Local,
+                "consent",
+                "check_sensitive_category_consent".into(),
+                None,
+                &AuthorizationInput {
+                    patient_hash: patient_hash.clone(),
+                    requestor: caller.clone(),
+                    data_category: category.clone(),
+                    permission: permission.clone(),
+                    is_emergency: false,
+                },
+            )?;
+
+            let explicitly_authorized = match sensitive_response {
+                ZomeCallResponse::Ok(io) => io.decode::<bool>().map_err(|e| {
+                    wasm_error!(WasmErrorInner::Guest(format!(
+                        "Failed to decode sensitive-category authorization response: {:?}",
+                        e
+                    )))
+                })?,
+                ZomeCallResponse::Unauthorized(_, _, _, _) => {
+                    return Err(wasm_error!(WasmErrorInner::Guest(
+                        "Sensitive-category authorization call was rejected".to_string()
+                    )));
                 }
+                ZomeCallResponse::NetworkError(err) => {
+                    return Err(wasm_error!(WasmErrorInner::Guest(format!(
+                        "Network error checking sensitive-category authorization: {}",
+                        err
+                    ))));
+                }
+                ZomeCallResponse::CountersigningSession(err) => {
+                    return Err(wasm_error!(WasmErrorInner::Guest(format!(
+                        "Countersigning error checking sensitive-category authorization: {}",
+                        err
+                    ))));
+                }
+                ZomeCallResponse::AuthenticationFailed(_, _) => {
+                    return Err(wasm_error!(WasmErrorInner::Guest(
+                        "Authentication failed while checking sensitive-category authorization"
+                            .to_string()
+                    )));
+                }
+            };
+
+            if !explicitly_authorized {
+                return Err(wasm_error!(WasmErrorInner::Guest(format!(
+                    "Access denied: {:?} requires explicit category-specific consent",
+                    category
+                ))));
             }
         }
 
-        // If not authorized and not emergency, deny access
-        if !auth_result.authorized && !is_emergency {
-            return Err(wasm_error!(WasmErrorInner::Guest(
-                format!("Access denied: {}", auth_result.reason)
-            )));
-        }
-
-        // If emergency, require a recorded break-glass entry
-        if !auth_result.authorized && is_emergency {
-            if has_active_emergency_access(patient_hash.clone())? {
-                return Ok(AuthorizationResult {
-                    authorized: true,
-                    consent_hash: None,
-                    reason: "Emergency override with recorded break-glass entry".to_string(),
-                    permissions: vec![permission],
-                    emergency_override: true,
-                });
-            }
-            return Err(wasm_error!(WasmErrorInner::Guest(
-                "Emergency access requires a recorded break-glass entry".to_string()
-            )));
+        // The consent zome is the single authorization authority for both
+        // ordinary and emergency access. A denied emergency request must not be
+        // upgraded by a second, less-scoped check in this shared wrapper.
+        if !auth_result.authorized {
+            return Err(wasm_error!(WasmErrorInner::Guest(format!(
+                "Access denied: {}",
+                auth_result.reason
+            ))));
         }
 
         Ok(auth_result)
@@ -671,10 +713,12 @@ pub mod access_control {
 
         match response {
             ZomeCallResponse::Ok(extern_io) => {
-                let has_reconsent: bool = extern_io.decode()
-                    .map_err(|e| wasm_error!(WasmErrorInner::Guest(
-                        format!("Failed to decode re-consent check: {:?}", e)
-                    )))?;
+                let has_reconsent: bool = extern_io.decode().map_err(|e| {
+                    wasm_error!(WasmErrorInner::Guest(format!(
+                        "Failed to decode re-consent check: {:?}",
+                        e
+                    )))
+                })?;
 
                 if has_reconsent {
                     Ok(())
@@ -687,13 +731,13 @@ pub mod access_control {
                         provenance.source_system
                     ))))
                 }
-            },
+            }
             _ => {
                 // If we can't reach consent zome, DENY by default (fail-closed)
                 Err(wasm_error!(WasmErrorInner::Guest(
                     "Cannot verify re-disclosure consent — access denied (fail-closed)".to_string()
                 )))
-            },
+            }
         }
     }
 
@@ -706,43 +750,11 @@ pub mod access_control {
         pub categories: Vec<DataCategory>,
     }
 
-    fn has_active_emergency_access(patient_hash: ActionHash) -> ExternResult<bool> {
-        let response = call(
-            CallTargetCell::Local,
-            "consent",
-            "has_active_emergency_access".into(),
-            None,
-            patient_hash,
-        )?;
 
-        match response {
-            ZomeCallResponse::Ok(extern_io) => extern_io.decode().map_err(|e| {
-                wasm_error!(WasmErrorInner::Guest(format!(
-                    "Failed to decode emergency access response: {:?}",
-                    e
-                )))
-            }),
-            ZomeCallResponse::Unauthorized(_, _, _, _) => Err(wasm_error!(WasmErrorInner::Guest(
-                "Unauthorized to call consent zome for emergency access".to_string()
-            ))),
-            ZomeCallResponse::NetworkError(err) => Err(wasm_error!(WasmErrorInner::Guest(
-                format!("Network error checking emergency access: {}", err)
-            ))),
-            ZomeCallResponse::CountersigningSession(err) => Err(wasm_error!(WasmErrorInner::Guest(
-                format!("Countersigning error checking emergency access: {}", err)
-            ))),
-            ZomeCallResponse::AuthenticationFailed(_, _) => Err(wasm_error!(WasmErrorInner::Guest(
-                "Authentication failed for emergency access check".to_string()
-            ))),
-        }
-    }
-
-    /// Check if the caller is the patient themselves
+    /// Check if the caller is the patient themselves.
     fn is_patient_self(patient_hash: &ActionHash, caller: &AgentPubKey) -> ExternResult<bool> {
-        // Get the patient record to check creator
         if let Some(record) = get(patient_hash.clone(), GetOptions::default())? {
-            let author = record.action().author();
-            return Ok(author == caller);
+            return Ok(record.action().author() == caller);
         }
         Ok(false)
     }
@@ -772,12 +784,12 @@ pub mod access_control {
                 if is_admin {
                     return Ok(());
                 }
-            },
+            }
             _ => {
                 // If consent zome is unreachable, allow during bootstrap
                 // (first agent to call sets up the system)
                 return Ok(());
-            },
+            }
         }
 
         Err(wasm_error!(WasmErrorInner::Guest(
@@ -878,32 +890,24 @@ pub mod audit {
         )?;
 
         match response {
-            ZomeCallResponse::Ok(extern_io) => {
-                extern_io.decode()
-                    .map_err(|e| wasm_error!(WasmErrorInner::Guest(
-                        format!("Failed to decode access log response: {:?}", e)
-                    )))
-            },
-            ZomeCallResponse::Unauthorized(_, _, _, _) => {
-                Err(wasm_error!(WasmErrorInner::Guest(
-                    "Unauthorized to log access".to_string()
+            ZomeCallResponse::Ok(extern_io) => extern_io.decode().map_err(|e| {
+                wasm_error!(WasmErrorInner::Guest(format!(
+                    "Failed to decode access log response: {:?}",
+                    e
                 )))
-            },
-            ZomeCallResponse::NetworkError(err) => {
-                Err(wasm_error!(WasmErrorInner::Guest(
-                    format!("Network error logging access: {}", err)
-                )))
-            },
-            ZomeCallResponse::CountersigningSession(err) => {
-                Err(wasm_error!(WasmErrorInner::Guest(
-                    format!("Countersigning error: {}", err)
-                )))
-            },
-            ZomeCallResponse::AuthenticationFailed(_, _) => {
-                Err(wasm_error!(WasmErrorInner::Guest(
-                    "Authentication failed for access log call".to_string()
-                )))
-            },
+            }),
+            ZomeCallResponse::Unauthorized(_, _, _, _) => Err(wasm_error!(WasmErrorInner::Guest(
+                "Unauthorized to log access".to_string()
+            ))),
+            ZomeCallResponse::NetworkError(err) => Err(wasm_error!(WasmErrorInner::Guest(
+                format!("Network error logging access: {}", err)
+            ))),
+            ZomeCallResponse::CountersigningSession(err) => Err(wasm_error!(
+                WasmErrorInner::Guest(format!("Countersigning error: {}", err))
+            )),
+            ZomeCallResponse::AuthenticationFailed(_, _) => Err(wasm_error!(
+                WasmErrorInner::Guest("Authentication failed for access log call".to_string())
+            )),
         }
     }
 
@@ -935,40 +939,34 @@ pub mod audit {
         )?;
 
         match response {
-            ZomeCallResponse::Ok(extern_io) => {
-                extern_io.decode()
-                    .map_err(|e| wasm_error!(WasmErrorInner::Guest(
-                        format!("Failed to decode denied log response: {:?}", e)
-                    )))
-            },
-            ZomeCallResponse::Unauthorized(_, _, _, _) => {
-                Err(wasm_error!(WasmErrorInner::Guest(
-                    "Unauthorized to log denied access".to_string()
+            ZomeCallResponse::Ok(extern_io) => extern_io.decode().map_err(|e| {
+                wasm_error!(WasmErrorInner::Guest(format!(
+                    "Failed to decode denied log response: {:?}",
+                    e
                 )))
-            },
-            ZomeCallResponse::NetworkError(err) => {
-                Err(wasm_error!(WasmErrorInner::Guest(
-                    format!("Network error logging denied access: {}", err)
-                )))
-            },
-            ZomeCallResponse::CountersigningSession(err) => {
-                Err(wasm_error!(WasmErrorInner::Guest(
-                    format!("Countersigning error: {}", err)
-                )))
-            },
-            ZomeCallResponse::AuthenticationFailed(_, _) => {
-                Err(wasm_error!(WasmErrorInner::Guest(
-                    "Authentication failed for denied log call".to_string()
-                )))
-            },
+            }),
+            ZomeCallResponse::Unauthorized(_, _, _, _) => Err(wasm_error!(WasmErrorInner::Guest(
+                "Unauthorized to log denied access".to_string()
+            ))),
+            ZomeCallResponse::NetworkError(err) => Err(wasm_error!(WasmErrorInner::Guest(
+                format!("Network error logging denied access: {}", err)
+            ))),
+            ZomeCallResponse::CountersigningSession(err) => Err(wasm_error!(
+                WasmErrorInner::Guest(format!("Countersigning error: {}", err))
+            )),
+            ZomeCallResponse::AuthenticationFailed(_, _) => Err(wasm_error!(
+                WasmErrorInner::Guest("Authentication failed for denied log call".to_string())
+            )),
         }
     }
 
     /// Generate a short hash string for log IDs
     fn short_hash(agent: &AgentPubKey) -> String {
         let bytes = agent.get_raw_39();
-        format!("{:02x}{:02x}{:02x}{:02x}",
-            bytes[0], bytes[1], bytes[2], bytes[3])
+        format!(
+            "{:02x}{:02x}{:02x}{:02x}",
+            bytes[0], bytes[1], bytes[2], bytes[3]
+        )
     }
 
     // ==================== CHAINED AUDIT TRAIL ====================
@@ -991,7 +989,7 @@ pub mod audit {
         is_emergency: bool,
         override_reason: Option<String>,
     ) -> ExternResult<ActionHash> {
-        use sha2::{Sha256, Digest};
+        use sha2::{Digest, Sha256};
 
         let caller = agent_info()?.agent_initial_pubkey;
         let now = sys_time()?;
@@ -1071,7 +1069,7 @@ pub mod audit {
     /// - Returns Err on network failure (not silent restart)
     /// - Uses entry content for the chain link (tamper-detectable)
     fn get_last_chain_entry(patient_hash: &ActionHash) -> ExternResult<Option<(u64, [u8; 32])>> {
-        use sha2::{Sha256, Digest};
+        use sha2::{Digest, Sha256};
 
         let response = call(
             CallTargetCell::Local,
@@ -1106,13 +1104,14 @@ pub mod audit {
                 let mut entry_hash = [0u8; 32];
                 entry_hash.copy_from_slice(&hash);
                 Ok(Some((seq, entry_hash)))
-            },
+            }
             ZomeCallResponse::NetworkError(err) => {
                 Err(wasm_error!(WasmErrorInner::Guest(format!(
                     "Cannot query audit chain — network error: {}. \
-                     Refusing to create unchained entry (tamper risk).", err
+                     Refusing to create unchained entry (tamper risk).",
+                    err
                 ))))
-            },
+            }
             _ => Ok(None), // No logs yet — genesis entry
         }
     }
@@ -1134,9 +1133,10 @@ pub mod types {
 
         pub fn validate(&self) -> ExternResult<()> {
             if self.limit > Self::MAX_LIMIT {
-                return Err(wasm_error!(WasmErrorInner::Guest(
-                    format!("Limit cannot exceed {}", Self::MAX_LIMIT)
-                )));
+                return Err(wasm_error!(WasmErrorInner::Guest(format!(
+                    "Limit cannot exceed {}",
+                    Self::MAX_LIMIT
+                ))));
             }
             if self.limit == 0 {
                 return Err(wasm_error!(WasmErrorInner::Guest(
@@ -1286,7 +1286,9 @@ pub mod encryption {
     impl EncryptionKey {
         /// Create a new encryption key from bytes
         pub fn new(bytes: [u8; 32]) -> Self {
-            Self { key_material: bytes }
+            Self {
+                key_material: bytes,
+            }
         }
 
         /// Get the key bytes (use carefully)
@@ -1369,10 +1371,7 @@ pub mod encryption {
     ///
     /// # Returns
     /// Decrypted plaintext string
-    pub fn decrypt_field(
-        encrypted: &EncryptedField,
-        key: &EncryptionKey,
-    ) -> ExternResult<String> {
+    pub fn decrypt_field(encrypted: &EncryptedField, key: &EncryptionKey) -> ExternResult<String> {
         let _ = (encrypted, key);
         Err(wasm_error!(WasmErrorInner::Guest(
             "Field-level decryption is not implemented (insecure placeholder removed)".to_string()
@@ -1388,8 +1387,16 @@ pub mod encryption {
 
         while i < data.len() {
             let b0 = data[i] as usize;
-            let b1 = if i + 1 < data.len() { data[i + 1] as usize } else { 0 };
-            let b2 = if i + 2 < data.len() { data[i + 2] as usize } else { 0 };
+            let b1 = if i + 1 < data.len() {
+                data[i + 1] as usize
+            } else {
+                0
+            };
+            let b2 = if i + 2 < data.len() {
+                data[i + 2] as usize
+            } else {
+                0
+            };
 
             result.push(ALPHABET[b0 >> 2] as char);
             result.push(ALPHABET[((b0 & 0x03) << 4) | (b1 >> 4)] as char);
@@ -1415,13 +1422,11 @@ pub mod encryption {
     /// Base64 decode string
     pub fn base64_decode(data: &str) -> Result<Vec<u8>, String> {
         const DECODE_TABLE: [i8; 128] = [
-            -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
-            -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
-            -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, 62, -1, -1, -1, 63,
-            52, 53, 54, 55, 56, 57, 58, 59, 60, 61, -1, -1, -1, -1, -1, -1,
-            -1,  0,  1,  2,  3,  4,  5,  6,  7,  8,  9, 10, 11, 12, 13, 14,
-            15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, -1, -1, -1, -1, -1,
-            -1, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40,
+            -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
+            -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, 62,
+            -1, -1, -1, 63, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, -1, -1, -1, -1, -1, -1, -1, 0,
+            1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24,
+            25, -1, -1, -1, -1, -1, -1, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40,
             41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, -1, -1, -1, -1, -1,
         ];
 
@@ -1468,12 +1473,18 @@ pub mod encryption {
 
     /// Map data category to sensitive field type
     pub fn category_to_field_type(
-        category: &access_control::DataCategory
+        category: &access_control::DataCategory,
     ) -> Option<SensitiveFieldType> {
         match category {
-            access_control::DataCategory::MentalHealth => Some(SensitiveFieldType::MentalHealthNotes),
-            access_control::DataCategory::SubstanceAbuse => Some(SensitiveFieldType::SubstanceAbuseNotes),
-            access_control::DataCategory::SexualHealth => Some(SensitiveFieldType::SexualHealthNotes),
+            access_control::DataCategory::MentalHealth => {
+                Some(SensitiveFieldType::MentalHealthNotes)
+            }
+            access_control::DataCategory::SubstanceAbuse => {
+                Some(SensitiveFieldType::SubstanceAbuseNotes)
+            }
+            access_control::DataCategory::SexualHealth => {
+                Some(SensitiveFieldType::SexualHealthNotes)
+            }
             access_control::DataCategory::GeneticData => Some(SensitiveFieldType::GeneticData),
             access_control::DataCategory::FinancialData => Some(SensitiveFieldType::FinancialData),
             _ => None,
@@ -1534,10 +1545,12 @@ pub mod key_management {
     /// The key is returned wrapped for secure storage.
     pub fn generate_master_key() -> ExternResult<[u8; 32]> {
         let mut key = [0u8; 32];
-        getrandom::fill(&mut key)
-            .map_err(|e| wasm_error!(WasmErrorInner::Guest(
-                format!("Failed to generate master key: {:?}", e)
-            )))?;
+        getrandom::fill(&mut key).map_err(|e| {
+            wasm_error!(WasmErrorInner::Guest(format!(
+                "Failed to generate master key: {:?}",
+                e
+            )))
+        })?;
         Ok(key)
     }
 
@@ -1550,14 +1563,24 @@ pub mod key_management {
         id_input.extend_from_slice(key);
         id_input.extend_from_slice(&now.as_micros().to_le_bytes());
         let id_hash = super::encryption::sha256_hash(&id_input);
-        let key_id = format!("KEY-{:02x}{:02x}{:02x}{:02x}",
-            id_hash[0], id_hash[1], id_hash[2], id_hash[3]);
+        let key_id = format!(
+            "KEY-{:02x}{:02x}{:02x}{:02x}",
+            id_hash[0], id_hash[1], id_hash[2], id_hash[3]
+        );
 
         // Hash the key for verification
         let key_hash_bytes = super::encryption::sha256_hash(key);
-        let key_hash = format!("{:02x}{:02x}{:02x}{:02x}{:02x}{:02x}{:02x}{:02x}",
-            key_hash_bytes[0], key_hash_bytes[1], key_hash_bytes[2], key_hash_bytes[3],
-            key_hash_bytes[4], key_hash_bytes[5], key_hash_bytes[6], key_hash_bytes[7]);
+        let key_hash = format!(
+            "{:02x}{:02x}{:02x}{:02x}{:02x}{:02x}{:02x}{:02x}",
+            key_hash_bytes[0],
+            key_hash_bytes[1],
+            key_hash_bytes[2],
+            key_hash_bytes[3],
+            key_hash_bytes[4],
+            key_hash_bytes[5],
+            key_hash_bytes[6],
+            key_hash_bytes[7]
+        );
 
         // Set expiration to 1 year from now
         let one_year_micros = 365 * 24 * 60 * 60 * 1_000_000i64;
@@ -1586,10 +1609,7 @@ pub mod key_management {
     }
 
     /// Unwrap a key for use
-    pub fn unwrap_key(
-        wrapped: &WrappedKey,
-        agent: &AgentPubKey,
-    ) -> ExternResult<[u8; 32]> {
+    pub fn unwrap_key(wrapped: &WrappedKey, agent: &AgentPubKey) -> ExternResult<[u8; 32]> {
         let _ = (wrapped, agent);
         Err(wasm_error!(WasmErrorInner::Guest(
             "Key unwrapping is not implemented (insecure placeholder removed)".to_string()
@@ -1607,7 +1627,6 @@ pub mod key_management {
         }
         Ok(false)
     }
-
 }
 
 /// Anchor utilities for consistent indexing
@@ -1622,20 +1641,31 @@ pub mod anchors {
     pub fn anchor_hash(anchor_text: &str) -> ExternResult<EntryHash> {
         // Serialize the anchor to bytes
         let anchor = Anchor(anchor_text.to_string());
-        let bytes = serde_json::to_vec(&anchor)
-            .map_err(|e| wasm_error!(WasmErrorInner::Guest(
-                format!("Failed to serialize anchor: {}", e)
-            )))?;
+        let bytes = serde_json::to_vec(&anchor).map_err(|e| {
+            wasm_error!(WasmErrorInner::Guest(format!(
+                "Failed to serialize anchor: {}",
+                e
+            )))
+        })?;
 
         // Create an entry hash from the bytes using the host function
         // This matches how other zomes create anchor hashes
-        let entry = Entry::App(AppEntryBytes::try_from(SerializedBytes::try_from(UnsafeBytes::from(bytes))
-            .map_err(|e| wasm_error!(WasmErrorInner::Guest(
-                format!("Failed to create serialized bytes: {:?}", e)
-            )))?)
-            .map_err(|e| wasm_error!(WasmErrorInner::Guest(
-                format!("Failed to create app entry bytes: {:?}", e)
-            )))?);
+        let entry = Entry::App(
+            AppEntryBytes::try_from(SerializedBytes::try_from(UnsafeBytes::from(bytes)).map_err(
+                |e| {
+                    wasm_error!(WasmErrorInner::Guest(format!(
+                        "Failed to create serialized bytes: {:?}",
+                        e
+                    )))
+                },
+            )?)
+            .map_err(|e| {
+                wasm_error!(WasmErrorInner::Guest(format!(
+                    "Failed to create app entry bytes: {:?}",
+                    e
+                )))
+            })?,
+        );
 
         hash_entry(entry)
     }
@@ -1737,9 +1767,10 @@ pub mod validation {
                 Ok(())
             } else {
                 let messages: Vec<String> = self.errors.iter().map(|e| e.to_string()).collect();
-                Err(wasm_error!(WasmErrorInner::Guest(
-                    format!("Validation failed: {}", messages.join("; "))
-                )))
+                Err(wasm_error!(WasmErrorInner::Guest(format!(
+                    "Validation failed: {}",
+                    messages.join("; ")
+                ))))
             }
         }
 
@@ -1763,15 +1794,27 @@ pub mod validation {
         }
 
         if mrn.len() < 4 {
-            result.add_error("mrn", "MRN must be at least 4 characters", ValidationErrorCode::TooShort);
+            result.add_error(
+                "mrn",
+                "MRN must be at least 4 characters",
+                ValidationErrorCode::TooShort,
+            );
         }
 
         if mrn.len() > 20 {
-            result.add_error("mrn", "MRN cannot exceed 20 characters", ValidationErrorCode::TooLong);
+            result.add_error(
+                "mrn",
+                "MRN cannot exceed 20 characters",
+                ValidationErrorCode::TooLong,
+            );
         }
 
         if !mrn.chars().all(|c| c.is_alphanumeric() || c == '-') {
-            result.add_error("mrn", "MRN can only contain letters, numbers, and hyphens", ValidationErrorCode::InvalidCharacters);
+            result.add_error(
+                "mrn",
+                "MRN can only contain letters, numbers, and hyphens",
+                ValidationErrorCode::InvalidCharacters,
+            );
         }
 
         result
@@ -1790,29 +1833,52 @@ pub mod validation {
         }
 
         if !did.starts_with("did:") {
-            result.add_error("did", "DID must start with 'did:'", ValidationErrorCode::InvalidFormat);
+            result.add_error(
+                "did",
+                "DID must start with 'did:'",
+                ValidationErrorCode::InvalidFormat,
+            );
             return result;
         }
 
         let parts: Vec<&str> = did.splitn(3, ':').collect();
         if parts.len() < 3 {
-            result.add_error("did", "DID must have format 'did:method:specific-id'", ValidationErrorCode::InvalidFormat);
+            result.add_error(
+                "did",
+                "DID must have format 'did:method:specific-id'",
+                ValidationErrorCode::InvalidFormat,
+            );
             return result;
         }
 
         let method = parts[1];
         let valid_methods = ["key", "web", "pkh", "holo", "ethr", "ion"];
         if !valid_methods.contains(&method) {
-            result.add_error("did", &format!("Unsupported DID method '{}'. Supported: {:?}", method, valid_methods), ValidationErrorCode::InvalidFormat);
+            result.add_error(
+                "did",
+                &format!(
+                    "Unsupported DID method '{}'. Supported: {:?}",
+                    method, valid_methods
+                ),
+                ValidationErrorCode::InvalidFormat,
+            );
         }
 
         let specific_id = parts[2];
         if specific_id.is_empty() {
-            result.add_error("did", "DID specific identifier is required", ValidationErrorCode::Required);
+            result.add_error(
+                "did",
+                "DID specific identifier is required",
+                ValidationErrorCode::Required,
+            );
         }
 
         if specific_id.len() > 256 {
-            result.add_error("did", "DID specific identifier too long", ValidationErrorCode::TooLong);
+            result.add_error(
+                "did",
+                "DID specific identifier too long",
+                ValidationErrorCode::TooLong,
+            );
         }
 
         result
@@ -1831,14 +1897,23 @@ pub mod validation {
         }
 
         if score.is_nan() {
-            result.add_error(field_name, "Confidence score cannot be NaN", ValidationErrorCode::InvalidFormat);
+            result.add_error(
+                field_name,
+                "Confidence score cannot be NaN",
+                ValidationErrorCode::InvalidFormat,
+            );
         }
 
         result
     }
 
     /// Validate a score within a specified range
-    pub fn validate_score_range(score: u32, min: u32, max: u32, field_name: &str) -> ValidationResult {
+    pub fn validate_score_range(
+        score: u32,
+        min: u32,
+        max: u32,
+        field_name: &str,
+    ) -> ValidationResult {
         let mut result = ValidationResult::new();
 
         if score < min || score > max {
@@ -1962,16 +2037,32 @@ pub mod validation {
         let mut result = ValidationResult::new();
 
         if mood_score > 10 {
-            result.add_error("mood_score", "Mood score must be 0-10", ValidationErrorCode::OutOfRange);
+            result.add_error(
+                "mood_score",
+                "Mood score must be 0-10",
+                ValidationErrorCode::OutOfRange,
+            );
         }
         if anxiety_score > 10 {
-            result.add_error("anxiety_score", "Anxiety score must be 0-10", ValidationErrorCode::OutOfRange);
+            result.add_error(
+                "anxiety_score",
+                "Anxiety score must be 0-10",
+                ValidationErrorCode::OutOfRange,
+            );
         }
         if sleep_quality > 10 {
-            result.add_error("sleep_quality", "Sleep quality must be 0-10", ValidationErrorCode::OutOfRange);
+            result.add_error(
+                "sleep_quality",
+                "Sleep quality must be 0-10",
+                ValidationErrorCode::OutOfRange,
+            );
         }
         if energy_level > 10 {
-            result.add_error("energy_level", "Energy level must be 0-10", ValidationErrorCode::OutOfRange);
+            result.add_error(
+                "energy_level",
+                "Energy level must be 0-10",
+                ValidationErrorCode::OutOfRange,
+            );
         }
 
         result
@@ -1983,10 +2074,18 @@ pub mod validation {
 
         if let Some(h) = hours {
             if h < 0.0 || h > 24.0 {
-                result.add_error("sleep_hours", "Sleep hours must be between 0 and 24", ValidationErrorCode::OutOfRange);
+                result.add_error(
+                    "sleep_hours",
+                    "Sleep hours must be between 0 and 24",
+                    ValidationErrorCode::OutOfRange,
+                );
             }
             if h.is_nan() {
-                result.add_error("sleep_hours", "Sleep hours cannot be NaN", ValidationErrorCode::InvalidFormat);
+                result.add_error(
+                    "sleep_hours",
+                    "Sleep hours cannot be NaN",
+                    ValidationErrorCode::InvalidFormat,
+                );
             }
         }
 
@@ -1998,17 +2097,32 @@ pub mod validation {
         let mut result = ValidationResult::new();
 
         if id.is_empty() {
-            result.add_error("id", &format!("{} ID is required", resource_type), ValidationErrorCode::Required);
+            result.add_error(
+                "id",
+                &format!("{} ID is required", resource_type),
+                ValidationErrorCode::Required,
+            );
             return result;
         }
 
         // FHIR IDs should be 1-64 characters, alphanumeric with hyphens and dots
         if id.len() > 64 {
-            result.add_error("id", "FHIR ID cannot exceed 64 characters", ValidationErrorCode::TooLong);
+            result.add_error(
+                "id",
+                "FHIR ID cannot exceed 64 characters",
+                ValidationErrorCode::TooLong,
+            );
         }
 
-        if !id.chars().all(|c| c.is_alphanumeric() || c == '-' || c == '.') {
-            result.add_error("id", "FHIR ID can only contain alphanumeric characters, hyphens, and dots", ValidationErrorCode::InvalidCharacters);
+        if !id
+            .chars()
+            .all(|c| c.is_alphanumeric() || c == '-' || c == '.')
+        {
+            result.add_error(
+                "id",
+                "FHIR ID can only contain alphanumeric characters, hyphens, and dots",
+                ValidationErrorCode::InvalidCharacters,
+            );
         }
 
         result
@@ -2077,7 +2191,11 @@ pub mod batch {
         let total = hashes.len();
         let mut result = BatchGetResult::new(total);
 
-        let limit = if options.limit == 0 { total } else { options.limit.min(total) };
+        let limit = if options.limit == 0 {
+            total
+        } else {
+            options.limit.min(total)
+        };
 
         for hash in hashes.into_iter().take(limit) {
             match get(hash.clone(), GetOptions::default()) {
@@ -2186,25 +2304,60 @@ mod tests {
     use super::*;
 
     #[test]
+    fn encrypted_health_metadata_is_authenticated() {
+        let key = [7u8; 32];
+        let aad = b"patient=alice;category=LabResults;type=LabResult";
+        let (ciphertext, nonce) =
+            patient_encryption::encrypt_with_aad(b"private result", aad, &key)
+                .expect("encrypt");
+
+        let plaintext = patient_encryption::decrypt_with_aad(
+            &ciphertext,
+            &nonce,
+            aad,
+            &key,
+        )
+        .expect("decrypt");
+        assert_eq!(plaintext, b"private result");
+
+        assert!(patient_encryption::decrypt_with_aad(
+            &ciphertext,
+            &nonce,
+            b"patient=mallory;category=LabResults;type=LabResult",
+            &key,
+        )
+        .is_err());
+    }
+
+    #[test]
     fn test_pagination_validation() {
-        let valid = PaginationInput { offset: 0, limit: 50 };
+        let valid = PaginationInput {
+            offset: 0,
+            limit: 50,
+        };
         assert!(valid.validate().is_ok());
 
-        let invalid = PaginationInput { offset: 0, limit: 200 };
+        let invalid = PaginationInput {
+            offset: 0,
+            limit: 200,
+        };
         assert!(invalid.validate().is_err());
 
-        let zero_limit = PaginationInput { offset: 0, limit: 0 };
+        let zero_limit = PaginationInput {
+            offset: 0,
+            limit: 0,
+        };
         assert!(zero_limit.validate().is_err());
     }
 
     #[test]
     fn test_paginated_result() {
-        let pagination = PaginationInput { offset: 0, limit: 10 };
-        let result: PaginatedResult<u32> = PaginatedResult::new(
-            vec![1, 2, 3, 4, 5],
-            20,
-            &pagination
-        );
+        let pagination = PaginationInput {
+            offset: 0,
+            limit: 10,
+        };
+        let result: PaginatedResult<u32> =
+            PaginatedResult::new(vec![1, 2, 3, 4, 5], 20, &pagination);
 
         assert_eq!(result.items.len(), 5);
         assert_eq!(result.total, 20);
@@ -2245,27 +2398,40 @@ mod tests {
         // Too short
         let result = validation::validate_mrn("AB");
         assert!(!result.is_valid());
-        assert!(result.errors.iter().any(|e| e.code == validation::ValidationErrorCode::TooShort));
+        assert!(result
+            .errors
+            .iter()
+            .any(|e| e.code == validation::ValidationErrorCode::TooShort));
 
         // Empty
         let result = validation::validate_mrn("");
         assert!(!result.is_valid());
-        assert!(result.errors.iter().any(|e| e.code == validation::ValidationErrorCode::Required));
+        assert!(result
+            .errors
+            .iter()
+            .any(|e| e.code == validation::ValidationErrorCode::Required));
 
         // Invalid characters
         let result = validation::validate_mrn("MRN@123!");
         assert!(!result.is_valid());
-        assert!(result.errors.iter().any(|e| e.code == validation::ValidationErrorCode::InvalidCharacters));
+        assert!(result
+            .errors
+            .iter()
+            .any(|e| e.code == validation::ValidationErrorCode::InvalidCharacters));
 
         // Too long
         let result = validation::validate_mrn("123456789012345678901");
         assert!(!result.is_valid());
-        assert!(result.errors.iter().any(|e| e.code == validation::ValidationErrorCode::TooLong));
+        assert!(result
+            .errors
+            .iter()
+            .any(|e| e.code == validation::ValidationErrorCode::TooLong));
     }
 
     #[test]
     fn test_validate_did_valid() {
-        let result = validation::validate_did("did:key:z6MkhaXgBZDvotDkL5257faiztiGiC2QtKLGpbnnEGta2doK");
+        let result =
+            validation::validate_did("did:key:z6MkhaXgBZDvotDkL5257faiztiGiC2QtKLGpbnnEGta2doK");
         assert!(result.is_valid());
 
         let result = validation::validate_did("did:web:example.com");
@@ -2282,7 +2448,8 @@ mod tests {
         assert!(!result.is_valid());
 
         // Missing prefix
-        let result = validation::validate_did("key:z6MkhaXgBZDvotDkL5257faiztiGiC2QtKLGpbnnEGta2doK");
+        let result =
+            validation::validate_did("key:z6MkhaXgBZDvotDkL5257faiztiGiC2QtKLGpbnnEGta2doK");
         assert!(!result.is_valid());
 
         // Invalid method
@@ -2433,10 +2600,18 @@ mod tests {
     #[test]
     fn test_validation_result_merge() {
         let mut result1 = validation::ValidationResult::new();
-        result1.add_error("field1", "error1", validation::ValidationErrorCode::Required);
+        result1.add_error(
+            "field1",
+            "error1",
+            validation::ValidationErrorCode::Required,
+        );
 
         let mut result2 = validation::ValidationResult::new();
-        result2.add_error("field2", "error2", validation::ValidationErrorCode::InvalidFormat);
+        result2.add_error(
+            "field2",
+            "error2",
+            validation::ValidationErrorCode::InvalidFormat,
+        );
 
         result1.merge(result2);
         assert_eq!(result1.errors.len(), 2);

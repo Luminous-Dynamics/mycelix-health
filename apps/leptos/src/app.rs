@@ -9,9 +9,10 @@ use leptos_router::path;
 use crate::components::homeostasis_bg::HomeostasisBackground;
 use crate::components::nav::BottomNav;
 use crate::crypto::key_manager;
+use mycelix_leptos_core::holochain_provider::StatusLabels;
 use mycelix_leptos_core::{
-    HolochainProviderAuto, HolochainProviderConfig, ConnectStrategy,
-    ConnectionBadge, StatusLabels,
+    ConnectStrategy, ConnectionBadge, ConnectionStatus, HolochainProviderAuto,
+    HolochainProviderConfig,
 };
 use crate::pages;
 use crate::zome_clients::consent::{mock_consents, ConsentSummary, ConsentStatus};
@@ -50,6 +51,9 @@ pub enum VaultState {
 #[derive(Clone, Debug)]
 pub struct AppState {
     pub vault: RwSignal<VaultState>,
+    /// True while the portal is rendering local fixture data rather than records
+    /// hydrated through authenticated zome calls.
+    pub using_demo_data: RwSignal<bool>,
     pub consents: RwSignal<Vec<ConsentSummary>>,
     pub records: RwSignal<Vec<HealthRecord>>,
     pub access_events: RwSignal<Vec<AccessEvent>>,
@@ -72,6 +76,9 @@ pub fn App() -> impl IntoView {
     // Global reactive app state
     let app_state = AppState {
         vault: RwSignal::new(vault_state),
+        // This snapshot has not yet implemented DHT hydration. Keep the data
+        // provenance explicit even when a conductor connection succeeds.
+        using_demo_data: RwSignal::new(true),
         consents: RwSignal::new(mock_consents()),
         records: RwSignal::new(mock_records()),
         access_events: RwSignal::new(mock_access_events()),
@@ -111,18 +118,19 @@ pub fn App() -> impl IntoView {
             // Content layer
             <div class="portal-content">
                 <HolochainProviderAuto config=HolochainProviderConfig {
-                    app_id: "health".to_string(),
+                    app_id: "mycelix-health".to_string(),
                     default_role: Some("health".to_string()),
                     log_prefix: "[Health]",
-                    connect_strategy: ConnectStrategy::JsStatusOnly,
+                    connect_strategy: ConnectStrategy::WebSocketRequired,
                     status_labels: Some(StatusLabels {
-                        disconnected: "Offline",
-                        connecting: "Probing...",
-                        connected: "Live (DHT)",
-                        mock: "Local Demo",
+                        disconnected: "Conductor unavailable",
+                        connecting: "Authenticating...",
+                        connected: "Conductor ready",
+                        mock: "Demo transport",
                     }),
                 }>
                 <Router>
+                    <RuntimeTruthBanner />
                     <main class="portal-main">
                         <Routes fallback=|| view! { <p class="not-found">"404 — This pathway does not exist."</p> }>
                             <Route path=path!("/") view=pages::home::HomePage />
@@ -140,5 +148,72 @@ pub fn App() -> impl IntoView {
                 </HolochainProviderAuto>
             </div>
         </div>
+    }
+}
+
+/// Makes transport readiness and data provenance visible as separate facts.
+///
+/// A reachable conductor does not mean the records currently rendered by the
+/// portal came from the DHT. The portal must explicitly switch
+/// `using_demo_data` to false only after authenticated zome hydration succeeds.
+#[component]
+fn RuntimeTruthBanner() -> impl IntoView {
+    let app = use_context::<AppState>().expect("AppState must be provided by App");
+    let holochain = mycelix_leptos_core::holochain_provider::use_holochain();
+    let using_demo_data = app.using_demo_data;
+
+    let class_ctx = holochain.clone();
+    let class = move || {
+        if using_demo_data.get() {
+            "runtime-truth-banner truth-demo"
+        } else if class_ctx.zome_calls_ready() {
+            "runtime-truth-banner truth-live"
+        } else {
+            "runtime-truth-banner truth-blocked"
+        }
+    };
+
+    let title_ctx = holochain.clone();
+    let title = move || {
+        if using_demo_data.get() {
+            "Demo dataset"
+        } else if title_ctx.zome_calls_ready() {
+            "Live data"
+        } else {
+            "Live mode unavailable"
+        }
+    };
+
+    let detail_ctx = holochain;
+    let detail = move || {
+        if !using_demo_data.get() {
+            return if detail_ctx.zome_calls_ready() {
+                "Authenticated conductor session and signer ready; displayed records were hydrated through zome calls."
+            } else {
+                "The portal is configured for live data, but an authenticated conductor session and zome-call signer are not both ready."
+            };
+        }
+
+        match detail_ctx.status.get() {
+            ConnectionStatus::Connected if detail_ctx.zome_call_signing_ready.get() => {
+                "Conductor authenticated and signer ready, but this portal has not loaded clinical records from the DHT. All displayed health data remains local fixtures."
+            }
+            ConnectionStatus::Connected => {
+                "Conductor authenticated, but zome-call signing is unavailable. All records, consents, access history, and privacy-budget values are local fixtures."
+            }
+            ConnectionStatus::Connecting | ConnectionStatus::Reconnecting => {
+                "Connecting to the conductor. All records, consents, access history, and privacy-budget values shown here are local fixtures."
+            }
+            ConnectionStatus::Disconnected | ConnectionStatus::Mock => {
+                "No authenticated conductor session. All records, consents, access history, and privacy-budget values shown here are local fixtures."
+            }
+        }
+    };
+
+    view! {
+        <aside class=class role="status" aria-live="polite">
+            <strong class="runtime-truth-title">{title}</strong>
+            <span class="runtime-truth-detail">{detail}</span>
+        </aside>
     }
 }

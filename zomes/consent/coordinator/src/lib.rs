@@ -158,7 +158,9 @@ pub fn check_authorization(input: AuthorizationCheckInput) -> ExternResult<Autho
             // Check if grantee matches
             let grantee_matches = match &consent.grantee {
                 ConsentGrantee::Agent(agent) => *agent == input.requestor,
-                ConsentGrantee::EmergencyAccess => input.is_emergency,
+                // Emergency access is never granted by a caller-selected flag.
+                // It is evaluated below against a patient-authored capability.
+                ConsentGrantee::EmergencyAccess => false,
                 ConsentGrantee::Provider(hash) => {
                     // Provider hash match — check via a hash comparison
                     // In production, this would resolve the provider's agent key
@@ -197,51 +199,46 @@ pub fn check_authorization(input: AuthorizationCheckInput) -> ExternResult<Autho
     }
 
     // ── Emergency Access (#6) ──
-    // Break-glass: create an audited emergency access record and grant
-    // temporary read access. The patient is notified immediately.
+    // A caller-selected `is_emergency` flag is only a request to evaluate an
+    // existing patient-authored capability. It never creates or authorizes one.
     if input.is_emergency {
-        // Record the emergency access for audit
-        let emergency = EmergencyAccess {
-            emergency_id: format!("EMRG-{}", sys_time()?.as_micros()),
-            patient_hash: input.patient_hash.clone(),
-            accessor: input.requestor.clone(),
-            reason: "Emergency break-glass access".to_string(),
-            clinical_justification: "Provider-invoked emergency override".to_string(),
-            accessed_at: sys_time()?,
-            access_duration_minutes: 60,
-            approved_by: None,
-            data_accessed: vec![input.data_category.clone()],
-            audited: false,
-            audited_by: None,
-            audited_at: None,
-            audit_findings: None,
-        };
-        create_entry(&EntryTypes::EmergencyAccess(emergency))?;
+        if input.permission != DataPermission::Read {
+            return Ok(AuthorizationResult {
+                authorized: false,
+                consent_hash: None,
+                reason: "Break-glass access is read-only".to_string(),
+                permissions: vec![],
+                emergency_override: false,
+            });
+        }
 
-        // Create notification for the patient
-        let notification = AccessNotification {
-            notification_id: format!("NOTIF-EMRG-{}", sys_time()?.as_micros()),
-            patient_hash: input.patient_hash.clone(),
-            accessor: input.requestor,
-            accessor_name: "Emergency Provider".to_string(),
-            data_categories: vec![input.data_category.clone()],
-            purpose: "Emergency break-glass access".to_string(),
-            accessed_at: sys_time()?,
-            emergency_access: true,
-            priority: NotificationPriority::Immediate,
-            viewed: false,
-            viewed_at: None,
-            summary: "EMERGENCY: A provider accessed your data without consent. This access has been logged.".to_string(),
-            access_log_hash: None,
-        };
-        create_entry(&EntryTypes::AccessNotification(notification))?;
+        if has_active_emergency_access_for(
+            input.patient_hash.clone(),
+            &input.requestor,
+            &input.data_category,
+        )? {
+            record_break_glass_use_notification(
+                input.patient_hash.clone(),
+                input.requestor.clone(),
+                input.data_category.clone(),
+                "Patient-authorized break-glass access",
+            )?;
+
+            return Ok(AuthorizationResult {
+                authorized: true,
+                consent_hash: None,
+                reason: "Patient-authorized, category-scoped break-glass capability".to_string(),
+                permissions: vec![DataPermission::Read],
+                emergency_override: true,
+            });
+        }
 
         return Ok(AuthorizationResult {
-            authorized: true,
+            authorized: false,
             consent_hash: None,
-            reason: "Emergency override — access granted, patient notified, audit logged".to_string(),
-            permissions: vec![DataPermission::Read], // Emergency = read-only
-            emergency_override: true,
+            reason: "No active patient-authorized break-glass capability".to_string(),
+            permissions: vec![],
+            emergency_override: false,
         });
     }
 
@@ -426,53 +423,156 @@ pub fn create_access_denied_log(entry: AccessDeniedLogEntry) -> ExternResult<Act
     Ok(log_hash)
 }
 
-/// Record emergency access (break-glass)
+/// Record a patient-authorized, time-bounded break-glass capability.
+///
+/// The patient record owner must author the capability. The future accessor
+/// cannot approve their own emergency access, and the capability must name
+/// concrete categories with a maximum lifetime of 60 minutes.
 #[hdk_extern]
 pub fn record_emergency_access(emergency: EmergencyAccess) -> ExternResult<Record> {
+    let caller = agent_info()?.agent_initial_pubkey;
+    let patient_record = get(emergency.patient_hash.clone(), GetOptions::default())?
+        .ok_or(wasm_error!(WasmErrorInner::Guest("Patient record not found".to_string())))?;
+
+    if patient_record.action().author() != &caller {
+        return Err(wasm_error!(WasmErrorInner::Guest(
+            "Only the patient record owner can pre-authorize emergency access".to_string()
+        )));
+    }
+    if emergency.approved_by.as_ref() != Some(&caller) {
+        return Err(wasm_error!(WasmErrorInner::Guest(
+            "Emergency access approved_by must identify the patient author".to_string()
+        )));
+    }
+    if emergency.accessor == caller {
+        return Err(wasm_error!(WasmErrorInner::Guest(
+            "Emergency access cannot be self-approved".to_string()
+        )));
+    }
+
     let emergency_hash = create_entry(&EntryTypes::EmergencyAccess(emergency.clone()))?;
     let record = get(emergency_hash.clone(), GetOptions::default())?
         .ok_or(wasm_error!(WasmErrorInner::Guest("Could not find emergency access".to_string())))?;
-    
+
     create_link(
         emergency.patient_hash,
         emergency_hash,
         LinkTypes::PatientToEmergencyAccess,
         (),
     )?;
-    
+
     Ok(record)
 }
 
-/// Check if the caller has an active break-glass emergency access entry
-#[hdk_extern]
-pub fn has_active_emergency_access(patient_hash: ActionHash) -> ExternResult<bool> {
-    let caller = agent_info()?.agent_initial_pubkey;
-    let now = sys_time()?;
+fn emergency_capability_is_active(
+    emergency: &EmergencyAccess,
+    accessor: &AgentPubKey,
+    category: &DataCategory,
+    now_micros: i64,
+) -> bool {
+    if emergency.accessor != *accessor
+        || emergency.approved_by.is_none()
+        || !emergency.data_accessed.contains(category)
+        || emergency.access_duration_minutes == 0
+        || emergency.access_duration_minutes > 60
+    {
+        return false;
+    }
 
+    let duration_micros = (emergency.access_duration_minutes as i64)
+        .saturating_mul(60)
+        .saturating_mul(1_000_000);
+    let expires_at = emergency
+        .accessed_at
+        .as_micros()
+        .saturating_add(duration_micros);
+    now_micros <= expires_at
+}
+
+fn has_active_emergency_access_for(
+    patient_hash: ActionHash,
+    accessor: &AgentPubKey,
+    category: &DataCategory,
+) -> ExternResult<bool> {
+    let now = sys_time()?;
     let links = get_links(
         LinkQuery::try_new(patient_hash, LinkTypes::PatientToEmergencyAccess)?,
         GetStrategy::default(),
     )?;
 
     for link in links {
-        if let Some(hash) = link.target.into_action_hash() {
-            if let Some(record) = get(hash, GetOptions::default())? {
-                if let Some(emergency) = record.entry().to_app_option::<EmergencyAccess>().ok().flatten() {
-                    if emergency.accessor != caller {
-                        continue;
-                    }
-                    let duration_micros = (emergency.access_duration_minutes as i64)
-                        .saturating_mul(60)
-                        .saturating_mul(1_000_000);
-                    let expires_at = emergency.accessed_at.as_micros().saturating_add(duration_micros);
-                    if now.as_micros() <= expires_at {
-                        return Ok(true);
-                    }
-                }
-            }
+        let Some(hash) = link.target.into_action_hash() else {
+            continue;
+        };
+        let Some(record) = get(hash, GetOptions::default())? else {
+            continue;
+        };
+        let Some(emergency): Option<EmergencyAccess> = record
+            .entry()
+            .to_app_option()
+            .map_err(|e| wasm_error!(WasmErrorInner::Guest(e.to_string())))?
+        else {
+            continue;
+        };
+
+        if emergency_capability_is_active(&emergency, accessor, category, now.as_micros()) {
+            return Ok(true);
         }
     }
 
+    Ok(false)
+}
+
+fn record_break_glass_use_notification(
+    patient_hash: ActionHash,
+    accessor: AgentPubKey,
+    category: DataCategory,
+    purpose: &str,
+) -> ExternResult<()> {
+    let notification = AccessNotification {
+        notification_id: format!("NOTIF-EMRG-{}", sys_time()?.as_micros()),
+        patient_hash,
+        accessor,
+        accessor_name: "Pre-authorized emergency accessor".to_string(),
+        data_categories: vec![category],
+        purpose: purpose.to_string(),
+        accessed_at: sys_time()?,
+        emergency_access: true,
+        priority: NotificationPriority::Immediate,
+        viewed: false,
+        viewed_at: None,
+        summary: "EMERGENCY: A pre-authorized accessor used a time-bounded break-glass capability. This access has been logged.".to_string(),
+        access_log_hash: None,
+    };
+    create_entry(&EntryTypes::AccessNotification(notification))?;
+    Ok(())
+}
+
+/// Check whether the caller has any active patient-authorized break-glass capability.
+/// Prefer `check_authorization`, which additionally enforces permission and category.
+#[hdk_extern]
+pub fn has_active_emergency_access(patient_hash: ActionHash) -> ExternResult<bool> {
+    let caller = agent_info()?.agent_initial_pubkey;
+    for category in [
+        DataCategory::Demographics,
+        DataCategory::Allergies,
+        DataCategory::Medications,
+        DataCategory::Diagnoses,
+        DataCategory::Procedures,
+        DataCategory::LabResults,
+        DataCategory::ImagingStudies,
+        DataCategory::VitalSigns,
+        DataCategory::Immunizations,
+        DataCategory::MentalHealth,
+        DataCategory::SubstanceAbuse,
+        DataCategory::SexualHealth,
+        DataCategory::GeneticData,
+        DataCategory::FinancialData,
+    ] {
+        if has_active_emergency_access_for(patient_hash.clone(), &caller, &category)? {
+            return Ok(true);
+        }
+    }
     Ok(false)
 }
 
@@ -2092,57 +2192,45 @@ fn check_part2_authorization(
     patient_hash: ActionHash,
     purpose: &str,
 ) -> ExternResult<Option<ActionHash>> {
-    // Check for active Part 2 consent
-    let consent_links = get_links(
-        LinkQuery::try_new(patient_hash.clone(), LinkTypes::PatientToConsents)?,
-        GetStrategy::default(),
-    )?;
-
-    for link in &consent_links {
-        if let Some(hash) = link.target.clone().into_action_hash() {
-            if let Some(record) = get(hash.clone(), GetOptions::default())? {
-                if let Some(consent) = record
-                    .entry()
-                    .to_app_option::<Consent>()
-                    .ok()
-                    .flatten()
-                {
-                    // Check if this consent covers substance abuse data
-                    if matches!(consent.status, ConsentStatus::Active)
-                        && consent.scope.data_categories.iter().any(|cat| {
-                            matches!(cat, DataCategory::SubstanceAbuse | DataCategory::All)
-                        })
-                    {
-                        return Ok(Some(hash));
-                    }
-                }
-            }
+    // A Part 2 disclosure requires the same exact, agent-bound sensitive
+    // consent as every other SubstanceAbuse read. `All`, public grants,
+    // unrelated providers, expired grants, and excluded categories do not
+    // satisfy this gate.
+    let caller = agent_info()?.agent_initial_pubkey;
+    for record in get_active_consents(patient_hash.clone())? {
+        let Some(consent): Option<Consent> = record
+            .entry()
+            .to_app_option()
+            .map_err(|e| wasm_error!(WasmErrorInner::Guest(e.to_string())))?
+        else {
+            continue;
+        };
+        if consent_explicitly_authorizes_sensitive_access(
+            &consent,
+            &caller,
+            &DataCategory::SubstanceAbuse,
+            &DataPermission::Read,
+        ) {
+            return Ok(Some(record.action_address().clone()));
         }
     }
 
-    // Emergency override: medical emergencies can access without consent
-    // but MUST create an audit trail
-    if purpose.contains("emergency") || purpose.contains("crisis") {
-        // Log emergency access
-        let caller = agent_info()?.agent_initial_pubkey;
-        let emergency = EmergencyAccess {
-            emergency_id: format!("part2-emergency:{}", sys_time()?.as_micros()),
-            patient_hash: patient_hash.clone(),
-            accessor: caller,
-            reason: format!("42 CFR Part 2 emergency override: {}", purpose),
-            clinical_justification: purpose.to_string(),
-            accessed_at: sys_time()?,
-            access_duration_minutes: 60,
-            approved_by: None,
-            data_accessed: vec![DataCategory::SubstanceAbuse],
-            audited: false,
-            audited_by: None,
-            audited_at: None,
-            audit_findings: None,
-        };
-        create_entry(&EntryTypes::EmergencyAccess(emergency))?;
-
-        return Ok(None); // Allowed without specific consent hash
+    // 42 CFR Part 2 never accepts a purpose string as authorization. The
+    // caller must hold a patient-authored, time-bounded capability naming the
+    // SubstanceAbuse category. This is the same break-glass authority used by
+    // the general authorization path.
+    if has_active_emergency_access_for(
+        patient_hash.clone(),
+        &caller,
+        &DataCategory::SubstanceAbuse,
+    )? {
+        record_break_glass_use_notification(
+            patient_hash,
+            caller,
+            DataCategory::SubstanceAbuse,
+            purpose,
+        )?;
+        return Ok(None);
     }
 
     Err(wasm_error!(WasmErrorInner::Guest(
@@ -2309,7 +2397,7 @@ pub fn render_consent_summary(consent_hash: ActionHash) -> ExternResult<String> 
         ConsentGrantee::Agent(agent) => format!("A specific person ({})", &agent.to_string()[..8]),
         ConsentGrantee::ResearchStudy(hash) => format!("Research study ({})", &hash.to_string()[..8]),
         ConsentGrantee::InsuranceCompany(hash) => format!("Your insurance company ({})", &hash.to_string()[..8]),
-        ConsentGrantee::EmergencyAccess => "Any doctor in an emergency".to_string(),
+        ConsentGrantee::EmergencyAccess => "Legacy emergency grant (non-authorizing)".to_string(),
         ConsentGrantee::Public => "Anyone (public)".to_string(),
     };
     summary.push_str(&format!("WHO can see your data: {}\n\n", who));
@@ -2438,11 +2526,54 @@ pub fn revoke_all_patient_consents(patient_hash: ActionHash) -> ExternResult<u32
 
 // ==================== P1-2: SENSITIVE CATEGORY CONSENT CHECK ====================
 
-/// Check if a consent explicitly names a sensitive category.
-/// 42 CFR Part 2 requires that substance abuse consent specifically
-/// names the category, not just a blanket "All" consent.
+fn is_sensitive_category(category: &DataCategory) -> bool {
+    matches!(
+        category,
+        DataCategory::SubstanceAbuse | DataCategory::MentalHealth | DataCategory::SexualHealth
+    )
+}
+
+fn consent_explicitly_authorizes_sensitive_access(
+    consent: &Consent,
+    requestor: &AgentPubKey,
+    category: &DataCategory,
+    permission: &DataPermission,
+) -> bool {
+    if !is_sensitive_category(category) {
+        return false;
+    }
+
+    // Sensitive access must name the concrete requestor. Public, organization,
+    // provider-hash, research, insurance, emergency, and blanket grants are not
+    // accepted here until their membership/identity resolution is implemented.
+    let grantee_matches = matches!(
+        &consent.grantee,
+        ConsentGrantee::Agent(agent) if agent == requestor
+    );
+    let explicitly_names_category = consent
+        .scope
+        .data_categories
+        .iter()
+        .any(|candidate| candidate == category);
+    let not_excluded = !consent.scope.exclusions.contains(category);
+    let permission_granted = consent.permissions.contains(permission);
+
+    grantee_matches && explicitly_names_category && not_excluded && permission_granted
+}
+
+/// Check whether an active consent explicitly authorizes a sensitive category.
+///
+/// This is deliberately stricter than the general authorization path:
+/// - `DataCategory::All` does not satisfy the category requirement;
+/// - the concrete requestor must be named as an `Agent` grantee;
+/// - exclusions and the requested permission are enforced;
+/// - emergency access is handled by the separate break-glass policy.
 #[hdk_extern]
 pub fn check_sensitive_category_consent(input: AuthorizationCheckInput) -> ExternResult<bool> {
+    if input.is_emergency || !is_sensitive_category(&input.data_category) {
+        return Ok(false);
+    }
+
     let consents = get_active_consents(input.patient_hash.clone())?;
 
     for record in consents {
@@ -2450,15 +2581,16 @@ pub fn check_sensitive_category_consent(input: AuthorizationCheckInput) -> Exter
             .entry()
             .to_app_option()
             .map_err(|e| wasm_error!(WasmErrorInner::Guest(e.to_string())))?
-        else { continue };
+        else {
+            continue;
+        };
 
-        // Check if this consent explicitly lists the sensitive category
-        // (not just DataCategory::All)
-        let explicit_match = consent.scope.data_categories.iter().any(|cat| {
-            format!("{:?}", cat) == format!("{:?}", input.data_category)
-        });
-
-        if explicit_match {
+        if consent_explicitly_authorizes_sensitive_access(
+            &consent,
+            &input.requestor,
+            &input.data_category,
+            &input.permission,
+        ) {
             return Ok(true);
         }
     }
@@ -2530,13 +2662,13 @@ pub fn check_redisclosure_consent(input: RedisclosureConsentInput) -> ExternResu
             .map_err(|e| wasm_error!(WasmErrorInner::Guest(e.to_string())))?
         else { continue };
 
-        // Check grantee matches requestor
-        let grantee_matches = match &consent.grantee {
-            ConsentGrantee::Agent(agent) => *agent == input.requestor,
-            ConsentGrantee::EmergencyAccess => true,
-            ConsentGrantee::Public => true,
-            _ => false,
-        };
+        // Re-disclosure is a distinct patient authorization. It must name the
+        // concrete recipient; public and legacy emergency grants never satisfy
+        // a no-further-disclosure obligation.
+        let grantee_matches = matches!(
+            &consent.grantee,
+            ConsentGrantee::Agent(agent) if *agent == input.requestor
+        );
         if !grantee_matches {
             continue;
         }
@@ -2549,10 +2681,15 @@ pub fn check_redisclosure_consent(input: RedisclosureConsentInput) -> ExternResu
             continue;
         }
 
-        // Must cover all requested categories
+        // Must cover every requested category and must not exclude any of
+        // them. Sensitive categories require an exact category grant; `All`
+        // cannot silently authorize further disclosure of specially protected
+        // records.
         let covers_categories = input.categories.iter().all(|cat| {
-            consent.scope.data_categories.contains(cat)
-                || consent.scope.data_categories.contains(&DataCategory::All)
+            let explicitly_named = consent.scope.data_categories.contains(cat);
+            let covered_by_all = !is_sensitive_category(cat)
+                && consent.scope.data_categories.contains(&DataCategory::All);
+            (explicitly_named || covered_by_all) && !consent.scope.exclusions.contains(cat)
         });
         if !covers_categories {
             continue;
@@ -2878,6 +3015,97 @@ mod tests {
         assert!(scope.date_range.is_some());
     }
 
+    fn sensitive_consent_for(
+        grantee: AgentPubKey,
+        categories: Vec<DataCategory>,
+        exclusions: Vec<DataCategory>,
+        permissions: Vec<DataPermission>,
+    ) -> Consent {
+        Consent {
+            consent_id: "sensitive-test".to_string(),
+            patient_hash: dummy_hash(),
+            grantee: ConsentGrantee::Agent(grantee),
+            scope: ConsentScope {
+                data_categories: categories,
+                date_range: None,
+                encounter_hashes: None,
+                exclusions,
+            },
+            permissions,
+            purpose: ConsentPurpose::Treatment,
+            status: ConsentStatus::Active,
+            granted_at: Timestamp::from_micros(1),
+            expires_at: None,
+            revoked_at: None,
+            revocation_reason: None,
+            document_hash: None,
+            witness: None,
+            legal_representative: None,
+            notes: None,
+        }
+    }
+
+    #[test]
+    fn sensitive_consent_rejects_blanket_all_scope() {
+        let requestor = dummy_agent();
+        let consent = sensitive_consent_for(
+            requestor.clone(),
+            vec![DataCategory::All],
+            vec![],
+            vec![DataPermission::Read],
+        );
+
+        assert!(!consent_explicitly_authorizes_sensitive_access(
+            &consent,
+            &requestor,
+            &DataCategory::SubstanceAbuse,
+            &DataPermission::Read,
+        ));
+    }
+
+    #[test]
+    fn sensitive_consent_requires_matching_grantee_permission_and_exclusions() {
+        let requestor = dummy_agent();
+        let other = AgentPubKey::from_raw_36(vec![1u8; 36]);
+        let valid = sensitive_consent_for(
+            requestor.clone(),
+            vec![DataCategory::MentalHealth],
+            vec![],
+            vec![DataPermission::Read],
+        );
+        assert!(consent_explicitly_authorizes_sensitive_access(
+            &valid,
+            &requestor,
+            &DataCategory::MentalHealth,
+            &DataPermission::Read,
+        ));
+        assert!(!consent_explicitly_authorizes_sensitive_access(
+            &valid,
+            &other,
+            &DataCategory::MentalHealth,
+            &DataPermission::Read,
+        ));
+
+        let excluded = sensitive_consent_for(
+            requestor.clone(),
+            vec![DataCategory::MentalHealth],
+            vec![DataCategory::MentalHealth],
+            vec![DataPermission::Read],
+        );
+        assert!(!consent_explicitly_authorizes_sensitive_access(
+            &excluded,
+            &requestor,
+            &DataCategory::MentalHealth,
+            &DataPermission::Read,
+        ));
+        assert!(!consent_explicitly_authorizes_sensitive_access(
+            &valid,
+            &requestor,
+            &DataCategory::MentalHealth,
+            &DataPermission::Export,
+        ));
+    }
+
     #[test]
     fn test_data_category_all_variants_serde() {
         let categories = vec![
@@ -3010,6 +3238,84 @@ mod tests {
         assert!(!result.authorized);
         assert!(result.emergency_override);
         assert_eq!(result.permissions.len(), 1);
+    }
+
+    fn emergency_capability(
+        approver: AgentPubKey,
+        accessor: AgentPubKey,
+        category: DataCategory,
+    ) -> EmergencyAccess {
+        EmergencyAccess {
+            emergency_id: "EMRG-test".to_string(),
+            patient_hash: dummy_hash(),
+            accessor,
+            reason: "Break-glass readiness".to_string(),
+            clinical_justification: "Time-critical treatment".to_string(),
+            accessed_at: Timestamp::from_micros(1_000_000),
+            access_duration_minutes: 30,
+            approved_by: Some(approver),
+            data_accessed: vec![category],
+            audited: false,
+            audited_by: None,
+            audited_at: None,
+            audit_findings: None,
+        }
+    }
+
+    #[test]
+    fn emergency_capability_is_scoped_and_time_bounded() {
+        let approver = dummy_agent();
+        let accessor = AgentPubKey::from_raw_36(vec![1u8; 36]);
+        let capability = emergency_capability(
+            approver,
+            accessor.clone(),
+            DataCategory::LabResults,
+        );
+
+        assert!(emergency_capability_is_active(
+            &capability,
+            &accessor,
+            &DataCategory::LabResults,
+            1_000_000 + 29 * 60 * 1_000_000,
+        ));
+        assert!(!emergency_capability_is_active(
+            &capability,
+            &accessor,
+            &DataCategory::MentalHealth,
+            1_000_000,
+        ));
+        assert!(!emergency_capability_is_active(
+            &capability,
+            &accessor,
+            &DataCategory::LabResults,
+            1_000_000 + 31 * 60 * 1_000_000,
+        ));
+    }
+
+    #[test]
+    fn emergency_capability_rejects_missing_approval_and_wrong_accessor() {
+        let approver = dummy_agent();
+        let accessor = AgentPubKey::from_raw_36(vec![1u8; 36]);
+        let wrong_accessor = AgentPubKey::from_raw_36(vec![2u8; 36]);
+        let mut capability = emergency_capability(
+            approver,
+            accessor.clone(),
+            DataCategory::VitalSigns,
+        );
+
+        assert!(!emergency_capability_is_active(
+            &capability,
+            &wrong_accessor,
+            &DataCategory::VitalSigns,
+            1_000_000,
+        ));
+        capability.approved_by = None;
+        assert!(!emergency_capability_is_active(
+            &capability,
+            &accessor,
+            &DataCategory::VitalSigns,
+            1_000_000,
+        ));
     }
 
     #[test]
@@ -3578,7 +3884,9 @@ mod tests {
             // Grantee match (mirrors check_authorization)
             let grantee_matches = match &consent.grantee {
                 ConsentGrantee::Agent(agent) => *agent == *requestor,
-                ConsentGrantee::EmergencyAccess => is_emergency,
+                // The real extern resolves emergency authority from a separate
+                // patient-authored capability; this legacy enum never grants it.
+                ConsentGrantee::EmergencyAccess => false,
                 _ => false,
             };
             if !grantee_matches {
@@ -3607,9 +3915,9 @@ mod tests {
             return AuthorizationResult {
                 authorized: false,
                 consent_hash: None,
-                reason: "No consent found - emergency override available".to_string(),
-                permissions: vec![permission.clone()],
-                emergency_override: true,
+                reason: "Emergency flag requires a patient-authored break-glass capability".to_string(),
+                permissions: vec![],
+                emergency_override: false,
             };
         }
 
@@ -4032,7 +4340,7 @@ mod tests {
     // --- Emergency access ---
 
     #[test]
-    fn test_emergency_flag_returns_override_available_when_no_consent() {
+    fn test_emergency_flag_alone_never_authorizes_or_advertises_override() {
         let result = simulate_check_authorization(
             &[],
             &dummy_agent(),
@@ -4042,15 +4350,15 @@ mod tests {
             Timestamp::from_micros(1000000),
         );
         assert!(!result.authorized, "Emergency alone does not auto-authorize");
-        assert!(result.emergency_override, "Emergency override flag must be set");
+        assert!(!result.emergency_override, "No override exists without a capability lookup");
         assert!(
-            result.reason.contains("emergency override available"),
-            "Reason should mention emergency override"
+            result.reason.contains("patient-authored break-glass capability"),
+            "Reason should require the separate capability"
         );
     }
 
     #[test]
-    fn test_emergency_consent_grantee_authorizes_emergency_requestor() {
+    fn test_legacy_emergency_consent_grantee_never_authorizes_requestor() {
         let agent = AgentPubKey::from_raw_36(vec![18u8; 36]);
         let consents = vec![make_consent(
             ConsentGrantee::EmergencyAccess,
@@ -4070,10 +4378,10 @@ mod tests {
             Timestamp::from_micros(1000000),
         );
         assert!(
-            result.authorized,
-            "EmergencyAccess grantee should authorize any agent during emergency"
+            !result.authorized,
+            "Legacy EmergencyAccess grants must never authorize a requestor"
         );
-        assert!(!result.emergency_override, "Should be consent-based, not override");
+        assert!(!result.emergency_override, "Only a separate capability may authorize break-glass");
     }
 
     #[test]

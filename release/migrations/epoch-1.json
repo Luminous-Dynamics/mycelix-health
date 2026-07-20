@@ -1,0 +1,19 @@
+{
+  "schema_version": 1,
+  "release_id": "health-v1",
+  "migration_epoch": 1,
+  "wire_schema_version": 3,
+  "encrypted_record_envelope_version": 1,
+  "previous_epoch": null,
+  "compatibility": {
+    "minimum_readable_epoch": 1,
+    "maximum_readable_epoch": 1,
+    "writes_require_current_epoch": true,
+    "downgrade_supported": false
+  },
+  "migration": {
+    "required": false,
+    "procedure": "Initial clinical MVP schema. No earlier production epoch is recognized.",
+    "rollback": "Restore the complete pre-release conductor state; in-place downgrade is forbidden."
+  }
+}

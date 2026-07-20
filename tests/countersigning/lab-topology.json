@@ -1,0 +1,18 @@
+{
+  "schema_version": 1,
+  "lab_id": "mycelix-health-countersigning-v1",
+  "installed_app_id": "mycelix-health",
+  "role_name": "health",
+  "allowed_origin": "mycelix-health-countersigning-lab",
+  "network_seed": "mycelix-health-countersigning-v1",
+  "happ_path": "mycelix-health.happ",
+  "holochain_version": "0.6.1",
+  "holochain_client_version": "0.20.0",
+  "conductors": [
+    {"name": "patient", "admin_port": 4440, "app_port": 8880},
+    {"name": "provider", "admin_port": 4441, "app_port": 8881},
+    {"name": "reviewer", "admin_port": 4442, "app_port": 8882},
+    {"name": "validator_a", "admin_port": 4443, "app_port": 8883},
+    {"name": "validator_b", "admin_port": 4444, "app_port": 8884}
+  ]
+}

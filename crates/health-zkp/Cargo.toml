@@ -12,6 +12,10 @@ verify-winterfell = ["mycelix-zkp-core/backend-winterfell"]
 verify-risc0 = ["mycelix-zkp-core/backend-risc0"]
 verify-dilithium = ["mycelix-zkp-core/dilithium"]
 verify-full = ["verify-winterfell", "verify-risc0", "verify-dilithium"]
+# The current range AIR proves that two bit decompositions exist, but it does
+# not yet bind the hidden value to data_commitment. Never enable this feature
+# for clinical authorization, eligibility, insurance, or compliance decisions.
+experimental-unbound-range-proofs = []
 
 [dependencies]
 serde = { version = "1", features = ["derive"] }

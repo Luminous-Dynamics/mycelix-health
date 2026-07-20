@@ -11,6 +11,11 @@ pub fn SettingsPage() -> impl IntoView {
     let app = use_context::<AppState>().expect("AppState");
 
     let has_key = move || key_manager::has_stored_key();
+    let wrapper_status = move || match key_manager::vault_storage_status() {
+        key_manager::VaultStorageStatus::None => "None",
+        key_manager::VaultStorageStatus::LegacyInsecure => "Legacy — recovery required",
+        key_manager::VaultStorageStatus::CurrentV2 => "Authenticated v2",
+    };
     let vault_status = move || match app.vault.get() {
         VaultState::NoVault => "Not Created",
         VaultState::Locked => "Locked",
@@ -65,7 +70,20 @@ pub fn SettingsPage() -> impl IntoView {
                         <span class="settings-label">"Key Stored"</span>
                         <span class="settings-value">{move || if has_key() { "Yes" } else { "No" }}</span>
                     </div>
+                    <div class="settings-row">
+                        <span class="settings-label">"Local Wrapper"</span>
+                        <span class="settings-value">{wrapper_status}</span>
+                    </div>
                 </div>
+
+                <Show when=move || matches!(
+                    key_manager::vault_storage_status(),
+                    key_manager::VaultStorageStatus::LegacyInsecure
+                )>
+                    <div class="verify-error" role="alert">
+                        "This device contains a legacy unauthenticated vault wrapper. It will not be opened. Recover with your 24-word phrase and seal a new vault."
+                    </div>
+                </Show>
 
                 // Unlock form (when locked)
                 <Show when=move || app.vault.get() == VaultState::Locked>

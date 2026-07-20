@@ -25,6 +25,79 @@ use mycelix_health_shared::{
     batch::links_to_records,
 };
 
+const ENCRYPTED_RECORD_ENVELOPE_VERSION: u8 = 1;
+
+fn encrypted_record_aad(record: &EncryptedRecord) -> ExternResult<Vec<u8>> {
+    ExternIO::encode(&record.aad())
+        .map(|encoded| encoded.as_bytes().to_vec())
+        .map_err(|error| {
+            wasm_error!(WasmErrorInner::Guest(format!(
+                "Failed to encode encrypted-record metadata: {}",
+                error
+            )))
+        })
+}
+
+fn parse_encrypted_category(category: &str) -> ExternResult<DataCategory> {
+    match category {
+        "Demographics" => Ok(DataCategory::Demographics),
+        "Diagnoses" => Ok(DataCategory::Diagnoses),
+        "Procedures" => Ok(DataCategory::Procedures),
+        "LabResults" => Ok(DataCategory::LabResults),
+        "ImagingStudies" => Ok(DataCategory::ImagingStudies),
+        "VitalSigns" => Ok(DataCategory::VitalSigns),
+        _ => Err(wasm_error!(WasmErrorInner::Guest(format!(
+            "Unsupported encrypted data category: {}",
+            category
+        )))),
+    }
+}
+
+fn encrypted_route_is_valid(entry_type: &str, category: &str) -> bool {
+    matches!(
+        (entry_type, category),
+        ("Encounter", "Procedures")
+            | ("Diagnosis", "Diagnoses")
+            | ("ProcedurePerformed", "Procedures")
+            | ("LabResult", "LabResults")
+            | ("ImagingStudy", "ImagingStudies")
+            | ("VitalSigns", "VitalSigns")
+            | ("SdohScreening", "Demographics")
+    )
+}
+
+fn require_encrypted_phi(operation: &str) -> ExternResult<()> {
+    #[cfg(feature = "dangerous-plaintext-phi")]
+    {
+        let _ = operation;
+        Ok(())
+    }
+
+    #[cfg(not(feature = "dangerous-plaintext-phi"))]
+    {
+        Err(wasm_error!(WasmErrorInner::Guest(format!(
+            "{} is disabled because it writes plaintext PHI; encrypt client-side and call store_encrypted_record",
+            operation
+        ))))
+    }
+}
+
+fn require_client_side_phi(operation: &str) -> ExternResult<()> {
+    #[cfg(feature = "dangerous-server-side-phi")]
+    {
+        let _ = operation;
+        Ok(())
+    }
+
+    #[cfg(not(feature = "dangerous-server-side-phi"))]
+    {
+        Err(wasm_error!(WasmErrorInner::Guest(format!(
+            "{} is disabled because plaintext or key material would enter the zome; use client-side envelope operations",
+            operation
+        ))))
+    }
+}
+
 // ==================== HEALTH TWIN INTEGRATION ====================
 
 /// Try to feed data to the patient's health twin (if one exists)
@@ -348,6 +421,7 @@ pub struct CreateEncounterInput {
 /// Create a new encounter with access control
 #[hdk_extern]
 pub fn create_encounter(input: CreateEncounterInput) -> ExternResult<Record> {
+    require_encrypted_phi("create_encounter")?;
     // Require Write authorization for Procedures category (encounters)
     let auth = require_authorization(
         input.encounter.patient_hash.clone(),
@@ -490,6 +564,7 @@ pub struct CreateDiagnosisInput {
 /// Create a diagnosis with access control
 #[hdk_extern]
 pub fn create_diagnosis(input: CreateDiagnosisInput) -> ExternResult<Record> {
+    require_encrypted_phi("create_diagnosis")?;
     // Require Write authorization for Diagnoses category
     let auth = require_authorization(
         input.patient_hash.clone(),
@@ -595,6 +670,7 @@ pub struct CreateProcedureInput {
 /// Create a procedure record with access control
 #[hdk_extern]
 pub fn create_procedure(input: CreateProcedureInput) -> ExternResult<Record> {
+    require_encrypted_phi("create_procedure")?;
     // Require Write authorization for Procedures category
     let auth = require_authorization(
         input.patient_hash.clone(),
@@ -648,6 +724,7 @@ pub struct CreateLabResultInput {
 /// (if one exists) for model updates and health predictions.
 #[hdk_extern]
 pub fn create_lab_result(input: CreateLabResultInput) -> ExternResult<Record> {
+    require_encrypted_phi("create_lab_result")?;
     // Require Write authorization for LabResults category
     let auth = require_authorization(
         input.lab_result.patient_hash.clone(),
@@ -720,14 +797,17 @@ pub struct CreateEncryptedLabResultInput {
     pub emergency_reason: Option<String>,
 }
 
-/// Create a lab result encrypted with the patient's key.
+/// Migration-only: encrypt a lab result inside the zome.
 ///
+/// Production builds reject this function because plaintext and key material
+/// would enter the zome call. Use `store_encrypted_record` instead.
 /// The lab result is serialized, encrypted, then stored as an `EncryptedRecord`.
 /// The `data_category` (LabResults) is stored in cleartext for consent checking.
 /// The actual clinical data can only be read by decrypting with the patient's key
 /// or a consent-derived re-encryption key.
 #[hdk_extern]
 pub fn create_encrypted_lab_result(input: CreateEncryptedLabResultInput) -> ExternResult<Record> {
+    require_client_side_phi("create_encrypted_lab_result")?;
     use mycelix_health_shared::patient_encryption;
 
     // Require Write authorization (same as unencrypted path)
@@ -744,6 +824,12 @@ pub fn create_encrypted_lab_result(input: CreateEncryptedLabResultInput) -> Exte
 
     let now = sys_time()?;
 
+    if input.key_fingerprint == [0u8; 8] {
+        return Err(wasm_error!(WasmErrorInner::Guest(
+            "Key fingerprint cannot be all zeroes".to_string()
+        )));
+    }
+
     // Validate key length
     if input.encryption_key.len() != 32 {
         return Err(wasm_error!(WasmErrorInner::Guest(format!(
@@ -751,22 +837,25 @@ pub fn create_encrypted_lab_result(input: CreateEncryptedLabResultInput) -> Exte
         ))));
     }
 
-    // Encrypt with XChaCha20-Poly1305 (real AEAD — tamper detection via Poly1305 tag)
-    let (ciphertext, nonce) = patient_encryption::encrypt(plaintext.as_bytes(), &input.encryption_key)
-        .map_err(|e| wasm_error!(WasmErrorInner::Guest(format!("Encryption failed: {}", e))))?;
-
-    let fingerprint = input.key_fingerprint;
-
-    // Create the encrypted record
-    let encrypted = EncryptedRecord {
+    let mut encrypted = EncryptedRecord {
+        envelope_version: ENCRYPTED_RECORD_ENVELOPE_VERSION,
         patient_hash: input.lab_result.patient_hash.clone(),
-        key_fingerprint: fingerprint,
-        ciphertext,
-        nonce,
+        key_fingerprint: input.key_fingerprint,
+        ciphertext: Vec::new(),
+        nonce: [0u8; 24],
         data_category: "LabResults".to_string(),
         entry_type: "LabResult".to_string(),
         encrypted_at: now.as_micros() as i64,
     };
+    let aad = encrypted_record_aad(&encrypted)?;
+    let (ciphertext, nonce) = patient_encryption::encrypt_with_aad(
+        plaintext.as_bytes(),
+        &aad,
+        &input.encryption_key,
+    )
+    .map_err(|e| wasm_error!(WasmErrorInner::Guest(format!("Encryption failed: {}", e))))?;
+    encrypted.ciphertext = ciphertext;
+    encrypted.nonce = nonce;
 
     let record_hash = create_entry(&EntryTypes::EncryptedRecord(encrypted))?;
     let record = get(record_hash.clone(), GetOptions::default())?
@@ -808,9 +897,10 @@ pub struct DecryptLabResultInput {
     pub emergency_reason: Option<String>,
 }
 
-/// Decrypt an encrypted lab result after consent verification.
+/// Migration-only: decrypt a lab result inside the zome.
 ///
-/// This enforces the access control boundary: the encrypted record is stored
+/// Production builds reject this function so decryption keys and plaintext stay
+/// on the client. In migration builds, this enforces the access control boundary: the encrypted record is stored
 /// on the DHT but can only be decrypted by someone who:
 /// 1. Has valid consent (checked by `require_authorization`)
 /// 2. Possesses the correct key material
@@ -819,6 +909,7 @@ pub struct DecryptLabResultInput {
 /// ciphertext is detected — decryption fails rather than returning corrupted data.
 #[hdk_extern]
 pub fn decrypt_lab_result(input: DecryptLabResultInput) -> ExternResult<LabResult> {
+    require_client_side_phi("decrypt_lab_result")?;
     use mycelix_health_shared::patient_encryption;
 
     // Step 1: Verify consent BEFORE decryption
@@ -847,10 +938,16 @@ pub fn decrypt_lab_result(input: DecryptLabResultInput) -> ExternResult<LabResul
     }
 
     // Step 4: Decrypt (XChaCha20-Poly1305 with Poly1305 auth tag verification)
-    let plaintext = patient_encryption::decrypt(&encrypted.ciphertext, &encrypted.nonce, &input.decryption_key)
-        .map_err(|e| wasm_error!(WasmErrorInner::Guest(format!(
-            "Decryption failed (wrong key or data tampered): {}", e
-        ))))?;
+    let aad = encrypted_record_aad(&encrypted)?;
+    let plaintext = patient_encryption::decrypt_with_aad(
+        &encrypted.ciphertext,
+        &encrypted.nonce,
+        &aad,
+        &input.decryption_key,
+    )
+    .map_err(|e| wasm_error!(WasmErrorInner::Guest(format!(
+        "Decryption failed (wrong key or data or metadata tampered): {}", e
+    ))))?;
 
     // Step 5: Deserialize the lab result from MessagePack (ExternIO format)
     let extern_io = ExternIO::from(plaintext);
@@ -876,7 +973,106 @@ pub fn decrypt_lab_result(input: DecryptLabResultInput) -> ExternResult<LabResul
 // Encrypts ANY health entry type (encounter, diagnosis, vitals, imaging, procedure)
 // into a single EncryptedRecord. This ensures ALL PHI is encrypted at rest.
 
-/// Input for creating any encrypted health record.
+/// Input for storing an envelope encrypted entirely on the client.
+#[derive(Serialize, Deserialize, Debug)]
+pub struct StoreEncryptedRecordInput {
+    pub patient_hash: ActionHash,
+    pub envelope_version: u8,
+    pub key_fingerprint: [u8; 8],
+    pub ciphertext: Vec<u8>,
+    pub nonce: [u8; 24],
+    pub data_category: String,
+    pub entry_type: String,
+    pub encrypted_at: i64,
+    pub is_emergency: bool,
+    pub emergency_reason: Option<String>,
+}
+
+/// Store a client-side encrypted and metadata-authenticated PHI envelope.
+///
+/// The zome receives no plaintext and no encryption or decryption key. The
+/// client must use `EncryptedRecordAad` as XChaCha20-Poly1305 associated data.
+#[hdk_extern]
+pub fn store_encrypted_record(input: StoreEncryptedRecordInput) -> ExternResult<Record> {
+    if input.envelope_version != ENCRYPTED_RECORD_ENVELOPE_VERSION {
+        return Err(wasm_error!(WasmErrorInner::Guest(
+            "Unsupported encrypted record envelope version".to_string()
+        )));
+    }
+    if input.ciphertext.len() < 16 {
+        return Err(wasm_error!(WasmErrorInner::Guest(
+            "Ciphertext must include an AEAD authentication tag".to_string()
+        )));
+    }
+    if input.key_fingerprint == [0u8; 8] {
+        return Err(wasm_error!(WasmErrorInner::Guest(
+            "Key fingerprint cannot be all zeroes".to_string()
+        )));
+    }
+    if input.encrypted_at <= 0 {
+        return Err(wasm_error!(WasmErrorInner::Guest(
+            "Encrypted timestamp must be positive".to_string()
+        )));
+    }
+    let now = sys_time()?.as_micros() as i64;
+    if input.encrypted_at > now.saturating_add(300_000_000) {
+        return Err(wasm_error!(WasmErrorInner::Guest(
+            "Encrypted timestamp is too far in the future".to_string()
+        )));
+    }
+
+    let category = parse_encrypted_category(&input.data_category)?;
+    if !encrypted_route_is_valid(&input.entry_type, &input.data_category) {
+        return Err(wasm_error!(WasmErrorInner::Guest(format!(
+            "Entry type {} cannot be stored under category {}",
+            input.entry_type, input.data_category
+        ))));
+    }
+
+    let auth = require_authorization(
+        input.patient_hash.clone(),
+        category.clone(),
+        Permission::Write,
+        input.is_emergency,
+    )?;
+
+    let encrypted = EncryptedRecord {
+        envelope_version: input.envelope_version,
+        patient_hash: input.patient_hash.clone(),
+        key_fingerprint: input.key_fingerprint,
+        ciphertext: input.ciphertext,
+        nonce: input.nonce,
+        data_category: input.data_category,
+        entry_type: input.entry_type,
+        encrypted_at: input.encrypted_at,
+    };
+
+    let record_hash = create_entry(&EntryTypes::EncryptedRecord(encrypted))?;
+    let record = get(record_hash.clone(), GetOptions::default())?
+        .ok_or(wasm_error!(WasmErrorInner::Guest(
+            "Could not find encrypted record".to_string()
+        )))?;
+
+    create_link(
+        input.patient_hash.clone(),
+        record_hash,
+        LinkTypes::PatientToEncryptedRecords,
+        (),
+    )?;
+
+    log_data_access(
+        input.patient_hash,
+        vec![category],
+        Permission::Write,
+        auth.consent_hash,
+        auth.emergency_override,
+        input.emergency_reason,
+    )?;
+
+    Ok(record)
+}
+
+/// Input for the migration-only zome-side encryption path.
 #[derive(Serialize, Deserialize, Debug)]
 pub struct CreateEncryptedRecordInput {
     /// Patient this record belongs to.
@@ -896,9 +1092,10 @@ pub struct CreateEncryptedRecordInput {
     pub emergency_reason: Option<String>,
 }
 
-/// Create an encrypted health record for ANY entry type.
+/// Migration-only: encrypt a health record inside the zome.
 ///
-/// The plaintext entry is encrypted with XChaCha20-Poly1305 before DHT storage.
+/// Production builds reject this function. The plaintext entry is encrypted
+/// with XChaCha20-Poly1305 before DHT storage only in migration builds.
 /// The `data_category` and `entry_type` are stored in cleartext for consent
 /// checking and deserialization routing without decryption.
 ///
@@ -906,22 +1103,16 @@ pub struct CreateEncryptedRecordInput {
 /// `create_encrypted_diagnosis`, `create_encrypted_vitals`, etc.
 #[hdk_extern]
 pub fn create_encrypted_record(input: CreateEncryptedRecordInput) -> ExternResult<Record> {
+    require_client_side_phi("create_encrypted_record")?;
     use mycelix_health_shared::patient_encryption;
 
-    // Map data_category string to DataCategory enum for authorization
-    let category = match input.data_category.as_str() {
-        "Demographics" => DataCategory::Demographics,
-        "Diagnoses" => DataCategory::Diagnoses,
-        "Procedures" => DataCategory::Procedures,
-        "LabResults" => DataCategory::LabResults,
-        "ImagingStudies" => DataCategory::ImagingStudies,
-        "VitalSigns" => DataCategory::VitalSigns,
-        "MentalHealth" => DataCategory::MentalHealth,
-        "SubstanceAbuse" => DataCategory::SubstanceAbuse,
-        "Medications" => DataCategory::Medications,
-        "Allergies" => DataCategory::Allergies,
-        _ => DataCategory::All,
-    };
+    let category = parse_encrypted_category(&input.data_category)?;
+    if !encrypted_route_is_valid(&input.entry_type, &input.data_category) {
+        return Err(wasm_error!(WasmErrorInner::Guest(format!(
+            "Entry type {} cannot be stored under category {}",
+            input.entry_type, input.data_category
+        ))));
+    }
 
     // Require Write authorization
     let auth = require_authorization(
@@ -931,6 +1122,12 @@ pub fn create_encrypted_record(input: CreateEncryptedRecordInput) -> ExternResul
         input.is_emergency,
     )?;
 
+    if input.key_fingerprint == [0u8; 8] {
+        return Err(wasm_error!(WasmErrorInner::Guest(
+            "Key fingerprint cannot be all zeroes".to_string()
+        )));
+    }
+
     // Validate key
     if input.encryption_key.len() != 32 {
         return Err(wasm_error!(WasmErrorInner::Guest(format!(
@@ -938,20 +1135,26 @@ pub fn create_encrypted_record(input: CreateEncryptedRecordInput) -> ExternResul
         ))));
     }
 
-    // Encrypt with XChaCha20-Poly1305
-    let (ciphertext, nonce) = patient_encryption::encrypt(&input.plaintext_entry, &input.encryption_key)
-        .map_err(|e| wasm_error!(WasmErrorInner::Guest(format!("Encryption failed: {}", e))))?;
-
     let now = sys_time()?;
-    let encrypted = EncryptedRecord {
+    let mut encrypted = EncryptedRecord {
+        envelope_version: ENCRYPTED_RECORD_ENVELOPE_VERSION,
         patient_hash: input.patient_hash.clone(),
         key_fingerprint: input.key_fingerprint,
-        ciphertext,
-        nonce,
+        ciphertext: Vec::new(),
+        nonce: [0u8; 24],
         data_category: input.data_category,
         entry_type: input.entry_type,
         encrypted_at: now.as_micros() as i64,
     };
+    let aad = encrypted_record_aad(&encrypted)?;
+    let (ciphertext, nonce) = patient_encryption::encrypt_with_aad(
+        &input.plaintext_entry,
+        &aad,
+        &input.encryption_key,
+    )
+    .map_err(|e| wasm_error!(WasmErrorInner::Guest(format!("Encryption failed: {}", e))))?;
+    encrypted.ciphertext = ciphertext;
+    encrypted.nonce = nonce;
 
     let record_hash = create_entry(&EntryTypes::EncryptedRecord(encrypted))?;
     let record = get(record_hash.clone(), GetOptions::default())?
@@ -990,12 +1193,14 @@ pub struct DecryptRecordInput {
     pub emergency_reason: Option<String>,
 }
 
-/// Decrypt any encrypted health record after consent verification.
+/// Migration-only: decrypt an encrypted health record inside the zome.
 ///
-/// Returns the raw plaintext bytes. The client deserializes based on
+/// Production builds reject this function. Migration builds return the raw
+/// plaintext bytes. The client deserializes based on
 /// the `entry_type` field from the EncryptedRecord.
 #[hdk_extern]
 pub fn decrypt_record(input: DecryptRecordInput) -> ExternResult<ExternIO> {
+    require_client_side_phi("decrypt_record")?;
     use mycelix_health_shared::patient_encryption;
 
     // Retrieve encrypted record
@@ -1015,18 +1220,12 @@ pub fn decrypt_record(input: DecryptRecordInput) -> ExternResult<ExternIO> {
         )));
     }
 
-    // Map data_category for authorization
-    let category = match encrypted.data_category.as_str() {
-        "Demographics" => DataCategory::Demographics,
-        "Diagnoses" => DataCategory::Diagnoses,
-        "Procedures" => DataCategory::Procedures,
-        "LabResults" => DataCategory::LabResults,
-        "ImagingStudies" => DataCategory::ImagingStudies,
-        "VitalSigns" => DataCategory::VitalSigns,
-        "MentalHealth" => DataCategory::MentalHealth,
-        "SubstanceAbuse" => DataCategory::SubstanceAbuse,
-        _ => DataCategory::All,
-    };
+    let category = parse_encrypted_category(&encrypted.data_category)?;
+    if !encrypted_route_is_valid(&encrypted.entry_type, &encrypted.data_category) {
+        return Err(wasm_error!(WasmErrorInner::Guest(
+            "Encrypted record has an invalid entry-type/category route".to_string()
+        )));
+    }
 
     // Verify consent BEFORE decryption
     let auth = require_authorization(
@@ -1036,11 +1235,17 @@ pub fn decrypt_record(input: DecryptRecordInput) -> ExternResult<ExternIO> {
         input.is_emergency,
     )?;
 
-    // Decrypt
-    let plaintext = patient_encryption::decrypt(&encrypted.ciphertext, &encrypted.nonce, &input.decryption_key)
-        .map_err(|e| wasm_error!(WasmErrorInner::Guest(format!(
-            "Decryption failed (wrong key or tampered): {}", e
-        ))))?;
+    // Decrypt and authenticate the cleartext routing metadata.
+    let aad = encrypted_record_aad(&encrypted)?;
+    let plaintext = patient_encryption::decrypt_with_aad(
+        &encrypted.ciphertext,
+        &encrypted.nonce,
+        &aad,
+        &input.decryption_key,
+    )
+    .map_err(|e| wasm_error!(WasmErrorInner::Guest(format!(
+        "Decryption failed (wrong key or ciphertext or metadata tampered): {}", e
+    ))))?;
 
     // Log access
     log_data_access(
@@ -1058,7 +1263,7 @@ pub fn decrypt_record(input: DecryptRecordInput) -> ExternResult<ExternIO> {
 /// Get all encrypted records for a patient.
 #[hdk_extern]
 pub fn get_patient_encrypted_records(input: GetPatientLabResultsInput) -> ExternResult<Vec<Record>> {
-    let _auth = require_authorization(
+    let auth = require_authorization(
         input.patient_hash.clone(),
         DataCategory::All,
         Permission::Read,
@@ -1066,7 +1271,10 @@ pub fn get_patient_encrypted_records(input: GetPatientLabResultsInput) -> Extern
     )?;
 
     let links = get_links(
-        LinkQuery::try_new(input.patient_hash, LinkTypes::PatientToEncryptedRecords)?,
+        LinkQuery::try_new(
+            input.patient_hash.clone(),
+            LinkTypes::PatientToEncryptedRecords,
+        )?,
         GetStrategy::default(),
     )?;
 
@@ -1077,6 +1285,17 @@ pub fn get_patient_encrypted_records(input: GetPatientLabResultsInput) -> Extern
                 records.push(record);
             }
         }
+    }
+
+    if !records.is_empty() {
+        log_data_access(
+            input.patient_hash,
+            vec![DataCategory::All],
+            Permission::Read,
+            auth.consent_hash,
+            auth.emergency_override,
+            input.emergency_reason,
+        )?;
     }
     Ok(records)
 }
@@ -1133,6 +1352,7 @@ pub struct AcknowledgeInput {
 /// Acknowledge critical lab result with access control
 #[hdk_extern]
 pub fn acknowledge_critical_result(input: AcknowledgeInput) -> ExternResult<Record> {
+    require_encrypted_phi("acknowledge_critical_result")?;
     let record = get(input.result_hash.clone(), GetOptions::default())?
         .ok_or(wasm_error!(WasmErrorInner::Guest("Lab result not found".to_string())))?;
 
@@ -1181,6 +1401,7 @@ pub struct CreateImagingStudyInput {
 /// Create imaging study with access control
 #[hdk_extern]
 pub fn create_imaging_study(input: CreateImagingStudyInput) -> ExternResult<Record> {
+    require_encrypted_phi("create_imaging_study")?;
     // Require Write authorization for ImagingStudies category
     let auth = require_authorization(
         input.imaging.patient_hash.clone(),
@@ -1278,6 +1499,7 @@ pub struct RecordVitalSignsInput {
 /// (if one exists) for model updates and health predictions.
 #[hdk_extern]
 pub fn record_vital_signs(input: RecordVitalSignsInput) -> ExternResult<Record> {
+    require_encrypted_phi("record_vital_signs")?;
     // Require Write authorization for VitalSigns category
     let auth = require_authorization(
         input.vitals.patient_hash.clone(),
@@ -1405,6 +1627,7 @@ pub struct UpdateEncounterInput {
 /// Update an encounter status with access control
 #[hdk_extern]
 pub fn update_encounter(input: UpdateEncounterInput) -> ExternResult<Record> {
+    require_encrypted_phi("update_encounter")?;
     // Require Write authorization for Procedures category
     let auth = require_authorization(
         input.updated_encounter.patient_hash.clone(),
@@ -1450,6 +1673,7 @@ pub struct UpdateDiagnosisInput {
 /// Update diagnosis status (e.g., resolve, correct) with access control
 #[hdk_extern]
 pub fn update_diagnosis(input: UpdateDiagnosisInput) -> ExternResult<Record> {
+    require_encrypted_phi("update_diagnosis")?;
     // Require Amend authorization for Diagnoses category
     let auth = require_authorization(
         input.patient_hash.clone(),
@@ -1487,6 +1711,7 @@ pub struct UpdateLabResultInput {
 /// Update lab result (e.g., amended results) with access control
 #[hdk_extern]
 pub fn update_lab_result(input: UpdateLabResultInput) -> ExternResult<Record> {
+    require_encrypted_phi("update_lab_result")?;
     // Require Amend authorization for LabResults category
     let auth = require_authorization(
         input.updated_result.patient_hash.clone(),
@@ -1642,6 +1867,13 @@ pub struct AmendmentDecisionInput {
 /// HIPAA 45 CFR 164.526: provider must respond within 60 days.
 #[hdk_extern]
 pub fn request_amendment(input: AmendmentRequestInput) -> ExternResult<ActionHash> {
+    require_encrypted_phi("request_amendment")?;
+    let _auth = require_authorization(
+        input.patient_hash.clone(),
+        DataCategory::All,
+        Permission::Amend,
+        false,
+    )?;
     // Verify the record exists
     let _record = get(input.record_hash.clone(), GetOptions::default())?
         .ok_or(wasm_error!(WasmErrorInner::Guest("Record not found".to_string())))?;
@@ -1687,6 +1919,7 @@ pub fn request_amendment(input: AmendmentRequestInput) -> ExternResult<ActionHas
 /// Original record is NEVER deleted — both versions preserved.
 #[hdk_extern]
 pub fn process_amendment(input: AmendmentDecisionInput) -> ExternResult<ActionHash> {
+    require_encrypted_phi("process_amendment")?;
     let record = get(input.amendment_hash.clone(), GetOptions::default())?
         .ok_or(wasm_error!(WasmErrorInner::Guest("Amendment request not found".to_string())))?;
 
@@ -1696,6 +1929,12 @@ pub fn process_amendment(input: AmendmentDecisionInput) -> ExternResult<ActionHa
         .map_err(|e| wasm_error!(WasmErrorInner::Guest(format!("Invalid amendment: {}", e))))?
         .ok_or(wasm_error!(WasmErrorInner::Guest("Not an AmendmentRequest".to_string())))?;
 
+    let _auth = require_authorization(
+        amendment.patient_hash.clone(),
+        DataCategory::All,
+        Permission::Amend,
+        false,
+    )?;
     let reviewer = agent_info()?.agent_initial_pubkey;
 
     amendment.status = if input.approved {
@@ -1725,8 +1964,14 @@ pub fn process_amendment(input: AmendmentDecisionInput) -> ExternResult<ActionHa
 /// Get all amendment requests for a patient.
 #[hdk_extern]
 pub fn get_patient_amendments(patient_hash: ActionHash) -> ExternResult<Vec<Record>> {
+    let auth = require_authorization(
+        patient_hash.clone(),
+        DataCategory::All,
+        Permission::Read,
+        false,
+    )?;
     let links = get_links(
-        LinkQuery::try_new(patient_hash, LinkTypes::PatientToAmendments)?,
+        LinkQuery::try_new(patient_hash.clone(), LinkTypes::PatientToAmendments)?,
         GetStrategy::default(),
     )?;
     let mut records = vec![];
@@ -1736,6 +1981,16 @@ pub fn get_patient_amendments(patient_hash: ActionHash) -> ExternResult<Vec<Reco
                 records.push(record);
             }
         }
+    }
+    if !records.is_empty() {
+        log_data_access(
+            patient_hash,
+            vec![DataCategory::All],
+            Permission::Read,
+            auth.consent_hash,
+            auth.emergency_override,
+            None,
+        )?;
     }
     Ok(records)
 }
@@ -1960,6 +2215,7 @@ pub struct SdohReferral {
 /// CMS requires SDOH screening documentation for quality reporting.
 #[hdk_extern]
 pub fn record_sdoh_screening(input: SdohScreening) -> ExternResult<ActionHash> {
+    require_encrypted_phi("record_sdoh_screening")?;
     let auth = require_authorization(
         input.patient_hash.clone(),
         DataCategory::Demographics,
@@ -2030,6 +2286,32 @@ pub fn get_sdoh_screenings(patient_hash: ActionHash) -> ExternResult<Vec<Record>
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn encrypted_routes_reject_category_substitution() {
+        assert!(encrypted_route_is_valid("Diagnosis", "Diagnoses"));
+        assert!(!encrypted_route_is_valid("Diagnosis", "Procedures"));
+        assert!(parse_encrypted_category("Unknown").is_err());
+        assert!(parse_encrypted_category("All").is_err());
+    }
+
+    #[test]
+    fn encrypted_record_aad_changes_with_routing_metadata() {
+        let mut record = EncryptedRecord {
+            envelope_version: ENCRYPTED_RECORD_ENVELOPE_VERSION,
+            patient_hash: dummy_hash(),
+            key_fingerprint: [1u8; 8],
+            ciphertext: vec![1u8; 16],
+            nonce: [2u8; 24],
+            data_category: "LabResults".to_string(),
+            entry_type: "LabResult".to_string(),
+            encrypted_at: 1_000_000,
+        };
+        let original = encrypted_record_aad(&record).expect("encode aad");
+        record.data_category = "Diagnoses".to_string();
+        let changed = encrypted_record_aad(&record).expect("encode changed aad");
+        assert_ne!(original, changed);
+    }
 
     fn dummy_hash() -> ActionHash {
         ActionHash::from_raw_36(vec![0u8; 36])

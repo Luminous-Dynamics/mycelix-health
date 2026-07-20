@@ -1,0 +1,26 @@
+{
+  "schema_version": 1,
+  "contract_id": "mycelix-health-countersigning-empirical-run-v1",
+  "required_artifacts": [
+    "fixture-inventory.json",
+    "session-state-timeline.json",
+    "system-signals.json",
+    "chain-dht-summary.json",
+    "scenario-observation.json",
+    "differential-report.json"
+  ],
+  "terminal_classifications": [
+    "completed",
+    "rejected",
+    "recoverable",
+    "manual_review",
+    "unsupported",
+    "inconclusive"
+  ],
+  "promotion_rules": {
+    "require_verified_cryptographic_evidence_for_completed": true,
+    "require_no_model_contradictions": true,
+    "forbid_raw_phi": true,
+    "forbid_authentication_secrets": true
+  }
+}
