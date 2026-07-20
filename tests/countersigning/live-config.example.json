@@ -1,0 +1,32 @@
+{
+  "schema_version": 1,
+  "scenario_id": "replace-with-a-matrix-scenario-id",
+  "participants": [
+    {
+      "binding": "replace-with-canonical-agent-pubkey",
+      "url": "ws://127.0.0.1:8888",
+      "role_name": "health",
+      "token_base64": "replace-with-app-authentication-token"
+    }
+  ],
+  "intent": {
+    "countersigning_version": 1,
+    "proposal": {
+      "approval_version": 1,
+      "operation_class": "sensitive_record_release",
+      "patient_binding": "replace-with-action-hash",
+      "provider_binding": "replace-with-agent-pubkey",
+      "mutation_binding_digest": [],
+      "deployment_evidence_sha256": [],
+      "policy_digest": [],
+      "rationale_sha256": [],
+      "created_at_ms": "0",
+      "expires_at_ms": "0",
+      "nonce": []
+    },
+    "participants": [],
+    "session_start_ms": "0",
+    "session_end_ms": "0",
+    "nonce": []
+  }
+}

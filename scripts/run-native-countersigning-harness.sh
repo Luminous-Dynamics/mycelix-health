@@ -6,6 +6,17 @@ EVIDENCE_DIR="${COUNTERSIGNING_EVIDENCE_DIR:-$ROOT/target/countersigning-evidenc
 
 python3 "$ROOT/scripts/check-countersigning-matrix.py"
 
+if [[ -n "${COUNTERSIGNING_LIVE_CONFIG:-}" ]]; then
+  command -v node >/dev/null 2>&1 || { echo "node is required for externally managed live countersigning" >&2; exit 2; }
+  command -v npm >/dev/null 2>&1 || { echo "npm is required for externally managed live countersigning" >&2; exit 2; }
+  [[ -f "$COUNTERSIGNING_LIVE_CONFIG" ]] || { echo "COUNTERSIGNING_LIVE_CONFIG does not exist" >&2; exit 2; }
+  (cd "$ROOT/sdk" && npm run build --silent)
+  node "$ROOT/scripts/run-live-countersigning.mjs" "$COUNTERSIGNING_LIVE_CONFIG" "$EVIDENCE_DIR"
+  python3 "$ROOT/scripts/package-countersigning-evidence.py" "$EVIDENCE_DIR"
+  printf 'Verified live countersigning evidence written to %s\n' "$EVIDENCE_DIR"
+  exit 0
+fi
+
 required=(hc holochain lair-keystore)
 missing=()
 for binary in "${required[@]}"; do
