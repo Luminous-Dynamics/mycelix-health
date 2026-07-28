@@ -18,6 +18,22 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # This repo depends on 4 crates via relative paths that only resolve when
+      # checked out as the mycelix-health submodule of the parent `mycelix` repo:
+      # mycelix-bridge-common, mycelix-leptos-core, mycelix-zkp-core (all under
+      # `../crates/<name>`) and mycelix-fl (under `../mycelix-core/libs/mycelix-fl`
+      # — a different sibling directory, not under crates/ at all). A bare
+      # checkout of this repo alone (which is what CI does) has neither sibling
+      # directory, so recreate both here — see CONTRACT.md's "Building this repo
+      # standalone" section.
+      - name: Check out sibling crates/ and mycelix-core/ from parent mycelix repo
+        run: |
+          git clone --depth 1 https://github.com/Luminous-Dynamics/mycelix.git /tmp/mycelix-parent
+          mkdir -p ../crates ../mycelix-core
+          cp -r /tmp/mycelix-parent/crates/. ../crates/
+          cp -r /tmp/mycelix-parent/mycelix-core/. ../mycelix-core/
+          rm -rf /tmp/mycelix-parent
+
       - name: Install Rust
         uses: dtolnay/rust-action@stable
         with:

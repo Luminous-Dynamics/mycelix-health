@@ -4,6 +4,19 @@
 **Holochain**: 0.6.0 (hdk 0.6, hdi 0.7).
 **Crypto**: PQC via `crates/health-crypto`; ZKP via `crates/health-zkp` (Winterfell STARK backend, DASTARK pipeline).
 
+**Building this repo standalone**: this repo depends on 4 crates that live in the
+parent [`mycelix`](https://github.com/Luminous-Dynamics/mycelix) repo via relative
+path — `mycelix-bridge-common`, `mycelix-leptos-core`, `mycelix-zkp-core` (all under
+`mycelix`'s `crates/`) and `mycelix-fl` (under `mycelix`'s `mycelix-core/libs/`,
+a different sibling directory). They resolve automatically when this repo is checked
+out as `mycelix`'s `mycelix-health` submodule, but **not** on a bare standalone
+clone. CI works around this with a sibling-checkout step (see
+`.github/workflows/ci.yml`); to build locally without the submodule, clone `mycelix`
+alongside this repo and copy its `crates/` and `mycelix-core/` directories to
+`../crates` and `../mycelix-core` relative to this repo's root. Dependabot's cargo
+ecosystem is disabled here for the same reason — it cannot perform cross-repo
+checkouts, so it can never resolve these 4 dependencies.
+
 ---
 
 ## Zome inventory

@@ -3,30 +3,19 @@
 
 version: 2
 updates:
-  # Rust dependencies (Cargo)
-  - package-ecosystem: "cargo"
-    directory: "/"
-    target-branch: "main"
-    schedule:
-      interval: "weekly"
-      day: "monday"
-      time: "09:00"
-    open-pull-requests-limit: 10
-    reviewers:
-      - "Luminous-Dynamics/maintainers"
-    labels:
-      - "dependencies"
-      - "rust"
-    commit-message:
-      prefix: "chore(deps)"
-      include: "scope"
-    groups:
-      rust-dependencies:
-        patterns:
-          - "*"
-        update-types:
-          - "minor"
-          - "patch"
+  # Rust dependencies (Cargo) — INTENTIONALLY DISABLED.
+  #
+  # This repo has 4 Cargo dependencies (mycelix-bridge-common, mycelix-leptos-core,
+  # mycelix-fl, mycelix-zkp-core) that resolve via relative paths reaching outside
+  # the repo root into the parent `mycelix` repo (see CONTRACT.md's "Building this
+  # repo standalone" section) — real, intended design, since this repo is meant to
+  # be consumed as `mycelix`'s `mycelix-health` submodule. Dependabot fetches every
+  # path-dependency manifest up front to build its full graph, before it ever gets
+  # to per-dependency `ignore` rules, so it fails outright on file-fetching with
+  # "The following path based dependencies could not be retrieved" — an `ignore:`
+  # list cannot fix this, since the failure happens before ignore rules apply.
+  # Re-enable only if these path deps are ever replaced with versioned crates.io
+  # dependencies.
 
   # GitHub Actions
   - package-ecosystem: "github-actions"
