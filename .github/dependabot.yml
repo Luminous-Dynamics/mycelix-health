@@ -33,3 +33,19 @@ updates:
       - "github-actions"
     commit-message:
       prefix: "chore(ci)"
+    groups:
+      # Bundle Actions bumps into one PR per cycle instead of one per action.
+      # Without this, four separate PRs accumulated (setup-node, cache,
+      # checkout, install-nix-action) for what is a single routine review --
+      # and across the org 58% of all open PRs were Dependabot noise, which
+      # buries real work and makes repos read as unattended.
+      #
+      # Major bumps are deliberately NOT excluded here, unlike symthaea's
+      # config: for GitHub Actions a major bump is almost always just a Node
+      # runtime refresh (checkout v4 -> v7), not a breaking API change, so
+      # reviewing them together is appropriate. Cargo majors are a different
+      # matter -- but this repo's cargo ecosystem is disabled above anyway.
+      actions-updates:
+        applies-to: version-updates
+        patterns:
+          - "*"
