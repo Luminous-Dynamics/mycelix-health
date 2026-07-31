@@ -147,7 +147,7 @@ impl BatchEncoder {
         sequences: &[&str],
     ) -> Result<BatchResult<EncodedSequence>, HdcError> {
         let start_time = std::time::Instant::now();
-        let encoder = DnaEncoder::new(self.seed.clone(), self.config.kmer_length);
+        let encoder = DnaEncoder::new(self.seed, self.config.kmer_length);
 
         let (items, failed_indices) = if self.config.parallel {
             self.encode_parallel(sequences, |seq| encoder.encode_sequence(seq))
@@ -158,8 +158,7 @@ impl BatchEncoder {
         let elapsed = start_time.elapsed();
         let stats = BatchStats {
             processing_time_ms: elapsed.as_millis() as u64,
-            chunks_processed: (sequences.len() + self.config.chunk_size - 1)
-                / self.config.chunk_size,
+            chunks_processed: sequences.len().div_ceil(self.config.chunk_size),
             avg_encoding_time_us: if items.is_empty() {
                 0.0
             } else {
@@ -282,8 +281,8 @@ impl BatchEncoder {
         }
 
         // Set diagonal to 1.0
-        for i in 0..n {
-            matrix[i][i] = 1.0;
+        for (i, row) in matrix.iter_mut().enumerate().take(n) {
+            row[i] = 1.0;
         }
 
         SimilarityMatrix { matrix, size: n }

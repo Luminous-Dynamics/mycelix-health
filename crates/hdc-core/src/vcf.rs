@@ -102,6 +102,9 @@ impl Genotype {
 /// VCF file parser
 pub struct VcfReader<R: Read> {
     reader: BufReader<R>,
+    // Retained but not currently read -- kept rather than deleted because removing a
+    // field from a clinical/provenance type can change serialization. Flagged for review.
+    #[allow(dead_code)]
     header_lines: Vec<String>,
     sample_names: Vec<String>,
 }

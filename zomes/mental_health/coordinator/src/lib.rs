@@ -1266,7 +1266,7 @@ pub fn calculate_mood_trend(patient_hash: ActionHash) -> ExternResult<MoodTrendA
     }
 
     // Sort by date
-    entries.sort_by(|a, b| a.entry_date.cmp(&b.entry_date));
+    entries.sort_by_key(|a| a.entry_date);
 
     // Calculate analysis
     let entry_count = entries.len() as u32;
@@ -1337,7 +1337,7 @@ pub fn calculate_mood_trend(patient_hash: ActionHash) -> ExternResult<MoodTrendA
     }
 
     let mut common_triggers: Vec<(String, u32)> = trigger_counts.into_iter().collect();
-    common_triggers.sort_by(|a, b| b.1.cmp(&a.1));
+    common_triggers.sort_by_key(|t| std::cmp::Reverse(t.1));
     let common_triggers: Vec<String> = common_triggers
         .into_iter()
         .take(5)
@@ -1345,7 +1345,7 @@ pub fn calculate_mood_trend(patient_hash: ActionHash) -> ExternResult<MoodTrendA
         .collect();
 
     let mut common_coping: Vec<(String, u32)> = coping_counts.into_iter().collect();
-    common_coping.sort_by(|a, b| b.1.cmp(&a.1));
+    common_coping.sort_by_key(|c| std::cmp::Reverse(c.1));
     let common_coping_strategies: Vec<String> =
         common_coping.into_iter().take(5).map(|(s, _)| s).collect();
 
@@ -1836,7 +1836,7 @@ pub fn get_recovery_dashboard(patient_hash: ActionHash) -> ExternResult<Recovery
                 None
             }
         })
-        .last();
+        .next_back();
 
     // Gather check-ins
     let check_in_links = get_links(

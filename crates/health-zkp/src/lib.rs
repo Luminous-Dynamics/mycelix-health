@@ -199,6 +199,9 @@ impl ProofSystem {
 ///
 /// In production, proof generation happens CLIENT-SIDE (portal or mobile app).
 /// This function is the reference implementation.
+// Arity is the proof request's full input set, kept explicit so each field is
+// visible at the call site in security-sensitive code.
+#[allow(clippy::too_many_arguments)]
 pub fn generate_proof(
     proof_type: HealthProofType,
     private_health_data: &[u8],
@@ -375,7 +378,7 @@ fn verify_winterfell_proof(proof: &HealthProof) -> bool {
     #[cfg(not(feature = "experimental-unbound-range-proofs"))]
     {
         let _ = proof;
-        return false;
+        false
     }
 
     #[cfg(feature = "experimental-unbound-range-proofs")]
@@ -425,8 +428,8 @@ pub fn verify_domain_tag(proof: &HealthProof, expected_domain: &DomainTag) -> bo
     let domain_tag = expected_domain;
     let mut hasher = Sha256::new();
     hasher.update(domain_tag.as_bytes());
-    hasher.update(&proof.public_inputs.data_commitment);
-    hasher.update(&proof.public_inputs.patient_id_hash);
+    hasher.update(proof.public_inputs.data_commitment);
+    hasher.update(proof.public_inputs.patient_id_hash);
     hasher.update(format!("{:?}", proof.proof_type).as_bytes());
     let expected = hasher.finalize();
 

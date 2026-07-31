@@ -169,6 +169,12 @@ impl FrequencySampler {
         })
     }
 
+    // clippy::vec_init_then_push suggests a `vec![..]` literal. Kept as explicit
+    // pushes: every element is an `rng` draw, so evaluation ORDER determines the
+    // sampled typing and therefore reproducibility from a seed. Rust does define
+    // left-to-right evaluation in a vec! literal, but the sequential form makes the
+    // order-sensitivity visible to anyone editing this later.
+    #[allow(clippy::vec_init_then_push)]
     fn sample_typing(&self, id: &str, rng: &mut ChaCha8Rng) -> HlaTyping {
         let mut alleles = Vec::with_capacity(10);
 
@@ -271,6 +277,11 @@ fn generate_hla_typing(id: &str, rng: &mut ChaCha8Rng) -> HlaTyping {
 }
 
 /// Calculate traditional HLA match score (number of matched alleles)
+// Each arm tests a distinct allele pairing (1<->1/2, 2<->1/2). They share a
+// body by coincidence, not by redundancy; merging them with `||` would be
+// equivalent but would erase which biological case is being matched --
+// readability that matters more than the lint in transplant-compatibility code.
+#[allow(clippy::if_same_then_else)]
 fn traditional_match_score(recipient: &HlaTyping, donor: &HlaTyping) -> f64 {
     let mut matches = 0;
     let total = recipient.alleles.len();

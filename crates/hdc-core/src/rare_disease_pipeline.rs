@@ -24,7 +24,7 @@
 //! - Rehm, H. L. et al. (2015). ClinGen -- standardized gene curation.
 
 use crate::differential_privacy::{DpHypervector, DpParams};
-use crate::{bundle, Hypervector, Seed, HYPERVECTOR_BYTES};
+use crate::{bundle, Hypervector, Seed};
 use serde::{Deserialize, Serialize};
 
 // ---------------------------------------------------------------------------
@@ -139,6 +139,9 @@ pub struct MatchResult {
 pub struct RareDiseasePipeline {
     disease_db: Vec<DiseaseSignature>,
     seed: Seed,
+    // Retained but not currently read -- kept rather than deleted because removing a
+    // field from a clinical/provenance type can change serialization. Flagged for review.
+    #[allow(dead_code)]
     dimension: usize,
     dp_epsilon: f64,
     top_k: usize,
@@ -413,6 +416,7 @@ pub fn cosine_similarity_binary(a: &[u8], b: &[u8]) -> f64 {
 /// Build a small reference database of ~10 well-known rare diseases.
 ///
 /// Returns `(variants, hpo_terms, disease_id, disease_name, prevalence, inheritance)`.
+#[allow(clippy::type_complexity)] // tuple shape is the documented return contract above
 pub fn build_reference_database() -> Vec<(
     Vec<RareDiseaseVariant>,
     Vec<&'static str>,

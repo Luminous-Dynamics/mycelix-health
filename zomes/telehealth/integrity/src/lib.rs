@@ -2,6 +2,21 @@
 // Copyright (C) 2024-2026 Tristan Stoltz / Luminous Dynamics
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Commercial licensing: see COMMERCIAL_LICENSE.md at repository root
+// clippy::collapsible_match is allowed crate-wide here. Every instance is the
+// standard HDK validation-dispatch shape:
+//
+//     FlatOp::RegisterUpdate(op) => match op {
+//         OpUpdate::Entry { app_entry, action } => validate_update_entry(action, app_entry),
+//         _ => Ok(ValidateCallbackResult::Valid),
+//     }
+//
+// Collapsing it into the outer pattern would force a separate catch-all arm for
+// the remaining OpUpdate variants, diverge from every sibling integrity zome, and
+// restructure the exact RegisterUpdate dispatch the author-binding work depends on
+// -- a real risk in security-critical validation for a style lint. This crate is
+// validation dispatch end to end, so the allow is scoped to what it describes.
+#![allow(clippy::collapsible_match)]
+
 //! Telehealth Session Integrity Zome
 //!
 //! Defines entry types for telehealth capabilities including:

@@ -370,7 +370,7 @@ pub mod chained_audit {
         hasher.update(entry.sequence.to_le_bytes());
         hasher.update(entry.timestamp.to_le_bytes());
         hasher.update(entry.agent.get_raw_39());
-        hasher.update(&entry.entry_hash);
+        hasher.update(entry.entry_hash);
         if let Some(prev) = &entry.previous_hash {
             hasher.update(prev);
         }
@@ -1649,20 +1649,16 @@ pub mod anchors {
         // Create an entry hash from the bytes using the host function
         // This matches how other zomes create anchor hashes
         let entry = Entry::App(
-            AppEntryBytes::try_from(SerializedBytes::try_from(UnsafeBytes::from(bytes)).map_err(
+            // `SerializedBytes: From<UnsafeBytes>` -- this conversion is infallible,
+            // so the previous try_from + map_err handled an error that cannot occur.
+            AppEntryBytes::try_from(SerializedBytes::from(UnsafeBytes::from(bytes))).map_err(
                 |e| {
                     wasm_error!(WasmErrorInner::Guest(format!(
-                        "Failed to create serialized bytes: {:?}",
+                        "Failed to create app entry bytes: {:?}",
                         e
                     )))
                 },
-            )?)
-            .map_err(|e| {
-                wasm_error!(WasmErrorInner::Guest(format!(
-                    "Failed to create app entry bytes: {:?}",
-                    e
-                )))
-            })?,
+            )?,
         );
 
         hash_entry(entry)
@@ -1886,7 +1882,7 @@ pub mod validation {
     pub fn validate_confidence_score(score: f64, field_name: &str) -> ValidationResult {
         let mut result = ValidationResult::new();
 
-        if score < 0.0 || score > 1.0 {
+        if !(0.0..=1.0).contains(&score) {
             result.add_error(
                 field_name,
                 "Confidence score must be between 0.0 and 1.0",
@@ -2071,7 +2067,7 @@ pub mod validation {
         let mut result = ValidationResult::new();
 
         if let Some(h) = hours {
-            if h < 0.0 || h > 24.0 {
+            if !(0.0..=24.0).contains(&h) {
                 result.add_error(
                     "sleep_hours",
                     "Sleep hours must be between 0 and 24",
@@ -2283,7 +2279,7 @@ pub mod batch {
         count: usize,
     ) -> ExternResult<Vec<Record>> {
         // Sort by timestamp (newest first)
-        links.sort_by(|a, b| b.timestamp.cmp(&a.timestamp));
+        links.sort_by_key(|link| std::cmp::Reverse(link.timestamp));
 
         // Take only the requested count
         let hashes: Vec<ActionHash> = links

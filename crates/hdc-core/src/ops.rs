@@ -27,7 +27,7 @@ pub fn has_avx2() -> bool {
 ///
 /// Uses SHA-256 based expansion for cryptographically secure randomness.
 pub fn generate_item_vector(seed: &[u8; 32], item: &str) -> Vec<u8> {
-    let num_bytes = (HYPERVECTOR_DIM + 7) / 8;
+    let num_bytes = HYPERVECTOR_DIM.div_ceil(8);
     let mut result = Vec::with_capacity(num_bytes);
 
     let mut counter = 0u64;
@@ -35,7 +35,7 @@ pub fn generate_item_vector(seed: &[u8; 32], item: &str) -> Vec<u8> {
         let mut hasher = Sha256::new();
         hasher.update(seed);
         hasher.update(item.as_bytes());
-        hasher.update(&counter.to_le_bytes());
+        hasher.update(counter.to_le_bytes());
         let hash = hasher.finalize();
 
         result.extend_from_slice(&hash);
@@ -105,7 +105,7 @@ unsafe fn bind_avx2(a: &[u8], b: &[u8]) -> Vec<u8> {
 /// Ties go to 0 for determinism.
 pub fn bundle(vectors: &[&[u8]]) -> Vec<u8> {
     if vectors.is_empty() {
-        return vec![0u8; (HYPERVECTOR_DIM + 7) / 8];
+        return vec![0u8; HYPERVECTOR_DIM.div_ceil(8)];
     }
 
     let len = vectors[0].len();
@@ -142,7 +142,7 @@ pub fn bundle(vectors: &[&[u8]]) -> Vec<u8> {
 /// Weighted bundle using thresholded sums
 pub fn weighted_bundle(vectors: &[(&[u8], f64)]) -> Vec<u8> {
     if vectors.is_empty() {
-        return vec![0u8; (HYPERVECTOR_DIM + 7) / 8];
+        return vec![0u8; HYPERVECTOR_DIM.div_ceil(8)];
     }
 
     let len = vectors[0].0.len();

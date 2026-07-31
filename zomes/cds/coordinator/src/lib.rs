@@ -1016,7 +1016,7 @@ pub fn check_pgx_interaction(
                             recommendations.push(format!(
                                 "{}: {} - {}",
                                 interaction.gene,
-                                format!("{:?}", patient_variant.phenotype),
+                                format_args!("{:?}", patient_variant.phenotype),
                                 implication.clinical_notes
                             ));
 

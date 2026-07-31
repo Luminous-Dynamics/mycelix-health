@@ -133,6 +133,10 @@ pub fn aggregate_encrypted(contributions: &[HealthHV]) -> HealthHV {
     let threshold = contributions.len() / 2;
     let mut result = vec![0u8; HEALTH_HDC_BYTES];
 
+    // byte_idx indexes both `result` and every contribution's `bits` array, so this is
+    // not a local iterator rewrite. Left explicit: secure-aggregation code where the
+    // index relationship between the two buffers is the point.
+    #[allow(clippy::needless_range_loop)]
     for byte_idx in 0..HEALTH_HDC_BYTES {
         let mut result_byte = 0u8;
         for bit in 0..8 {

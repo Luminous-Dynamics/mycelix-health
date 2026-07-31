@@ -1019,12 +1019,12 @@ fn validate_delegation_grant(
         }
     }
     // Temporary delegation must have expiration
-    if matches!(delegation.delegation_type, DelegationType::Temporary) {
-        if delegation.expires_at.is_none() {
-            return Ok(ValidateCallbackResult::Invalid(
-                "Temporary delegations must have an expiration date".to_string(),
-            ));
-        }
+    if matches!(delegation.delegation_type, DelegationType::Temporary)
+        && delegation.expires_at.is_none()
+    {
+        return Ok(ValidateCallbackResult::Invalid(
+            "Temporary delegations must have an expiration date".to_string(),
+        ));
     }
     Ok(ValidateCallbackResult::Valid)
 }

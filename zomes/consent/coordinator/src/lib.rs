@@ -166,7 +166,7 @@ pub fn check_authorization(input: AuthorizationCheckInput) -> ExternResult<Autho
                 // Emergency access is never granted by a caller-selected flag.
                 // It is evaluated below against a patient-authored capability.
                 ConsentGrantee::EmergencyAccess => false,
-                ConsentGrantee::Provider(hash) => {
+                ConsentGrantee::Provider(_hash) => {
                     // Provider hash match — check via a hash comparison
                     // In production, this would resolve the provider's agent key
                     false // Requires provider resolution
@@ -1146,21 +1146,18 @@ pub fn get_patient_notifications(input: GetNotificationsInput) -> ExternResult<V
 
     // Filter by unread only if requested
     if input.unread_only {
-        notifications = notifications
-            .into_iter()
-            .filter(|record| {
-                if let Some(n) = record
-                    .entry()
-                    .to_app_option::<AccessNotification>()
-                    .ok()
-                    .flatten()
-                {
-                    !n.viewed
-                } else {
-                    false
-                }
-            })
-            .collect();
+        notifications.retain(|record| {
+            if let Some(n) = record
+                .entry()
+                .to_app_option::<AccessNotification>()
+                .ok()
+                .flatten()
+            {
+                !n.viewed
+            } else {
+                false
+            }
+        });
     }
 
     // Sort by accessed_at descending (most recent first)
@@ -2058,7 +2055,8 @@ fn string_to_data_category(cat: &str) -> DataCategory {
         "SexualHealth" => DataCategory::SexualHealth,
         "GeneticData" => DataCategory::GeneticData,
         "FinancialData" | "Insurance" => DataCategory::FinancialData,
-        "All" | _ => DataCategory::All, // Default unknown categories to All for audit completeness
+        // "All" plus any unrecognised category, defaulted for audit completeness.
+        _ => DataCategory::All, // Default unknown categories to All for audit completeness
     }
 }
 
@@ -2458,7 +2456,7 @@ pub fn create_reencryption_grant(input: CreateReEncryptionGrantInput) -> ExternR
     }
 
     // Verify caller is the patient (only patient can create grants)
-    let caller = agent_info()?.agent_initial_pubkey;
+    let _caller = agent_info()?.agent_initial_pubkey;
     if consent.patient_hash != input.patient_hash {
         return Err(wasm_error!(WasmErrorInner::Guest(
             "Patient hash mismatch".to_string()
@@ -2882,7 +2880,7 @@ pub fn check_redisclosure_consent(input: RedisclosureConsentInput) -> ExternResu
         // Check expiration
         if let Some(expires) = &consent.expires_at {
             if let Ok(now) = sys_time() {
-                let now_ts = Timestamp::from_micros(now.as_micros() as i64);
+                let now_ts = Timestamp::from_micros(now.as_micros());
                 if now_ts > *expires {
                     continue;
                 }

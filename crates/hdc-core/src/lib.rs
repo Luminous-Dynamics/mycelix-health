@@ -103,7 +103,7 @@ use sha2::{Digest, Sha256};
 pub const HYPERVECTOR_DIM: usize = 1 << 14; // 16,384
 
 /// Number of bytes needed to store HYPERVECTOR_DIM bits
-pub const HYPERVECTOR_BYTES: usize = (HYPERVECTOR_DIM + 7) / 8;
+pub const HYPERVECTOR_BYTES: usize = HYPERVECTOR_DIM.div_ceil(8);
 
 /// Default k-mer length for DNA encoding
 pub const DEFAULT_KMER_LENGTH: u8 = 6;
@@ -112,7 +112,7 @@ pub const DEFAULT_KMER_LENGTH: u8 = 6;
 pub type HdcResult<T> = Result<T, HdcError>;
 
 /// A 32-byte seed for reproducible hypervector generation
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, Default)]
 pub struct Seed(pub [u8; 32]);
 
 impl Seed {
@@ -134,12 +134,6 @@ impl Seed {
     /// Get the raw bytes
     pub fn as_bytes(&self) -> &[u8; 32] {
         &self.0
-    }
-}
-
-impl Default for Seed {
-    fn default() -> Self {
-        Seed([0u8; 32])
     }
 }
 

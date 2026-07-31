@@ -26,7 +26,7 @@ use records_integrity::*;
 const ENCRYPTED_RECORD_ENVELOPE_VERSION: u8 = 1;
 
 fn encrypted_record_aad(record: &EncryptedRecord) -> ExternResult<Vec<u8>> {
-    ExternIO::encode(&record.aad())
+    ExternIO::encode(record.aad())
         .map(|encoded| encoded.as_bytes().to_vec())
         .map_err(|error| {
             wasm_error!(WasmErrorInner::Guest(format!(
@@ -262,7 +262,7 @@ fn lab_result_to_twin_data_point(lab: &LabResult) -> TwinDataPointInput {
         data_type: TwinDataType::LabResult(lab.loinc_code.clone()),
         value: value_json,
         unit: Some(lab.unit.clone()),
-        measured_at: lab.result_time.as_micros() as i64,
+        measured_at: lab.result_time.as_micros(),
         source: TwinDataSourceType::Laboratory,
         quality: TwinDataQuality::Clinical,
     }
@@ -271,7 +271,7 @@ fn lab_result_to_twin_data_point(lab: &LabResult) -> TwinDataPointInput {
 /// Convert vital signs to twin data points (multiple points from one reading)
 fn vitals_to_twin_data_points(vitals: &VitalSigns) -> Vec<TwinDataPointInput> {
     let mut data_points = Vec::new();
-    let measured_at = vitals.recorded_at.as_micros() as i64;
+    let measured_at = vitals.recorded_at.as_micros();
 
     // Heart rate
     if let Some(hr) = vitals.heart_rate_bpm {
@@ -393,7 +393,7 @@ fn diagnosis_to_twin_data_point(diagnosis: &Diagnosis) -> TwinDataPointInput {
         data_type: TwinDataType::Diagnosis(diagnosis.icd10_code.clone()),
         value: value_json,
         unit: None,
-        measured_at: diagnosis.created_at.as_micros() as i64,
+        measured_at: diagnosis.created_at.as_micros(),
         source: TwinDataSourceType::EHR,
         quality: TwinDataQuality::Clinical,
     }
@@ -415,7 +415,7 @@ fn procedure_to_twin_data_point(procedure: &ProcedurePerformed) -> TwinDataPoint
         data_type: TwinDataType::Procedure(procedure.cpt_code.clone()),
         value: value_json,
         unit: None,
-        measured_at: procedure.performed_at.as_micros() as i64,
+        measured_at: procedure.performed_at.as_micros(),
         source: TwinDataSourceType::EHR,
         quality: TwinDataQuality::Clinical,
     }
@@ -2142,7 +2142,7 @@ pub fn detect_access_anomalies(patient_hash: ActionHash) -> ExternResult<Vec<Acc
     let one_hour_us = 3_600_000_000i64;
     let recent_count = records
         .iter()
-        .filter(|r| r.action().timestamp().as_micros() as i64 > (now - one_hour_us))
+        .filter(|r| r.action().timestamp().as_micros() > (now - one_hour_us))
         .count();
 
     // Anomaly: more than 50 accesses in one hour for a single patient

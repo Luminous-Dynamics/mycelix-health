@@ -9,7 +9,6 @@
 use colored::*;
 use hdc_core::{encoding::DnaEncoder, similarity::SimilarityStats, Seed};
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
 use std::fs::{self, File};
 use std::io::{BufRead, BufReader};
 use std::path::Path;
@@ -81,8 +80,8 @@ fn parse_refseq_fasta(path: &Path) -> Result<CypGene, std::io::Error> {
 
     for line in reader.lines() {
         let line = line?;
-        if line.starts_with('>') {
-            header = Some(line[1..].to_string());
+        if let Some(header_rest) = line.strip_prefix('>') {
+            header = Some(header_rest.to_string());
         } else {
             // Append sequence, removing gaps and whitespace
             sequence.push_str(&line.trim().replace(" ", ""));
@@ -117,9 +116,7 @@ fn extract_gene_name(header: &str) -> String {
     let header_upper = header.to_uppercase();
     if let Some(start) = header_upper.find("CYP") {
         let rest = &header_upper[start..];
-        let end = rest
-            .find(|c: char| c == ' ' || c == ',' || c == ')' || c == '(')
-            .unwrap_or(rest.len());
+        let end = rest.find([' ', ',', ')', '(']).unwrap_or(rest.len());
         let name = &rest[..end];
         // Clean up common suffixes
         name.trim_end_matches(|c: char| !c.is_alphanumeric())

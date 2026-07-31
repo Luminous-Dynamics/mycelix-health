@@ -1320,7 +1320,8 @@ fn string_to_contribution_category(cat: &str) -> DataContributionCategory {
         "MentalHealth" => DataContributionCategory::MentalHealth,
         "Genomics" => DataContributionCategory::Genomics,
         "Imaging" => DataContributionCategory::Imaging,
-        "Outcomes" | _ => DataContributionCategory::Outcomes,
+        // "Outcomes" plus any unrecognised category.
+        _ => DataContributionCategory::Outcomes,
     }
 }
 

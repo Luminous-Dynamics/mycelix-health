@@ -135,8 +135,8 @@ fn track_visit_data_internal(
         data_points_count,
         collected_at: visit
             .actual_date
-            .map(|ts| ts.as_micros() as i64)
-            .unwrap_or_else(|| sys_time().map(|t| t.as_micros() as i64).unwrap_or(0)),
+            .map(|ts| ts.as_micros())
+            .unwrap_or_else(|| sys_time().map(|t| t.as_micros()).unwrap_or(0)),
     };
 
     // Call dividends zome to record usage

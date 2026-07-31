@@ -221,7 +221,7 @@ impl ComparisonReport {
             // Throughput comparison
             format!(
                 "HDC encoding: {:.0} sequences/sec (for 500bp sequences)",
-                hdc_results.get(0).map(|r| r.ops_per_second).unwrap_or(0.0)
+                hdc_results.first().map(|r| r.ops_per_second).unwrap_or(0.0)
             ),
             "BLAST megablast: ~0.5 queries/sec (searching 100GB database)".to_string(),
             "minimap2: ~50 MB/s sequence throughput (genome alignment)".to_string(),

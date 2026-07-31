@@ -29,18 +29,18 @@ pub fn parse_bold_fasta(path: &Path) -> Result<Vec<FastaSequence>, std::io::Erro
 
     for line in reader.lines() {
         let line = line?;
-        if line.starts_with('>') {
+        if let Some(header_rest) = line.strip_prefix('>') {
             // Save previous sequence if exists
             if let Some(header) = current_header.take() {
                 if let Some(seq) = parse_bold_header(&header, &current_seq) {
                     sequences.push(seq);
                 }
             }
-            current_header = Some(line[1..].to_string());
+            current_header = Some(header_rest.to_string());
             current_seq.clear();
         } else {
             // Append sequence data (remove gaps and whitespace)
-            current_seq.push_str(&line.replace('-', "").replace(' ', ""));
+            current_seq.push_str(&line.replace(['-', ' '], ""));
         }
     }
 
@@ -72,7 +72,7 @@ fn parse_bold_header(header: &str, sequence: &str) -> Option<FastaSequence> {
     } else {
         // Fallback for non-standard format
         Some(FastaSequence {
-            id: parts.get(0).unwrap_or(&"unknown").to_string(),
+            id: parts.first().unwrap_or(&"unknown").to_string(),
             species: parts.get(1).unwrap_or(&"Unknown species").to_string(),
             marker: "COI-5P".to_string(),
             accession: None,
@@ -93,16 +93,16 @@ pub fn parse_imgt_hla_fasta(path: &Path) -> Result<Vec<HlaAlleleSequence>, std::
 
     for line in reader.lines() {
         let line = line?;
-        if line.starts_with('>') {
+        if let Some(header_rest) = line.strip_prefix('>') {
             if let Some(header) = current_header.take() {
                 if let Some(allele) = parse_hla_header(&header, &current_seq) {
                     alleles.push(allele);
                 }
             }
-            current_header = Some(line[1..].to_string());
+            current_header = Some(header_rest.to_string());
             current_seq.clear();
         } else {
-            current_seq.push_str(&line.trim());
+            current_seq.push_str(line.trim());
         }
     }
 

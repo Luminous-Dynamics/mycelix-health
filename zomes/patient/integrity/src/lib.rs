@@ -138,6 +138,13 @@ pub struct PatientHealthSummary {
     pub care_team: Vec<AgentPubKey>,
 }
 
+// Boxing `Patient` would silence clippy but is wrong here: `#[hdk_entry_types]`
+// generates serialization and validation-dispatch code against the inline variant
+// types, and this enum is constructed once per commit rather than moved on any hot
+// path -- so the stack-size cost the lint targets does not apply. Matches the
+// convention already used by mycelix-identity's education / verifiable_credential
+// zomes and happs/fabrication's designs / printers zomes.
+#[allow(clippy::large_enum_variant)] // HDK entry types require inline variants
 #[hdk_entry_types]
 #[unit_enum(UnitEntryTypes)]
 pub enum EntryTypes {

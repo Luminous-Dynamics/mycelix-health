@@ -12,14 +12,8 @@
 
 use std::time::Instant;
 
-use sha2::{Digest, Sha256};
-
 use crate::{generate_proof, AttestorRole, HealthProof, HealthProofType};
-use mycelix_zkp_core::{
-    domain::tag_health_attest,
-    types::{BackendId, ProofMetadata},
-    AuthenticatedProof, DomainTag,
-};
+use mycelix_zkp_core::AuthenticatedProof;
 
 #[cfg(feature = "verify-dilithium")]
 use mycelix_zkp_core::dilithium::DilithiumKeypair;

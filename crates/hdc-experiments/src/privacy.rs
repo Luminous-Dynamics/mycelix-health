@@ -16,7 +16,6 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
 use std::fs::{self, File};
 use std::path::PathBuf;
-use std::time::Instant;
 
 #[derive(Serialize, Deserialize)]
 pub struct PrivacyResults {
@@ -93,9 +92,9 @@ fn add_noise(hv: &Hypervector, noise_level: f64, rng: &mut ChaCha8Rng) -> Hyperv
 fn membership_inference_attack(
     member_vectors: &[Hypervector],
     non_member_vectors: &[Hypervector],
-    encoder: &DnaEncoder,
-    member_sequences: &[String],
-    non_member_sequences: &[String],
+    _encoder: &DnaEncoder,
+    _member_sequences: &[String],
+    _non_member_sequences: &[String],
 ) -> MembershipResults {
     // Strategy: Check if query vector is "close" to any vector in the set
     // Using centroid similarity as the metric
@@ -190,7 +189,7 @@ fn membership_inference_attack(
 fn attribute_inference_attack(
     sequences: &[String],
     vectors: &[Hypervector],
-    encoder: &DnaEncoder,
+    _encoder: &DnaEncoder,
     seed: &Seed,
     kmer_length: u8,
 ) -> AttributeResults {
@@ -247,7 +246,7 @@ fn attribute_inference_attack(
             }
 
             let kmer_present = seq.contains(*kmer);
-            let kmer_vec = Hypervector::random(seed, *kmer);
+            let kmer_vec = Hypervector::random(seed, kmer);
 
             // Check similarity to k-mer vector
             let sim = hv.normalized_cosine_similarity(&kmer_vec);
@@ -279,7 +278,7 @@ fn attribute_inference_attack(
 fn reconstruction_attack(
     sequences: &[String],
     vectors: &[Hypervector],
-    encoder: &DnaEncoder,
+    _encoder: &DnaEncoder,
     seed: &Seed,
     kmer_length: u8,
 ) -> ReconstructionResults {
@@ -352,7 +351,7 @@ fn reconstruction_attack(
 
 pub fn run_privacy_analysis(
     training_size: usize,
-    attacker_samples: usize,
+    _attacker_samples: usize,
     noise_level: f64,
     kmer_length: u8,
     output_dir: PathBuf,
@@ -435,7 +434,7 @@ pub fn run_privacy_analysis(
 
     println!("{}", "5. Reconstruction attack...".yellow());
     let reconstruction = reconstruction_attack(
-        &member_sequences[..member_sequences.len().min(50)]
+        member_sequences[..member_sequences.len().min(50)]
             .to_vec()
             .as_slice(),
         &member_vectors[..member_vectors.len().min(50)],

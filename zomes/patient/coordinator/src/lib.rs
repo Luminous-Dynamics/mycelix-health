@@ -70,12 +70,12 @@ fn validate_patient(patient: &Patient) -> ValidationResult {
             let month_ok = dob_parts[1].len() == 2
                 && dob_parts[1]
                     .parse::<u8>()
-                    .map(|m| m >= 1 && m <= 12)
+                    .map(|m| (1..=12).contains(&m))
                     .unwrap_or(false);
             let day_ok = dob_parts[2].len() == 2
                 && dob_parts[2]
                     .parse::<u8>()
-                    .map(|d| d >= 1 && d <= 31)
+                    .map(|d| (1..=31).contains(&d))
                     .unwrap_or(false);
             if !year_ok || !month_ok || !day_ok {
                 result.add_error(

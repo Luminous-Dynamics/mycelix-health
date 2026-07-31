@@ -14,7 +14,6 @@
 //! Integrates with CDS zome for drug interaction and allergy checking.
 
 use hdk::prelude::*;
-use holochain_serialized_bytes::prelude::*;
 use mycelix_health_shared::{
     log_data_access, require_admin_authorization, require_authorization, DataCategory, Permission,
 };
@@ -163,7 +162,7 @@ pub fn create_prescription(input: CreatePrescriptionInput) -> ExternResult<Recor
         patient_allergies: Vec::new(), // Caller should use _with_safety for allergen data
     }) {
         if !safety.is_safe {
-            let _ = emit_signal(&serde_json::json!({
+            let _ = emit_signal(serde_json::json!({
                 "signal_type": "prescription_safety_warning",
                 "patient_hash": format!("{:?}", input.prescription.patient_hash),
                 "assessment": format!("{:?}", safety.safety_assessment),

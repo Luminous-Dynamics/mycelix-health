@@ -503,14 +503,14 @@ fn validate_imaging(_imaging: &ImagingStudy) -> ExternResult<ValidateCallbackRes
 fn validate_vitals(vitals: &VitalSigns) -> ExternResult<ValidateCallbackResult> {
     // Validate reasonable ranges
     if let Some(hr) = vitals.heart_rate_bpm {
-        if hr < 20 || hr > 300 {
+        if !(20..=300).contains(&hr) {
             return Ok(ValidateCallbackResult::Invalid(
                 "Heart rate out of valid range".to_string(),
             ));
         }
     }
     if let Some(o2) = vitals.oxygen_saturation {
-        if o2 < 0.0 || o2 > 100.0 {
+        if !(0.0..=100.0).contains(&o2) {
             return Ok(ValidateCallbackResult::Invalid(
                 "Oxygen saturation must be 0-100%".to_string(),
             ));

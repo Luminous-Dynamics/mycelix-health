@@ -558,6 +558,9 @@ pub struct LearnedClassifier {
     /// Input dimension (should match embedding dimension)
     input_dim: usize,
     /// Hidden layer dimension
+    // Retained but not currently read -- kept rather than deleted because removing a
+    // field from a clinical/provenance type can change serialization. Flagged for review.
+    #[allow(dead_code)]
     hidden_dim: usize,
     /// Output dimension (number of classes)
     output_dim: usize,
@@ -773,6 +776,9 @@ pub struct EncodedSequence {
 /// println!("Multi-scale k-mers: {:?}", encoded.kmer_counts);
 /// ```
 pub struct MultiScaleEncoder {
+    // Retained but not currently read -- kept rather than deleted because removing a
+    // field from a clinical/provenance type can change serialization. Flagged for review.
+    #[allow(dead_code)]
     seed: Seed,
     /// K-mer lengths to use (default: [4, 6, 8])
     scales: Vec<u8>,
@@ -801,10 +807,7 @@ impl MultiScaleEncoder {
 
     /// Create a multi-scale encoder with custom scales
     pub fn with_scales(seed: Seed, scales: Vec<u8>) -> Self {
-        let encoders = scales
-            .iter()
-            .map(|&k| DnaEncoder::new(seed.clone(), k))
-            .collect();
+        let encoders = scales.iter().map(|&k| DnaEncoder::new(seed, k)).collect();
 
         MultiScaleEncoder {
             seed,
@@ -1115,8 +1118,8 @@ impl LocusEncodedHla {
     /// Get per-locus similarity breakdown
     pub fn per_locus_similarity(&self, other: &LocusEncodedHla) -> [f64; 5] {
         let mut sims = [0.0; 5];
-        for i in 0..5 {
-            sims[i] = self.locus_vectors[i].normalized_cosine_similarity(&other.locus_vectors[i]);
+        for (i, sim) in sims.iter_mut().enumerate() {
+            *sim = self.locus_vectors[i].normalized_cosine_similarity(&other.locus_vectors[i]);
         }
         sims
     }
@@ -1221,6 +1224,11 @@ impl AlleleEncodedHla {
     ///
     /// For each locus, finds the best allele matches (handling heterozygosity)
     /// and weights by clinical importance.
+    // Each arm tests a distinct allele pairing (1<->1/2, 2<->1/2). They share a
+    // body by coincidence, not by redundancy; merging them with `||` would be
+    // equivalent but would erase which biological case is being matched --
+    // readability that matters more than the lint in transplant-compatibility code.
+    #[allow(clippy::if_same_then_else, clippy::nonminimal_bool)]
     pub fn match_score(&self, other: &AlleleEncodedHla) -> f64 {
         let mut total_score = 0.0;
         let mut total_weight = 0.0;
@@ -1516,7 +1524,7 @@ impl StarAlleleEncoder {
     pub fn set_activity_score(&mut self, gene: &str, allele: &str, score: f64) {
         self.activity_scores
             .entry(gene.to_string())
-            .or_insert_with(std::collections::HashMap::new)
+            .or_default()
             .insert(allele.to_string(), score);
     }
 
@@ -1992,6 +2000,9 @@ impl DrugRecommendation {
         }
     }
 
+    // Unused today; kept as the NUDT15 counterpart to the TPMT constructor above so the
+    // thiopurine gene pair stays symmetric. Flagged for review.
+    #[allow(dead_code)]
     fn from_nudt15_phenotype(phenotype: &MetabolizerPhenotype) -> Self {
         // NUDT15 for thiopurines - similar to TPMT
         match phenotype {
@@ -2151,7 +2162,7 @@ impl AncestryInformedEncoder {
     /// Reference frequencies from gnomAD v2.1 and published literature
     fn load_population_frequencies() -> Vec<AlleleFrequencies> {
         let mut freqs = Vec::new();
-        let mut map = std::collections::HashMap::new;
+        let map = std::collections::HashMap::new;
 
         // CYP2D6 allele frequencies by ancestry
         // Reference: Gaedigk et al., Clin Pharmacol Ther 2017
@@ -2442,9 +2453,9 @@ impl AncestryInformedEncoder {
 
         // Calculate diplotype frequency (Hardy-Weinberg assumption)
         let diplotype_frequency = match (freq1, freq2) {
-            (Some(f1), Some(f2)) if allele1 == allele2 => f1 * f1, // homozygous
-            (Some(f1), Some(f2)) => 2.0 * f1 * f2,                 // heterozygous
-            _ => None.or(freq1).or(freq2).unwrap_or(0.01),         // fallback
+            (Some(f1), Some(_f2)) if allele1 == allele2 => f1 * f1, // homozygous
+            (Some(f1), Some(f2)) => 2.0 * f1 * f2,                  // heterozygous
+            _ => None.or(freq1).or(freq2).unwrap_or(0.01),          // fallback
         };
 
         // Get phenotype prior for context

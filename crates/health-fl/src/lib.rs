@@ -20,7 +20,7 @@ pub mod hdc_encrypted;
 pub mod homomorphic;
 
 use mycelix_fl::defenses::{Defense, TrimmedMean};
-use mycelix_fl::types::{AggregationResult, DefenseConfig, Gradient};
+use mycelix_fl::types::{DefenseConfig, Gradient};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
@@ -88,6 +88,9 @@ pub struct CollectiveInsight {
 /// * `loinc_code` — LOINC code for the test
 /// * `node_id` — Pseudonymized patient identifier
 /// * `round` — FL round number
+// Arity mirrors one clinical observation's fields; grouping them into a struct
+// would just move the same parameters behind a constructor with equal arity.
+#[allow(clippy::too_many_arguments)]
 pub fn extract_gradient(
     value: &str,
     reference_range: &str,
@@ -393,8 +396,10 @@ pub fn aggregate_health_gradients(
         .collect();
 
     // Configure defense: 20% trim (robust to ~40% Byzantine)
-    let mut config = DefenseConfig::default();
-    config.trim_ratio = 0.2;
+    let config = DefenseConfig {
+        trim_ratio: 0.2,
+        ..Default::default()
+    };
 
     // Run REAL mycelix-fl TrimmedMean aggregation
     let result = TrimmedMean
@@ -430,7 +435,7 @@ fn interpret_aggregate(aggregate: &[f32], loinc_family: &str) -> String {
         return "Insufficient data for interpretation".to_string();
     }
 
-    let avg_value = aggregate[FEAT_VALUE];
+    let _avg_value = aggregate[FEAT_VALUE];
     let avg_deviation = aggregate[FEAT_DEVIATION];
     let critical_rate = aggregate[FEAT_IS_CRITICAL];
     let abnormal_rate = aggregate[FEAT_IS_ABNORMAL];

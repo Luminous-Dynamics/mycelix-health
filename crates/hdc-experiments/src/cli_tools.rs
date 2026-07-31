@@ -19,7 +19,7 @@ use hdc_core::{
 use hdc_core::gpu;
 use serde::{Deserialize, Serialize};
 use std::fs::{self, File};
-use std::io::{BufReader, Write};
+use std::io::BufReader;
 use std::path::Path;
 
 // =============================================================================

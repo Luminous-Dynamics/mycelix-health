@@ -114,7 +114,7 @@ pub fn get_credential(action_hash: ActionHash) -> ExternResult<Option<Credential
         {
             let is_revoked = is_credential_revoked(&action_hash)?;
             let now = sys_time()?;
-            let is_expired = credential.expires.map_or(false, |exp| exp <= now);
+            let is_expired = credential.expires.is_some_and(|exp| exp <= now);
 
             return Ok(Some(CredentialWithStatus {
                 credential,
@@ -158,7 +158,7 @@ pub fn get_my_credentials(_: ()) -> ExternResult<Vec<CredentialWithStatus>> {
                     .flatten()
                 {
                     let is_revoked = is_credential_revoked(&action_hash)?;
-                    let is_expired = credential.expires.map_or(false, |exp| exp <= now);
+                    let is_expired = credential.expires.is_some_and(|exp| exp <= now);
 
                     credentials.push(CredentialWithStatus {
                         credential,
@@ -196,7 +196,7 @@ pub fn get_issued_credentials(_: ()) -> ExternResult<Vec<CredentialWithStatus>> 
                     .flatten()
                 {
                     let is_revoked = is_credential_revoked(&action_hash)?;
-                    let is_expired = credential.expires.map_or(false, |exp| exp <= now);
+                    let is_expired = credential.expires.is_some_and(|exp| exp <= now);
 
                     credentials.push(CredentialWithStatus {
                         credential,
@@ -238,7 +238,7 @@ pub fn get_credentials_by_type(
                     // Only return credentials where caller is holder or issuer
                     if credential.holder_did == my_did || credential.issuer_did == my_did {
                         let is_revoked = is_credential_revoked(&action_hash)?;
-                        let is_expired = credential.expires.map_or(false, |exp| exp <= now);
+                        let is_expired = credential.expires.is_some_and(|exp| exp <= now);
 
                         credentials.push(CredentialWithStatus {
                             credential,

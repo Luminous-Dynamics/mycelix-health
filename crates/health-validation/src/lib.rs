@@ -200,7 +200,7 @@ pub fn validate_confidence_score(score: f64, field_name: &str) -> ValidationResu
         return result;
     }
 
-    if score < 0.0 || score > 1.0 {
+    if !(0.0..=1.0).contains(&score) {
         result.add_error(
             field_name,
             "Confidence score must be between 0.0 and 1.0",

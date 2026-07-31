@@ -13,7 +13,7 @@
 
 use winterfell::{
     crypto::{hashers::Blake3_256, DefaultRandomCoin, MerkleTree},
-    math::{fields::f128::BaseElement, FieldElement, StarkField, ToElements},
+    math::{fields::f128::BaseElement, FieldElement, ToElements},
     matrix::ColMatrix,
     AcceptableOptions, Air, AirContext, Assertion, BatchingMethod, CompositionPoly,
     CompositionPolyTrace, DefaultConstraintCommitment, DefaultConstraintEvaluator, DefaultTraceLde,
@@ -88,7 +88,7 @@ impl Air for HealthRangeAir {
         result: &mut [E],
     ) {
         let current = frame.current();
-        let next = frame.next();
+        let _next = frame.next();
         let one = E::ONE;
 
         // Constraint 0: bit is binary (the core soundness constraint)
@@ -143,7 +143,12 @@ fn build_trace(value: u64, min: u64, max: u64) -> RangeTrace {
 
     // Phase 0: decompose (value - min)
     // accumulated[i] is the sum of bits 0..i-1 (starts at 0, ends at full value)
+    // clippy::needless_range_loop suggests iterating `cols`, but `i` indexes the BIT
+    // position across four different columns (BIT, BIT_INDEX, ACCUMULATED, PHASE) while
+    // carrying `acc`. The suggested rewrite would iterate the wrong dimension -- an actual
+    // bug in circuit constraint generation, not a style change.
     let mut acc = 0u64;
+    #[allow(clippy::needless_range_loop)]
     for i in 0..BITS_PER_VALUE {
         let bit = (diff_low >> i) & 1;
         cols[col::BIT][i] = BaseElement::from(bit);

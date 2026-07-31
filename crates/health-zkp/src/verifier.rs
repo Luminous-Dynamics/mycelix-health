@@ -16,7 +16,6 @@
 use std::time::Instant;
 
 use crate::{verify_proof, HealthProof};
-use mycelix_zkp_core::types::AuthenticatedProof;
 
 #[cfg(feature = "verify-dilithium")]
 use mycelix_zkp_core::dilithium;
