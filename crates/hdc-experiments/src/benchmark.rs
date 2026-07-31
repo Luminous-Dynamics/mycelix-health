@@ -217,18 +217,38 @@ pub struct ComparisonReport {
 impl ComparisonReport {
     /// Generate a comparison report
     pub fn generate(hdc_results: Vec<BenchmarkResult>) -> Self {
-        let comparison_notes = vec![
+        let mut comparison_notes = vec![
             // Throughput comparison
             format!(
                 "HDC encoding: {:.0} sequences/sec (for 500bp sequences)",
                 hdc_results.first().map(|r| r.ops_per_second).unwrap_or(0.0)
             ),
-            "BLAST megablast: ~0.5 queries/sec (searching 100GB database)".to_string(),
-            "minimap2: ~50 MB/s sequence throughput (genome alignment)".to_string(),
+            // Baselines are generated from the CITED reference tables below rather
+            // than hardcoded here. They previously duplicated the same numbers as
+            // bare strings while blast_references()/minimap2_references() -- which
+            // carry the publication each figure comes from -- went uncalled. So the
+            // comparison asserted "1000x+ faster" against unattributed numbers, and
+            // updating a reference would silently not update this report.
             String::new(),
             "Key insight: HDC is 1000x+ faster for similarity computation,".to_string(),
             "but BLAST/minimap2 provide alignments and variant calls that HDC cannot.".to_string(),
         ];
+
+        // Published baselines, each with the source it is taken from.
+        comparison_notes.push(String::new());
+        comparison_notes.push("Published baselines for context:".to_string());
+        for r in blast_references() {
+            comparison_notes.push(format!(
+                "  BLAST  {:.1} queries/sec, {:.0} GB RAM -- {} [{}]. {}",
+                r.queries_per_second, r.memory_gb, r.dataset, r.source, r.notes
+            ));
+        }
+        for r in minimap2_references() {
+            comparison_notes.push(format!(
+                "  minimap2  {:.0} MB/s, {:.0} GB RAM -- {} [{}]. {}",
+                r.throughput_mbps, r.memory_gb, r.dataset, r.source, r.notes
+            ));
+        }
 
         let use_case_guidance = vec![
             "Use HDC when:".to_string(),

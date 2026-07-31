@@ -291,6 +291,31 @@ pub fn ingest_bundle(input: IngestBundleInput) -> ExternResult<IngestReport> {
             continue;
         }
 
+        // A bundle may only contribute resources for the patient it establishes.
+        // `patient_fhir_id` was captured in the first pass for exactly this check,
+        // which was never written -- so every non-Patient resource was attached to
+        // `patient_hash` regardless of whom its subject/patient reference named.
+        //
+        // Only an UNAMBIGUOUS mismatch rejects: a relative "Patient/<id>" reference
+        // whose id differs from the bundle's Patient. Absolute URLs, urn:uuid
+        // references, and resources carrying no reference are passed through, since
+        // those cannot be compared reliably and silently dropping data would be the
+        // worse failure. A rejected resource is reported, not swallowed.
+        if let (Some(bundle_id), Some(reference)) =
+            (patient_fhir_id.as_ref(), get_patient_reference(resource))
+        {
+            if let Some(ref_id) = reference.strip_prefix("Patient/") {
+                if ref_id != bundle_id {
+                    report.parse_errors.push(format!(
+                        "{resource_type}: subject references Patient/{ref_id} but this bundle \
+                         establishes Patient/{bundle_id}; skipped rather than attributing data \
+                         to the wrong patient"
+                    ));
+                    continue;
+                }
+            }
+        }
+
         report.total_processed += 1;
 
         match resource_type.as_str() {
@@ -614,7 +639,7 @@ fn process_observation(
         code: build_codeable_concept(code, display, system),
         loinc_code,
         snomed_code: None,
-        value_quantity: None,
+        value_quantity: extract_quantity(resource),
         value_codeable_concept: None,
         value_string: extract_value(resource),
         value_boolean: resource.get("valueBoolean").and_then(|v| v.as_bool()),
@@ -1329,6 +1354,31 @@ fn extract_value(resource: &JsonValue) -> Option<String> {
         }
     }
     None
+}
+
+/// Build a `FhirQuantity` from a resource's `valueQuantity`, preserving the UNIT.
+///
+/// `value_quantity` used to be hardcoded to `None` while only `value_string` was
+/// populated, and `extract_unit` below -- the one unused member of the seven
+/// `extract_*` helpers -- was never called. So a quantitative Observation arrived
+/// without its unit. That is not cosmetic: glucose "5.5" is 5.5 mmol/L or
+/// 5.5 mg/dL depending on the unit, roughly an 18x difference.
+///
+/// Returns `None` when there is no `valueQuantity` or no numeric value, so
+/// resources that previously produced `None` still do.
+fn extract_quantity(resource: &JsonValue) -> Option<FhirQuantity> {
+    let vq = resource.get("valueQuantity")?;
+    let value = vq.get("value").and_then(|v| v.as_f64())?;
+    Some(FhirQuantity {
+        value,
+        unit: extract_unit(resource).unwrap_or_default(),
+        system: vq.get("system").and_then(|v| v.as_str()).map(String::from),
+        code: vq.get("code").and_then(|v| v.as_str()).map(String::from),
+        comparator: vq
+            .get("comparator")
+            .and_then(|v| v.as_str())
+            .map(String::from),
+    })
 }
 
 fn extract_unit(resource: &JsonValue) -> Option<String> {

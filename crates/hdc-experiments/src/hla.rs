@@ -250,6 +250,10 @@ pub struct HlaTiming {
 }
 
 /// Generate a random HLA typing
+// Explicit pushes, not a `vec![..]` literal: every element is an rng draw, so
+// evaluation ORDER determines the generated typing and its reproducibility from a
+// seed. Same rationale as `sample_typing`.
+#[allow(clippy::vec_init_then_push)]
 fn generate_hla_typing(id: &str, rng: &mut ChaCha8Rng) -> HlaTyping {
     let mut alleles = Vec::new();
 

@@ -12,38 +12,27 @@ use rand::prelude::*;
 use rand_chacha::ChaCha8Rng;
 use serde::{Deserialize, Serialize};
 use std::fs::{self, File};
-use std::io::BufReader;
 use std::path::PathBuf;
 use std::time::Instant;
 
 /// Synthetic specimen for testing
 #[derive(Clone, Debug)]
+/// Fields such as `id` / `accession` / `marker` / `name` are parsed provenance:
+/// they record WHICH database entry a sequence came from. No current analysis
+/// reads them, but discarding parsed provenance to satisfy a dead-code lint would
+/// be the wrong trade in a bioinformatics record type.
+#[allow(dead_code)]
 struct Specimen {
     id: String,
+    // Parsed from the source record and retained as provenance: these identify
+    // WHICH database entry a sequence came from (accession/id/marker/name). No
+    // current analysis reads them, but discarding parsed provenance to satisfy a
+    // dead-code lint would be the wrong trade in a bioinformatics record type.
+    #[allow(dead_code)]
     sequence: String,
     species: String,
     genus: String,
     family: String,
-}
-
-/// JSON structure for real COI sequences from BOLD
-#[derive(Deserialize)]
-struct RealCoiData {
-    source: String,
-    retrieval_date: String,
-    marker: String,
-    sequences: Vec<RealSequence>,
-}
-
-#[derive(Deserialize)]
-struct RealSequence {
-    id: String,
-    species: String,
-    genus: String,
-    family: String,
-    order: String,
-    accession: Option<String>,
-    sequence: String,
 }
 
 /// Results of taxonomy experiment
@@ -493,234 +482,4 @@ pub fn run_parameter_sweep(kmer_lengths: &[u8], sequences_per_species: usize, ou
     let file = File::create(&output_path).expect("Failed to create output file");
     serde_json::to_writer_pretty(file, &results).expect("Failed to write results");
     println!("Results saved to: {}", output_path.display());
-}
-
-/// Run taxonomy experiment with real BOLD COI sequences
-pub fn run_real_taxonomy_experiment(data_path: PathBuf, kmer_length: u8, output_dir: PathBuf) {
-    fs::create_dir_all(&output_dir).expect("Failed to create output directory");
-
-    println!("{}", "═".repeat(60).blue());
-    println!("{}", "  REAL DATA TAXONOMY EXPERIMENT".blue().bold());
-    println!("{}", "  Using BOLD COI Barcode Sequences".blue());
-    println!("{}", "═".repeat(60).blue());
-    println!();
-
-    // Load real data
-    println!("{}", "1. Loading real COI sequences...".yellow());
-    let file = File::open(&data_path).expect("Failed to open data file");
-    let reader = BufReader::new(file);
-    let data: RealCoiData = serde_json::from_reader(reader).expect("Failed to parse JSON");
-
-    println!("   Source: {}", data.source);
-    println!("   Retrieved: {}", data.retrieval_date);
-    println!("   Marker: {}", data.marker);
-    println!("   Sequences: {}", data.sequences.len());
-
-    // Convert to specimens
-    let specimens: Vec<Specimen> = data
-        .sequences
-        .iter()
-        .map(|seq| Specimen {
-            id: seq.id.clone(),
-            sequence: seq.sequence.clone(),
-            species: seq.species.clone(),
-            genus: seq.genus.clone(),
-            family: seq.family.clone(),
-        })
-        .collect();
-
-    let num_species: usize = specimens
-        .iter()
-        .map(|s| s.species.clone())
-        .collect::<std::collections::HashSet<_>>()
-        .len();
-    let num_genera: usize = specimens
-        .iter()
-        .map(|s| s.genus.clone())
-        .collect::<std::collections::HashSet<_>>()
-        .len();
-    let num_families: usize = specimens
-        .iter()
-        .map(|s| s.family.clone())
-        .collect::<std::collections::HashSet<_>>()
-        .len();
-
-    println!(
-        "   {} species, {} genera, {} families",
-        num_species, num_genera, num_families
-    );
-    println!();
-
-    // Encode all specimens
-    println!("{}", "2. Encoding sequences...".yellow());
-    let start = Instant::now();
-    let seed = Seed::from_string("real-taxonomy-v1");
-    let encoder = DnaEncoder::new(seed, kmer_length);
-
-    let encoded: Vec<_> = specimens
-        .iter()
-        .filter_map(|spec| {
-            encoder
-                .encode_sequence(&spec.sequence)
-                .ok()
-                .map(|enc| (spec, enc))
-        })
-        .collect();
-    let encoding_time = start.elapsed();
-    println!(
-        "   Encoded {} sequences in {:.2}s",
-        encoded.len(),
-        encoding_time.as_secs_f64()
-    );
-
-    // Compute similarity distributions
-    println!("{}", "3. Computing similarities...".yellow());
-    let start = Instant::now();
-
-    let mut within_species_sims = Vec::new();
-    let mut within_genus_sims = Vec::new();
-    let mut within_family_sims = Vec::new();
-    let mut between_family_sims = Vec::new();
-
-    for i in 0..encoded.len() {
-        for j in (i + 1)..encoded.len() {
-            let (spec_i, enc_i) = &encoded[i];
-            let (spec_j, enc_j) = &encoded[j];
-
-            let sim = enc_i.vector.normalized_cosine_similarity(&enc_j.vector);
-
-            if spec_i.species == spec_j.species {
-                within_species_sims.push(sim);
-            } else if spec_i.genus == spec_j.genus {
-                within_genus_sims.push(sim);
-            } else if spec_i.family == spec_j.family {
-                within_family_sims.push(sim);
-            } else {
-                between_family_sims.push(sim);
-            }
-        }
-    }
-    let comparison_time = start.elapsed();
-
-    // Compute statistics
-    let species_stats = SimilarityStats::from_values(&within_species_sims);
-    let genus_stats = SimilarityStats::from_values(&within_genus_sims);
-    let family_stats = SimilarityStats::from_values(&within_family_sims);
-    let between_stats = SimilarityStats::from_values(&between_family_sims);
-
-    // Check monotonic separation
-    let monotonic = species_stats.mean > genus_stats.mean
-        && genus_stats.mean > family_stats.mean
-        && (between_family_sims.is_empty() || family_stats.mean >= between_stats.mean);
-
-    // Compute k-NN accuracy
-    println!("{}", "4. Computing k-NN accuracy...".yellow());
-    let species_accuracy = compute_knn_accuracy(&encoded, |s| &s.species, 1);
-    let genus_accuracy = compute_knn_accuracy(&encoded, |s| &s.genus, 1);
-
-    // Print results
-    println!();
-    println!("{}", "═".repeat(50).green());
-    println!("{}", "REAL DATA RESULTS".green().bold());
-    println!("{}", "═".repeat(50).green());
-
-    println!();
-    println!("Similarity Distributions (Real BOLD Sequences):");
-    println!(
-        "  Same species:    {:.4} ± {:.4} (n={})",
-        species_stats.mean, species_stats.std_dev, species_stats.count
-    );
-    if genus_stats.count > 0 {
-        println!(
-            "  Same genus:      {:.4} ± {:.4} (n={})",
-            genus_stats.mean, genus_stats.std_dev, genus_stats.count
-        );
-    }
-    if family_stats.count > 0 {
-        println!(
-            "  Same family:     {:.4} ± {:.4} (n={})",
-            family_stats.mean, family_stats.std_dev, family_stats.count
-        );
-    }
-    println!(
-        "  Between family:  {:.4} ± {:.4} (n={})",
-        between_stats.mean, between_stats.std_dev, between_stats.count
-    );
-
-    println!();
-    println!(
-        "Monotonic separation: {}",
-        if monotonic {
-            "YES ✓".green()
-        } else {
-            "NO ✗".red()
-        }
-    );
-
-    println!();
-    println!("k-NN Accuracy (k=1):");
-    println!("  Species: {:.1}%", species_accuracy * 100.0);
-    println!("  Genus:   {:.1}%", genus_accuracy * 100.0);
-
-    println!();
-    println!("Timing:");
-    println!(
-        "  Encoding: {:.2}s ({:.2}ms/seq)",
-        encoding_time.as_secs_f64(),
-        encoding_time.as_millis() as f64 / encoded.len().max(1) as f64
-    );
-    println!("  Comparisons: {:.2}s", comparison_time.as_secs_f64());
-
-    // Save results
-    let results = TaxonomyResults {
-        config: TaxonomyConfig {
-            sequences_per_species: 0, // N/A for real data
-            kmer_length,
-            total_specimens: encoded.len(),
-            num_species,
-            num_genera,
-        },
-        within_species: species_stats.clone().into(),
-        within_genus: genus_stats.clone().into(),
-        within_family: family_stats.clone().into(),
-        random_pairs: between_stats.clone().into(),
-        monotonic_separation: monotonic,
-        species_top1_accuracy: species_accuracy,
-        genus_top1_accuracy: genus_accuracy,
-        encoding_time_ms: encoding_time.as_millis() as f64,
-        comparison_time_ms: comparison_time.as_millis() as f64,
-    };
-
-    let output_path = output_dir.join("real-taxonomy-results.json");
-    let file = File::create(&output_path).expect("Failed to create output file");
-    serde_json::to_writer_pretty(file, &results).expect("Failed to write results");
-    println!();
-    println!("Results saved to: {}", output_path.display());
-
-    // Publishable claim
-    println!();
-    println!("{}", "─".repeat(50));
-    println!("{}", "VALIDATED CLAIM (Real Data)".cyan().bold());
-    println!("{}", "─".repeat(50));
-    if monotonic {
-        println!(
-            "\"Using real COI barcode sequences from {} species,\n\
-             HDC encoding preserves taxonomic structure:\n\
-             same-species ({:.3}) > same-genus ({:.3}) > same-family ({:.3})\n\
-             with {:.0}% species classification accuracy (k-NN, k=1).\"",
-            num_species,
-            species_stats.mean,
-            genus_stats.mean,
-            family_stats.mean,
-            species_accuracy * 100.0
-        );
-        println!();
-        println!("Data source: {} ({})", data.source, data.retrieval_date);
-    } else {
-        println!(
-            "{}",
-            "WARNING: Monotonic separation not achieved with real data!".red()
-        );
-        println!("This may indicate need for parameter tuning or more diverse dataset.");
-    }
 }

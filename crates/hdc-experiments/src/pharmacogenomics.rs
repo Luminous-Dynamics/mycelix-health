@@ -63,6 +63,11 @@ pub struct GeneStats {
 
 /// Parsed CYP gene from NCBI RefSeq
 #[derive(Clone, Debug)]
+/// `accession` is parsed provenance -- it records WHICH RefSeq entry this gene
+/// definition came from (e.g. NG_008376.4). No current analysis reads it, but
+/// dropping a database accession to satisfy a dead-code lint would be the wrong
+/// trade in a pharmacogenomics record.
+#[allow(dead_code)]
 pub struct CypGene {
     pub name: String,      // e.g., "CYP2D6"
     pub accession: String, // e.g., "NG_008376.4"

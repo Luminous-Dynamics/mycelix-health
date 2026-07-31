@@ -9,7 +9,6 @@ use colored::*;
 use hdc_core::{encoding::DnaEncoder, similarity::HdcIndex, Seed};
 use rand::prelude::*;
 use rand_chacha::ChaCha8Rng;
-use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
 use std::fs::{self, File};

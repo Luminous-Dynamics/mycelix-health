@@ -65,6 +65,11 @@ pub struct LocusStats {
 
 /// Parsed HLA allele from IMGT format
 #[derive(Clone, Debug)]
+/// Fields such as `id` / `accession` / `marker` / `name` are parsed provenance:
+/// they record WHICH database entry a sequence came from. No current analysis
+/// reads them, but discarding parsed provenance to satisfy a dead-code lint would
+/// be the wrong trade in a bioinformatics record type.
+#[allow(dead_code)]
 pub struct HlaAllele {
     pub name: String,      // e.g., "A*01:01:01:01"
     pub locus: String,     // e.g., "A"
@@ -83,13 +88,13 @@ fn parse_imgt_hla_fasta(path: &Path) -> Result<Vec<HlaAllele>, std::io::Error> {
 
     for line in reader.lines() {
         let line = line?;
-        if line.starts_with('>') {
+        if let Some(header_rest) = line.strip_prefix('>') {
             if let Some(header) = current_header.take() {
                 if let Some(allele) = parse_hla_header(&header, &current_seq) {
                     alleles.push(allele);
                 }
             }
-            current_header = Some(line[1..].to_string());
+            current_header = Some(header_rest.to_string());
             current_seq.clear();
         } else {
             // Append sequence, removing gaps and whitespace
