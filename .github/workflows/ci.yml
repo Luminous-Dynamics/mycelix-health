@@ -88,30 +88,16 @@ jobs:
         run: cargo build --workspace
 
       - name: Build release (all zomes)
+        # The zome list is DERIVED from the workspace, not hardcoded. The previous
+        # hardcoded list had drifted badly: 26 of the 36 packages it named no longer
+        # existed (so the step failed outright on the first one, `sdoh`), while 12
+        # zomes that DO exist were never built here at all. Deriving it means the
+        # list cannot silently diverge from the repo again.
         run: |
-          # Phase 3 - Clinical Integration
-          cargo build --release -p fhir_mapping_integrity -p fhir_mapping
-          cargo build --release -p cds_integrity -p cds
-          cargo build --release -p provider_directory_integrity -p provider_directory
-          cargo build --release -p telehealth_integrity -p telehealth
-          # Phase 4 - Equity & Access
-          cargo build --release -p sdoh_integrity -p sdoh
-          cargo build --release -p mental_health_integrity -p mental_health
-          cargo build --release -p chronic_care_integrity -p chronic_care
-          cargo build --release -p pediatric_integrity -p pediatric
-          # Phase 5 - Advanced Research
-          cargo build --release -p research_commons_integrity -p research_commons
-          cargo build --release -p trial_matching_integrity -p trial_matching
-          cargo build --release -p irb_integrity -p irb
-          cargo build --release -p federated_learning_integrity -p federated_learning
-          cargo build --release -p population_health_integrity -p population_health
-          # Phase 6 - Global Scale
-          cargo build --release -p ips_integrity -p ips
-          cargo build --release -p i18n_integrity -p i18n
-          cargo build --release -p disaster_response_integrity -p disaster_response
-          cargo build --release -p verifiable_credentials_integrity -p verifiable_credentials
-          cargo build --release -p mobile_support_integrity -p mobile_support
-
+          ARGS=$(cargo metadata --no-deps --format-version 1 \
+            | jq -r '[.packages[] | select(.manifest_path | contains("/zomes/")) | "-p \(.name)"] | join(" ")')
+          echo "Building zome packages: $ARGS"
+          cargo build --release $ARGS
       - name: Run tests
         run: cargo test --workspace
 
