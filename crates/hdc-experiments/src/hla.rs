@@ -8,8 +8,8 @@
 
 use colored::*;
 use hdc_core::{encoding::AlleleHlaEncoder, Seed};
-use rand::prelude::*;
 use rand::distributions::WeightedIndex;
+use rand::prelude::*;
 use rand_chacha::ChaCha8Rng;
 use serde::{Deserialize, Serialize};
 use std::fs::{self, File};
@@ -19,37 +19,62 @@ use std::time::Instant;
 
 /// Common HLA alleles by locus
 const HLA_A_ALLELES: &[&str] = &[
-    "A*01:01", "A*02:01", "A*02:02", "A*02:03", "A*02:05", "A*02:06", "A*02:07",
-    "A*03:01", "A*11:01", "A*23:01", "A*24:02", "A*25:01", "A*26:01", "A*29:02",
-    "A*30:01", "A*31:01", "A*32:01", "A*33:01", "A*34:01", "A*36:01", "A*66:01",
-    "A*68:01", "A*68:02", "A*69:01", "A*74:01", "A*80:01",
+    "A*01:01", "A*02:01", "A*02:02", "A*02:03", "A*02:05", "A*02:06", "A*02:07", "A*03:01",
+    "A*11:01", "A*23:01", "A*24:02", "A*25:01", "A*26:01", "A*29:02", "A*30:01", "A*31:01",
+    "A*32:01", "A*33:01", "A*34:01", "A*36:01", "A*66:01", "A*68:01", "A*68:02", "A*69:01",
+    "A*74:01", "A*80:01",
 ];
 
 const HLA_B_ALLELES: &[&str] = &[
-    "B*07:02", "B*08:01", "B*13:01", "B*14:01", "B*14:02", "B*15:01", "B*15:02",
-    "B*18:01", "B*27:02", "B*27:05", "B*35:01", "B*37:01", "B*38:01", "B*39:01",
-    "B*40:01", "B*40:02", "B*41:01", "B*42:01", "B*44:02", "B*44:03", "B*45:01",
-    "B*46:01", "B*47:01", "B*48:01", "B*49:01", "B*50:01", "B*51:01", "B*52:01",
-    "B*53:01", "B*54:01", "B*55:01", "B*56:01", "B*57:01", "B*58:01",
+    "B*07:02", "B*08:01", "B*13:01", "B*14:01", "B*14:02", "B*15:01", "B*15:02", "B*18:01",
+    "B*27:02", "B*27:05", "B*35:01", "B*37:01", "B*38:01", "B*39:01", "B*40:01", "B*40:02",
+    "B*41:01", "B*42:01", "B*44:02", "B*44:03", "B*45:01", "B*46:01", "B*47:01", "B*48:01",
+    "B*49:01", "B*50:01", "B*51:01", "B*52:01", "B*53:01", "B*54:01", "B*55:01", "B*56:01",
+    "B*57:01", "B*58:01",
 ];
 
 const HLA_C_ALLELES: &[&str] = &[
-    "C*01:02", "C*02:02", "C*03:02", "C*03:03", "C*03:04", "C*04:01", "C*05:01",
-    "C*06:02", "C*07:01", "C*07:02", "C*08:01", "C*08:02", "C*12:02", "C*12:03",
-    "C*14:02", "C*15:02", "C*16:01", "C*17:01",
+    "C*01:02", "C*02:02", "C*03:02", "C*03:03", "C*03:04", "C*04:01", "C*05:01", "C*06:02",
+    "C*07:01", "C*07:02", "C*08:01", "C*08:02", "C*12:02", "C*12:03", "C*14:02", "C*15:02",
+    "C*16:01", "C*17:01",
 ];
 
 const HLA_DRB1_ALLELES: &[&str] = &[
-    "DRB1*01:01", "DRB1*03:01", "DRB1*04:01", "DRB1*04:03", "DRB1*04:04",
-    "DRB1*07:01", "DRB1*08:01", "DRB1*09:01", "DRB1*10:01", "DRB1*11:01",
-    "DRB1*11:04", "DRB1*12:01", "DRB1*13:01", "DRB1*13:02", "DRB1*14:01",
-    "DRB1*15:01", "DRB1*15:02", "DRB1*16:01",
+    "DRB1*01:01",
+    "DRB1*03:01",
+    "DRB1*04:01",
+    "DRB1*04:03",
+    "DRB1*04:04",
+    "DRB1*07:01",
+    "DRB1*08:01",
+    "DRB1*09:01",
+    "DRB1*10:01",
+    "DRB1*11:01",
+    "DRB1*11:04",
+    "DRB1*12:01",
+    "DRB1*13:01",
+    "DRB1*13:02",
+    "DRB1*14:01",
+    "DRB1*15:01",
+    "DRB1*15:02",
+    "DRB1*16:01",
 ];
 
 const HLA_DQB1_ALLELES: &[&str] = &[
-    "DQB1*02:01", "DQB1*02:02", "DQB1*03:01", "DQB1*03:02", "DQB1*03:03",
-    "DQB1*04:01", "DQB1*04:02", "DQB1*05:01", "DQB1*05:02", "DQB1*05:03",
-    "DQB1*06:01", "DQB1*06:02", "DQB1*06:03", "DQB1*06:04",
+    "DQB1*02:01",
+    "DQB1*02:02",
+    "DQB1*03:01",
+    "DQB1*03:02",
+    "DQB1*03:03",
+    "DQB1*04:01",
+    "DQB1*04:02",
+    "DQB1*05:01",
+    "DQB1*05:02",
+    "DQB1*05:03",
+    "DQB1*06:01",
+    "DQB1*06:02",
+    "DQB1*06:03",
+    "DQB1*06:04",
 ];
 
 /// JSON structures for frequency data
@@ -108,11 +133,15 @@ impl FrequencySampler {
         let data: HlaFrequencyData = serde_json::from_reader(reader)?;
 
         let make_sampler = |locus: &LocusData| -> (Vec<String>, WeightedIndex<f64>) {
-            let alleles: Vec<String> = locus.alleles.iter()
+            let alleles: Vec<String> = locus
+                .alleles
+                .iter()
                 .filter(|a| !a.name.contains("other"))
                 .map(|a| a.name.clone())
                 .collect();
-            let weights: Vec<f64> = locus.alleles.iter()
+            let weights: Vec<f64> = locus
+                .alleles
+                .iter()
                 .filter(|a| !a.name.contains("other"))
                 .map(|a| a.frequency)
                 .collect();
@@ -127,11 +156,16 @@ impl FrequencySampler {
         let (dqb1_alleles, dqb1_weights) = make_sampler(&data.loci.dqb1);
 
         Ok(FrequencySampler {
-            a_alleles, a_weights,
-            b_alleles, b_weights,
-            c_alleles, c_weights,
-            drb1_alleles, drb1_weights,
-            dqb1_alleles, dqb1_weights,
+            a_alleles,
+            a_weights,
+            b_alleles,
+            b_weights,
+            c_alleles,
+            c_weights,
+            drb1_alleles,
+            drb1_weights,
+            dqb1_alleles,
+            dqb1_weights,
         })
     }
 
@@ -150,7 +184,10 @@ impl FrequencySampler {
         alleles.push(self.dqb1_alleles[self.dqb1_weights.sample(rng)].clone());
         alleles.push(self.dqb1_alleles[self.dqb1_weights.sample(rng)].clone());
 
-        HlaTyping { id: id.to_string(), alleles }
+        HlaTyping {
+            id: id.to_string(),
+            alleles,
+        }
     }
 }
 
@@ -246,11 +283,17 @@ fn traditional_match_score(recipient: &HlaTyping, donor: &HlaTyping) -> f64 {
         let d2 = &donor.alleles[i + 1];
 
         // Check all combinations
-        if r1 == d1 { matches += 1; }
-        else if r1 == d2 { matches += 1; }
+        if r1 == d1 {
+            matches += 1;
+        } else if r1 == d2 {
+            matches += 1;
+        }
 
-        if r2 == d2 { matches += 1; }
-        else if r2 == d1 && r1 != d1 { matches += 1; }
+        if r2 == d2 {
+            matches += 1;
+        } else if r2 == d1 && r1 != d1 {
+            matches += 1;
+        }
     }
 
     matches as f64 / total as f64
@@ -279,21 +322,24 @@ fn spearman_correlation(x: &[f64], y: &[f64]) -> f64 {
     let mean_rx = rx.iter().sum::<f64>() / n as f64;
     let mean_ry = ry.iter().sum::<f64>() / n as f64;
 
-    let cov: f64 = rx.iter().zip(ry.iter())
+    let cov: f64 = rx
+        .iter()
+        .zip(ry.iter())
         .map(|(xi, yi)| (xi - mean_rx) * (yi - mean_ry))
-        .sum::<f64>() / n as f64;
+        .sum::<f64>()
+        / n as f64;
 
     let std_rx = (rx.iter().map(|xi| (xi - mean_rx).powi(2)).sum::<f64>() / n as f64).sqrt();
     let std_ry = (ry.iter().map(|yi| (yi - mean_ry).powi(2)).sum::<f64>() / n as f64).sqrt();
 
-    if std_rx * std_ry > 0.0 { cov / (std_rx * std_ry) } else { 0.0 }
+    if std_rx * std_ry > 0.0 {
+        cov / (std_rx * std_ry)
+    } else {
+        0.0
+    }
 }
 
-pub fn run_hla_matching(
-    num_donors: usize,
-    num_recipients: usize,
-    output_dir: PathBuf,
-) {
+pub fn run_hla_matching(num_donors: usize, num_recipients: usize, output_dir: PathBuf) {
     fs::create_dir_all(&output_dir).expect("Failed to create output directory");
 
     println!("Configuration:");
@@ -317,22 +363,32 @@ pub fn run_hla_matching(
     let recipients: Vec<HlaTyping> = (0..num_recipients)
         .map(|i| generate_hla_typing(&format!("RECIP{:05}", i), &mut rng))
         .collect();
-    println!("   Generated {} donors, {} recipients", donors.len(), recipients.len());
+    println!(
+        "   Generated {} donors, {} recipients",
+        donors.len(),
+        recipients.len()
+    );
 
     // Pre-encode all donor typings for faster matching
     println!("{}", "2. Encoding HLA typings...".yellow());
     let start = Instant::now();
-    let donor_encodings: Vec<_> = donors.iter()
+    let donor_encodings: Vec<_> = donors
+        .iter()
         .filter_map(|d| {
             let alleles: Vec<&str> = d.alleles.iter().map(|s| s.as_str()).collect();
-            encoder.encode_typing(&alleles).ok().map(|enc| (d.id.clone(), enc))
+            encoder
+                .encode_typing(&alleles)
+                .ok()
+                .map(|enc| (d.id.clone(), enc))
         })
         .collect();
     let encoding_time = start.elapsed();
-    println!("   Encoded {} donors in {:.2}ms ({:.3}ms/typing)",
-             donor_encodings.len(),
-             encoding_time.as_secs_f64() * 1000.0,
-             encoding_time.as_secs_f64() * 1000.0 / num_donors as f64);
+    println!(
+        "   Encoded {} donors in {:.2}ms ({:.3}ms/typing)",
+        donor_encodings.len(),
+        encoding_time.as_secs_f64() * 1000.0,
+        encoding_time.as_secs_f64() * 1000.0 / num_donors as f64
+    );
 
     // Run matching for each recipient
     println!("{}", "3. Running HLA matching (allele-level)...".yellow());
@@ -347,7 +403,8 @@ pub fn run_hla_matching(
         let r_alleles: Vec<&str> = recipient.alleles.iter().map(|s| s.as_str()).collect();
 
         // Traditional matching (ground truth)
-        let mut traditional_scores: Vec<(usize, f64)> = donors.iter()
+        let mut traditional_scores: Vec<(usize, f64)> = donors
+            .iter()
             .enumerate()
             .map(|(i, d)| (i, traditional_match_score(recipient, d)))
             .collect();
@@ -357,7 +414,8 @@ pub fn run_hla_matching(
         let start = Instant::now();
         let recipient_enc = encoder.encode_typing(&r_alleles).unwrap();
 
-        let mut hdc_scores: Vec<(usize, f64)> = donor_encodings.iter()
+        let mut hdc_scores: Vec<(usize, f64)> = donor_encodings
+            .iter()
             .enumerate()
             .map(|(i, (_, enc))| (i, recipient_enc.match_score(enc)))
             .collect();
@@ -371,14 +429,21 @@ pub fn run_hla_matching(
             top1_matches += 1;
         }
 
-        let trad_top5: std::collections::HashSet<usize> = traditional_scores.iter().take(5).map(|(i, _)| *i).collect();
-        let hdc_top5: std::collections::HashSet<usize> = hdc_scores.iter().take(5).map(|(i, _)| *i).collect();
+        let trad_top5: std::collections::HashSet<usize> =
+            traditional_scores.iter().take(5).map(|(i, _)| *i).collect();
+        let hdc_top5: std::collections::HashSet<usize> =
+            hdc_scores.iter().take(5).map(|(i, _)| *i).collect();
         if hdc_top5.intersection(&trad_top5).count() > 0 {
             top5_matches += 1;
         }
 
-        let trad_top10: std::collections::HashSet<usize> = traditional_scores.iter().take(10).map(|(i, _)| *i).collect();
-        let hdc_top10: std::collections::HashSet<usize> = hdc_scores.iter().take(10).map(|(i, _)| *i).collect();
+        let trad_top10: std::collections::HashSet<usize> = traditional_scores
+            .iter()
+            .take(10)
+            .map(|(i, _)| *i)
+            .collect();
+        let hdc_top10: std::collections::HashSet<usize> =
+            hdc_scores.iter().take(10).map(|(i, _)| *i).collect();
         if hdc_top10.intersection(&trad_top10).count() > 0 {
             top10_matches += 1;
         }
@@ -392,7 +457,11 @@ pub fn run_hla_matching(
         }
 
         if (r_idx + 1) % 10 == 0 {
-            print!("\r   Processed {}/{} recipients...", r_idx + 1, num_recipients);
+            print!(
+                "\r   Processed {}/{} recipients...",
+                r_idx + 1,
+                num_recipients
+            );
             std::io::Write::flush(&mut std::io::stdout()).ok();
         }
     }
@@ -428,15 +497,25 @@ pub fn run_hla_matching(
 
     println!();
     println!("Privacy:");
-    println!("  Allele inference accuracy: {:.1}% (random: {:.1}%)",
-             allele_inference * 100.0, allele_inference * 100.0);
+    println!(
+        "  Allele inference accuracy: {:.1}% (random: {:.1}%)",
+        allele_inference * 100.0,
+        allele_inference * 100.0
+    );
     println!("  Exact typing recovery: {:.1}%", exact_recovery * 100.0);
 
     println!();
     println!("Timing:");
-    let search_time_per_recipient = total_search_time.as_secs_f64() * 1000.0 / num_recipients as f64;
-    println!("  Search time: {:.2}ms/recipient ({} donors)", search_time_per_recipient, num_donors);
-    println!("  Throughput: {:.0} matches/second", 1000.0 / search_time_per_recipient);
+    let search_time_per_recipient =
+        total_search_time.as_secs_f64() * 1000.0 / num_recipients as f64;
+    println!(
+        "  Search time: {:.2}ms/recipient ({} donors)",
+        search_time_per_recipient, num_donors
+    );
+    println!(
+        "  Throughput: {:.0} matches/second",
+        1000.0 / search_time_per_recipient
+    );
 
     // Save results
     let results = HlaResults {
@@ -462,7 +541,8 @@ pub fn run_hla_matching(
         },
         timing: HlaTiming {
             encoding_ms_per_typing: encoding_time.as_secs_f64() * 1000.0 / num_donors as f64,
-            comparison_ms_per_pair: total_search_time.as_secs_f64() * 1000.0 / (num_recipients * num_donors) as f64,
+            comparison_ms_per_pair: total_search_time.as_secs_f64() * 1000.0
+                / (num_recipients * num_donors) as f64,
             total_search_time_ms: total_search_time.as_secs_f64() * 1000.0,
         },
     };
@@ -485,14 +565,20 @@ pub fn run_hla_matching(
              {:.0}% top-1 agreement and {:.2} rank correlation\n\
              vs. traditional matching, while preventing\n\
              exact HLA typing recovery ({:.0}% success rate).\"",
-            top1_agreement * 100.0, score_correlation, exact_recovery * 100.0
+            top1_agreement * 100.0,
+            score_correlation,
+            exact_recovery * 100.0
         );
     } else {
-        println!("{}", "NOTE: HDC matching shows lower agreement than expected.".yellow());
+        println!(
+            "{}",
+            "NOTE: HDC matching shows lower agreement than expected.".yellow()
+        );
         println!("Consider tuning encoding parameters or using weighted bundling.");
         println!(
             "Current: {:.0}% top-1, {:.2} correlation",
-            top1_agreement * 100.0, score_correlation
+            top1_agreement * 100.0,
+            score_correlation
         );
     }
 
@@ -528,8 +614,8 @@ pub fn run_hla_matching_with_frequencies(
 
     // Load frequency data
     println!("{}", "1. Loading allele frequency data...".yellow());
-    let sampler = FrequencySampler::from_file(&freq_data_path)
-        .expect("Failed to load frequency data");
+    let sampler =
+        FrequencySampler::from_file(&freq_data_path).expect("Failed to load frequency data");
     println!("   Loaded frequencies for 5 loci");
 
     println!();
@@ -545,14 +631,21 @@ pub fn run_hla_matching_with_frequencies(
     let encoder = AlleleHlaEncoder::new(seed);
 
     // Generate donors and recipients using frequency sampling
-    println!("{}", "2. Generating HLA typings (frequency-based)...".yellow());
+    println!(
+        "{}",
+        "2. Generating HLA typings (frequency-based)...".yellow()
+    );
     let donors: Vec<HlaTyping> = (0..num_donors)
         .map(|i| sampler.sample_typing(&format!("DONOR{:05}", i), &mut rng))
         .collect();
     let recipients: Vec<HlaTyping> = (0..num_recipients)
         .map(|i| sampler.sample_typing(&format!("RECIP{:05}", i), &mut rng))
         .collect();
-    println!("   Generated {} donors, {} recipients", donors.len(), recipients.len());
+    println!(
+        "   Generated {} donors, {} recipients",
+        donors.len(),
+        recipients.len()
+    );
 
     // Show some statistics about allele distribution
     let mut a_counts: std::collections::HashMap<String, usize> = std::collections::HashMap::new();
@@ -563,19 +656,38 @@ pub fn run_hla_matching_with_frequencies(
     }
     let mut top_a: Vec<_> = a_counts.iter().collect();
     top_a.sort_by(|a, b| b.1.cmp(a.1));
-    println!("   Top HLA-A alleles: {:?}", top_a.iter().take(3).map(|(a, c)| format!("{}: {:.1}%", a, **c as f64 / (num_donors * 2) as f64 * 100.0)).collect::<Vec<_>>());
+    println!(
+        "   Top HLA-A alleles: {:?}",
+        top_a
+            .iter()
+            .take(3)
+            .map(|(a, c)| format!(
+                "{}: {:.1}%",
+                a,
+                **c as f64 / (num_donors * 2) as f64 * 100.0
+            ))
+            .collect::<Vec<_>>()
+    );
 
     // Encode all donors
     println!("{}", "3. Encoding HLA typings...".yellow());
     let start = Instant::now();
-    let donor_encodings: Vec<_> = donors.iter()
+    let donor_encodings: Vec<_> = donors
+        .iter()
         .filter_map(|d| {
             let alleles: Vec<&str> = d.alleles.iter().map(|s| s.as_str()).collect();
-            encoder.encode_typing(&alleles).ok().map(|enc| (d.id.clone(), enc))
+            encoder
+                .encode_typing(&alleles)
+                .ok()
+                .map(|enc| (d.id.clone(), enc))
         })
         .collect();
     let encoding_time = start.elapsed();
-    println!("   Encoded {} donors in {:.2}ms", donor_encodings.len(), encoding_time.as_secs_f64() * 1000.0);
+    println!(
+        "   Encoded {} donors in {:.2}ms",
+        donor_encodings.len(),
+        encoding_time.as_secs_f64() * 1000.0
+    );
 
     // Run matching
     println!("{}", "4. Running HLA matching...".yellow());
@@ -590,7 +702,8 @@ pub fn run_hla_matching_with_frequencies(
         let r_alleles: Vec<&str> = recipient.alleles.iter().map(|s| s.as_str()).collect();
 
         // Traditional matching
-        let mut traditional_scores: Vec<(usize, f64)> = donors.iter()
+        let mut traditional_scores: Vec<(usize, f64)> = donors
+            .iter()
             .enumerate()
             .map(|(i, d)| (i, traditional_match_score(recipient, d)))
             .collect();
@@ -599,7 +712,8 @@ pub fn run_hla_matching_with_frequencies(
         // HDC matching
         let start = Instant::now();
         let recipient_enc = encoder.encode_typing(&r_alleles).unwrap();
-        let mut hdc_scores: Vec<(usize, f64)> = donor_encodings.iter()
+        let mut hdc_scores: Vec<(usize, f64)> = donor_encodings
+            .iter()
             .enumerate()
             .map(|(i, (_, enc))| (i, recipient_enc.match_score(enc)))
             .collect();
@@ -609,15 +723,28 @@ pub fn run_hla_matching_with_frequencies(
         // Check agreement
         let trad_top1 = traditional_scores[0].0;
         let hdc_top1 = hdc_scores[0].0;
-        if hdc_top1 == trad_top1 { top1_matches += 1; }
+        if hdc_top1 == trad_top1 {
+            top1_matches += 1;
+        }
 
-        let trad_top5: std::collections::HashSet<usize> = traditional_scores.iter().take(5).map(|(i, _)| *i).collect();
-        let hdc_top5: std::collections::HashSet<usize> = hdc_scores.iter().take(5).map(|(i, _)| *i).collect();
-        if hdc_top5.intersection(&trad_top5).count() > 0 { top5_matches += 1; }
+        let trad_top5: std::collections::HashSet<usize> =
+            traditional_scores.iter().take(5).map(|(i, _)| *i).collect();
+        let hdc_top5: std::collections::HashSet<usize> =
+            hdc_scores.iter().take(5).map(|(i, _)| *i).collect();
+        if hdc_top5.intersection(&trad_top5).count() > 0 {
+            top5_matches += 1;
+        }
 
-        let trad_top10: std::collections::HashSet<usize> = traditional_scores.iter().take(10).map(|(i, _)| *i).collect();
-        let hdc_top10: std::collections::HashSet<usize> = hdc_scores.iter().take(10).map(|(i, _)| *i).collect();
-        if hdc_top10.intersection(&trad_top10).count() > 0 { top10_matches += 1; }
+        let trad_top10: std::collections::HashSet<usize> = traditional_scores
+            .iter()
+            .take(10)
+            .map(|(i, _)| *i)
+            .collect();
+        let hdc_top10: std::collections::HashSet<usize> =
+            hdc_scores.iter().take(10).map(|(i, _)| *i).collect();
+        if hdc_top10.intersection(&trad_top10).count() > 0 {
+            top10_matches += 1;
+        }
 
         // Store scores for correlation
         for (d_idx, trad_score) in traditional_scores.iter().take(100) {
@@ -628,7 +755,11 @@ pub fn run_hla_matching_with_frequencies(
         }
 
         if (r_idx + 1) % 10 == 0 {
-            print!("\r   Processed {}/{} recipients...", r_idx + 1, num_recipients);
+            print!(
+                "\r   Processed {}/{} recipients...",
+                r_idx + 1,
+                num_recipients
+            );
             std::io::Write::flush(&mut std::io::stdout()).ok();
         }
     }
@@ -658,9 +789,16 @@ pub fn run_hla_matching_with_frequencies(
 
     println!();
     println!("Timing:");
-    let search_time_per_recipient = total_search_time.as_secs_f64() * 1000.0 / num_recipients as f64;
-    println!("  Search time: {:.2}ms/recipient ({} donors)", search_time_per_recipient, num_donors);
-    println!("  Throughput: {:.0} matches/second", 1000.0 / search_time_per_recipient);
+    let search_time_per_recipient =
+        total_search_time.as_secs_f64() * 1000.0 / num_recipients as f64;
+    println!(
+        "  Search time: {:.2}ms/recipient ({} donors)",
+        search_time_per_recipient, num_donors
+    );
+    println!(
+        "  Throughput: {:.0} matches/second",
+        1000.0 / search_time_per_recipient
+    );
 
     // Save results
     let results = HlaResults {
@@ -686,7 +824,8 @@ pub fn run_hla_matching_with_frequencies(
         },
         timing: HlaTiming {
             encoding_ms_per_typing: encoding_time.as_secs_f64() * 1000.0 / num_donors as f64,
-            comparison_ms_per_pair: total_search_time.as_secs_f64() * 1000.0 / (num_recipients * num_donors) as f64,
+            comparison_ms_per_pair: total_search_time.as_secs_f64() * 1000.0
+                / (num_recipients * num_donors) as f64,
             total_search_time_ms: total_search_time.as_secs_f64() * 1000.0,
         },
     };
@@ -700,7 +839,10 @@ pub fn run_hla_matching_with_frequencies(
     // Publishable claim
     println!();
     println!("{}", "─".repeat(50));
-    println!("{}", "VALIDATED CLAIM (Realistic Frequencies)".cyan().bold());
+    println!(
+        "{}",
+        "VALIDATED CLAIM (Realistic Frequencies)".cyan().bold()
+    );
     println!("{}", "─".repeat(50));
 
     if top1_agreement > 0.5 && score_correlation > 0.7 {
@@ -710,15 +852,26 @@ pub fn run_hla_matching_with_frequencies(
              {:.2} Spearman correlation with traditional matching,\n\
              demonstrating clinical viability for privacy-preserving\n\
              donor-recipient matching.\"",
-            top1_agreement * 100.0, score_correlation
+            top1_agreement * 100.0,
+            score_correlation
         );
     } else {
         println!("With realistic allele frequencies:");
-        println!("  Top-1: {:.0}%, Top-5: {:.0}%, Top-10: {:.0}%",
-                 top1_agreement * 100.0, top5_agreement * 100.0, top10_agreement * 100.0);
+        println!(
+            "  Top-1: {:.0}%, Top-5: {:.0}%, Top-10: {:.0}%",
+            top1_agreement * 100.0,
+            top5_agreement * 100.0,
+            top10_agreement * 100.0
+        );
         println!("  Spearman ρ: {:.3}", score_correlation);
         println!();
-        println!("{}", "NOTE: Higher shared allele rates with realistic frequencies".yellow());
-        println!("{}", "may make top-1 distinction harder (more ties).".yellow());
+        println!(
+            "{}",
+            "NOTE: Higher shared allele rates with realistic frequencies".yellow()
+        );
+        println!(
+            "{}",
+            "may make top-1 distinction harder (more ties).".yellow()
+        );
     }
 }

@@ -14,10 +14,10 @@
 
 use clap::{Parser, Subcommand};
 use hdc_core::*;
+use std::collections::HashMap;
 use std::fs;
 use std::io::{self, BufRead, Write};
 use std::path::PathBuf;
-use std::collections::HashMap;
 
 #[derive(Parser)]
 #[command(name = "hdc-query")]
@@ -196,19 +196,35 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let cli = Cli::parse();
 
     let result: serde_json::Value = match cli.command {
-        Commands::Similarity { vector1, vector2, metric, with_confidence } => {
+        Commands::Similarity {
+            vector1,
+            vector2,
+            metric,
+            with_confidence,
+        } => {
             let v1 = load_vector(&vector1)?;
             let v2 = load_vector(&vector2)?;
             let result = compute_similarity(&v1, &v2, &metric, with_confidence)?;
             serde_json::to_value(result)?
         }
-        Commands::Search { query, database, top_k, threshold, metric } => {
+        Commands::Search {
+            query,
+            database,
+            top_k,
+            threshold,
+            metric,
+        } => {
             let query_vec = load_vector(&query)?;
             let db = load_database(&database)?;
             let results = search_database(&query_vec, &db, top_k, threshold, &metric)?;
             serde_json::to_value(results)?
         }
-        Commands::Batch { queries, database, top_k, metric } => {
+        Commands::Batch {
+            queries,
+            database,
+            top_k,
+            metric,
+        } => {
             let query_vecs = load_vectors(&queries)?;
             let db = load_database(&database)?;
             let results = batch_search(&query_vecs, &db, top_k, &metric)?;
@@ -221,7 +237,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 "index_file": output.display().to_string(),
             })
         }
-        Commands::Matrix { vectors, metric, threshold } => {
+        Commands::Matrix {
+            vectors,
+            metric,
+            threshold,
+        } => {
             let vecs = load_vectors(&vectors)?;
             let matrix = compute_matrix(&vecs, &metric, threshold)?;
             serde_json::to_value(matrix)?
@@ -273,18 +293,22 @@ fn load_vector(input: &str) -> Result<Hypervector, Box<dyn std::error::Error>> {
             "Invalid vector size: {} bytes (expected {})",
             bytes.len(),
             HYPERVECTOR_BYTES
-        ).into());
+        )
+        .into());
     }
 
     Ok(Hypervector::from_bytes(&bytes))
 }
 
-fn load_vectors(path: &PathBuf) -> Result<Vec<(Option<String>, Hypervector)>, Box<dyn std::error::Error>> {
+fn load_vectors(
+    path: &PathBuf,
+) -> Result<Vec<(Option<String>, Hypervector)>, Box<dyn std::error::Error>> {
     let content = fs::read_to_string(path)?;
 
     // Try JSON array first
     if let Ok(entries) = serde_json::from_str::<Vec<DatabaseEntry>>(&content) {
-        return entries.iter()
+        return entries
+            .iter()
             .map(|e| {
                 let bytes = hex_decode(&e.vector)?;
                 Ok((Some(e.id.clone()), Hypervector::from_bytes(&bytes)))
@@ -293,7 +317,8 @@ fn load_vectors(path: &PathBuf) -> Result<Vec<(Option<String>, Hypervector)>, Bo
     }
 
     // Fall back to one hex per line
-    content.lines()
+    content
+        .lines()
         .filter(|l| !l.trim().is_empty())
         .enumerate()
         .map(|(i, line)| {
@@ -319,7 +344,13 @@ fn compute_similarity(
         "cosine" => v1.normalized_cosine_similarity(v2),
         "hamming" => v1.hamming_similarity(v2),
         "jaccard" => v1.jaccard_similarity(v2),
-        _ => return Err(format!("Unknown metric: {}. Valid: cosine, hamming, jaccard", metric).into()),
+        _ => {
+            return Err(format!(
+                "Unknown metric: {}. Valid: cosine, hamming, jaccard",
+                metric
+            )
+            .into())
+        }
     };
 
     let confidence = if with_confidence {
@@ -348,7 +379,8 @@ fn search_database(
     threshold: Option<f64>,
     metric: &str,
 ) -> Result<Vec<SearchResult>, Box<dyn std::error::Error>> {
-    let mut results: Vec<SearchResult> = database.iter()
+    let mut results: Vec<SearchResult> = database
+        .iter()
         .filter_map(|entry| {
             let bytes = hex_decode(&entry.vector).ok()?;
             let vec = Hypervector::from_bytes(&bytes);
@@ -389,7 +421,8 @@ fn batch_search(
     top_k: usize,
     metric: &str,
 ) -> Result<Vec<BatchSearchResult>, Box<dyn std::error::Error>> {
-    queries.iter()
+    queries
+        .iter()
         .enumerate()
         .map(|(i, (id, query))| {
             let results = search_database(query, database, top_k, None, metric)?;
@@ -409,14 +442,13 @@ fn build_index(
     let vectors = load_vectors(vectors_path)?;
 
     // For now, just copy the database format - real indexing would use HdcIndex
-    let entries: Vec<DatabaseEntry> = vectors.iter()
+    let entries: Vec<DatabaseEntry> = vectors
+        .iter()
         .enumerate()
-        .map(|(i, (id, vec))| {
-            DatabaseEntry {
-                id: id.clone().unwrap_or_else(|| format!("vec_{}", i)),
-                vector: hex_encode(vec.as_bytes()),
-                metadata: serde_json::json!({}),
-            }
+        .map(|(i, (id, vec))| DatabaseEntry {
+            id: id.clone().unwrap_or_else(|| format!("vec_{}", i)),
+            vector: hex_encode(vec.as_bytes()),
+            metadata: serde_json::json!({}),
         })
         .collect();
 
@@ -501,7 +533,8 @@ fn result_to_csv(value: &serde_json::Value) -> Result<String, Box<dyn std::error
                 // Rows
                 for item in arr {
                     if let Some(obj) = item.as_object() {
-                        let row: Vec<String> = headers.iter()
+                        let row: Vec<String> = headers
+                            .iter()
                             .map(|h| {
                                 obj.get(*h)
                                     .map(|v| v.to_string().trim_matches('"').to_string())

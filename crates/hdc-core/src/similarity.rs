@@ -15,7 +15,9 @@ pub struct HdcIndex {
 impl HdcIndex {
     /// Create a new empty index
     pub fn new() -> Self {
-        HdcIndex { vectors: Vec::new() }
+        HdcIndex {
+            vectors: Vec::new(),
+        }
     }
 
     /// Create an index with pre-allocated capacity
@@ -47,7 +49,8 @@ impl HdcIndex {
 
     /// Find top-k most similar vectors to a query
     pub fn search(&self, query: &Hypervector, top_k: usize) -> Vec<SearchResult> {
-        let mut results: Vec<SearchResult> = self.vectors
+        let mut results: Vec<SearchResult> = self
+            .vectors
             .iter()
             .map(|(id, vector)| SearchResult {
                 id: id.clone(),
@@ -81,7 +84,8 @@ impl HdcIndex {
 
     /// Compute the memory size of the index in bytes
     pub fn memory_size(&self) -> usize {
-        self.vectors.iter()
+        self.vectors
+            .iter()
             .map(|(id, hv)| id.len() + hv.as_bytes().len())
             .sum()
     }
@@ -128,9 +132,7 @@ impl SimilarityStats {
         let min = values.iter().cloned().fold(f64::INFINITY, f64::min);
         let max = values.iter().cloned().fold(f64::NEG_INFINITY, f64::max);
         let mean = values.iter().sum::<f64>() / count as f64;
-        let variance = values.iter()
-            .map(|x| (x - mean).powi(2))
-            .sum::<f64>() / count as f64;
+        let variance = values.iter().map(|x| (x - mean).powi(2)).sum::<f64>() / count as f64;
         let std_dev = variance.sqrt();
 
         SimilarityStats {
@@ -170,9 +172,11 @@ pub fn knn_accuracy(
         return 0.0;
     }
 
-    let correct = search_results.iter()
+    let correct = search_results
+        .iter()
         .filter(|r| {
-            label_map.get(&r.id)
+            label_map
+                .get(&r.id)
                 .map(|label| label == query_label)
                 .unwrap_or(false)
         })

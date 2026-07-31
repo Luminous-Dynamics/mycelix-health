@@ -23,8 +23,8 @@
 //! - Kanerva, P. (2009). Hyperdimensional computing.
 //! - Rehm, H. L. et al. (2015). ClinGen -- standardized gene curation.
 
-use crate::{bundle, Hypervector, Seed, HYPERVECTOR_BYTES};
 use crate::differential_privacy::{DpHypervector, DpParams};
+use crate::{bundle, Hypervector, Seed, HYPERVECTOR_BYTES};
 use serde::{Deserialize, Serialize};
 
 // ---------------------------------------------------------------------------
@@ -244,8 +244,10 @@ impl RareDiseasePipeline {
             .iter()
             .map(|v| {
                 let gene_hv = Hypervector::random(&self.seed, &v.gene);
-                let pos_hv = Hypervector::random(&self.seed, &format!("{}:{}", v.chromosome, v.position));
-                let allele_hv = Hypervector::random(&self.seed, &format!("{}>{}", v.ref_allele, v.alt_allele));
+                let pos_hv =
+                    Hypervector::random(&self.seed, &format!("{}:{}", v.chromosome, v.position));
+                let allele_hv =
+                    Hypervector::random(&self.seed, &format!("{}>{}", v.ref_allele, v.alt_allele));
                 gene_hv.bind(&pos_hv).bind(&allele_hv)
             })
             .collect();
@@ -276,7 +278,11 @@ impl RareDiseasePipeline {
     /// Encode patient variants with differential privacy.
     ///
     /// The returned bytes are safe to transmit -- they satisfy epsilon-DP.
-    pub fn encode_patient_variants(&self, variants: &[RareDiseaseVariant], epsilon: f64) -> Vec<u8> {
+    pub fn encode_patient_variants(
+        &self,
+        variants: &[RareDiseaseVariant],
+        epsilon: f64,
+    ) -> Vec<u8> {
         let raw = self.encode_variants_raw(variants);
         let dp = DpHypervector::from_vector(&raw, DpParams::pure(epsilon), Some(42));
         dp.vector.as_bytes().to_vec()
@@ -323,8 +329,10 @@ impl RareDiseasePipeline {
             .map(|disease| {
                 let genomic_sim =
                     cosine_similarity_binary(&patient.encoded_genome, &disease.encoded_signature);
-                let phenotype_sim =
-                    cosine_similarity_binary(&patient.encoded_phenotype, &disease.phenotype_signature);
+                let phenotype_sim = cosine_similarity_binary(
+                    &patient.encoded_phenotype,
+                    &disease.phenotype_signature,
+                );
 
                 let combined =
                     self.genomic_weight * genomic_sim + self.phenotype_weight * phenotype_sim;
@@ -405,9 +413,14 @@ pub fn cosine_similarity_binary(a: &[u8], b: &[u8]) -> f64 {
 /// Build a small reference database of ~10 well-known rare diseases.
 ///
 /// Returns `(variants, hpo_terms, disease_id, disease_name, prevalence, inheritance)`.
-pub fn build_reference_database()
--> Vec<(Vec<RareDiseaseVariant>, Vec<&'static str>, &'static str, &'static str, f64, InheritancePattern)>
-{
+pub fn build_reference_database() -> Vec<(
+    Vec<RareDiseaseVariant>,
+    Vec<&'static str>,
+    &'static str,
+    &'static str,
+    f64,
+    InheritancePattern,
+)> {
     vec![
         // 1. Cystic Fibrosis
         (
@@ -422,7 +435,9 @@ pub fn build_reference_database()
                 inheritance: InheritancePattern::AutosomalRecessive,
             }],
             vec!["HP:0002110", "HP:0006536", "HP:0002024"], // bronchiectasis, pancreatic insuff, gastro
-            "OMIM:219700", "Cystic Fibrosis", 1.0 / 2500.0,
+            "OMIM:219700",
+            "Cystic Fibrosis",
+            1.0 / 2500.0,
             InheritancePattern::AutosomalRecessive,
         ),
         // 2. Sickle Cell Disease
@@ -438,7 +453,9 @@ pub fn build_reference_database()
                 inheritance: InheritancePattern::AutosomalRecessive,
             }],
             vec!["HP:0001903", "HP:0002027", "HP:0010972"],
-            "OMIM:603903", "Sickle Cell Disease", 1.0 / 500.0,
+            "OMIM:603903",
+            "Sickle Cell Disease",
+            1.0 / 500.0,
             InheritancePattern::AutosomalRecessive,
         ),
         // 3. Huntington's Disease
@@ -454,7 +471,9 @@ pub fn build_reference_database()
                 inheritance: InheritancePattern::AutosomalDominant,
             }],
             vec!["HP:0002072", "HP:0001300", "HP:0000726"],
-            "OMIM:143100", "Huntington's Disease", 1.0 / 10000.0,
+            "OMIM:143100",
+            "Huntington's Disease",
+            1.0 / 10000.0,
             InheritancePattern::AutosomalDominant,
         ),
         // 4. Marfan Syndrome
@@ -470,7 +489,9 @@ pub fn build_reference_database()
                 inheritance: InheritancePattern::AutosomalDominant,
             }],
             vec!["HP:0001519", "HP:0001166", "HP:0001083"],
-            "OMIM:154700", "Marfan Syndrome", 1.0 / 5000.0,
+            "OMIM:154700",
+            "Marfan Syndrome",
+            1.0 / 5000.0,
             InheritancePattern::AutosomalDominant,
         ),
         // 5. Phenylketonuria (PKU)
@@ -486,7 +507,9 @@ pub fn build_reference_database()
                 inheritance: InheritancePattern::AutosomalRecessive,
             }],
             vec!["HP:0001987", "HP:0001249", "HP:0000252"],
-            "OMIM:261600", "Phenylketonuria", 1.0 / 12000.0,
+            "OMIM:261600",
+            "Phenylketonuria",
+            1.0 / 12000.0,
             InheritancePattern::AutosomalRecessive,
         ),
         // 6. Tay-Sachs Disease
@@ -502,7 +525,9 @@ pub fn build_reference_database()
                 inheritance: InheritancePattern::AutosomalRecessive,
             }],
             vec!["HP:0002134", "HP:0001252", "HP:0001263"],
-            "OMIM:272800", "Tay-Sachs Disease", 1.0 / 320000.0,
+            "OMIM:272800",
+            "Tay-Sachs Disease",
+            1.0 / 320000.0,
             InheritancePattern::AutosomalRecessive,
         ),
         // 7. Duchenne Muscular Dystrophy
@@ -518,7 +543,9 @@ pub fn build_reference_database()
                 inheritance: InheritancePattern::XLinked,
             }],
             vec!["HP:0003202", "HP:0003325", "HP:0002515"],
-            "OMIM:310200", "Duchenne Muscular Dystrophy", 1.0 / 3500.0,
+            "OMIM:310200",
+            "Duchenne Muscular Dystrophy",
+            1.0 / 3500.0,
             InheritancePattern::XLinked,
         ),
         // 8. Rett Syndrome
@@ -534,7 +561,9 @@ pub fn build_reference_database()
                 inheritance: InheritancePattern::DeNovo,
             }],
             vec!["HP:0002059", "HP:0001344", "HP:0002540"],
-            "OMIM:312750", "Rett Syndrome", 1.0 / 10000.0,
+            "OMIM:312750",
+            "Rett Syndrome",
+            1.0 / 10000.0,
             InheritancePattern::DeNovo,
         ),
         // 9. Fragile X Syndrome
@@ -550,7 +579,9 @@ pub fn build_reference_database()
                 inheritance: InheritancePattern::XLinked,
             }],
             vec!["HP:0001249", "HP:0000750", "HP:0000400"],
-            "OMIM:300624", "Fragile X Syndrome", 1.0 / 4000.0,
+            "OMIM:300624",
+            "Fragile X Syndrome",
+            1.0 / 4000.0,
             InheritancePattern::XLinked,
         ),
         // 10. Wilson Disease
@@ -566,7 +597,9 @@ pub fn build_reference_database()
                 inheritance: InheritancePattern::AutosomalRecessive,
             }],
             vec!["HP:0001392", "HP:0001394", "HP:0002180"],
-            "OMIM:277900", "Wilson Disease", 1.0 / 30000.0,
+            "OMIM:277900",
+            "Wilson Disease",
+            1.0 / 30000.0,
             InheritancePattern::AutosomalRecessive,
         ),
     ]
@@ -625,7 +658,10 @@ mod tests {
         let p = make_pipeline();
         let encoded = p.encode_patient_variants(&[cf_variant()], 1.0);
         assert_eq!(encoded.len(), HYPERVECTOR_BYTES);
-        assert!(encoded.iter().any(|&b| b != 0), "Encoded HV must be non-zero");
+        assert!(
+            encoded.iter().any(|&b| b != 0),
+            "Encoded HV must be non-zero"
+        );
     }
 
     // ---- 2. Same variants produce similar encodings -----------------------
@@ -704,10 +740,15 @@ mod tests {
         let results = p.search(&profile);
         assert!(!results.is_empty(), "Should return at least one match");
         // CF should be the top match (or at least in top 3)
-        let top3_ids: Vec<&str> = results.iter().take(3).map(|r| r.disease.disease_id.as_str()).collect();
+        let top3_ids: Vec<&str> = results
+            .iter()
+            .take(3)
+            .map(|r| r.disease.disease_id.as_str())
+            .collect();
         assert!(
             top3_ids.contains(&"OMIM:219700"),
-            "Cystic Fibrosis should be in top 3, got: {:?}", top3_ids
+            "Cystic Fibrosis should be in top 3, got: {:?}",
+            top3_ids
         );
     }
 
@@ -796,10 +837,19 @@ mod tests {
         let sim_opposite = cosine_similarity_binary(&a, &b);
         let sim_same = cosine_similarity_binary(&a, &c);
 
-        assert!(sim_opposite >= 0.0 && sim_opposite <= 1.0, "Got {sim_opposite}");
+        assert!(
+            sim_opposite >= 0.0 && sim_opposite <= 1.0,
+            "Got {sim_opposite}"
+        );
         assert!(sim_same >= 0.0 && sim_same <= 1.0, "Got {sim_same}");
-        assert!((sim_same - 1.0).abs() < 1e-9, "Identical vectors should have sim=1.0");
-        assert!(sim_opposite.abs() < 1e-9, "Opposite vectors should have sim=0.0");
+        assert!(
+            (sim_same - 1.0).abs() < 1e-9,
+            "Identical vectors should have sim=1.0"
+        );
+        assert!(
+            sim_opposite.abs() < 1e-9,
+            "Opposite vectors should have sim=0.0"
+        );
     }
 
     // ---- 12. Patient profile tracks epsilon budget -----------------------

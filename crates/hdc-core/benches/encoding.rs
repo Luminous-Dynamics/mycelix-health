@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Commercial licensing: see COMMERCIAL_LICENSE.md at repository root
 //! Benchmarks for HDC encoding performance
-use criterion::{black_box, criterion_group, criterion_main, Criterion, BenchmarkId};
+use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criterion};
 use hdc_core::{encoding::DnaEncoder, Seed};
 
 fn bench_encoding(c: &mut Criterion) {
@@ -44,11 +44,17 @@ fn bench_similarity(c: &mut Criterion) {
     let enc3 = encoder.encode_sequence(seq3).unwrap();
 
     c.bench_function("similarity_identical", |b| {
-        b.iter(|| enc1.vector.normalized_cosine_similarity(black_box(&enc2.vector)))
+        b.iter(|| {
+            enc1.vector
+                .normalized_cosine_similarity(black_box(&enc2.vector))
+        })
     });
 
     c.bench_function("similarity_different", |b| {
-        b.iter(|| enc1.vector.normalized_cosine_similarity(black_box(&enc3.vector)))
+        b.iter(|| {
+            enc1.vector
+                .normalized_cosine_similarity(black_box(&enc3.vector))
+        })
     });
 }
 
@@ -59,10 +65,19 @@ fn bench_batch_similarity(c: &mut Criterion) {
     // Create 100 encoded sequences with valid DNA only
     let bases = ["ATCG", "GCTA", "TAGC", "CGAT"];
     let sequences: Vec<_> = (0..100)
-        .map(|i| format!("{}{}{}", bases[i % 4], bases[(i + 1) % 4], bases[(i + 2) % 4]).repeat(10))
+        .map(|i| {
+            format!(
+                "{}{}{}",
+                bases[i % 4],
+                bases[(i + 1) % 4],
+                bases[(i + 2) % 4]
+            )
+            .repeat(10)
+        })
         .collect();
 
-    let encoded: Vec<_> = sequences.iter()
+    let encoded: Vec<_> = sequences
+        .iter()
         .map(|s| encoder.encode_sequence(s).unwrap())
         .collect();
 
@@ -70,8 +85,10 @@ fn bench_batch_similarity(c: &mut Criterion) {
         b.iter(|| {
             let mut sum = 0.0;
             for i in 0..encoded.len() {
-                for j in (i+1)..encoded.len() {
-                    sum += encoded[i].vector.normalized_cosine_similarity(&encoded[j].vector);
+                for j in (i + 1)..encoded.len() {
+                    sum += encoded[i]
+                        .vector
+                        .normalized_cosine_similarity(&encoded[j].vector);
                 }
             }
             black_box(sum)
@@ -79,5 +96,10 @@ fn bench_batch_similarity(c: &mut Criterion) {
     });
 }
 
-criterion_group!(benches, bench_encoding, bench_similarity, bench_batch_similarity);
+criterion_group!(
+    benches,
+    bench_encoding,
+    bench_similarity,
+    bench_batch_similarity
+);
 criterion_main!(benches);

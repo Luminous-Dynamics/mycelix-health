@@ -12,11 +12,10 @@
 //! All data access enforces consent-based access control.
 
 use hdk::prelude::*;
-use telehealth_integrity::*;
 use mycelix_health_shared::{
-    require_authorization, log_data_access,
-    DataCategory, Permission, anchor_hash,
+    anchor_hash, log_data_access, require_authorization, DataCategory, Permission,
 };
+use telehealth_integrity::*;
 
 // ============================================================================
 // Session Scheduling Functions
@@ -56,8 +55,9 @@ pub fn schedule_telehealth_session(input: ScheduleSessionInput) -> ExternResult<
     };
 
     let hash = create_entry(&EntryTypes::TelehealthSession(session.clone()))?;
-    let record = get(hash.clone(), GetOptions::default())?
-        .ok_or(wasm_error!(WasmErrorInner::Guest("Could not find session".to_string())))?;
+    let record = get(hash.clone(), GetOptions::default())?.ok_or(wasm_error!(
+        WasmErrorInner::Guest("Could not find session".to_string())
+    ))?;
 
     // Link from patient to session
     create_link(
@@ -76,7 +76,10 @@ pub fn schedule_telehealth_session(input: ScheduleSessionInput) -> ExternResult<
     )?;
 
     // Link to upcoming sessions anchor (by date)
-    let date_anchor = anchor_hash(&format!("sessions_{}", timestamp_to_date(input.scheduled_start)))?;
+    let date_anchor = anchor_hash(&format!(
+        "sessions_{}",
+        timestamp_to_date(input.scheduled_start)
+    ))?;
     create_link(date_anchor, hash, LinkTypes::UpcomingSessions, ())?;
 
     log_data_access(
@@ -105,7 +108,12 @@ pub fn get_telehealth_session(input: GetSessionInput) -> ExternResult<Option<Rec
     let record = get(input.session_hash.clone(), GetOptions::default())?;
 
     if let Some(ref rec) = record {
-        if let Some(session) = rec.entry().to_app_option::<TelehealthSession>().ok().flatten() {
+        if let Some(session) = rec
+            .entry()
+            .to_app_option::<TelehealthSession>()
+            .ok()
+            .flatten()
+        {
             // Require authorization
             let auth = require_authorization(
                 session.patient_hash.clone(),
@@ -136,14 +144,17 @@ pub fn get_telehealth_session(input: GetSessionInput) -> ExternResult<Option<Rec
 /// Start a telehealth session
 #[hdk_extern]
 pub fn start_session(session_hash: ActionHash) -> ExternResult<SessionDetails> {
-    let record = get(session_hash.clone(), GetOptions::default())?
-        .ok_or(wasm_error!(WasmErrorInner::Guest("Session not found".to_string())))?;
+    let record = get(session_hash.clone(), GetOptions::default())?.ok_or(wasm_error!(
+        WasmErrorInner::Guest("Session not found".to_string())
+    ))?;
 
     let mut session: TelehealthSession = record
         .entry()
         .to_app_option()
         .map_err(|e| wasm_error!(WasmErrorInner::Guest(e.to_string())))?
-        .ok_or(wasm_error!(WasmErrorInner::Guest("Invalid session entry".to_string())))?;
+        .ok_or(wasm_error!(WasmErrorInner::Guest(
+            "Invalid session entry".to_string()
+        )))?;
 
     let patient_hash = session.patient_hash.clone();
     let auth = require_authorization(
@@ -154,10 +165,14 @@ pub fn start_session(session_hash: ActionHash) -> ExternResult<SessionDetails> {
     )?;
 
     // Validate session can be started
-    if session.status != SessionStatus::Scheduled && session.status != SessionStatus::PatientWaiting && session.status != SessionStatus::ProviderReady {
-        return Err(wasm_error!(WasmErrorInner::Guest(
-            format!("Cannot start session in status: {:?}", session.status)
-        )));
+    if session.status != SessionStatus::Scheduled
+        && session.status != SessionStatus::PatientWaiting
+        && session.status != SessionStatus::ProviderReady
+    {
+        return Err(wasm_error!(WasmErrorInner::Guest(format!(
+            "Cannot start session in status: {:?}",
+            session.status
+        ))));
     }
 
     // Generate meeting URL (in production, this would integrate with video platform)
@@ -169,7 +184,12 @@ pub fn start_session(session_hash: ActionHash) -> ExternResult<SessionDetails> {
     session.updated_at = sys_time()?;
 
     let updated_hash = update_entry(session_hash.clone(), &session)?;
-    create_link(session_hash.clone(), updated_hash.clone(), LinkTypes::SessionUpdates, ())?;
+    create_link(
+        session_hash.clone(),
+        updated_hash.clone(),
+        LinkTypes::SessionUpdates,
+        (),
+    )?;
 
     log_data_access(
         patient_hash,
@@ -202,14 +222,17 @@ pub struct EndSessionInput {
 /// End a telehealth session
 #[hdk_extern]
 pub fn end_session(input: EndSessionInput) -> ExternResult<Record> {
-    let record = get(input.session_hash.clone(), GetOptions::default())?
-        .ok_or(wasm_error!(WasmErrorInner::Guest("Session not found".to_string())))?;
+    let record = get(input.session_hash.clone(), GetOptions::default())?.ok_or(wasm_error!(
+        WasmErrorInner::Guest("Session not found".to_string())
+    ))?;
 
     let mut session: TelehealthSession = record
         .entry()
         .to_app_option()
         .map_err(|e| wasm_error!(WasmErrorInner::Guest(e.to_string())))?
-        .ok_or(wasm_error!(WasmErrorInner::Guest("Invalid session entry".to_string())))?;
+        .ok_or(wasm_error!(WasmErrorInner::Guest(
+            "Invalid session entry".to_string()
+        )))?;
 
     let patient_hash = session.patient_hash.clone();
     let auth = require_authorization(
@@ -234,10 +257,16 @@ pub fn end_session(input: EndSessionInput) -> ExternResult<Record> {
     session.updated_at = sys_time()?;
 
     let updated_hash = update_entry(input.session_hash.clone(), &session)?;
-    let updated_record = get(updated_hash.clone(), GetOptions::default())?
-        .ok_or(wasm_error!(WasmErrorInner::Guest("Could not find updated session".to_string())))?;
+    let updated_record = get(updated_hash.clone(), GetOptions::default())?.ok_or(wasm_error!(
+        WasmErrorInner::Guest("Could not find updated session".to_string())
+    ))?;
 
-    create_link(input.session_hash, updated_hash, LinkTypes::SessionUpdates, ())?;
+    create_link(
+        input.session_hash,
+        updated_hash,
+        LinkTypes::SessionUpdates,
+        (),
+    )?;
 
     log_data_access(
         patient_hash,
@@ -261,14 +290,17 @@ pub struct CancelSessionInput {
 /// Cancel a telehealth session
 #[hdk_extern]
 pub fn cancel_session(input: CancelSessionInput) -> ExternResult<Record> {
-    let record = get(input.session_hash.clone(), GetOptions::default())?
-        .ok_or(wasm_error!(WasmErrorInner::Guest("Session not found".to_string())))?;
+    let record = get(input.session_hash.clone(), GetOptions::default())?.ok_or(wasm_error!(
+        WasmErrorInner::Guest("Session not found".to_string())
+    ))?;
 
     let mut session: TelehealthSession = record
         .entry()
         .to_app_option()
         .map_err(|e| wasm_error!(WasmErrorInner::Guest(e.to_string())))?
-        .ok_or(wasm_error!(WasmErrorInner::Guest("Invalid session entry".to_string())))?;
+        .ok_or(wasm_error!(WasmErrorInner::Guest(
+            "Invalid session entry".to_string()
+        )))?;
 
     let patient_hash = session.patient_hash.clone();
     let auth = require_authorization(
@@ -290,10 +322,16 @@ pub fn cancel_session(input: CancelSessionInput) -> ExternResult<Record> {
     session.updated_at = sys_time()?;
 
     let updated_hash = update_entry(input.session_hash.clone(), &session)?;
-    let updated_record = get(updated_hash.clone(), GetOptions::default())?
-        .ok_or(wasm_error!(WasmErrorInner::Guest("Could not find updated session".to_string())))?;
+    let updated_record = get(updated_hash.clone(), GetOptions::default())?.ok_or(wasm_error!(
+        WasmErrorInner::Guest("Could not find updated session".to_string())
+    ))?;
 
-    create_link(input.session_hash, updated_hash, LinkTypes::SessionUpdates, ())?;
+    create_link(
+        input.session_hash,
+        updated_hash,
+        LinkTypes::SessionUpdates,
+        (),
+    )?;
 
     log_data_access(
         patient_hash,
@@ -314,14 +352,17 @@ pub fn cancel_session(input: CancelSessionInput) -> ExternResult<Record> {
 /// Patient joins waiting room
 #[hdk_extern]
 pub fn join_waiting_room(session_hash: ActionHash) -> ExternResult<Record> {
-    let record = get(session_hash.clone(), GetOptions::default())?
-        .ok_or(wasm_error!(WasmErrorInner::Guest("Session not found".to_string())))?;
+    let record = get(session_hash.clone(), GetOptions::default())?.ok_or(wasm_error!(
+        WasmErrorInner::Guest("Session not found".to_string())
+    ))?;
 
     let mut session: TelehealthSession = record
         .entry()
         .to_app_option()
         .map_err(|e| wasm_error!(WasmErrorInner::Guest(e.to_string())))?
-        .ok_or(wasm_error!(WasmErrorInner::Guest("Invalid session entry".to_string())))?;
+        .ok_or(wasm_error!(WasmErrorInner::Guest(
+            "Invalid session entry".to_string()
+        )))?;
 
     let patient_hash = session.patient_hash.clone();
     let auth = require_authorization(
@@ -349,12 +390,24 @@ pub fn join_waiting_room(session_hash: ActionHash) -> ExternResult<Record> {
     };
 
     let entry_hash = create_entry(&EntryTypes::WaitingRoomEntry(entry))?;
-    let waiting_room_record = get(entry_hash.clone(), GetOptions::default())?
-        .ok_or(wasm_error!(WasmErrorInner::Guest("Could not find waiting room entry".to_string())))?;
+    let waiting_room_record =
+        get(entry_hash.clone(), GetOptions::default())?.ok_or(wasm_error!(
+            WasmErrorInner::Guest("Could not find waiting room entry".to_string())
+        ))?;
 
     // Link session to waiting room entry
-    create_link(session_hash.clone(), entry_hash, LinkTypes::SessionToWaitingRoom, ())?;
-    create_link(session_hash, updated_session_hash, LinkTypes::SessionUpdates, ())?;
+    create_link(
+        session_hash.clone(),
+        entry_hash,
+        LinkTypes::SessionToWaitingRoom,
+        (),
+    )?;
+    create_link(
+        session_hash,
+        updated_session_hash,
+        LinkTypes::SessionUpdates,
+        (),
+    )?;
 
     log_data_access(
         patient_hash,
@@ -373,20 +426,28 @@ pub fn join_waiting_room(session_hash: ActionHash) -> ExternResult<Record> {
 pub fn call_patient(session_hash: ActionHash) -> ExternResult<Record> {
     // Get waiting room entry
     let links = get_links(
-        LinkQuery::try_new(session_hash.clone(), LinkTypes::SessionToWaitingRoom)?, GetStrategy::default())?;
+        LinkQuery::try_new(session_hash.clone(), LinkTypes::SessionToWaitingRoom)?,
+        GetStrategy::default(),
+    )?;
 
-    let entry_hash = links.first()
+    let entry_hash = links
+        .first()
         .and_then(|l| l.target.clone().into_action_hash())
-        .ok_or(wasm_error!(WasmErrorInner::Guest("No waiting room entry found".to_string())))?;
+        .ok_or(wasm_error!(WasmErrorInner::Guest(
+            "No waiting room entry found".to_string()
+        )))?;
 
-    let record = get(entry_hash.clone(), GetOptions::default())?
-        .ok_or(wasm_error!(WasmErrorInner::Guest("Waiting room entry not found".to_string())))?;
+    let record = get(entry_hash.clone(), GetOptions::default())?.ok_or(wasm_error!(
+        WasmErrorInner::Guest("Waiting room entry not found".to_string())
+    ))?;
 
     let mut entry: WaitingRoomEntry = record
         .entry()
         .to_app_option()
         .map_err(|e| wasm_error!(WasmErrorInner::Guest(e.to_string())))?
-        .ok_or(wasm_error!(WasmErrorInner::Guest("Invalid waiting room entry".to_string())))?;
+        .ok_or(wasm_error!(WasmErrorInner::Guest(
+            "Invalid waiting room entry".to_string()
+        )))?;
 
     let auth = require_authorization(
         entry.patient_hash.clone(),
@@ -399,8 +460,9 @@ pub fn call_patient(session_hash: ActionHash) -> ExternResult<Record> {
     entry.called_at = Some(sys_time()?);
 
     let updated_hash = update_entry(entry_hash, &entry)?;
-    let updated_record = get(updated_hash, GetOptions::default())?
-        .ok_or(wasm_error!(WasmErrorInner::Guest("Could not find updated entry".to_string())))?;
+    let updated_record = get(updated_hash, GetOptions::default())?.ok_or(wasm_error!(
+        WasmErrorInner::Guest("Could not find updated entry".to_string())
+    ))?;
 
     log_data_access(
         entry.patient_hash,
@@ -422,14 +484,17 @@ pub fn call_patient(session_hash: ActionHash) -> ExternResult<Record> {
 #[hdk_extern]
 pub fn create_session_documentation(doc: SessionDocumentation) -> ExternResult<Record> {
     // Authorize against the patient tied to the session
-    let session_record = get(doc.session_hash.clone(), GetOptions::default())?
-        .ok_or(wasm_error!(WasmErrorInner::Guest("Session not found".to_string())))?;
+    let session_record = get(doc.session_hash.clone(), GetOptions::default())?.ok_or(
+        wasm_error!(WasmErrorInner::Guest("Session not found".to_string())),
+    )?;
 
     let session: TelehealthSession = session_record
         .entry()
         .to_app_option()
         .map_err(|e| wasm_error!(WasmErrorInner::Guest(e.to_string())))?
-        .ok_or(wasm_error!(WasmErrorInner::Guest("Invalid session".to_string())))?;
+        .ok_or(wasm_error!(WasmErrorInner::Guest(
+            "Invalid session".to_string()
+        )))?;
 
     let patient_hash = session.patient_hash;
     let auth = require_authorization(
@@ -440,8 +505,9 @@ pub fn create_session_documentation(doc: SessionDocumentation) -> ExternResult<R
     )?;
 
     let hash = create_entry(&EntryTypes::SessionDocumentation(doc.clone()))?;
-    let record = get(hash.clone(), GetOptions::default())?
-        .ok_or(wasm_error!(WasmErrorInner::Guest("Could not find documentation".to_string())))?;
+    let record = get(hash.clone(), GetOptions::default())?.ok_or(wasm_error!(
+        WasmErrorInner::Guest("Could not find documentation".to_string())
+    ))?;
 
     // Link from session to documentation
     create_link(
@@ -467,14 +533,17 @@ pub fn create_session_documentation(doc: SessionDocumentation) -> ExternResult<R
 #[hdk_extern]
 pub fn get_session_documentation(input: GetSessionInput) -> ExternResult<Option<Record>> {
     // First get the session to verify access
-    let session_record = get(input.session_hash.clone(), GetOptions::default())?
-        .ok_or(wasm_error!(WasmErrorInner::Guest("Session not found".to_string())))?;
+    let session_record = get(input.session_hash.clone(), GetOptions::default())?.ok_or(
+        wasm_error!(WasmErrorInner::Guest("Session not found".to_string())),
+    )?;
 
     let session: TelehealthSession = session_record
         .entry()
         .to_app_option()
         .map_err(|e| wasm_error!(WasmErrorInner::Guest(e.to_string())))?
-        .ok_or(wasm_error!(WasmErrorInner::Guest("Invalid session".to_string())))?;
+        .ok_or(wasm_error!(WasmErrorInner::Guest(
+            "Invalid session".to_string()
+        )))?;
 
     // Require authorization
     let auth = require_authorization(
@@ -486,7 +555,12 @@ pub fn get_session_documentation(input: GetSessionInput) -> ExternResult<Option<
 
     // Get documentation
     let links = get_links(
-        LinkQuery::try_new(input.session_hash.clone(), LinkTypes::SessionToDocumentation)?, GetStrategy::default())?;
+        LinkQuery::try_new(
+            input.session_hash.clone(),
+            LinkTypes::SessionToDocumentation,
+        )?,
+        GetStrategy::default(),
+    )?;
 
     let result = if let Some(link) = links.first() {
         if let Some(hash) = link.target.clone().into_action_hash() {
@@ -514,24 +588,30 @@ pub fn get_session_documentation(input: GetSessionInput) -> ExternResult<Option<
 /// Sign session documentation
 #[hdk_extern]
 pub fn sign_documentation(doc_hash: ActionHash) -> ExternResult<Record> {
-    let record = get(doc_hash.clone(), GetOptions::default())?
-        .ok_or(wasm_error!(WasmErrorInner::Guest("Documentation not found".to_string())))?;
+    let record = get(doc_hash.clone(), GetOptions::default())?.ok_or(wasm_error!(
+        WasmErrorInner::Guest("Documentation not found".to_string())
+    ))?;
 
     let mut doc: SessionDocumentation = record
         .entry()
         .to_app_option()
         .map_err(|e| wasm_error!(WasmErrorInner::Guest(e.to_string())))?
-        .ok_or(wasm_error!(WasmErrorInner::Guest("Invalid documentation".to_string())))?;
+        .ok_or(wasm_error!(WasmErrorInner::Guest(
+            "Invalid documentation".to_string()
+        )))?;
 
     // Authorize against the patient tied to the session
-    let session_record = get(doc.session_hash.clone(), GetOptions::default())?
-        .ok_or(wasm_error!(WasmErrorInner::Guest("Session not found".to_string())))?;
+    let session_record = get(doc.session_hash.clone(), GetOptions::default())?.ok_or(
+        wasm_error!(WasmErrorInner::Guest("Session not found".to_string())),
+    )?;
 
     let session: TelehealthSession = session_record
         .entry()
         .to_app_option()
         .map_err(|e| wasm_error!(WasmErrorInner::Guest(e.to_string())))?
-        .ok_or(wasm_error!(WasmErrorInner::Guest("Invalid session".to_string())))?;
+        .ok_or(wasm_error!(WasmErrorInner::Guest(
+            "Invalid session".to_string()
+        )))?;
 
     let patient_hash = session.patient_hash;
     let auth = require_authorization(
@@ -545,8 +625,9 @@ pub fn sign_documentation(doc_hash: ActionHash) -> ExternResult<Record> {
     doc.signed_at = Some(sys_time()?);
 
     let updated_hash = update_entry(doc_hash, &doc)?;
-    let updated_record = get(updated_hash, GetOptions::default())?
-        .ok_or(wasm_error!(WasmErrorInner::Guest("Could not find signed documentation".to_string())))?;
+    let updated_record = get(updated_hash, GetOptions::default())?.ok_or(wasm_error!(
+        WasmErrorInner::Guest("Could not find signed documentation".to_string())
+    ))?;
 
     log_data_access(
         patient_hash,
@@ -568,8 +649,9 @@ pub fn sign_documentation(doc_hash: ActionHash) -> ExternResult<Record> {
 #[hdk_extern]
 pub fn create_available_slot(slot: AvailableSlot) -> ExternResult<Record> {
     let hash = create_entry(&EntryTypes::AvailableSlot(slot.clone()))?;
-    let record = get(hash.clone(), GetOptions::default())?
-        .ok_or(wasm_error!(WasmErrorInner::Guest("Could not find slot".to_string())))?;
+    let record = get(hash.clone(), GetOptions::default())?.ok_or(wasm_error!(
+        WasmErrorInner::Guest("Could not find slot".to_string())
+    ))?;
 
     // Link from provider to slot
     create_link(
@@ -594,13 +676,20 @@ pub struct GetAvailableSlotsInput {
 #[hdk_extern]
 pub fn get_available_slots(input: GetAvailableSlotsInput) -> ExternResult<Vec<Record>> {
     let links = get_links(
-        LinkQuery::try_new(input.provider_hash, LinkTypes::ProviderToAvailableSlots)?, GetStrategy::default())?;
+        LinkQuery::try_new(input.provider_hash, LinkTypes::ProviderToAvailableSlots)?,
+        GetStrategy::default(),
+    )?;
 
     let mut slots = Vec::new();
     for link in links {
         if let Some(hash) = link.target.into_action_hash() {
             if let Some(record) = get(hash, GetOptions::default())? {
-                if let Some(slot) = record.entry().to_app_option::<AvailableSlot>().ok().flatten() {
+                if let Some(slot) = record
+                    .entry()
+                    .to_app_option::<AvailableSlot>()
+                    .ok()
+                    .flatten()
+                {
                     // Filter by availability and date range
                     if slot.is_available {
                         slots.push(record);
@@ -638,14 +727,22 @@ pub fn get_patient_sessions(input: GetPatientSessionsInput) -> ExternResult<Vec<
     )?;
 
     let links = get_links(
-        LinkQuery::try_new(input.patient_hash.clone(), LinkTypes::PatientToSessions)?, GetStrategy::default())?;
+        LinkQuery::try_new(input.patient_hash.clone(), LinkTypes::PatientToSessions)?,
+        GetStrategy::default(),
+    )?;
 
     let mut sessions = Vec::new();
     for link in links {
         if let Some(hash) = link.target.into_action_hash() {
             if let Some(record) = get(hash, GetOptions::default())? {
-                if let Some(session) = record.entry().to_app_option::<TelehealthSession>().ok().flatten() {
-                    let include = input.include_completed || session.status != SessionStatus::Completed;
+                if let Some(session) = record
+                    .entry()
+                    .to_app_option::<TelehealthSession>()
+                    .ok()
+                    .flatten()
+                {
+                    let include =
+                        input.include_completed || session.status != SessionStatus::Completed;
                     if include {
                         sessions.push(record);
                     }
@@ -681,8 +778,9 @@ pub fn get_provider_sessions(input: GetProviderSessionsInput) -> ExternResult<Ve
     // Only the provider themselves can list all of their sessions (contains patient PHI links).
     let caller = agent_info()?.agent_initial_pubkey;
     let provider_hash = input.provider_hash.clone();
-    let provider_record = get(provider_hash.clone(), GetOptions::default())?
-        .ok_or(wasm_error!(WasmErrorInner::Guest("Provider not found".to_string())))?;
+    let provider_record = get(provider_hash.clone(), GetOptions::default())?.ok_or(wasm_error!(
+        WasmErrorInner::Guest("Provider not found".to_string())
+    ))?;
 
     if provider_record.action().author() != &caller {
         return Err(wasm_error!(WasmErrorInner::Guest(
@@ -691,14 +789,22 @@ pub fn get_provider_sessions(input: GetProviderSessionsInput) -> ExternResult<Ve
     }
 
     let links = get_links(
-        LinkQuery::try_new(provider_hash, LinkTypes::ProviderToSessions)?, GetStrategy::default())?;
+        LinkQuery::try_new(provider_hash, LinkTypes::ProviderToSessions)?,
+        GetStrategy::default(),
+    )?;
 
     let mut sessions = Vec::new();
     for link in links {
         if let Some(hash) = link.target.into_action_hash() {
             if let Some(record) = get(hash, GetOptions::default())? {
-                if let Some(session) = record.entry().to_app_option::<TelehealthSession>().ok().flatten() {
-                    let include = input.include_completed || session.status != SessionStatus::Completed;
+                if let Some(session) = record
+                    .entry()
+                    .to_app_option::<TelehealthSession>()
+                    .ok()
+                    .flatten()
+                {
+                    let include =
+                        input.include_completed || session.status != SessionStatus::Completed;
                     if include {
                         sessions.push(record);
                     }

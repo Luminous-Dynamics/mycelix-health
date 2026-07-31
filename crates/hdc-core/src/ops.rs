@@ -6,8 +6,8 @@
 //! Pure functions for hypervector computation.
 //! Includes SIMD-optimized paths for AVX2-capable CPUs.
 
-use sha2::{Digest, Sha256};
 use crate::HYPERVECTOR_DIM;
+use sha2::{Digest, Sha256};
 
 #[cfg(target_arch = "x86_64")]
 use std::arch::x86_64::*;
@@ -122,7 +122,8 @@ pub fn bundle(vectors: &[&[u8]]) -> Vec<u8> {
             }
 
             // Count 1s across all vectors for this bit position
-            let ones: usize = vectors.iter()
+            let ones: usize = vectors
+                .iter()
                 .map(|v| ((v[byte_idx] >> bit_pos) & 1) as usize)
                 .sum();
 
@@ -159,7 +160,8 @@ pub fn weighted_bundle(vectors: &[(&[u8], f64)]) -> Vec<u8> {
                 break;
             }
 
-            let weighted_sum: f64 = vectors.iter()
+            let weighted_sum: f64 = vectors
+                .iter()
                 .map(|(v, w)| {
                     let bit = ((v[byte_idx] >> bit_pos) & 1) as f64;
                     bit * w
@@ -269,7 +271,8 @@ pub fn hamming_similarity(a: &[u8], b: &[u8]) -> f64 {
 /// Scalar Hamming similarity
 #[inline]
 fn hamming_similarity_scalar(a: &[u8], b: &[u8]) -> f64 {
-    let matching_bits: usize = a.iter()
+    let matching_bits: usize = a
+        .iter()
         .zip(b.iter())
         .map(|(x, y)| (!(x ^ y)).count_ones() as usize)
         .sum();

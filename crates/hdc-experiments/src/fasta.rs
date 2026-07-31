@@ -138,7 +138,9 @@ fn parse_hla_header(header: &str, sequence: &str) -> Option<HlaAlleleSequence> {
     let allele_name = parts[1].to_string();
 
     // Extract locus from allele name (e.g., "A*01:01:01:01" -> "A")
-    let locus = allele_name.split('*').next()
+    let locus = allele_name
+        .split('*')
+        .next()
         .unwrap_or("unknown")
         .to_string();
 

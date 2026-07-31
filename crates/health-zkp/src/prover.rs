@@ -14,13 +14,11 @@ use std::time::Instant;
 
 use sha2::{Digest, Sha256};
 
-use crate::{
-    generate_proof, AttestorRole, HealthProof, HealthProofType,
-};
+use crate::{generate_proof, AttestorRole, HealthProof, HealthProofType};
 use mycelix_zkp_core::{
-    AuthenticatedProof, DomainTag,
     domain::tag_health_attest,
     types::{BackendId, ProofMetadata},
+    AuthenticatedProof, DomainTag,
 };
 
 #[cfg(feature = "verify-dilithium")]
@@ -138,7 +136,8 @@ pub fn prove_and_sign(
     // 2. Construct AuthenticatedProof
     let domain_tag = tag_health_attest();
     let public_inputs_hash = {
-        let h = Sha256::digest(format!("{}:{}:{}", request.min, request.max, request.value).as_bytes());
+        let h =
+            Sha256::digest(format!("{}:{}:{}", request.min, request.max, request.value).as_bytes());
         let mut hash = [0u8; 32];
         hash.copy_from_slice(&h);
         hash
@@ -162,7 +161,8 @@ pub fn prove_and_sign(
 
     // 3. Sign with Dilithium5
     let sign_start = Instant::now();
-    keypair.sign_proof(&mut authenticated)
+    keypair
+        .sign_proof(&mut authenticated)
         .expect("Dilithium5 signing failed");
     let sign_time = sign_start.elapsed();
 
@@ -217,11 +217,20 @@ mod tests {
         };
 
         let output = prove(&request);
-        assert!(output.prove_time_ms > 0.0, "prove should take non-zero time");
-        assert!(output.health_proof.proof_bytes.len() > 1000,
-            "STARK proof should be >1KB, got {}", output.health_proof.proof_bytes.len());
-        println!("Prove time: {:.1}ms, Proof size: {} bytes",
-            output.prove_time_ms, output.health_proof.proof_bytes.len());
+        assert!(
+            output.prove_time_ms > 0.0,
+            "prove should take non-zero time"
+        );
+        assert!(
+            output.health_proof.proof_bytes.len() > 1000,
+            "STARK proof should be >1KB, got {}",
+            output.health_proof.proof_bytes.len()
+        );
+        println!(
+            "Prove time: {:.1}ms, Proof size: {} bytes",
+            output.prove_time_ms,
+            output.health_proof.proof_bytes.len()
+        );
     }
 
     #[cfg(all(
@@ -233,7 +242,10 @@ mod tests {
         let keypair = DilithiumKeypair::generate();
 
         let request = HealthProofRequest {
-            proof_type: HealthProofType::AgeRange { min_age: 18, max_age: Some(65) },
+            proof_type: HealthProofType::AgeRange {
+                min_age: 18,
+                max_age: Some(65),
+            },
             value: 35,
             min: 18,
             max: 65,
@@ -245,11 +257,19 @@ mod tests {
         let output = prove_and_sign(&request, &keypair);
         assert!(output.authenticated_proof.is_some());
         let auth = output.authenticated_proof.unwrap();
-        assert!(!auth.signature.is_empty(), "Dilithium signature should be non-empty");
+        assert!(
+            !auth.signature.is_empty(),
+            "Dilithium signature should be non-empty"
+        );
         assert!(output.sign_time_ms > 0.0);
-        println!("Prove: {:.1}ms, Sign: {:.1}ms, Total: {:.1}ms",
-            output.prove_time_ms, output.sign_time_ms, output.total_time_ms);
-        println!("Proof size: {} bytes, Signature size: {} bytes",
-            auth.proof.len(), auth.signature.len());
+        println!(
+            "Prove: {:.1}ms, Sign: {:.1}ms, Total: {:.1}ms",
+            output.prove_time_ms, output.sign_time_ms, output.total_time_ms
+        );
+        println!(
+            "Proof size: {} bytes, Signature size: {} bytes",
+            auth.proof.len(),
+            auth.signature.len()
+        );
     }
 }

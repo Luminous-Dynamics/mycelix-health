@@ -41,8 +41,8 @@ use sha2::{Digest, Sha256};
 
 // Re-export from mycelix-zkp-core
 pub use mycelix_zkp_core::domain::{tag_health_attest, DomainTag};
-pub use mycelix_zkp_core::types::{AuthenticatedProof, BackendId};
 pub use mycelix_zkp_core::error::ZkpError;
+pub use mycelix_zkp_core::types::{AuthenticatedProof, BackendId};
 
 /// Types of health attestations that can be proven in zero knowledge.
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -54,11 +54,19 @@ pub enum HealthProofType {
     /// Vaccination status for a specific disease.
     VaccinationStatus { disease: String },
     /// Lab value above/below a threshold (e.g., "A1C < 7.0").
-    LabThreshold { loinc_code: String, threshold: f64, direction: ThresholdDirection },
+    LabThreshold {
+        loinc_code: String,
+        threshold: f64,
+        direction: ThresholdDirection,
+    },
     /// Age within a range (e.g., "18-65").
     AgeRange { min_age: u32, max_age: Option<u32> },
     /// Clinical trial eligibility (meets N of M criteria).
-    TrialEligibility { trial_id: String, criteria_met: u32, criteria_total: u32 },
+    TrialEligibility {
+        trial_id: String,
+        criteria_met: u32,
+        criteria_total: u32,
+    },
     /// Employment physical clearance.
     EmploymentPhysical,
     /// Insurance qualification tier.
@@ -432,13 +440,17 @@ mod tests {
     #[test]
     fn generate_and_verify_insurance_proof() {
         let proof = generate_proof(
-            HealthProofType::InsuranceQualification { tier: "preferred".into() },
+            HealthProofType::InsuranceQualification {
+                tier: "preferred".into(),
+            },
             b"vitals:normal,a1c:5.4,bmi:22,no_tobacco",
             b"patient-001",
             AttestorRole::Physician,
             1000000,
             2000000,
-            0, 0, 0, // Insurance: complex type, no range
+            0,
+            0,
+            0, // Insurance: complex type, no range
         );
 
         assert!(proof.public_inputs.criteria_met);
@@ -461,7 +473,9 @@ mod tests {
             AttestorRole::ClinicalTrialSponsor,
             1000000,
             1500000,
-            0, 0, 0, // Trial: complex type, no range
+            0,
+            0,
+            0, // Trial: complex type, no range
         );
 
         assert_eq!(proof.metadata.proof_size, 32);
@@ -473,30 +487,69 @@ mod tests {
     fn proof_types_cover_all_use_cases() {
         let types = vec![
             HealthProofType::VitalsInRange,
-            HealthProofType::ConditionAbsence { excluded_icd10: vec!["E11".into()] },
-            HealthProofType::VaccinationStatus { disease: "COVID-19".into() },
-            HealthProofType::LabThreshold { loinc_code: "2345-7".into(), threshold: 100.0, direction: ThresholdDirection::Below },
-            HealthProofType::AgeRange { min_age: 18, max_age: Some(65) },
-            HealthProofType::TrialEligibility { trial_id: "NCT-1".into(), criteria_met: 5, criteria_total: 5 },
+            HealthProofType::ConditionAbsence {
+                excluded_icd10: vec!["E11".into()],
+            },
+            HealthProofType::VaccinationStatus {
+                disease: "COVID-19".into(),
+            },
+            HealthProofType::LabThreshold {
+                loinc_code: "2345-7".into(),
+                threshold: 100.0,
+                direction: ThresholdDirection::Below,
+            },
+            HealthProofType::AgeRange {
+                min_age: 18,
+                max_age: Some(65),
+            },
+            HealthProofType::TrialEligibility {
+                trial_id: "NCT-1".into(),
+                criteria_met: 5,
+                criteria_total: 5,
+            },
             HealthProofType::EmploymentPhysical,
-            HealthProofType::InsuranceQualification { tier: "standard".into() },
+            HealthProofType::InsuranceQualification {
+                tier: "standard".into(),
+            },
             HealthProofType::SubstanceScreening,
-            HealthProofType::OrganDonorCompatibility { recipient_hla_hash: [0u8; 32] },
-            HealthProofType::Custom { description: "Travel clearance".into() },
+            HealthProofType::OrganDonorCompatibility {
+                recipient_hla_hash: [0u8; 32],
+            },
+            HealthProofType::Custom {
+                description: "Travel clearance".into(),
+            },
         ];
         assert_eq!(types.len(), 11);
     }
 
     #[test]
     fn recommended_backend_selection() {
-        assert_eq!(HealthProofType::VitalsInRange.recommended_backend(), BackendId::Winterfell);
-        assert_eq!(HealthProofType::AgeRange { min_age: 18, max_age: None }.recommended_backend(), BackendId::Winterfell);
         assert_eq!(
-            HealthProofType::TrialEligibility { trial_id: "T".into(), criteria_met: 1, criteria_total: 1 }.recommended_backend(),
+            HealthProofType::VitalsInRange.recommended_backend(),
+            BackendId::Winterfell
+        );
+        assert_eq!(
+            HealthProofType::AgeRange {
+                min_age: 18,
+                max_age: None
+            }
+            .recommended_backend(),
+            BackendId::Winterfell
+        );
+        assert_eq!(
+            HealthProofType::TrialEligibility {
+                trial_id: "T".into(),
+                criteria_met: 1,
+                criteria_total: 1
+            }
+            .recommended_backend(),
             BackendId::Risc0
         );
         assert_eq!(
-            HealthProofType::OrganDonorCompatibility { recipient_hla_hash: [0; 32] }.recommended_backend(),
+            HealthProofType::OrganDonorCompatibility {
+                recipient_hla_hash: [0; 32]
+            }
+            .recommended_backend(),
             BackendId::Risc0
         );
     }
@@ -511,16 +564,24 @@ mod tests {
             AttestorRole::Physician,
             1000000,
             2000000,
-            120, 90, 180, // BP systolic: 120 in [90, 180]
+            120,
+            90,
+            180, // BP systolic: 120 in [90, 180]
         );
 
         // Should generate a REAL Winterfell STARK proof (not SHA-256 commitment)
-        assert_eq!(proof.metadata.system, ProofSystem::WinterfellStark,
-            "VitalsInRange should use Winterfell STARK, not SHA-256 fallback");
+        assert_eq!(
+            proof.metadata.system,
+            ProofSystem::WinterfellStark,
+            "VitalsInRange should use Winterfell STARK, not SHA-256 fallback"
+        );
 
         // Proof should be significantly larger than a SHA-256 hash (32 bytes)
-        assert!(proof.proof_bytes.len() > 1000,
-            "STARK proof should be >1KB, got {} bytes", proof.proof_bytes.len());
+        assert!(
+            proof.proof_bytes.len() > 1000,
+            "STARK proof should be >1KB, got {} bytes",
+            proof.proof_bytes.len()
+        );
 
         // REAL verification should pass
         assert!(
@@ -565,7 +626,9 @@ mod tests {
             AttestorRole::Physician,
             1000000,
             2000000,
-            100, 50, 200,
+            100,
+            50,
+            200,
         );
         // Tamper with the STARK proof bytes
         if !proof.proof_bytes.is_empty() {
@@ -614,7 +677,9 @@ mod tests {
     #[test]
     fn commitment_placeholder_is_never_treated_as_a_proof() {
         let proof = generate_proof(
-            HealthProofType::Custom { description: "placeholder".into() },
+            HealthProofType::Custom {
+                description: "placeholder".into(),
+            },
             b"data",
             b"patient",
             AttestorRole::PatientSelf,
@@ -630,7 +695,10 @@ mod tests {
 
     #[test]
     fn proof_system_backend_mapping() {
-        assert_eq!(ProofSystem::WinterfellStark.backend_id(), Some(BackendId::Winterfell));
+        assert_eq!(
+            ProofSystem::WinterfellStark.backend_id(),
+            Some(BackendId::Winterfell)
+        );
         assert_eq!(ProofSystem::Risc0ZkVm.backend_id(), Some(BackendId::Risc0));
         assert_eq!(ProofSystem::Sha256Commitment.backend_id(), None);
     }

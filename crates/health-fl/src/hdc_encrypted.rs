@@ -33,7 +33,9 @@ pub struct HealthHV {
 impl HealthHV {
     /// Create a zero vector.
     pub fn zero() -> Self {
-        Self { bits: vec![0u8; HEALTH_HDC_BYTES] }
+        Self {
+            bits: vec![0u8; HEALTH_HDC_BYTES],
+        }
     }
 
     /// Create a random vector from seed (deterministic for reproducibility).
@@ -54,7 +56,10 @@ impl HealthHV {
 
     /// XOR bind — also serves as encryption/decryption (self-inverse).
     pub fn xor(&self, other: &Self) -> Self {
-        let bits = self.bits.iter().zip(other.bits.iter())
+        let bits = self
+            .bits
+            .iter()
+            .zip(other.bits.iter())
             .map(|(a, b)| a ^ b)
             .collect();
         Self { bits }
@@ -62,7 +67,9 @@ impl HealthHV {
 
     /// Hamming distance (number of differing bits).
     pub fn hamming_distance(&self, other: &Self) -> u32 {
-        self.bits.iter().zip(other.bits.iter())
+        self.bits
+            .iter()
+            .zip(other.bits.iter())
             .map(|(a, b)| (a ^ b).count_ones())
             .sum()
     }
@@ -129,7 +136,8 @@ pub fn aggregate_encrypted(contributions: &[HealthHV]) -> HealthHV {
     for byte_idx in 0..HEALTH_HDC_BYTES {
         let mut result_byte = 0u8;
         for bit in 0..8 {
-            let ones: usize = contributions.iter()
+            let ones: usize = contributions
+                .iter()
                 .filter(|c| (c.bits[byte_idx] >> bit) & 1 == 1)
                 .count();
             if ones > threshold {
@@ -209,8 +217,12 @@ mod tests {
         let enc_sim = enc_a.similarity(&enc_b);
 
         // XOR with same mask preserves Hamming distance exactly
-        assert!((plain_sim - enc_sim).abs() < 0.001,
-            "Similarity should be preserved: plain={:.4}, enc={:.4}", plain_sim, enc_sim);
+        assert!(
+            (plain_sim - enc_sim).abs() < 0.001,
+            "Similarity should be preserved: plain={:.4}, enc={:.4}",
+            plain_sim,
+            enc_sim
+        );
     }
 
     #[test]
@@ -221,9 +233,7 @@ mod tests {
         let patients: Vec<_> = (100..105).map(|s| HealthHV::from_seed(s)).collect();
 
         // Encrypt all with same mask
-        let encrypted: Vec<_> = patients.iter()
-            .map(|p| encrypt_hv(p, &mask))
-            .collect();
+        let encrypted: Vec<_> = patients.iter().map(|p| encrypt_hv(p, &mask)).collect();
 
         // Aggregate encrypted
         let agg_enc = aggregate_encrypted(&encrypted);
@@ -234,28 +244,38 @@ mod tests {
         // The decrypted aggregate should be similar to each patient
         for p in &patients {
             let sim = agg_dec.similarity(p);
-            assert!(sim > 0.4, "Aggregate should be somewhat similar: {:.4}", sim);
+            assert!(
+                sim > 0.4,
+                "Aggregate should be somewhat similar: {:.4}",
+                sim
+            );
         }
     }
 
     #[test]
     fn health_profile_encoding() {
-        let profile = encode_health_profile(&[
-            ("glucose", 0.85),
-            ("a1c", 0.72),
-            ("bmi", 0.45),
-            ("blood_pressure", 0.60),
-        ], 42);
+        let profile = encode_health_profile(
+            &[
+                ("glucose", 0.85),
+                ("a1c", 0.72),
+                ("bmi", 0.45),
+                ("blood_pressure", 0.60),
+            ],
+            42,
+        );
 
         assert_eq!(profile.bits.len(), HEALTH_HDC_BYTES);
 
         // Different profiles should be different
-        let other = encode_health_profile(&[
-            ("glucose", 0.30),
-            ("a1c", 0.95),
-            ("bmi", 0.80),
-            ("blood_pressure", 0.40),
-        ], 42);
+        let other = encode_health_profile(
+            &[
+                ("glucose", 0.30),
+                ("a1c", 0.95),
+                ("bmi", 0.80),
+                ("blood_pressure", 0.40),
+            ],
+            42,
+        );
 
         assert_ne!(profile.bits, other.bits);
     }

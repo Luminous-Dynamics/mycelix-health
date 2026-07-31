@@ -14,8 +14,8 @@
 //! - Cross-zome calls to create internal records
 //! - Audit logging of all data access
 
-use hdk::prelude::*;
 use fhir_bridge_integrity::*;
+use hdk::prelude::*;
 
 // Local mirrors of fhir_mapping_integrity types to avoid duplicate __num_entry_types
 // symbols when compiling to WASM. These must match the serialization layout exactly.
@@ -154,12 +154,7 @@ pub struct FhirMedicationMapping {
     pub mapping_version: String,
     pub last_synced: Timestamp,
 }
-use mycelix_health_shared::{
-    require_authorization,
-    anchor_hash,
-    DataCategory,
-    Permission,
-};
+use mycelix_health_shared::{anchor_hash, require_authorization, DataCategory, Permission};
 use serde_json::Value as JsonValue;
 
 /// Ingest a FHIR R4 Bundle into Mycelix-Health
@@ -206,7 +201,9 @@ pub fn ingest_bundle(input: IngestBundleInput) -> ExternResult<IngestReport> {
     let entries = match input.bundle.get("entry") {
         Some(JsonValue::Array(entries)) => entries.clone(),
         _ => {
-            report.parse_errors.push("Bundle has no 'entry' array".to_string());
+            report
+                .parse_errors
+                .push("Bundle has no 'entry' array".to_string());
             // Store the report even on error
             create_entry(&EntryTypes::IngestReport(report.clone()))?;
             return Ok(report);
@@ -249,7 +246,9 @@ pub fn ingest_bundle(input: IngestBundleInput) -> ExternResult<IngestReport> {
             if let Some(resource) = entry.get("resource") {
                 if let Some(patient_ref) = get_patient_reference(resource) {
                     // Try to look up existing patient by reference
-                    if let Some(hash) = lookup_patient_by_fhir_reference(&patient_ref, &input.source_system)? {
+                    if let Some(hash) =
+                        lookup_patient_by_fhir_reference(&patient_ref, &input.source_system)?
+                    {
                         patient_hash = Some(hash);
                         break;
                     }
@@ -262,7 +261,9 @@ pub fn ingest_bundle(input: IngestBundleInput) -> ExternResult<IngestReport> {
     let patient_hash = match patient_hash {
         Some(h) => h,
         None => {
-            report.parse_errors.push("No Patient resource found and could not resolve patient reference".to_string());
+            report.parse_errors.push(
+                "No Patient resource found and could not resolve patient reference".to_string(),
+            );
             create_entry(&EntryTypes::IngestReport(report.clone()))?;
             return Ok(report);
         }
@@ -278,7 +279,9 @@ pub fn ingest_bundle(input: IngestBundleInput) -> ExternResult<IngestReport> {
         let resource_type = match get_resource_type(resource) {
             Some(t) => t,
             None => {
-                report.parse_errors.push("Resource missing resourceType".to_string());
+                report
+                    .parse_errors
+                    .push("Resource missing resourceType".to_string());
                 continue;
             }
         };
@@ -303,18 +306,16 @@ pub fn ingest_bundle(input: IngestBundleInput) -> ExternResult<IngestReport> {
                     Err(e) => report.parse_errors.push(format!("Observation: {}", e)),
                 }
             }
-            "Condition" => {
-                match process_condition(resource, &patient_hash, &input.source_system) {
-                    Ok(created) => {
-                        if created {
-                            report.conditions_created += 1;
-                        } else {
-                            report.conditions_skipped += 1;
-                        }
+            "Condition" => match process_condition(resource, &patient_hash, &input.source_system) {
+                Ok(created) => {
+                    if created {
+                        report.conditions_created += 1;
+                    } else {
+                        report.conditions_skipped += 1;
                     }
-                    Err(e) => report.parse_errors.push(format!("Condition: {}", e)),
                 }
-            }
+                Err(e) => report.parse_errors.push(format!("Condition: {}", e)),
+            },
             "MedicationRequest" | "MedicationStatement" => {
                 match process_medication(resource, &patient_hash, &input.source_system) {
                     Ok(created) => {
@@ -351,18 +352,16 @@ pub fn ingest_bundle(input: IngestBundleInput) -> ExternResult<IngestReport> {
                     Err(e) => report.parse_errors.push(format!("Immunization: {}", e)),
                 }
             }
-            "Procedure" => {
-                match process_procedure(resource, &patient_hash, &input.source_system) {
-                    Ok(created) => {
-                        if created {
-                            report.procedures_created += 1;
-                        } else {
-                            report.procedures_skipped += 1;
-                        }
+            "Procedure" => match process_procedure(resource, &patient_hash, &input.source_system) {
+                Ok(created) => {
+                    if created {
+                        report.procedures_created += 1;
+                    } else {
+                        report.procedures_skipped += 1;
                     }
-                    Err(e) => report.parse_errors.push(format!("Procedure: {}", e)),
                 }
-            }
+                Err(e) => report.parse_errors.push(format!("Procedure: {}", e)),
+            },
             "DiagnosticReport" => {
                 match process_diagnostic_report(resource, &patient_hash, &input.source_system) {
                     Ok(created) => {
@@ -375,18 +374,16 @@ pub fn ingest_bundle(input: IngestBundleInput) -> ExternResult<IngestReport> {
                     Err(e) => report.parse_errors.push(format!("DiagnosticReport: {}", e)),
                 }
             }
-            "CarePlan" => {
-                match process_care_plan(resource, &patient_hash, &input.source_system) {
-                    Ok(created) => {
-                        if created {
-                            report.care_plans_created += 1;
-                        } else {
-                            report.care_plans_skipped += 1;
-                        }
+            "CarePlan" => match process_care_plan(resource, &patient_hash, &input.source_system) {
+                Ok(created) => {
+                    if created {
+                        report.care_plans_created += 1;
+                    } else {
+                        report.care_plans_skipped += 1;
                     }
-                    Err(e) => report.parse_errors.push(format!("CarePlan: {}", e)),
                 }
-            }
+                Err(e) => report.parse_errors.push(format!("CarePlan: {}", e)),
+            },
             _ => {
                 if !report.unknown_types.contains(&resource_type) {
                     report.unknown_types.push(resource_type);
@@ -419,7 +416,11 @@ pub fn export_patient_fhir(input: ExportPatientInput) -> ExternResult<ExportResu
     if input.include_sections.iter().any(|s| s == "Condition") {
         required_categories.push(DataCategory::Diagnoses);
     }
-    if input.include_sections.iter().any(|s| s == "MedicationRequest") {
+    if input
+        .include_sections
+        .iter()
+        .any(|s| s == "MedicationRequest")
+    {
         required_categories.push(DataCategory::Medications);
     }
 
@@ -455,15 +456,29 @@ pub fn export_patient_fhir(input: ExportPatientInput) -> ExternResult<ExportResu
     )?;
 
     let bundle_output: JsonValue = match response {
-        ZomeCallResponse::Ok(io) => io.decode()
-            .map_err(|e| wasm_error!(WasmErrorInner::Guest(format!("Failed to decode export: {}", e))))?,
+        ZomeCallResponse::Ok(io) => io.decode().map_err(|e| {
+            wasm_error!(WasmErrorInner::Guest(format!(
+                "Failed to decode export: {}",
+                e
+            )))
+        })?,
         ZomeCallResponse::NetworkError(e) => {
-            return Err(wasm_error!(WasmErrorInner::Guest(format!("Network error: {}", e))));
+            return Err(wasm_error!(WasmErrorInner::Guest(format!(
+                "Network error: {}",
+                e
+            ))));
         }
         ZomeCallResponse::CountersigningSession(e) => {
-            return Err(wasm_error!(WasmErrorInner::Guest(format!("Countersigning error: {}", e))));
+            return Err(wasm_error!(WasmErrorInner::Guest(format!(
+                "Countersigning error: {}",
+                e
+            ))));
         }
-        _ => return Err(wasm_error!(WasmErrorInner::Guest("Unexpected response".to_string()))),
+        _ => {
+            return Err(wasm_error!(WasmErrorInner::Guest(
+                "Unexpected response".to_string()
+            )))
+        }
     };
 
     // Count resources in the output
@@ -507,9 +522,11 @@ pub fn validate_fhir_resource(resource: JsonValue) -> ExternResult<bool> {
 
 /// Process a Patient resource
 /// Returns (patient_hash, was_created)
-fn process_patient(resource: &JsonValue, source_system: &str) -> Result<(ActionHash, bool), String> {
-    let fhir_id = get_resource_id(resource)
-        .ok_or("Patient missing 'id' field")?;
+fn process_patient(
+    resource: &JsonValue,
+    source_system: &str,
+) -> Result<(ActionHash, bool), String> {
+    let fhir_id = get_resource_id(resource).ok_or("Patient missing 'id' field")?;
 
     // Check if patient already exists from this source
     let source_key = format!("{}:Patient:{}", source_system, fhir_id);
@@ -540,10 +557,12 @@ fn process_patient(resource: &JsonValue, source_system: &str) -> Result<(ActionH
         FunctionName::from("create_or_update_patient"),
         None,
         &patient_input,
-    ).map_err(|e| format!("Failed to call patient zome: {}", e))?;
+    )
+    .map_err(|e| format!("Failed to call patient zome: {}", e))?;
 
     let patient_hash: ActionHash = match response {
-        ZomeCallResponse::Ok(io) => io.decode()
+        ZomeCallResponse::Ok(io) => io
+            .decode()
             .map_err(|e| format!("Failed to decode patient hash: {}", e))?,
         _ => return Err("Failed to create patient".to_string()),
     };
@@ -557,20 +576,25 @@ fn process_patient(resource: &JsonValue, source_system: &str) -> Result<(ActionH
         first_ingested: Timestamp::from_micros(now.as_micros() as i64),
         last_updated: Timestamp::from_micros(now.as_micros() as i64),
     };
-    create_entry(&EntryTypes::FhirResourceAnchor(anchor))
-        .map_err(|e| e.to_string())?;
+    create_entry(&EntryTypes::FhirResourceAnchor(anchor)).map_err(|e| e.to_string())?;
 
     Ok((patient_hash, true))
 }
 
 /// Process an Observation resource
-fn process_observation(resource: &JsonValue, patient_hash: &ActionHash, source_system: &str) -> Result<bool, String> {
-    let fhir_id = get_resource_id(resource)
-        .ok_or("Observation missing 'id' field")?;
+fn process_observation(
+    resource: &JsonValue,
+    patient_hash: &ActionHash,
+    source_system: &str,
+) -> Result<bool, String> {
+    let fhir_id = get_resource_id(resource).ok_or("Observation missing 'id' field")?;
 
     // Check for duplicate
     let source_key = format!("{}:Observation:{}", source_system, fhir_id);
-    if lookup_resource_anchor(&source_key).map_err(|e| e.to_string())?.is_some() {
+    if lookup_resource_anchor(&source_key)
+        .map_err(|e| e.to_string())?
+        .is_some()
+    {
         return Ok(false); // Already exists
     }
 
@@ -610,11 +634,13 @@ fn process_observation(resource: &JsonValue, patient_hash: &ActionHash, source_s
         FunctionName::from("create_fhir_observation_mapping"),
         None,
         &mapping,
-    ).map_err(|e| format!("Failed to create observation mapping: {}", e))?;
+    )
+    .map_err(|e| format!("Failed to create observation mapping: {}", e))?;
 
     let mapping_hash: ActionHash = match response {
         ZomeCallResponse::Ok(io) => {
-            let record: Record = io.decode()
+            let record: Record = io
+                .decode()
                 .map_err(|e| format!("Failed to decode observation: {}", e))?;
             record.action_address().clone()
         }
@@ -628,19 +654,27 @@ fn process_observation(resource: &JsonValue, patient_hash: &ActionHash, source_s
 }
 
 /// Process a Condition resource
-fn process_condition(resource: &JsonValue, patient_hash: &ActionHash, source_system: &str) -> Result<bool, String> {
-    let fhir_id = get_resource_id(resource)
-        .ok_or("Condition missing 'id' field")?;
+fn process_condition(
+    resource: &JsonValue,
+    patient_hash: &ActionHash,
+    source_system: &str,
+) -> Result<bool, String> {
+    let fhir_id = get_resource_id(resource).ok_or("Condition missing 'id' field")?;
 
     let source_key = format!("{}:Condition:{}", source_system, fhir_id);
-    if lookup_resource_anchor(&source_key).map_err(|e| e.to_string())?.is_some() {
+    if lookup_resource_anchor(&source_key)
+        .map_err(|e| e.to_string())?
+        .is_some()
+    {
         return Ok(false);
     }
 
     let (code, display, system) = extract_coding(resource, "code");
     let now = sys_time().map_err(|e| e.to_string())?;
-    let clinical_status = get_fhir_string(resource, "clinicalStatus").unwrap_or_else(|| "unknown".to_string());
-    let verification_status = get_fhir_string(resource, "verificationStatus").unwrap_or_else(|| "unknown".to_string());
+    let clinical_status =
+        get_fhir_string(resource, "clinicalStatus").unwrap_or_else(|| "unknown".to_string());
+    let verification_status =
+        get_fhir_string(resource, "verificationStatus").unwrap_or_else(|| "unknown".to_string());
     let icd10_code = extract_icd10(resource).unwrap_or_else(|| "unknown".to_string());
 
     let mapping = FhirConditionMapping {
@@ -672,11 +706,13 @@ fn process_condition(resource: &JsonValue, patient_hash: &ActionHash, source_sys
         FunctionName::from("create_fhir_condition_mapping"),
         None,
         &mapping,
-    ).map_err(|e| format!("Failed to create condition mapping: {}", e))?;
+    )
+    .map_err(|e| format!("Failed to create condition mapping: {}", e))?;
 
     let mapping_hash: ActionHash = match response {
         ZomeCallResponse::Ok(io) => {
-            let record: Record = io.decode()
+            let record: Record = io
+                .decode()
                 .map_err(|e| format!("Failed to decode condition: {}", e))?;
             record.action_address().clone()
         }
@@ -688,12 +724,18 @@ fn process_condition(resource: &JsonValue, patient_hash: &ActionHash, source_sys
 }
 
 /// Process a Medication resource
-fn process_medication(resource: &JsonValue, patient_hash: &ActionHash, source_system: &str) -> Result<bool, String> {
-    let fhir_id = get_resource_id(resource)
-        .ok_or("Medication missing 'id' field")?;
+fn process_medication(
+    resource: &JsonValue,
+    patient_hash: &ActionHash,
+    source_system: &str,
+) -> Result<bool, String> {
+    let fhir_id = get_resource_id(resource).ok_or("Medication missing 'id' field")?;
 
     let source_key = format!("{}:Medication:{}", source_system, fhir_id);
-    if lookup_resource_anchor(&source_key).map_err(|e| e.to_string())?.is_some() {
+    if lookup_resource_anchor(&source_key)
+        .map_err(|e| e.to_string())?
+        .is_some()
+    {
         return Ok(false);
     }
 
@@ -701,7 +743,10 @@ fn process_medication(resource: &JsonValue, patient_hash: &ActionHash, source_sy
     let status = get_fhir_string(resource, "status").unwrap_or_else(|| "unknown".to_string());
     let intent = get_fhir_string(resource, "intent").unwrap_or_else(|| "unknown".to_string());
     let now = sys_time().map_err(|e| e.to_string())?;
-    let rxnorm_code = medication_code.0.clone().unwrap_or_else(|| "unknown".to_string());
+    let rxnorm_code = medication_code
+        .0
+        .clone()
+        .unwrap_or_else(|| "unknown".to_string());
 
     let mapping = FhirMedicationMapping {
         fhir_medication_id: fhir_id.clone(),
@@ -710,7 +755,11 @@ fn process_medication(resource: &JsonValue, patient_hash: &ActionHash, source_sy
         source_system: source_system.to_string(),
         status,
         intent,
-        medication_codeable_concept: build_codeable_concept(medication_code.0, medication_code.2, None),
+        medication_codeable_concept: build_codeable_concept(
+            medication_code.0,
+            medication_code.2,
+            None,
+        ),
         rxnorm_code,
         ndc_code: medication_code.1,
         requester_reference: None,
@@ -731,11 +780,13 @@ fn process_medication(resource: &JsonValue, patient_hash: &ActionHash, source_sy
         FunctionName::from("create_fhir_medication_mapping"),
         None,
         &mapping,
-    ).map_err(|e| format!("Failed to create medication mapping: {}", e))?;
+    )
+    .map_err(|e| format!("Failed to create medication mapping: {}", e))?;
 
     let mapping_hash: ActionHash = match response {
         ZomeCallResponse::Ok(io) => {
-            let record: Record = io.decode()
+            let record: Record = io
+                .decode()
                 .map_err(|e| format!("Failed to decode medication: {}", e))?;
             record.action_address().clone()
         }
@@ -747,12 +798,18 @@ fn process_medication(resource: &JsonValue, patient_hash: &ActionHash, source_sy
 }
 
 /// Process an AllergyIntolerance resource
-fn process_allergy(resource: &JsonValue, patient_hash: &ActionHash, source_system: &str) -> Result<bool, String> {
-    let fhir_id = get_resource_id(resource)
-        .ok_or("AllergyIntolerance missing 'id' field")?;
+fn process_allergy(
+    resource: &JsonValue,
+    patient_hash: &ActionHash,
+    source_system: &str,
+) -> Result<bool, String> {
+    let fhir_id = get_resource_id(resource).ok_or("AllergyIntolerance missing 'id' field")?;
 
     let source_key = format!("{}:AllergyIntolerance:{}", source_system, fhir_id);
-    if lookup_resource_anchor(&source_key).map_err(|e| e.to_string())?.is_some() {
+    if lookup_resource_anchor(&source_key)
+        .map_err(|e| e.to_string())?
+        .is_some()
+    {
         return Ok(false);
     }
 
@@ -791,11 +848,13 @@ fn process_allergy(resource: &JsonValue, patient_hash: &ActionHash, source_syste
         FunctionName::from("create_fhir_observation_mapping"),
         None,
         &mapping,
-    ).map_err(|e| format!("Failed to create allergy mapping: {}", e))?;
+    )
+    .map_err(|e| format!("Failed to create allergy mapping: {}", e))?;
 
     let mapping_hash: ActionHash = match response {
         ZomeCallResponse::Ok(io) => {
-            let record: Record = io.decode()
+            let record: Record = io
+                .decode()
                 .map_err(|e| format!("Failed to decode allergy: {}", e))?;
             record.action_address().clone()
         }
@@ -807,12 +866,18 @@ fn process_allergy(resource: &JsonValue, patient_hash: &ActionHash, source_syste
 }
 
 /// Process an Immunization resource
-fn process_immunization(resource: &JsonValue, patient_hash: &ActionHash, source_system: &str) -> Result<bool, String> {
-    let fhir_id = get_resource_id(resource)
-        .ok_or("Immunization missing 'id' field")?;
+fn process_immunization(
+    resource: &JsonValue,
+    patient_hash: &ActionHash,
+    source_system: &str,
+) -> Result<bool, String> {
+    let fhir_id = get_resource_id(resource).ok_or("Immunization missing 'id' field")?;
 
     let source_key = format!("{}:Immunization:{}", source_system, fhir_id);
-    if lookup_resource_anchor(&source_key).map_err(|e| e.to_string())?.is_some() {
+    if lookup_resource_anchor(&source_key)
+        .map_err(|e| e.to_string())?
+        .is_some()
+    {
         return Ok(false);
     }
 
@@ -849,11 +914,13 @@ fn process_immunization(resource: &JsonValue, patient_hash: &ActionHash, source_
         FunctionName::from("create_fhir_observation_mapping"),
         None,
         &mapping,
-    ).map_err(|e| format!("Failed to create immunization mapping: {}", e))?;
+    )
+    .map_err(|e| format!("Failed to create immunization mapping: {}", e))?;
 
     let mapping_hash: ActionHash = match response {
         ZomeCallResponse::Ok(io) => {
-            let record: Record = io.decode()
+            let record: Record = io
+                .decode()
                 .map_err(|e| format!("Failed to decode immunization: {}", e))?;
             record.action_address().clone()
         }
@@ -865,12 +932,18 @@ fn process_immunization(resource: &JsonValue, patient_hash: &ActionHash, source_
 }
 
 /// Process a Procedure resource
-fn process_procedure(resource: &JsonValue, patient_hash: &ActionHash, source_system: &str) -> Result<bool, String> {
-    let fhir_id = get_resource_id(resource)
-        .ok_or("Procedure missing 'id' field")?;
+fn process_procedure(
+    resource: &JsonValue,
+    patient_hash: &ActionHash,
+    source_system: &str,
+) -> Result<bool, String> {
+    let fhir_id = get_resource_id(resource).ok_or("Procedure missing 'id' field")?;
 
     let source_key = format!("{}:Procedure:{}", source_system, fhir_id);
-    if lookup_resource_anchor(&source_key).map_err(|e| e.to_string())?.is_some() {
+    if lookup_resource_anchor(&source_key)
+        .map_err(|e| e.to_string())?
+        .is_some()
+    {
         return Ok(false);
     }
 
@@ -908,11 +981,13 @@ fn process_procedure(resource: &JsonValue, patient_hash: &ActionHash, source_sys
         FunctionName::from("create_fhir_observation_mapping"),
         None,
         &mapping,
-    ).map_err(|e| format!("Failed to create procedure mapping: {}", e))?;
+    )
+    .map_err(|e| format!("Failed to create procedure mapping: {}", e))?;
 
     let mapping_hash: ActionHash = match response {
         ZomeCallResponse::Ok(io) => {
-            let record: Record = io.decode()
+            let record: Record = io
+                .decode()
                 .map_err(|e| format!("Failed to decode procedure: {}", e))?;
             record.action_address().clone()
         }
@@ -925,12 +1000,18 @@ fn process_procedure(resource: &JsonValue, patient_hash: &ActionHash, source_sys
 
 /// Process a DiagnosticReport resource
 /// DiagnosticReports represent lab results, imaging studies, pathology reports, etc.
-fn process_diagnostic_report(resource: &JsonValue, patient_hash: &ActionHash, source_system: &str) -> Result<bool, String> {
-    let fhir_id = get_resource_id(resource)
-        .ok_or("DiagnosticReport missing 'id' field")?;
+fn process_diagnostic_report(
+    resource: &JsonValue,
+    patient_hash: &ActionHash,
+    source_system: &str,
+) -> Result<bool, String> {
+    let fhir_id = get_resource_id(resource).ok_or("DiagnosticReport missing 'id' field")?;
 
     let source_key = format!("{}:DiagnosticReport:{}", source_system, fhir_id);
-    if lookup_resource_anchor(&source_key).map_err(|e| e.to_string())?.is_some() {
+    if lookup_resource_anchor(&source_key)
+        .map_err(|e| e.to_string())?
+        .is_some()
+    {
         return Ok(false);
     }
 
@@ -939,7 +1020,9 @@ fn process_diagnostic_report(resource: &JsonValue, patient_hash: &ActionHash, so
     let category = extract_category(resource);
     let status = get_fhir_string(resource, "status").unwrap_or_else(|| "unknown".to_string());
     let now = sys_time().map_err(|e| e.to_string())?;
-    let loinc_code = code.clone().unwrap_or_else(|| format!("diagnostic-report:{}", category.unwrap_or_default()));
+    let loinc_code = code
+        .clone()
+        .unwrap_or_else(|| format!("diagnostic-report:{}", category.unwrap_or_default()));
 
     let mapping = FhirObservationMapping {
         fhir_observation_id: format!("diagnostic-report-{}", fhir_id),
@@ -970,11 +1053,13 @@ fn process_diagnostic_report(resource: &JsonValue, patient_hash: &ActionHash, so
         FunctionName::from("create_fhir_observation_mapping"),
         None,
         &mapping,
-    ).map_err(|e| format!("Failed to create diagnostic report mapping: {}", e))?;
+    )
+    .map_err(|e| format!("Failed to create diagnostic report mapping: {}", e))?;
 
     let mapping_hash: ActionHash = match response {
         ZomeCallResponse::Ok(io) => {
-            let record: Record = io.decode()
+            let record: Record = io
+                .decode()
                 .map_err(|e| format!("Failed to decode diagnostic report: {}", e))?;
             record.action_address().clone()
         }
@@ -987,12 +1072,18 @@ fn process_diagnostic_report(resource: &JsonValue, patient_hash: &ActionHash, so
 
 /// Process a CarePlan resource
 /// CarePlans represent care plans, treatment plans, health maintenance plans
-fn process_care_plan(resource: &JsonValue, patient_hash: &ActionHash, source_system: &str) -> Result<bool, String> {
-    let fhir_id = get_resource_id(resource)
-        .ok_or("CarePlan missing 'id' field")?;
+fn process_care_plan(
+    resource: &JsonValue,
+    patient_hash: &ActionHash,
+    source_system: &str,
+) -> Result<bool, String> {
+    let fhir_id = get_resource_id(resource).ok_or("CarePlan missing 'id' field")?;
 
     let source_key = format!("{}:CarePlan:{}", source_system, fhir_id);
-    if lookup_resource_anchor(&source_key).map_err(|e| e.to_string())?.is_some() {
+    if lookup_resource_anchor(&source_key)
+        .map_err(|e| e.to_string())?
+        .is_some()
+    {
         return Ok(false);
     }
 
@@ -1015,11 +1106,17 @@ fn process_care_plan(resource: &JsonValue, patient_hash: &ActionHash, source_sys
         status,
         category: Vec::new(),
         code: build_codeable_concept(
-            Some(format!("care-plan:{}", category.clone().unwrap_or_else(|| "general".to_string()))),
+            Some(format!(
+                "care-plan:{}",
+                category.clone().unwrap_or_else(|| "general".to_string())
+            )),
             display.clone(),
             None,
         ),
-        loinc_code: format!("care-plan:{}", category.unwrap_or_else(|| "general".to_string())),
+        loinc_code: format!(
+            "care-plan:{}",
+            category.unwrap_or_else(|| "general".to_string())
+        ),
         snomed_code: None,
         value_quantity: None,
         value_codeable_concept: None,
@@ -1040,11 +1137,13 @@ fn process_care_plan(resource: &JsonValue, patient_hash: &ActionHash, source_sys
         FunctionName::from("create_fhir_observation_mapping"),
         None,
         &mapping,
-    ).map_err(|e| format!("Failed to create care plan mapping: {}", e))?;
+    )
+    .map_err(|e| format!("Failed to create care plan mapping: {}", e))?;
 
     let mapping_hash: ActionHash = match response {
         ZomeCallResponse::Ok(io) => {
-            let record: Record = io.decode()
+            let record: Record = io
+                .decode()
                 .map_err(|e| format!("Failed to decode care plan: {}", e))?;
             record.action_address().clone()
         }
@@ -1057,7 +1156,8 @@ fn process_care_plan(resource: &JsonValue, patient_hash: &ActionHash, source_sys
 
 /// Extract category from FHIR resource
 fn extract_category(resource: &JsonValue) -> Option<String> {
-    resource.get("category")
+    resource
+        .get("category")
         .and_then(|cats| cats.as_array())
         .and_then(|arr| arr.first())
         .and_then(|cat| {
@@ -1069,7 +1169,11 @@ fn extract_category(resource: &JsonValue) -> Option<String> {
                 .and_then(|v| v.as_str())
                 .map(|s| s.to_string())
                 // Fall back to text
-                .or_else(|| cat.get("text").and_then(|t| t.as_str()).map(|s| s.to_string()))
+                .or_else(|| {
+                    cat.get("text")
+                        .and_then(|t| t.as_str())
+                        .map(|s| s.to_string())
+                })
         })
 }
 
@@ -1105,14 +1209,22 @@ fn lookup_resource_anchor(source_key: &str) -> ExternResult<Option<FhirResourceA
     if let Some(link) = links.first() {
         if let Some(hash) = link.target.clone().into_action_hash() {
             if let Some(record) = get(hash, GetOptions::default())? {
-                return Ok(record.entry().to_app_option::<FhirResourceAnchor>().ok().flatten());
+                return Ok(record
+                    .entry()
+                    .to_app_option::<FhirResourceAnchor>()
+                    .ok()
+                    .flatten());
             }
         }
     }
     Ok(None)
 }
 
-fn create_resource_anchor(source_key: &str, resource_type: &str, internal_hash: &ActionHash) -> Result<(), String> {
+fn create_resource_anchor(
+    source_key: &str,
+    resource_type: &str,
+    internal_hash: &ActionHash,
+) -> Result<(), String> {
     let now = sys_time().map_err(|e| e.to_string())?;
     let anchor_entry = FhirResourceAnchor {
         source_key: source_key.to_string(),
@@ -1122,23 +1234,27 @@ fn create_resource_anchor(source_key: &str, resource_type: &str, internal_hash: 
         last_updated: Timestamp::from_micros(now.as_micros() as i64),
     };
 
-    let anchor_hash_result = create_entry(&EntryTypes::FhirResourceAnchor(anchor_entry))
-        .map_err(|e| e.to_string())?;
+    let anchor_hash_result =
+        create_entry(&EntryTypes::FhirResourceAnchor(anchor_entry)).map_err(|e| e.to_string())?;
 
-    let link_anchor = anchor_hash(&format!("fhir_anchor:{}", source_key))
-        .map_err(|e| e.to_string())?;
+    let link_anchor =
+        anchor_hash(&format!("fhir_anchor:{}", source_key)).map_err(|e| e.to_string())?;
 
     create_link(
         link_anchor,
         anchor_hash_result,
         LinkTypes::SourceKeyToAnchor,
         LinkTag::new(""),
-    ).map_err(|e| e.to_string())?;
+    )
+    .map_err(|e| e.to_string())?;
 
     Ok(())
 }
 
-fn lookup_patient_by_fhir_reference(reference: &str, source_system: &str) -> ExternResult<Option<ActionHash>> {
+fn lookup_patient_by_fhir_reference(
+    reference: &str,
+    source_system: &str,
+) -> ExternResult<Option<ActionHash>> {
     // Reference format: "Patient/123"
     let parts: Vec<&str> = reference.split('/').collect();
     if parts.len() == 2 && parts[0] == "Patient" {
@@ -1153,12 +1269,14 @@ fn lookup_patient_by_fhir_reference(reference: &str, source_system: &str) -> Ext
 fn extract_patient_name(resource: &JsonValue) -> (Option<String>, Option<String>) {
     if let Some(names) = resource.get("name").and_then(|n| n.as_array()) {
         if let Some(name) = names.first() {
-            let given = name.get("given")
+            let given = name
+                .get("given")
                 .and_then(|g| g.as_array())
                 .and_then(|arr| arr.first())
                 .and_then(|g| g.as_str())
                 .map(|s| s.to_string());
-            let family = name.get("family")
+            let family = name
+                .get("family")
                 .and_then(|f| f.as_str())
                 .map(|s| s.to_string());
             return (given, family);
@@ -1167,13 +1285,25 @@ fn extract_patient_name(resource: &JsonValue) -> (Option<String>, Option<String>
     (None, None)
 }
 
-fn extract_coding(resource: &JsonValue, field: &str) -> (Option<String>, Option<String>, Option<String>) {
+fn extract_coding(
+    resource: &JsonValue,
+    field: &str,
+) -> (Option<String>, Option<String>, Option<String>) {
     if let Some(code_field) = resource.get(field) {
         if let Some(codings) = code_field.get("coding").and_then(|c| c.as_array()) {
             if let Some(coding) = codings.first() {
-                let code = coding.get("code").and_then(|c| c.as_str()).map(|s| s.to_string());
-                let display = coding.get("display").and_then(|d| d.as_str()).map(|s| s.to_string());
-                let system = coding.get("system").and_then(|s| s.as_str()).map(|s| s.to_string());
+                let code = coding
+                    .get("code")
+                    .and_then(|c| c.as_str())
+                    .map(|s| s.to_string());
+                let display = coding
+                    .get("display")
+                    .and_then(|d| d.as_str())
+                    .map(|s| s.to_string());
+                let system = coding
+                    .get("system")
+                    .and_then(|s| s.as_str())
+                    .map(|s| s.to_string());
                 return (code, display, system);
             }
         }
@@ -1202,7 +1332,8 @@ fn extract_value(resource: &JsonValue) -> Option<String> {
 }
 
 fn extract_unit(resource: &JsonValue) -> Option<String> {
-    resource.get("valueQuantity")
+    resource
+        .get("valueQuantity")
         .and_then(|vq| vq.get("unit"))
         .and_then(|u| u.as_str())
         .map(|s| s.to_string())
@@ -1214,7 +1345,10 @@ fn extract_icd10(resource: &JsonValue) -> Option<String> {
             for coding in codings {
                 if let Some(system) = coding.get("system").and_then(|s| s.as_str()) {
                     if system.contains("icd") {
-                        return coding.get("code").and_then(|c| c.as_str()).map(|s| s.to_string());
+                        return coding
+                            .get("code")
+                            .and_then(|c| c.as_str())
+                            .map(|s| s.to_string());
                     }
                 }
             }
@@ -1223,7 +1357,9 @@ fn extract_icd10(resource: &JsonValue) -> Option<String> {
     None
 }
 
-fn extract_medication_code(resource: &JsonValue) -> (Option<String>, Option<String>, Option<String>) {
+fn extract_medication_code(
+    resource: &JsonValue,
+) -> (Option<String>, Option<String>, Option<String>) {
     let mut rxnorm = None;
     let mut ndc = None;
     let mut display = None;
@@ -1232,9 +1368,15 @@ fn extract_medication_code(resource: &JsonValue) -> (Option<String>, Option<Stri
         if let Some(codings) = med.get("coding").and_then(|c| c.as_array()) {
             for coding in codings {
                 let system = coding.get("system").and_then(|s| s.as_str()).unwrap_or("");
-                let code = coding.get("code").and_then(|c| c.as_str()).map(|s| s.to_string());
+                let code = coding
+                    .get("code")
+                    .and_then(|c| c.as_str())
+                    .map(|s| s.to_string());
                 if display.is_none() {
-                    display = coding.get("display").and_then(|d| d.as_str()).map(|s| s.to_string());
+                    display = coding
+                        .get("display")
+                        .and_then(|d| d.as_str())
+                        .map(|s| s.to_string());
                 }
                 if system.contains("rxnorm") {
                     rxnorm = code;
@@ -1244,7 +1386,10 @@ fn extract_medication_code(resource: &JsonValue) -> (Option<String>, Option<Stri
             }
         }
         if display.is_none() {
-            display = med.get("text").and_then(|t| t.as_str()).map(|s| s.to_string());
+            display = med
+                .get("text")
+                .and_then(|t| t.as_str())
+                .map(|s| s.to_string());
         }
     }
 
@@ -1252,7 +1397,8 @@ fn extract_medication_code(resource: &JsonValue) -> (Option<String>, Option<Stri
 }
 
 fn count_resources(bundle: &JsonValue) -> u32 {
-    bundle.get("entry")
+    bundle
+        .get("entry")
         .and_then(|e| e.as_array())
         .map(|arr| arr.len() as u32)
         .unwrap_or(0)
@@ -1265,11 +1411,11 @@ fn validate_patient_resource(resource: &JsonValue) -> bool {
 
 fn validate_observation_resource(resource: &JsonValue) -> bool {
     // Observation must have code and either value or dataAbsentReason
-    resource.get("code").is_some() &&
-    (resource.get("valueQuantity").is_some() ||
-     resource.get("valueString").is_some() ||
-     resource.get("valueCodeableConcept").is_some() ||
-     resource.get("dataAbsentReason").is_some())
+    resource.get("code").is_some()
+        && (resource.get("valueQuantity").is_some()
+            || resource.get("valueString").is_some()
+            || resource.get("valueCodeableConcept").is_some()
+            || resource.get("dataAbsentReason").is_some())
 }
 
 fn validate_condition_resource(resource: &JsonValue) -> bool {
@@ -1279,6 +1425,6 @@ fn validate_condition_resource(resource: &JsonValue) -> bool {
 
 fn validate_medication_resource(resource: &JsonValue) -> bool {
     // MedicationRequest must have medication reference or code
-    resource.get("medicationCodeableConcept").is_some() ||
-    resource.get("medicationReference").is_some()
+    resource.get("medicationCodeableConcept").is_some()
+        || resource.get("medicationReference").is_some()
 }

@@ -6,16 +6,16 @@
 //! Scientific experiments to validate HDC encoding for genetic data.
 //! Also provides practical CLI tools for VCF encoding and pharmacogenomics.
 
-mod taxonomy;
-mod prefilter;
-mod privacy;
-mod hla;
-mod fasta;
-mod real_taxonomy;
-mod real_hla;
-mod pharmacogenomics;
 mod benchmark;
 mod cli_tools;
+mod fasta;
+mod hla;
+mod pharmacogenomics;
+mod prefilter;
+mod privacy;
+mod real_hla;
+mod real_taxonomy;
+mod taxonomy;
 
 use clap::{Parser, Subcommand};
 use colored::*;
@@ -185,7 +185,6 @@ enum Commands {
     // ========================================================================
     // PRACTICAL CLINICAL TOOLS
     // ========================================================================
-
     /// Encode a VCF file to hypervector representation
     EncodeVcf {
         /// Input VCF file path
@@ -289,42 +288,72 @@ fn main() {
     println!();
 
     match cli.command {
-        Commands::Taxonomy { sequences, kmer, output, real_data, data_path } => {
+        Commands::Taxonomy {
+            sequences,
+            kmer,
+            output,
+            real_data,
+            data_path,
+        } => {
             if real_data {
-                let path = data_path.unwrap_or_else(|| {
-                    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("data/real")
-                });
+                let path = data_path
+                    .unwrap_or_else(|| PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("data/real"));
                 real_taxonomy::run_real_taxonomy_experiment(path, kmer, output);
             } else {
                 taxonomy::run_taxonomy_experiment(sequences, kmer, output);
             }
         }
-        Commands::Prefilter { corpus, queries, top_k, kmer, output } => {
+        Commands::Prefilter {
+            corpus,
+            queries,
+            top_k,
+            kmer,
+            output,
+        } => {
             prefilter::run_prefilter_benchmark(corpus, queries, top_k, kmer, output);
         }
-        Commands::Privacy { training, attacker, noise, kmer, output } => {
+        Commands::Privacy {
+            training,
+            attacker,
+            noise,
+            kmer,
+            output,
+        } => {
             privacy::run_privacy_analysis(training, attacker, noise, kmer, output);
         }
-        Commands::Hla { donors, recipients, output, use_frequencies, freq_path } => {
+        Commands::Hla {
+            donors,
+            recipients,
+            output,
+            use_frequencies,
+            freq_path,
+        } => {
             if use_frequencies {
                 let path = freq_path.unwrap_or_else(|| {
-                    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("data/hla_allele_frequencies.json")
+                    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+                        .join("data/hla_allele_frequencies.json")
                 });
                 hla::run_hla_matching_with_frequencies(donors, recipients, path, output);
             } else {
                 hla::run_hla_matching(donors, recipients, output);
             }
         }
-        Commands::RealHla { data_path, kmer, output } => {
-            let path = data_path.unwrap_or_else(|| {
-                PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("data/real")
-            });
+        Commands::RealHla {
+            data_path,
+            kmer,
+            output,
+        } => {
+            let path = data_path
+                .unwrap_or_else(|| PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("data/real"));
             real_hla::run_real_hla_experiment(path, kmer, output);
         }
-        Commands::Pharmacogenomics { data_path, kmer, output } => {
-            let path = data_path.unwrap_or_else(|| {
-                PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("data/real")
-            });
+        Commands::Pharmacogenomics {
+            data_path,
+            kmer,
+            output,
+        } => {
+            let path = data_path
+                .unwrap_or_else(|| PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("data/real"));
             pharmacogenomics::run_pharmacogenomics_experiment(path, kmer, output);
         }
         Commands::All { output } => {
@@ -359,7 +388,11 @@ fn main() {
             println!("{}", "  ALL EXPERIMENTS COMPLETE".green().bold());
             println!("{}", "═".repeat(60).green());
         }
-        Commands::Sweep { kmers, sequences, output } => {
+        Commands::Sweep {
+            kmers,
+            sequences,
+            output,
+        } => {
             let kmer_list: Vec<u8> = kmers
                 .split(',')
                 .filter_map(|s| s.trim().parse().ok())
@@ -367,7 +400,10 @@ fn main() {
             taxonomy::run_parameter_sweep(&kmer_list, sequences, output);
         }
         Commands::Benchmark { output_json } => {
-            println!("{}", "Running HDC Performance Benchmarks...".yellow().bold());
+            println!(
+                "{}",
+                "Running HDC Performance Benchmarks...".yellow().bold()
+            );
             println!();
 
             let report = benchmark::run_benchmark_suite();
@@ -383,20 +419,43 @@ fn main() {
         // ====================================================================
         // PRACTICAL CLINICAL TOOLS
         // ====================================================================
-
-        Commands::EncodeVcf { input, output, dp_epsilon, format, seed } => {
+        Commands::EncodeVcf {
+            input,
+            output,
+            dp_epsilon,
+            format,
+            seed,
+        } => {
             cli_tools::encode_vcf(&input, output.as_deref(), dp_epsilon, &format, &seed);
         }
 
-        Commands::Pgx { diplotypes, drug, all_drugs, format } => {
+        Commands::Pgx {
+            diplotypes,
+            drug,
+            all_drugs,
+            format,
+        } => {
             cli_tools::pharmacogenomics(&diplotypes, drug.as_deref(), all_drugs, &format);
         }
 
-        Commands::Search { query, database, top_k, threshold, dp_epsilon, seed, gpu } => {
+        Commands::Search {
+            query,
+            database,
+            top_k,
+            threshold,
+            dp_epsilon,
+            seed,
+            gpu,
+        } => {
             cli_tools::search_patients(&query, &database, top_k, threshold, dp_epsilon, &seed, gpu);
         }
 
-        Commands::BuildDb { input_dir, output, dp_epsilon, seed } => {
+        Commands::BuildDb {
+            input_dir,
+            output,
+            dp_epsilon,
+            seed,
+        } => {
             cli_tools::build_database(&input_dir, &output, dp_epsilon, &seed);
         }
     }

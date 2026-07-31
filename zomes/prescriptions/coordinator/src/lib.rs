@@ -14,13 +14,11 @@
 //! Integrates with CDS zome for drug interaction and allergy checking.
 
 use hdk::prelude::*;
-use prescriptions_integrity::*;
-use mycelix_health_shared::{
-    require_authorization, require_admin_authorization,
-    log_data_access,
-    DataCategory, Permission,
-};
 use holochain_serialized_bytes::prelude::*;
+use mycelix_health_shared::{
+    log_data_access, require_admin_authorization, require_authorization, DataCategory, Permission,
+};
+use prescriptions_integrity::*;
 
 // ============================================================================
 // CDS Integration Types (for cross-zome calls)
@@ -181,8 +179,9 @@ pub fn create_prescription(input: CreatePrescriptionInput) -> ExternResult<Recor
     }
 
     let rx_hash = create_entry(&EntryTypes::Prescription(input.prescription.clone()))?;
-    let record = get(rx_hash.clone(), GetOptions::default())?
-        .ok_or(wasm_error!(WasmErrorInner::Guest("Could not find prescription".to_string())))?;
+    let record = get(rx_hash.clone(), GetOptions::default())?.ok_or(wasm_error!(
+        WasmErrorInner::Guest("Could not find prescription".to_string())
+    ))?;
 
     // Link to patient
     create_link(
@@ -201,7 +200,9 @@ pub fn create_prescription(input: CreatePrescriptionInput) -> ExternResult<Recor
     )?;
 
     // If controlled substance, add to tracking
-    if input.prescription.schedule.is_some() && input.prescription.schedule != Some(DrugSchedule::NotControlled) {
+    if input.prescription.schedule.is_some()
+        && input.prescription.schedule != Some(DrugSchedule::NotControlled)
+    {
         let controlled_anchor = anchor_hash("controlled_substances")?;
         create_link(
             controlled_anchor,
@@ -248,7 +249,9 @@ pub fn get_prescription(input: GetPrescriptionInput) -> ExternResult<Option<Reco
             .entry()
             .to_app_option()
             .map_err(|e| wasm_error!(WasmErrorInner::Guest(e.to_string())))?
-            .ok_or(wasm_error!(WasmErrorInner::Guest("Invalid prescription entry".to_string())))?;
+            .ok_or(wasm_error!(WasmErrorInner::Guest(
+                "Invalid prescription entry".to_string()
+            )))?;
 
         // Require Read authorization
         let auth = require_authorization(
@@ -282,7 +285,10 @@ pub struct GetPatientPrescriptionsInput {
 
 /// Internal get without access control
 fn get_patient_prescriptions_internal(patient_hash: ActionHash) -> ExternResult<Vec<Record>> {
-    let links = get_links(LinkQuery::try_new(patient_hash, LinkTypes::PatientToPrescriptions)?, GetStrategy::default())?;
+    let links = get_links(
+        LinkQuery::try_new(patient_hash, LinkTypes::PatientToPrescriptions)?,
+        GetStrategy::default(),
+    )?;
 
     let mut prescriptions = Vec::new();
     for link in links {
@@ -340,7 +346,12 @@ pub fn get_active_prescriptions(input: GetPatientPrescriptionsInput) -> ExternRe
     let active: Vec<Record> = all_rx
         .into_iter()
         .filter(|record| {
-            if let Some(rx) = record.entry().to_app_option::<Prescription>().ok().flatten() {
+            if let Some(rx) = record
+                .entry()
+                .to_app_option::<Prescription>()
+                .ok()
+                .flatten()
+            {
                 matches!(rx.status, PrescriptionStatus::Active)
             } else {
                 false
@@ -375,14 +386,17 @@ pub struct FillPrescriptionInput {
 #[hdk_extern]
 pub fn fill_prescription(input: FillPrescriptionInput) -> ExternResult<Record> {
     // First, verify the prescription exists and has refills
-    let rx_record = get(input.fill.prescription_hash.clone(), GetOptions::default())?
-        .ok_or(wasm_error!(WasmErrorInner::Guest("Prescription not found".to_string())))?;
+    let rx_record = get(input.fill.prescription_hash.clone(), GetOptions::default())?.ok_or(
+        wasm_error!(WasmErrorInner::Guest("Prescription not found".to_string())),
+    )?;
 
     let mut prescription: Prescription = rx_record
         .entry()
         .to_app_option()
         .map_err(|e| wasm_error!(WasmErrorInner::Guest(e.to_string())))?
-        .ok_or(wasm_error!(WasmErrorInner::Guest("Invalid prescription".to_string())))?;
+        .ok_or(wasm_error!(WasmErrorInner::Guest(
+            "Invalid prescription".to_string()
+        )))?;
 
     // Require Write authorization for Medications category
     let auth = require_authorization(
@@ -393,13 +407,16 @@ pub fn fill_prescription(input: FillPrescriptionInput) -> ExternResult<Record> {
     )?;
 
     if prescription.refills_remaining == 0 {
-        return Err(wasm_error!(WasmErrorInner::Guest("No refills remaining".to_string())));
+        return Err(wasm_error!(WasmErrorInner::Guest(
+            "No refills remaining".to_string()
+        )));
     }
 
     // Create the fill record
     let fill_hash = create_entry(&EntryTypes::PrescriptionFill(input.fill.clone()))?;
-    let fill_record = get(fill_hash.clone(), GetOptions::default())?
-        .ok_or(wasm_error!(WasmErrorInner::Guest("Could not find fill".to_string())))?;
+    let fill_record = get(fill_hash.clone(), GetOptions::default())?.ok_or(wasm_error!(
+        WasmErrorInner::Guest("Could not find fill".to_string())
+    ))?;
 
     // Link fill to prescription
     create_link(
@@ -438,14 +455,17 @@ pub struct GetPrescriptionFillsInput {
 #[hdk_extern]
 pub fn get_prescription_fills(input: GetPrescriptionFillsInput) -> ExternResult<Vec<Record>> {
     // First get the prescription to find the patient_hash
-    let rx_record = get_prescription_internal(input.rx_hash.clone())?
-        .ok_or(wasm_error!(WasmErrorInner::Guest("Prescription not found".to_string())))?;
+    let rx_record = get_prescription_internal(input.rx_hash.clone())?.ok_or(wasm_error!(
+        WasmErrorInner::Guest("Prescription not found".to_string())
+    ))?;
 
     let prescription: Prescription = rx_record
         .entry()
         .to_app_option()
         .map_err(|e| wasm_error!(WasmErrorInner::Guest(e.to_string())))?
-        .ok_or(wasm_error!(WasmErrorInner::Guest("Invalid prescription entry".to_string())))?;
+        .ok_or(wasm_error!(WasmErrorInner::Guest(
+            "Invalid prescription entry".to_string()
+        )))?;
 
     // Require Read authorization
     let auth = require_authorization(
@@ -455,7 +475,10 @@ pub fn get_prescription_fills(input: GetPrescriptionFillsInput) -> ExternResult<
         input.is_emergency,
     )?;
 
-    let links = get_links(LinkQuery::try_new(input.rx_hash, LinkTypes::PrescriptionToFills)?, GetStrategy::default())?;
+    let links = get_links(
+        LinkQuery::try_new(input.rx_hash, LinkTypes::PrescriptionToFills)?,
+        GetStrategy::default(),
+    )?;
 
     let mut fills = Vec::new();
     for link in links {
@@ -501,8 +524,9 @@ pub fn record_adherence(input: RecordAdherenceInput) -> ExternResult<Record> {
     )?;
 
     let adherence_hash = create_entry(&EntryTypes::MedicationAdherence(input.adherence.clone()))?;
-    let record = get(adherence_hash.clone(), GetOptions::default())?
-        .ok_or(wasm_error!(WasmErrorInner::Guest("Could not find adherence record".to_string())))?;
+    let record = get(adherence_hash.clone(), GetOptions::default())?.ok_or(wasm_error!(
+        WasmErrorInner::Guest("Could not find adherence record".to_string())
+    ))?;
 
     create_link(
         input.adherence.patient_hash.clone(),
@@ -545,8 +569,9 @@ pub fn create_interaction_alert(input: CreateInteractionAlertInput) -> ExternRes
     )?;
 
     let alert_hash = create_entry(&EntryTypes::DrugInteractionAlert(input.alert.clone()))?;
-    let record = get(alert_hash.clone(), GetOptions::default())?
-        .ok_or(wasm_error!(WasmErrorInner::Guest("Could not find alert".to_string())))?;
+    let record = get(alert_hash.clone(), GetOptions::default())?.ok_or(wasm_error!(
+        WasmErrorInner::Guest("Could not find alert".to_string())
+    ))?;
 
     create_link(
         input.alert.prescription_hash,
@@ -589,14 +614,17 @@ pub fn acknowledge_alert(input: AcknowledgeAlertInput) -> ExternResult<Record> {
         input.is_emergency,
     )?;
 
-    let record = get(input.alert_hash.clone(), GetOptions::default())?
-        .ok_or(wasm_error!(WasmErrorInner::Guest("Alert not found".to_string())))?;
+    let record = get(input.alert_hash.clone(), GetOptions::default())?.ok_or(wasm_error!(
+        WasmErrorInner::Guest("Alert not found".to_string())
+    ))?;
 
     let mut alert: DrugInteractionAlert = record
         .entry()
         .to_app_option()
         .map_err(|e| wasm_error!(WasmErrorInner::Guest(e.to_string())))?
-        .ok_or(wasm_error!(WasmErrorInner::Guest("Invalid alert".to_string())))?;
+        .ok_or(wasm_error!(WasmErrorInner::Guest(
+            "Invalid alert".to_string()
+        )))?;
 
     alert.acknowledged = true;
     alert.acknowledged_by = Some(agent_info()?.agent_initial_pubkey);
@@ -604,8 +632,9 @@ pub fn acknowledge_alert(input: AcknowledgeAlertInput) -> ExternResult<Record> {
     alert.override_reason = input.override_reason;
 
     let updated_hash = update_entry(input.alert_hash, &alert)?;
-    let updated_record = get(updated_hash, GetOptions::default())?
-        .ok_or(wasm_error!(WasmErrorInner::Guest("Could not find updated alert".to_string())))?;
+    let updated_record = get(updated_hash, GetOptions::default())?.ok_or(wasm_error!(
+        WasmErrorInner::Guest("Could not find updated alert".to_string())
+    ))?;
 
     // Log the access
     log_data_access(
@@ -627,8 +656,9 @@ pub fn register_pharmacy(pharmacy: Pharmacy) -> ExternResult<Record> {
     require_admin_authorization()?;
 
     let pharmacy_hash = create_entry(&EntryTypes::Pharmacy(pharmacy.clone()))?;
-    let record = get(pharmacy_hash.clone(), GetOptions::default())?
-        .ok_or(wasm_error!(WasmErrorInner::Guest("Could not find pharmacy".to_string())))?;
+    let record = get(pharmacy_hash.clone(), GetOptions::default())?.ok_or(wasm_error!(
+        WasmErrorInner::Guest("Could not find pharmacy".to_string())
+    ))?;
 
     let pharmacies_anchor = anchor_hash("all_pharmacies")?;
     create_link(
@@ -645,7 +675,10 @@ pub fn register_pharmacy(pharmacy: Pharmacy) -> ExternResult<Record> {
 #[hdk_extern]
 pub fn get_all_pharmacies(_: ()) -> ExternResult<Vec<Record>> {
     let pharmacies_anchor = anchor_hash("all_pharmacies")?;
-    let links = get_links(LinkQuery::try_new(pharmacies_anchor, LinkTypes::AllPharmacies)?, GetStrategy::default())?;
+    let links = get_links(
+        LinkQuery::try_new(pharmacies_anchor, LinkTypes::AllPharmacies)?,
+        GetStrategy::default(),
+    )?;
 
     let mut pharmacies = Vec::new();
     for link in links {
@@ -711,14 +744,17 @@ pub struct DiscontinueInput {
 /// Discontinue a prescription with access control
 #[hdk_extern]
 pub fn discontinue_prescription(input: DiscontinueInput) -> ExternResult<Record> {
-    let record = get(input.rx_hash.clone(), GetOptions::default())?
-        .ok_or(wasm_error!(WasmErrorInner::Guest("Prescription not found".to_string())))?;
+    let record = get(input.rx_hash.clone(), GetOptions::default())?.ok_or(wasm_error!(
+        WasmErrorInner::Guest("Prescription not found".to_string())
+    ))?;
 
     let mut prescription: Prescription = record
         .entry()
         .to_app_option()
         .map_err(|e| wasm_error!(WasmErrorInner::Guest(e.to_string())))?
-        .ok_or(wasm_error!(WasmErrorInner::Guest("Invalid prescription".to_string())))?;
+        .ok_or(wasm_error!(WasmErrorInner::Guest(
+            "Invalid prescription".to_string()
+        )))?;
 
     // Require Write authorization for Medications category
     let auth = require_authorization(
@@ -731,8 +767,9 @@ pub fn discontinue_prescription(input: DiscontinueInput) -> ExternResult<Record>
     prescription.status = PrescriptionStatus::Discontinued;
 
     let updated_hash = update_entry(input.rx_hash, &prescription)?;
-    let updated_record = get(updated_hash, GetOptions::default())?
-        .ok_or(wasm_error!(WasmErrorInner::Guest("Could not find updated prescription".to_string())))?;
+    let updated_record = get(updated_hash, GetOptions::default())?.ok_or(wasm_error!(
+        WasmErrorInner::Guest("Could not find updated prescription".to_string())
+    ))?;
 
     // Log the access
     log_data_access(
@@ -784,7 +821,9 @@ pub struct PrescriptionWithSafetyResponse {
 
 /// Check prescription safety before creating
 #[hdk_extern]
-pub fn check_prescription_safety(input: CheckPrescriptionSafetyInput) -> ExternResult<PrescriptionSafetyResult> {
+pub fn check_prescription_safety(
+    input: CheckPrescriptionSafetyInput,
+) -> ExternResult<PrescriptionSafetyResult> {
     // Get patient's active prescriptions to check for interactions
     let active_rx = get_patient_prescriptions_internal(input.patient_hash.clone())?;
 
@@ -792,7 +831,11 @@ pub fn check_prescription_safety(input: CheckPrescriptionSafetyInput) -> ExternR
     let mut existing_rxnorm_codes: Vec<String> = active_rx
         .iter()
         .filter_map(|record| {
-            record.entry().to_app_option::<Prescription>().ok().flatten()
+            record
+                .entry()
+                .to_app_option::<Prescription>()
+                .ok()
+                .flatten()
                 .filter(|rx| matches!(rx.status, PrescriptionStatus::Active))
                 .map(|rx| rx.rxnorm_code)
         })
@@ -824,11 +867,20 @@ pub fn check_prescription_safety(input: CheckPrescriptionSafetyInput) -> ExternR
 
     match response {
         Ok(ZomeCallResponse::Ok(io)) => {
-            let cds_record: Record = io.decode()
-                .map_err(|e| wasm_error!(WasmErrorInner::Guest(format!("Failed to decode CDS response: {}", e))))?;
+            let cds_record: Record = io.decode().map_err(|e| {
+                wasm_error!(WasmErrorInner::Guest(format!(
+                    "Failed to decode CDS response: {}",
+                    e
+                )))
+            })?;
 
             // Extract CDS response from record
-            if let Some(cds_response) = cds_record.entry().to_app_option::<CdsInteractionCheckResponse>().ok().flatten() {
+            if let Some(cds_response) = cds_record
+                .entry()
+                .to_app_option::<CdsInteractionCheckResponse>()
+                .ok()
+                .flatten()
+            {
                 let is_safe = matches!(cds_response.safety_assessment, SafetyAssessment::Safe);
                 let requires_override = matches!(
                     cds_response.safety_assessment,
@@ -852,7 +904,9 @@ pub fn check_prescription_safety(input: CheckPrescriptionSafetyInput) -> ExternR
                     drug_interactions: Vec::new(),
                     allergy_conflicts: Vec::new(),
                     duplicate_therapies: Vec::new(),
-                    recommendations: vec!["CDS check unavailable - proceed with caution".to_string()],
+                    recommendations: vec![
+                        "CDS check unavailable - proceed with caution".to_string()
+                    ],
                     requires_override: false,
                 })
             }
@@ -877,7 +931,9 @@ pub fn check_prescription_safety(input: CheckPrescriptionSafetyInput) -> ExternR
                 drug_interactions: Vec::new(),
                 allergy_conflicts: Vec::new(),
                 duplicate_therapies: Vec::new(),
-                recommendations: vec!["CDS zome not available - manual review recommended".to_string()],
+                recommendations: vec![
+                    "CDS zome not available - manual review recommended".to_string()
+                ],
                 requires_override: false,
             })
         }
@@ -894,7 +950,9 @@ pub struct CheckPrescriptionSafetyInput {
 
 /// Create a prescription with integrated safety checking
 #[hdk_extern]
-pub fn create_prescription_with_safety(input: CreatePrescriptionWithSafetyInput) -> ExternResult<PrescriptionWithSafetyResponse> {
+pub fn create_prescription_with_safety(
+    input: CreatePrescriptionWithSafetyInput,
+) -> ExternResult<PrescriptionWithSafetyResponse> {
     // Require Write authorization for Medications category
     let auth = require_authorization(
         input.prescription.patient_hash.clone(),
@@ -934,21 +992,26 @@ pub fn create_prescription_with_safety(input: CreatePrescriptionWithSafetyInput)
     }
 
     // If contraindicated without override reason, block
-    if matches!(safety_result.safety_assessment, SafetyAssessment::Contraindicated)
-        && input.override_reason.is_none()
+    if matches!(
+        safety_result.safety_assessment,
+        SafetyAssessment::Contraindicated
+    ) && input.override_reason.is_none()
     {
         return Ok(PrescriptionWithSafetyResponse {
             record: None,
             safety_result,
             created: false,
-            blocked_reason: Some("Contraindicated medication requires documented override reason".to_string()),
+            blocked_reason: Some(
+                "Contraindicated medication requires documented override reason".to_string(),
+            ),
         });
     }
 
     // Create the prescription
     let rx_hash = create_entry(&EntryTypes::Prescription(input.prescription.clone()))?;
-    let record = get(rx_hash.clone(), GetOptions::default())?
-        .ok_or(wasm_error!(WasmErrorInner::Guest("Could not find prescription".to_string())))?;
+    let record = get(rx_hash.clone(), GetOptions::default())?.ok_or(wasm_error!(
+        WasmErrorInner::Guest("Could not find prescription".to_string())
+    ))?;
 
     // Link to patient
     create_link(
@@ -967,7 +1030,9 @@ pub fn create_prescription_with_safety(input: CreatePrescriptionWithSafetyInput)
     )?;
 
     // If controlled substance, add to tracking
-    if input.prescription.schedule.is_some() && input.prescription.schedule != Some(DrugSchedule::NotControlled) {
+    if input.prescription.schedule.is_some()
+        && input.prescription.schedule != Some(DrugSchedule::NotControlled)
+    {
         let controlled_anchor = anchor_hash("controlled_substances")?;
         create_link(
             controlled_anchor,
@@ -991,15 +1056,26 @@ pub fn create_prescription_with_safety(input: CreatePrescriptionWithSafetyInput)
             alert_id: format!("ALERT-{}", sys_time()?.as_micros()),
             patient_hash: input.prescription.patient_hash.clone(),
             prescription_hash: rx_hash.clone(),
-            interacting_medication: format!("{} ({})", interaction.drug_b_name, interaction.drug_b_rxnorm),
+            interacting_medication: format!(
+                "{} ({})",
+                interaction.drug_b_name, interaction.drug_b_rxnorm
+            ),
             interaction_type: severity,
             description: interaction.description.clone(),
             clinical_significance: format!("{:?}", interaction.severity),
             management_recommendation: interaction.management.clone(),
             source: "CDS Automated Check".to_string(),
             acknowledged: input.allow_override,
-            acknowledged_by: if input.allow_override { Some(agent_info()?.agent_initial_pubkey) } else { None },
-            acknowledged_at: if input.allow_override { Some(sys_time()?) } else { None },
+            acknowledged_by: if input.allow_override {
+                Some(agent_info()?.agent_initial_pubkey)
+            } else {
+                None
+            },
+            acknowledged_at: if input.allow_override {
+                Some(sys_time()?)
+            } else {
+                None
+            },
             override_reason: input.override_reason.clone(),
         };
 
@@ -1032,7 +1108,9 @@ pub fn create_prescription_with_safety(input: CreatePrescriptionWithSafetyInput)
 
 /// Get safety summary for a patient's current medications
 #[hdk_extern]
-pub fn get_medication_safety_summary(input: GetPatientPrescriptionsInput) -> ExternResult<PrescriptionSafetyResult> {
+pub fn get_medication_safety_summary(
+    input: GetPatientPrescriptionsInput,
+) -> ExternResult<PrescriptionSafetyResult> {
     // Get all active prescriptions
     let auth = require_authorization(
         input.patient_hash.clone(),
@@ -1047,7 +1125,11 @@ pub fn get_medication_safety_summary(input: GetPatientPrescriptionsInput) -> Ext
     let rxnorm_codes: Vec<String> = active_rx
         .iter()
         .filter_map(|record| {
-            record.entry().to_app_option::<Prescription>().ok().flatten()
+            record
+                .entry()
+                .to_app_option::<Prescription>()
+                .ok()
+                .flatten()
                 .filter(|rx| matches!(rx.status, PrescriptionStatus::Active))
                 .map(|rx| rx.rxnorm_code)
         })
@@ -1098,10 +1180,19 @@ pub fn get_medication_safety_summary(input: GetPatientPrescriptionsInput) -> Ext
 
     match response {
         Ok(ZomeCallResponse::Ok(io)) => {
-            let cds_record: Record = io.decode()
-                .map_err(|e| wasm_error!(WasmErrorInner::Guest(format!("Failed to decode CDS response: {}", e))))?;
+            let cds_record: Record = io.decode().map_err(|e| {
+                wasm_error!(WasmErrorInner::Guest(format!(
+                    "Failed to decode CDS response: {}",
+                    e
+                )))
+            })?;
 
-            if let Some(cds_response) = cds_record.entry().to_app_option::<CdsInteractionCheckResponse>().ok().flatten() {
+            if let Some(cds_response) = cds_record
+                .entry()
+                .to_app_option::<CdsInteractionCheckResponse>()
+                .ok()
+                .flatten()
+            {
                 let is_safe = matches!(cds_response.safety_assessment, SafetyAssessment::Safe);
                 let requires_override = matches!(
                     cds_response.safety_assessment,
@@ -1129,16 +1220,14 @@ pub fn get_medication_safety_summary(input: GetPatientPrescriptionsInput) -> Ext
                 })
             }
         }
-        _ => {
-            Ok(PrescriptionSafetyResult {
-                is_safe: true,
-                safety_assessment: SafetyAssessment::Safe,
-                drug_interactions: Vec::new(),
-                allergy_conflicts: Vec::new(),
-                duplicate_therapies: Vec::new(),
-                recommendations: vec!["CDS service unavailable".to_string()],
-                requires_override: false,
-            })
-        }
+        _ => Ok(PrescriptionSafetyResult {
+            is_safe: true,
+            safety_assessment: SafetyAssessment::Safe,
+            drug_interactions: Vec::new(),
+            allergy_conflicts: Vec::new(),
+            duplicate_therapies: Vec::new(),
+            recommendations: vec!["CDS service unavailable".to_string()],
+            requires_override: false,
+        }),
     }
 }

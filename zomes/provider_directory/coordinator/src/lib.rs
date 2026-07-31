@@ -12,8 +12,8 @@
 //! Supports healthcare interoperability and patient-provider matching.
 
 use hdk::prelude::*;
-use provider_directory_integrity::*;
 use mycelix_health_shared::anchor_hash;
+use provider_directory_integrity::*;
 
 // ============================================================================
 // Provider Registration Functions
@@ -23,8 +23,9 @@ use mycelix_health_shared::anchor_hash;
 #[hdk_extern]
 pub fn register_provider(profile: ProviderProfile) -> ExternResult<Record> {
     let hash = create_entry(&EntryTypes::ProviderProfile(profile.clone()))?;
-    let record = get(hash.clone(), GetOptions::default())?
-        .ok_or(wasm_error!(WasmErrorInner::Guest("Could not find provider profile".to_string())))?;
+    let record = get(hash.clone(), GetOptions::default())?.ok_or(wasm_error!(
+        WasmErrorInner::Guest("Could not find provider profile".to_string())
+    ))?;
 
     // Link from NPI to provider
     let npi_anchor = anchor_hash(&format!("npi_{}", profile.npi))?;
@@ -37,19 +38,37 @@ pub fn register_provider(profile: ProviderProfile) -> ExternResult<Record> {
     // Link from each specialty to provider
     for specialty in &profile.specialties {
         let specialty_anchor = anchor_hash(&format!("specialty_{}", specialty.taxonomy_code))?;
-        create_link(specialty_anchor, hash.clone(), LinkTypes::SpecialtyToProviders, ())?;
+        create_link(
+            specialty_anchor,
+            hash.clone(),
+            LinkTypes::SpecialtyToProviders,
+            (),
+        )?;
     }
 
     // Link from practice location zip codes to provider
     for location in &profile.practice_locations {
         let location_anchor = anchor_hash(&format!("zip_{}", location.address.postal_code))?;
-        create_link(location_anchor, hash.clone(), LinkTypes::LocationToProviders, ())?;
+        create_link(
+            location_anchor,
+            hash.clone(),
+            LinkTypes::LocationToProviders,
+            (),
+        )?;
     }
 
     // Link from accepted insurances to provider
     for insurance in &profile.accepted_insurances {
-        let insurance_anchor = anchor_hash(&format!("insurance_{}", insurance.to_lowercase().replace(' ', "_")))?;
-        create_link(insurance_anchor, hash.clone(), LinkTypes::InsuranceToProviders, ())?;
+        let insurance_anchor = anchor_hash(&format!(
+            "insurance_{}",
+            insurance.to_lowercase().replace(' ', "_")
+        ))?;
+        create_link(
+            insurance_anchor,
+            hash.clone(),
+            LinkTypes::InsuranceToProviders,
+            (),
+        )?;
     }
 
     // If telehealth available, link to telehealth anchor
@@ -78,8 +97,10 @@ pub struct UpdateProviderInput {
 #[hdk_extern]
 pub fn update_provider(input: UpdateProviderInput) -> ExternResult<Record> {
     let caller = agent_info()?.agent_initial_pubkey;
-    let original_record = get(input.original_hash.clone(), GetOptions::default())?
-        .ok_or(wasm_error!(WasmErrorInner::Guest("Provider profile not found".to_string())))?;
+    let original_record =
+        get(input.original_hash.clone(), GetOptions::default())?.ok_or(wasm_error!(
+            WasmErrorInner::Guest("Provider profile not found".to_string())
+        ))?;
     if original_record.action().author() != &caller {
         return Err(wasm_error!(WasmErrorInner::Guest(
             "Only the provider profile creator can update it".to_string()
@@ -90,10 +111,16 @@ pub fn update_provider(input: UpdateProviderInput) -> ExternResult<Record> {
     profile.updated_at = sys_time()?;
 
     let updated_hash = update_entry(input.original_hash.clone(), &profile)?;
-    let record = get(updated_hash.clone(), GetOptions::default())?
-        .ok_or(wasm_error!(WasmErrorInner::Guest("Could not find updated provider".to_string())))?;
+    let record = get(updated_hash.clone(), GetOptions::default())?.ok_or(wasm_error!(
+        WasmErrorInner::Guest("Could not find updated provider".to_string())
+    ))?;
 
-    create_link(input.original_hash, updated_hash, LinkTypes::ProviderUpdates, ())?;
+    create_link(
+        input.original_hash,
+        updated_hash,
+        LinkTypes::ProviderUpdates,
+        (),
+    )?;
 
     Ok(record)
 }
@@ -112,7 +139,9 @@ pub fn search_providers(criteria: ProviderSearchCriteria) -> ExternResult<Vec<Re
     if let Some(ref specialty) = criteria.specialty {
         let specialty_anchor = anchor_hash(&format!("specialty_{}", specialty))?;
         let links = get_links(
-            LinkQuery::try_new(specialty_anchor, LinkTypes::SpecialtyToProviders)?, GetStrategy::default())?;
+            LinkQuery::try_new(specialty_anchor, LinkTypes::SpecialtyToProviders)?,
+            GetStrategy::default(),
+        )?;
         for link in links {
             if let Some(hash) = link.target.into_action_hash() {
                 if !found_hashes.contains(&hash) {
@@ -126,7 +155,9 @@ pub fn search_providers(criteria: ProviderSearchCriteria) -> ExternResult<Vec<Re
     if let Some(ref location) = criteria.location {
         let location_anchor = anchor_hash(&format!("zip_{}", location))?;
         let links = get_links(
-            LinkQuery::try_new(location_anchor, LinkTypes::LocationToProviders)?, GetStrategy::default())?;
+            LinkQuery::try_new(location_anchor, LinkTypes::LocationToProviders)?,
+            GetStrategy::default(),
+        )?;
         for link in links {
             if let Some(hash) = link.target.into_action_hash() {
                 if criteria.specialty.is_some() {
@@ -143,9 +174,14 @@ pub fn search_providers(criteria: ProviderSearchCriteria) -> ExternResult<Vec<Re
 
     // If searching by insurance
     if let Some(ref insurance) = criteria.insurance {
-        let insurance_anchor = anchor_hash(&format!("insurance_{}", insurance.to_lowercase().replace(' ', "_")))?;
+        let insurance_anchor = anchor_hash(&format!(
+            "insurance_{}",
+            insurance.to_lowercase().replace(' ', "_")
+        ))?;
         let links = get_links(
-            LinkQuery::try_new(insurance_anchor, LinkTypes::InsuranceToProviders)?, GetStrategy::default())?;
+            LinkQuery::try_new(insurance_anchor, LinkTypes::InsuranceToProviders)?,
+            GetStrategy::default(),
+        )?;
         for link in links {
             if let Some(hash) = link.target.into_action_hash() {
                 if !found_hashes.contains(&hash) {
@@ -159,7 +195,9 @@ pub fn search_providers(criteria: ProviderSearchCriteria) -> ExternResult<Vec<Re
     if criteria.telehealth_only {
         let telehealth_anchor = anchor_hash("telehealth_providers")?;
         let links = get_links(
-            LinkQuery::try_new(telehealth_anchor, LinkTypes::TelehealthProviders)?, GetStrategy::default())?;
+            LinkQuery::try_new(telehealth_anchor, LinkTypes::TelehealthProviders)?,
+            GetStrategy::default(),
+        )?;
         let telehealth_hashes: Vec<ActionHash> = links
             .into_iter()
             .filter_map(|l| l.target.into_action_hash())
@@ -180,7 +218,9 @@ pub fn search_providers(criteria: ProviderSearchCriteria) -> ExternResult<Vec<Re
     {
         let all_anchor = anchor_hash("all_providers")?;
         let links = get_links(
-            LinkQuery::try_new(all_anchor, LinkTypes::AllProviders)?, GetStrategy::default())?;
+            LinkQuery::try_new(all_anchor, LinkTypes::AllProviders)?,
+            GetStrategy::default(),
+        )?;
         for link in links {
             if let Some(hash) = link.target.into_action_hash() {
                 found_hashes.push(hash);
@@ -191,7 +231,12 @@ pub fn search_providers(criteria: ProviderSearchCriteria) -> ExternResult<Vec<Re
     // Fetch and filter records
     for hash in found_hashes {
         if let Some(record) = get(hash, GetOptions::default())? {
-            if let Some(profile) = record.entry().to_app_option::<ProviderProfile>().ok().flatten() {
+            if let Some(profile) = record
+                .entry()
+                .to_app_option::<ProviderProfile>()
+                .ok()
+                .flatten()
+            {
                 // Apply additional filters
                 let mut include = true;
 
@@ -223,7 +268,9 @@ pub fn search_providers(criteria: ProviderSearchCriteria) -> ExternResult<Vec<Re
 pub fn get_provider_by_npi(npi: String) -> ExternResult<Option<Record>> {
     let npi_anchor = anchor_hash(&format!("npi_{}", npi))?;
     let links = get_links(
-        LinkQuery::try_new(npi_anchor, LinkTypes::NpiToProvider)?, GetStrategy::default())?;
+        LinkQuery::try_new(npi_anchor, LinkTypes::NpiToProvider)?,
+        GetStrategy::default(),
+    )?;
 
     if let Some(link) = links.first() {
         if let Some(hash) = link.target.clone().into_action_hash() {
@@ -268,19 +315,28 @@ pub fn verify_npi(npi: String) -> ExternResult<NpiVerificationResult> {
     // Check if we have this NPI registered
     let npi_anchor = anchor_hash(&format!("npi_{}", npi))?;
     let links = get_links(
-        LinkQuery::try_new(npi_anchor.clone(), LinkTypes::NpiToProvider)?, GetStrategy::default())?;
+        LinkQuery::try_new(npi_anchor.clone(), LinkTypes::NpiToProvider)?,
+        GetStrategy::default(),
+    )?;
 
     if let Some(link) = links.first() {
         if let Some(hash) = link.target.clone().into_action_hash() {
             if let Some(record) = get(hash.clone(), GetOptions::default())? {
-                if let Some(profile) = record.entry().to_app_option::<ProviderProfile>().ok().flatten() {
+                if let Some(profile) = record
+                    .entry()
+                    .to_app_option::<ProviderProfile>()
+                    .ok()
+                    .flatten()
+                {
                     // Create verification record
                     let verification = NpiVerification {
                         npi: npi.clone(),
                         provider_hash: hash,
                         source: "internal_registry".to_string(),
                         status: NpiVerificationStatus::Valid,
-                        registry_data: Some(serde_json::to_string(&profile.name).unwrap_or_default()),
+                        registry_data: Some(
+                            serde_json::to_string(&profile.name).unwrap_or_default(),
+                        ),
                         verified_at: sys_time()?,
                         next_verification_due: None,
                         notes: None,
@@ -316,8 +372,9 @@ pub fn verify_npi(npi: String) -> ExternResult<NpiVerificationResult> {
 #[hdk_extern]
 pub fn create_npi_verification(verification: NpiVerification) -> ExternResult<Record> {
     let hash = create_entry(&EntryTypes::NpiVerification(verification.clone()))?;
-    let record = get(hash.clone(), GetOptions::default())?
-        .ok_or(wasm_error!(WasmErrorInner::Guest("Could not find verification".to_string())))?;
+    let record = get(hash.clone(), GetOptions::default())?.ok_or(wasm_error!(
+        WasmErrorInner::Guest("Could not find verification".to_string())
+    ))?;
 
     // Link from provider to verification
     create_link(
@@ -338,8 +395,9 @@ pub fn create_npi_verification(verification: NpiVerification) -> ExternResult<Re
 #[hdk_extern]
 pub fn add_provider_affiliation(affiliation: ProviderAffiliation) -> ExternResult<Record> {
     let hash = create_entry(&EntryTypes::ProviderAffiliation(affiliation.clone()))?;
-    let record = get(hash.clone(), GetOptions::default())?
-        .ok_or(wasm_error!(WasmErrorInner::Guest("Could not find affiliation".to_string())))?;
+    let record = get(hash.clone(), GetOptions::default())?.ok_or(wasm_error!(
+        WasmErrorInner::Guest("Could not find affiliation".to_string())
+    ))?;
 
     // Link from provider to affiliation
     create_link(
@@ -356,7 +414,9 @@ pub fn add_provider_affiliation(affiliation: ProviderAffiliation) -> ExternResul
 #[hdk_extern]
 pub fn get_provider_affiliations(provider_hash: ActionHash) -> ExternResult<Vec<Record>> {
     let links = get_links(
-        LinkQuery::try_new(provider_hash, LinkTypes::ProviderToAffiliations)?, GetStrategy::default())?;
+        LinkQuery::try_new(provider_hash, LinkTypes::ProviderToAffiliations)?,
+        GetStrategy::default(),
+    )?;
 
     let mut affiliations = Vec::new();
     for link in links {
@@ -379,7 +439,9 @@ pub fn get_provider_affiliations(provider_hash: ActionHash) -> ExternResult<Vec<
 pub fn get_telehealth_providers(_: ()) -> ExternResult<Vec<Record>> {
     let anchor = anchor_hash("telehealth_providers")?;
     let links = get_links(
-        LinkQuery::try_new(anchor, LinkTypes::TelehealthProviders)?, GetStrategy::default())?;
+        LinkQuery::try_new(anchor, LinkTypes::TelehealthProviders)?,
+        GetStrategy::default(),
+    )?;
 
     let mut providers = Vec::new();
     for link in links {
@@ -401,18 +463,31 @@ pub struct TelehealthByStateInput {
 
 /// Get telehealth providers licensed in a specific state
 #[hdk_extern]
-pub fn get_telehealth_providers_by_state(input: TelehealthByStateInput) -> ExternResult<Vec<Record>> {
+pub fn get_telehealth_providers_by_state(
+    input: TelehealthByStateInput,
+) -> ExternResult<Vec<Record>> {
     let anchor = anchor_hash("telehealth_providers")?;
     let links = get_links(
-        LinkQuery::try_new(anchor, LinkTypes::TelehealthProviders)?, GetStrategy::default())?;
+        LinkQuery::try_new(anchor, LinkTypes::TelehealthProviders)?,
+        GetStrategy::default(),
+    )?;
 
     let mut providers = Vec::new();
     for link in links {
         if let Some(hash) = link.target.into_action_hash() {
             if let Some(record) = get(hash, GetOptions::default())? {
-                if let Some(profile) = record.entry().to_app_option::<ProviderProfile>().ok().flatten() {
+                if let Some(profile) = record
+                    .entry()
+                    .to_app_option::<ProviderProfile>()
+                    .ok()
+                    .flatten()
+                {
                     if let Some(ref capabilities) = profile.telehealth_capabilities {
-                        if capabilities.licensed_states.iter().any(|s| s.to_uppercase() == input.state.to_uppercase()) {
+                        if capabilities
+                            .licensed_states
+                            .iter()
+                            .any(|s| s.to_uppercase() == input.state.to_uppercase())
+                        {
                             providers.push(record);
                         }
                     }

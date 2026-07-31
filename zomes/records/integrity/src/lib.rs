@@ -3,7 +3,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Commercial licensing: see COMMERCIAL_LICENSE.md at repository root
 //! Medical Records and Health Data Integrity Zome
-//! 
+//!
 //! Defines entry types for medical records, encounters, diagnoses,
 //! procedures, lab results, and imaging with HL7 FHIR alignment.
 
@@ -569,7 +569,6 @@ fn encrypted_route_is_valid(entry_type: &str, data_category: &str) -> bool {
     )
 }
 
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -585,10 +584,8 @@ mod tests {
     #[cfg(not(feature = "dangerous-plaintext-phi"))]
     #[test]
     fn plaintext_phi_is_rejected_by_default() {
-        let result = validate_plaintext_phi("LabResult", || {
-            Ok(ValidateCallbackResult::Valid)
-        })
-        .expect("validation result");
+        let result = validate_plaintext_phi("LabResult", || Ok(ValidateCallbackResult::Valid))
+            .expect("validation result");
         assert!(matches!(result, ValidateCallbackResult::Invalid(_)));
     }
 }

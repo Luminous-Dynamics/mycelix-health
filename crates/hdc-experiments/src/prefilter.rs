@@ -6,11 +6,7 @@
 //! Demonstrates HDC as a fast prefilter before expensive sequence alignment.
 
 use colored::*;
-use hdc_core::{
-    encoding::DnaEncoder,
-    similarity::HdcIndex,
-    Seed,
-};
+use hdc_core::{encoding::DnaEncoder, similarity::HdcIndex, Seed};
 use rand::prelude::*;
 use rand_chacha::ChaCha8Rng;
 use rayon::prelude::*;
@@ -54,8 +50,13 @@ pub struct MethodMetrics {
 }
 
 /// Generate synthetic corpus with homolog groups
-fn generate_corpus(size: usize, rng: &mut ChaCha8Rng) -> (Vec<Sequence>, HashMap<String, HashSet<String>>) {
-    let genera = ["Canis", "Felis", "Ursus", "Vulpes", "Panthera", "Mustela", "Lynx", "Meles"];
+fn generate_corpus(
+    size: usize,
+    rng: &mut ChaCha8Rng,
+) -> (Vec<Sequence>, HashMap<String, HashSet<String>>) {
+    let genera = [
+        "Canis", "Felis", "Ursus", "Vulpes", "Panthera", "Mustela", "Lynx", "Meles",
+    ];
     let nucleotides = ['A', 'C', 'G', 'T'];
     let seq_length = 650;
 
@@ -124,15 +125,26 @@ fn jaccard_retrieve(
         .iter()
         .map(|seq| {
             let target_kmers = get_kmers(&seq.sequence, kmer_length);
-            let intersection = query_kmers.iter().filter(|k| target_kmers.contains(*k)).count();
+            let intersection = query_kmers
+                .iter()
+                .filter(|k| target_kmers.contains(*k))
+                .count();
             let union = query_kmers.len() + target_kmers.len() - intersection;
-            let sim = if union == 0 { 0.0 } else { intersection as f64 / union as f64 };
+            let sim = if union == 0 {
+                0.0
+            } else {
+                intersection as f64 / union as f64
+            };
             (seq.id.as_str(), sim)
         })
         .collect();
 
     sims.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap());
-    let candidates: Vec<String> = sims.iter().take(top_k).map(|(id, _)| id.to_string()).collect();
+    let candidates: Vec<String> = sims
+        .iter()
+        .take(top_k)
+        .map(|(id, _)| id.to_string())
+        .collect();
 
     let time_ms = start.elapsed().as_secs_f64() * 1000.0;
     (candidates, time_ms)
@@ -144,7 +156,10 @@ fn calculate_recall(candidates: &[String], true_homologs: &HashSet<String>) -> f
         return 1.0;
     }
 
-    let found = candidates.iter().filter(|c| true_homologs.contains(*c)).count();
+    let found = candidates
+        .iter()
+        .filter(|c| true_homologs.contains(*c))
+        .count();
     found as f64 / candidates.len().min(true_homologs.len()) as f64
 }
 
@@ -189,10 +204,17 @@ pub fn run_prefilter_benchmark(
         }
     }
     let index_time = start.elapsed();
-    println!("\r   Indexed {} sequences in {:.2}s", index.len(), index_time.as_secs_f64());
+    println!(
+        "\r   Indexed {} sequences in {:.2}s",
+        index.len(),
+        index_time.as_secs_f64()
+    );
 
     let memory_bytes = index.memory_size();
-    println!("   Index size: {:.2} MB", memory_bytes as f64 / 1024.0 / 1024.0);
+    println!(
+        "   Index size: {:.2} MB",
+        memory_bytes as f64 / 1024.0 / 1024.0
+    );
 
     // Select random queries
     println!("{}", "3. Running queries...".yellow());
@@ -214,7 +236,8 @@ pub fn run_prefilter_benchmark(
         true_homologs.remove(&query.id);
 
         // HDC retrieval
-        let query_vec = encoder.encode_sequence(&query.sequence)
+        let query_vec = encoder
+            .encode_sequence(&query.sequence)
             .expect("Failed to encode query");
         let start = Instant::now();
         let hdc_results = index.search(&query_vec.vector, top_k);
@@ -222,12 +245,8 @@ pub fn run_prefilter_benchmark(
         let hdc_candidates: Vec<String> = hdc_results.iter().map(|r| r.id.clone()).collect();
 
         // Jaccard retrieval
-        let (jaccard_candidates, jaccard_time) = jaccard_retrieve(
-            &query.sequence,
-            &sequences,
-            top_k,
-            kmer_length as usize,
-        );
+        let (jaccard_candidates, jaccard_time) =
+            jaccard_retrieve(&query.sequence, &sequences, top_k, kmer_length as usize);
 
         // Calculate recall
         let hdc_recall = calculate_recall(&hdc_candidates, &true_homologs);
@@ -273,7 +292,10 @@ pub fn run_prefilter_benchmark(
     println!("  Avg Recall@{}: {:.1}%", top_k, hdc_avg_recall * 100.0);
     println!("  Avg Query Time: {:.2}ms", hdc_avg_time);
     println!("  Total Time: {:.2}s", hdc_total_time / 1000.0);
-    println!("  Index Memory: {:.2} MB", memory_bytes as f64 / 1024.0 / 1024.0);
+    println!(
+        "  Index Memory: {:.2} MB",
+        memory_bytes as f64 / 1024.0 / 1024.0
+    );
 
     println!();
     println!("Jaccard Baseline:");
@@ -283,13 +305,27 @@ pub fn run_prefilter_benchmark(
 
     println!();
     println!("Comparison:");
-    println!("  Speedup: {:.2}x {}", speedup, if speedup > 1.0 { "faster".green() } else { "slower".red() });
+    println!(
+        "  Speedup: {:.2}x {}",
+        speedup,
+        if speedup > 1.0 {
+            "faster".green()
+        } else {
+            "slower".red()
+        }
+    );
     println!("  Recall difference: {:+.1}%", recall_diff * 100.0);
 
     println!();
     println!("Estimated Alignment Savings:");
-    println!("  Full corpus: {:.0}s per query", full_alignment_time / 1000.0);
-    println!("  With prefilter: {:.1}s per query", prefilter_alignment_time / 1000.0);
+    println!(
+        "  Full corpus: {:.0}s per query",
+        full_alignment_time / 1000.0
+    );
+    println!(
+        "  With prefilter: {:.1}s per query",
+        prefilter_alignment_time / 1000.0
+    );
     println!("  Compute reduction: {:.1}%", savings);
 
     // Save results
@@ -332,6 +368,8 @@ pub fn run_prefilter_benchmark(
         "\"HDC prefiltering preserves {:.0}% retrieval recall\n\
          while achieving {:.1}x speedup over k-mer Jaccard,\n\
          reducing alignment compute by {:.0}%.\"",
-        hdc_avg_recall * 100.0, speedup, savings
+        hdc_avg_recall * 100.0,
+        speedup,
+        savings
     );
 }

@@ -4,13 +4,10 @@
 //! Extended tests for hdc-core modules: similarity search, confidence scoring,
 //! encoding edge cases, batch operations, and cross-module integration.
 
-use hdc_core::{
-    DnaEncoder, Hypervector, Seed,
-    HYPERVECTOR_DIM,
-};
+use hdc_core::batch::{BatchConfig, BatchEncoder};
 use hdc_core::confidence::{MatchConfidence, SimilarityWithConfidence};
 use hdc_core::similarity::HdcIndex;
-use hdc_core::batch::{BatchEncoder, BatchConfig};
+use hdc_core::{DnaEncoder, Hypervector, Seed, HYPERVECTOR_DIM};
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // Similarity Search — HdcIndex
@@ -49,7 +46,10 @@ fn test_index_top_k_ordering() {
 
     // First result should be the exact match (highest similarity)
     assert_eq!(results[0].id, "base");
-    assert!(results[0].similarity > 0.99, "Self-similarity should be ~1.0");
+    assert!(
+        results[0].similarity > 0.99,
+        "Self-similarity should be ~1.0"
+    );
 
     // Results should be in descending order
     for i in 1..results.len() {
@@ -99,16 +99,40 @@ fn test_index_with_capacity() {
 
 #[test]
 fn test_confidence_levels_at_boundaries() {
-    assert_eq!(MatchConfidence::from_similarity(0.90), MatchConfidence::VeryHigh);
-    assert_eq!(MatchConfidence::from_similarity(0.85), MatchConfidence::VeryHigh);
-    assert_eq!(MatchConfidence::from_similarity(0.84), MatchConfidence::High);
-    assert_eq!(MatchConfidence::from_similarity(0.70), MatchConfidence::High);
-    assert_eq!(MatchConfidence::from_similarity(0.69), MatchConfidence::Moderate);
-    assert_eq!(MatchConfidence::from_similarity(0.58), MatchConfidence::Moderate);
+    assert_eq!(
+        MatchConfidence::from_similarity(0.90),
+        MatchConfidence::VeryHigh
+    );
+    assert_eq!(
+        MatchConfidence::from_similarity(0.85),
+        MatchConfidence::VeryHigh
+    );
+    assert_eq!(
+        MatchConfidence::from_similarity(0.84),
+        MatchConfidence::High
+    );
+    assert_eq!(
+        MatchConfidence::from_similarity(0.70),
+        MatchConfidence::High
+    );
+    assert_eq!(
+        MatchConfidence::from_similarity(0.69),
+        MatchConfidence::Moderate
+    );
+    assert_eq!(
+        MatchConfidence::from_similarity(0.58),
+        MatchConfidence::Moderate
+    );
     assert_eq!(MatchConfidence::from_similarity(0.57), MatchConfidence::Low);
     assert_eq!(MatchConfidence::from_similarity(0.52), MatchConfidence::Low);
-    assert_eq!(MatchConfidence::from_similarity(0.51), MatchConfidence::VeryLow);
-    assert_eq!(MatchConfidence::from_similarity(0.0), MatchConfidence::VeryLow);
+    assert_eq!(
+        MatchConfidence::from_similarity(0.51),
+        MatchConfidence::VeryLow
+    );
+    assert_eq!(
+        MatchConfidence::from_similarity(0.0),
+        MatchConfidence::VeryLow
+    );
 }
 
 #[test]
@@ -153,7 +177,10 @@ fn test_similarity_with_confidence_construction() {
 
     assert!(result.similarity > 0.99, "Self-similarity should be ~1.0");
     assert_eq!(result.confidence, MatchConfidence::VeryHigh);
-    assert!(result.z_score > 0.0, "Z-score for identical vectors should be positive");
+    assert!(
+        result.z_score > 0.0,
+        "Z-score for identical vectors should be positive"
+    );
     assert!(result.bits_above_random > 0);
 }
 
@@ -220,7 +247,10 @@ fn test_dna_encoding_deterministic() {
     let enc2 = encoder.encode_sequence("ACGTACGTACGTACGT").unwrap();
 
     let sim = enc1.vector.normalized_cosine_similarity(&enc2.vector);
-    assert!(sim > 0.999, "Same input should produce same output: sim={sim:.6}");
+    assert!(
+        sim > 0.999,
+        "Same input should produce same output: sim={sim:.6}"
+    );
 }
 
 #[test]
@@ -303,10 +333,7 @@ fn test_hypervector_xor_self_inverse() {
     let unbound = bound.bind(&b);
 
     let sim = a.normalized_cosine_similarity(&unbound);
-    assert!(
-        sim > 0.99,
-        "XOR should be self-inverse: sim={sim:.4}"
-    );
+    assert!(sim > 0.99, "XOR should be self-inverse: sim={sim:.4}");
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -319,11 +346,7 @@ fn test_batch_encoder_multiple_sequences() {
     let config = BatchConfig::default();
     let encoder = BatchEncoder::new(seed, config);
 
-    let sequences: Vec<&str> = vec![
-        "ACGTACGTACGTACGT",
-        "TTTTTTTTTTTTTTTT",
-        "GGGGGGGGGGGGGGGG",
-    ];
+    let sequences: Vec<&str> = vec!["ACGTACGTACGTACGT", "TTTTTTTTTTTTTTTT", "GGGGGGGGGGGGGGGG"];
 
     let result = encoder.encode_sequences(&sequences).unwrap();
     assert_eq!(result.success_count(), 3);

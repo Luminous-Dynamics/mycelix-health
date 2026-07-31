@@ -16,8 +16,8 @@
 //! No individual lab result is ever exposed. The gradient is a lossy, one-way
 //! transformation that cannot be reversed to recover the original values.
 
-pub mod homomorphic;
 pub mod hdc_encrypted;
+pub mod homomorphic;
 
 use mycelix_fl::defenses::{Defense, TrimmedMean};
 use mycelix_fl::types::{AggregationResult, DefenseConfig, Gradient};
@@ -29,12 +29,12 @@ use std::collections::HashMap;
 pub const HEALTH_GRADIENT_DIM: usize = 8;
 
 /// Feature indices
-pub const FEAT_VALUE: usize = 0;        // Normalized lab value
-pub const FEAT_DEVIATION: usize = 1;    // Deviation from reference range
-pub const FEAT_IS_CRITICAL: usize = 2;  // Critical flag (0.0 or 1.0)
-pub const FEAT_IS_ABNORMAL: usize = 3;  // Abnormal flag (0.0 or 1.0)
+pub const FEAT_VALUE: usize = 0; // Normalized lab value
+pub const FEAT_DEVIATION: usize = 1; // Deviation from reference range
+pub const FEAT_IS_CRITICAL: usize = 2; // Critical flag (0.0 or 1.0)
+pub const FEAT_IS_ABNORMAL: usize = 3; // Abnormal flag (0.0 or 1.0)
 pub const FEAT_COLLECTION_AGE: usize = 4; // Days since collection (normalized)
-pub const FEAT_ACKNOWLEDGED: usize = 5;  // Whether result was acknowledged
+pub const FEAT_ACKNOWLEDGED: usize = 5; // Whether result was acknowledged
 pub const FEAT_TEST_CATEGORY: usize = 6; // Test category hash (normalized)
 pub const FEAT_PATIENT_COHORT: usize = 7; // Cohort identifier (normalized)
 
@@ -159,7 +159,11 @@ pub struct PrivacyBudget {
 
 impl PrivacyBudget {
     pub fn new(epsilon_max: f64) -> Self {
-        Self { epsilon_spent: 0.0, epsilon_max, rounds_contributed: 0 }
+        Self {
+            epsilon_spent: 0.0,
+            epsilon_max,
+            rounds_contributed: 0,
+        }
     }
 
     /// Check if another contribution is possible within budget.
@@ -292,7 +296,8 @@ impl FlRound {
         }
 
         // Check privacy budget
-        let budget = self.budgets
+        let budget = self
+            .budgets
             .entry(gradient.node_id.clone())
             .or_insert_with(|| PrivacyBudget::new(DEFAULT_EPSILON_MAX));
 
@@ -349,7 +354,11 @@ fn aggregate_with_config(
     let interpretation = interpret_aggregate(&result.gradient, &loinc_family);
     let total = gradients.len();
     let excluded = result.excluded_nodes.len();
-    let quality = if total > 0 { (total - excluded) as f64 / total as f64 } else { 0.0 };
+    let quality = if total > 0 {
+        (total - excluded) as f64 / total as f64
+    } else {
+        0.0
+    };
 
     Ok(CollectiveInsight {
         loinc_family,
@@ -525,7 +534,7 @@ pub fn create_zk_claim(
     prover_id: &str,
     timestamp: i64,
 ) -> ZkHealthClaim {
-    use sha2::{Sha256, Digest};
+    use sha2::{Digest, Sha256};
 
     // Pedersen-style commitment: C = H(value || blinding || claim_type_bytes)
     let mut hasher = Sha256::new();
@@ -537,22 +546,20 @@ pub fn create_zk_claim(
     commitment.copy_from_slice(&hash);
 
     let public_statement = match &claim_type {
-        ZkClaimType::AgeRange { min_age, max_age } => {
-            match max_age {
-                Some(max) => format!("Age is between {} and {}", min_age, max),
-                None => format!("Age is {} or older", min_age),
-            }
+        ZkClaimType::AgeRange { min_age, max_age } => match max_age {
+            Some(max) => format!("Age is between {} and {}", min_age, max),
+            None => format!("Age is {} or older", min_age),
         },
         ZkClaimType::VaccinationStatus { disease } => {
             format!("Vaccinated against {}", disease)
-        },
+        }
         ZkClaimType::InsuranceCoverage => "Has active insurance coverage".to_string(),
         ZkClaimType::LabValueInRange { loinc_code } => {
             format!("Lab value {} is within normal reference range", loinc_code)
-        },
+        }
         ZkClaimType::DrugSafety { drug_code } => {
             format!("No contraindications for drug {}", drug_code)
-        },
+        }
     };
 
     ZkHealthClaim {
@@ -569,12 +576,8 @@ pub fn create_zk_claim(
 /// The verifier recomputes the commitment and checks it matches.
 /// In a real ZK system, the verifier would NOT need the secret —
 /// they would verify a proof instead. This is a stepping stone.
-pub fn verify_zk_claim(
-    claim: &ZkHealthClaim,
-    secret_value: &[u8],
-    blinding_factor: &[u8],
-) -> bool {
-    use sha2::{Sha256, Digest};
+pub fn verify_zk_claim(claim: &ZkHealthClaim, secret_value: &[u8], blinding_factor: &[u8]) -> bool {
+    use sha2::{Digest, Sha256};
 
     let mut hasher = Sha256::new();
     hasher.update(secret_value);
@@ -624,7 +627,8 @@ pub fn population_health_query(
 
     for family in &query.loinc_families {
         // Find rounds matching this family
-        let matching: Vec<&FlRound> = rounds.iter()
+        let matching: Vec<&FlRound> = rounds
+            .iter()
             .filter(|r| r.loinc_family == *family && r.gradients.len() >= query.min_cohort)
             .collect();
 
@@ -638,7 +642,7 @@ pub fn population_health_query(
                 Ok(insight) => {
                     total_patients += insight.cohort_size;
                     insights.push(insight);
-                },
+                }
                 Err(_) => continue,
             }
         }
@@ -691,12 +695,12 @@ mod tests {
     #[test]
     fn extract_gradient_critical_lab() {
         let g = extract_gradient(
-            "450",         // value: 450 mg/dL (very high glucose)
+            "450", // value: 450 mg/dL (very high glucose)
             "70-100",
-            true,          // critical!
-            true,          // abnormal
+            true, // critical!
+            true, // abnormal
             0.0,
-            false,         // not yet acknowledged
+            false, // not yet acknowledged
             "2345-7",
             "patient-002",
             1,
@@ -743,7 +747,11 @@ mod tests {
 
         assert_eq!(insight.cohort_size, 5);
         assert_eq!(insight.loinc_family, "2345");
-        assert!(insight.quality > 0.5, "Quality should be decent: {}", insight.quality);
+        assert!(
+            insight.quality > 0.5,
+            "Quality should be decent: {}",
+            insight.quality
+        );
         // The aggregate critical rate should be low (4/5 honest are not critical)
         // After TrimmedMean, the poisoned extreme should be trimmed
         assert!(
@@ -785,7 +793,8 @@ mod tests {
                 extract_gradient("88", "70-100", false, false, 1.0, true, "2345-7", "p3", 1),
             ],
             1,
-        ).unwrap();
+        )
+        .unwrap();
 
         assert!(insight.interpretation.contains("2345"));
         assert!(insight.interpretation.contains("critical rate: 0%"));
@@ -795,9 +804,7 @@ mod tests {
 
     #[test]
     fn dp_noise_changes_gradient() {
-        let mut g = extract_gradient(
-            "85", "70-100", false, false, 1.0, true, "2345-7", "p1", 1,
-        );
+        let mut g = extract_gradient("85", "70-100", false, false, 1.0, true, "2345-7", "p1", 1);
         let original = g.features.clone();
         add_dp_noise(&mut g, 1.0, 42);
         // At least one feature should change
@@ -816,11 +823,17 @@ mod tests {
         add_dp_noise(&mut g1, 0.1, 42); // Low epsilon = high noise
         add_dp_noise(&mut g2, 10.0, 42); // High epsilon = low noise
 
-        let drift1: f32 = g1.features.iter().zip(g2.features.iter())
+        let drift1: f32 = g1
+            .features
+            .iter()
+            .zip(g2.features.iter())
             .map(|(a, b)| (a - b).abs())
             .sum();
         // With ε=0.1 vs ε=10.0, the noisy version should differ more
-        assert!(drift1 > 0.0, "Different epsilons should produce different noise");
+        assert!(
+            drift1 > 0.0,
+            "Different epsilons should produce different noise"
+        );
     }
 
     #[test]
@@ -845,8 +858,10 @@ mod tests {
     fn adaptive_uses_higher_trim_for_small() {
         let small = adaptive_defense_config(6).unwrap();
         let large = adaptive_defense_config(20).unwrap();
-        assert!(small.trim_ratio > large.trim_ratio,
-            "Small cohorts should use higher trim ratio");
+        assert!(
+            small.trim_ratio > large.trim_ratio,
+            "Small cohorts should use higher trim ratio"
+        );
     }
 
     // ==================== P2-1: FL ROUND TESTS ====================
@@ -858,8 +873,14 @@ mod tests {
         for i in 0..6 {
             let g = extract_gradient(
                 &format!("{}", 80 + i * 3),
-                "70-100", false, false, 1.0, true, "2345-7",
-                &format!("patient-{}", i), 1,
+                "70-100",
+                false,
+                false,
+                1.0,
+                true,
+                "2345-7",
+                &format!("patient-{}", i),
+                1,
             );
             round.submit_gradient(g).unwrap();
         }
@@ -875,9 +896,7 @@ mod tests {
     #[test]
     fn fl_round_rejects_wrong_loinc() {
         let mut round = FlRound::new("2345", 1);
-        let g = extract_gradient(
-            "120", "60-100", false, false, 1.0, true, "1234-5", "p1", 1,
-        );
+        let g = extract_gradient("120", "60-100", false, false, 1.0, true, "1234-5", "p1", 1);
         assert!(round.submit_gradient(g).is_err());
     }
 
@@ -889,16 +908,30 @@ mod tests {
         // Patient budget = 10.0, so 2 rounds max
         for i in 0..2 {
             let g = extract_gradient(
-                "85", "70-100", false, false, 1.0, true, "2345-7",
-                "same-patient", 1,
+                "85",
+                "70-100",
+                false,
+                false,
+                1.0,
+                true,
+                "2345-7",
+                "same-patient",
+                1,
             );
             round.submit_gradient(g).unwrap();
         }
 
         // Third submission should fail
         let g = extract_gradient(
-            "85", "70-100", false, false, 1.0, true, "2345-7",
-            "same-patient", 1,
+            "85",
+            "70-100",
+            false,
+            false,
+            1.0,
+            true,
+            "2345-7",
+            "same-patient",
+            1,
         );
         assert!(round.submit_gradient(g).is_err());
     }
@@ -908,16 +941,27 @@ mod tests {
     #[test]
     fn zk_claim_age_range() {
         let claim = create_zk_claim(
-            ZkClaimType::AgeRange { min_age: 18, max_age: None },
-            b"25",  // secret: actual age
+            ZkClaimType::AgeRange {
+                min_age: 18,
+                max_age: None,
+            },
+            b"25", // secret: actual age
             b"random_blinding_factor_12345",
             "patient-001",
             1000000,
         );
         assert_eq!(claim.public_statement, "Age is 18 or older");
-        assert!(verify_zk_claim(&claim, b"25", b"random_blinding_factor_12345"));
+        assert!(verify_zk_claim(
+            &claim,
+            b"25",
+            b"random_blinding_factor_12345"
+        ));
         // Wrong secret fails
-        assert!(!verify_zk_claim(&claim, b"17", b"random_blinding_factor_12345"));
+        assert!(!verify_zk_claim(
+            &claim,
+            b"17",
+            b"random_blinding_factor_12345"
+        ));
         // Wrong blinding fails
         assert!(!verify_zk_claim(&claim, b"25", b"wrong_blinding"));
     }
@@ -925,7 +969,9 @@ mod tests {
     #[test]
     fn zk_claim_vaccination() {
         let claim = create_zk_claim(
-            ZkClaimType::VaccinationStatus { disease: "COVID-19".into() },
+            ZkClaimType::VaccinationStatus {
+                disease: "COVID-19".into(),
+            },
             b"Pfizer-BioNTech|2024-01-15|lot-12345",
             b"blinding",
             "patient-002",
@@ -942,7 +988,9 @@ mod tests {
     #[test]
     fn zk_claim_lab_in_range() {
         let claim = create_zk_claim(
-            ZkClaimType::LabValueInRange { loinc_code: "2345-7".into() },
+            ZkClaimType::LabValueInRange {
+                loinc_code: "2345-7".into(),
+            },
             b"glucose=85mg/dL",
             b"nonce123",
             "patient-003",
@@ -961,15 +1009,33 @@ mod tests {
         let mut cholesterol_round = FlRound::new("2093", 1);
 
         for i in 0..6 {
-            glucose_round.submit_gradient(extract_gradient(
-                &format!("{}", 80 + i * 3), "70-100", false, false, 1.0, true,
-                "2345-7", &format!("gp-{}", i), 1,
-            )).unwrap();
+            glucose_round
+                .submit_gradient(extract_gradient(
+                    &format!("{}", 80 + i * 3),
+                    "70-100",
+                    false,
+                    false,
+                    1.0,
+                    true,
+                    "2345-7",
+                    &format!("gp-{}", i),
+                    1,
+                ))
+                .unwrap();
 
-            cholesterol_round.submit_gradient(extract_gradient(
-                &format!("{}", 180 + i * 10), "125-200", false, false, 1.0, true,
-                "2093-3", &format!("cp-{}", i), 1,
-            )).unwrap();
+            cholesterol_round
+                .submit_gradient(extract_gradient(
+                    &format!("{}", 180 + i * 10),
+                    "125-200",
+                    false,
+                    false,
+                    1.0,
+                    true,
+                    "2093-3",
+                    &format!("cp-{}", i),
+                    1,
+                ))
+                .unwrap();
         }
 
         let query = PopulationHealthQuery {
@@ -978,10 +1044,7 @@ mod tests {
             epsilon_budget: 2.0,
         };
 
-        let result = population_health_query(
-            &[glucose_round, cholesterol_round],
-            &query,
-        ).unwrap();
+        let result = population_health_query(&[glucose_round, cholesterol_round], &query).unwrap();
 
         assert_eq!(result.family_insights.len(), 2);
         assert_eq!(result.total_patients, 12);
@@ -994,8 +1057,15 @@ mod tests {
         // Only 3 patients — below minimum
         for i in 0..3 {
             let _ = round.submit_gradient(extract_gradient(
-                "85", "70-100", false, false, 1.0, true, "2345-7",
-                &format!("p-{}", i), 1,
+                "85",
+                "70-100",
+                false,
+                false,
+                1.0,
+                true,
+                "2345-7",
+                &format!("p-{}", i),
+                1,
             ));
         }
 

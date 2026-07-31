@@ -6,7 +6,9 @@
 //! Run with:
 //!   cargo run --example learned_encoding_demo
 
-use hdc_core::encoding::{DnaEncoder, KmerCodebook, LearnedKmerCodebook, LearnedClassifier, MultiScaleEncoder};
+use hdc_core::encoding::{
+    DnaEncoder, KmerCodebook, LearnedClassifier, LearnedKmerCodebook, MultiScaleEncoder,
+};
 use hdc_core::Seed;
 use std::time::Instant;
 
@@ -36,7 +38,11 @@ fn main() {
     let random_codebook = KmerCodebook::new(&seed, 6);
     let random_create_time = start.elapsed();
 
-    println!("  Created {} k-mers in {:?}", random_codebook.len(), random_create_time);
+    println!(
+        "  Created {} k-mers in {:?}",
+        random_codebook.len(),
+        random_create_time
+    );
 
     let start = Instant::now();
     let mut random_results = Vec::new();
@@ -47,7 +53,11 @@ fn main() {
     }
     let random_encode_time = start.elapsed();
 
-    println!("  Encoded {} sequences in {:?}", random_results.len(), random_encode_time);
+    println!(
+        "  Encoded {} sequences in {:?}",
+        random_results.len(),
+        random_encode_time
+    );
     println!();
 
     // 2. Learned codebook
@@ -88,7 +98,11 @@ fn main() {
             }
             let learned_encode_time = start.elapsed();
 
-            println!("  Encoded {} sequences in {:?}", learned_results.len(), learned_encode_time);
+            println!(
+                "  Encoded {} sequences in {:?}",
+                learned_results.len(),
+                learned_encode_time
+            );
             println!();
 
             // 3. Compare encodings
@@ -117,9 +131,10 @@ fn main() {
             let mlp_path = codebook_path.replace(".json", "_mlp.json");
             match LearnedClassifier::load(&mlp_path) {
                 Ok(classifier) => {
-                    println!("  Loaded MLP: {} → {} → {} classes",
+                    println!(
+                        "  Loaded MLP: {} → {} → {} classes",
                         classifier.input_dim(),
-                        256,  // hidden dim
+                        256, // hidden dim
                         classifier.num_classes()
                     );
 
@@ -134,9 +149,15 @@ fn main() {
 
                     println!();
                     for (seq, expected) in &test_sequences {
-                        if let Ok(encoded) = encoder.encode_with_learned_codebook(seq, &learned_codebook) {
+                        if let Ok(encoded) =
+                            encoder.encode_with_learned_codebook(seq, &learned_codebook)
+                        {
                             let result = classifier.predict(&encoded.vector);
-                            let class_name = if result.class == 1 { "positive" } else { "negative" };
+                            let class_name = if result.class == 1 {
+                                "positive"
+                            } else {
+                                "negative"
+                            };
                             println!(
                                 "  {} → {} ({:.1}% confidence) [expected: {}]",
                                 &seq[..20.min(seq.len())],
@@ -169,7 +190,11 @@ fn main() {
             }
             let ms_encode_time = start.elapsed();
 
-            println!("  Encoded {} sequences in {:?}", ms_results.len(), ms_encode_time);
+            println!(
+                "  Encoded {} sequences in {:?}",
+                ms_results.len(),
+                ms_encode_time
+            );
 
             if ms_results.len() >= 2 {
                 println!("\n  Per-scale k-mer counts:");
@@ -183,7 +208,9 @@ fn main() {
 
                 // Compare similarity using multi-scale vs single-scale
                 let ms_sim = ms_results[0].similarity(&ms_results[1]);
-                let single_sim = random_results[0].vector.hamming_similarity(&random_results[1].vector);
+                let single_sim = random_results[0]
+                    .vector
+                    .hamming_similarity(&random_results[1].vector);
 
                 println!("\n  Similarity comparison (seq1 vs seq2):");
                 println!("    Single-scale (k=6): {:.3}", single_sim);
@@ -200,11 +227,16 @@ fn main() {
             println!("  Learned encode (5 seq): {:?}", learned_encode_time);
             println!("  Multi-scale encode (5 seq): {:?}", ms_encode_time);
 
-            let speedup = random_encode_time.as_nanos() as f64 / learned_encode_time.as_nanos().max(1) as f64;
+            let speedup =
+                random_encode_time.as_nanos() as f64 / learned_encode_time.as_nanos().max(1) as f64;
             println!(
                 "  Encoding speedup (learned): {:.2}x {}",
                 speedup.abs(),
-                if speedup > 1.0 { "(random faster)" } else { "(learned faster)" }
+                if speedup > 1.0 {
+                    "(random faster)"
+                } else {
+                    "(learned faster)"
+                }
             );
         }
         Err(e) => {

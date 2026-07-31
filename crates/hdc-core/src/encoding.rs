@@ -86,19 +86,32 @@ impl DnaEncoder {
 
     /// Encode multiple sequences and return their vectors
     pub fn encode_batch(&self, sequences: &[&str]) -> Vec<Result<EncodedSequence, HdcError>> {
-        sequences.iter().map(|seq| self.encode_sequence(seq)).collect()
+        sequences
+            .iter()
+            .map(|seq| self.encode_sequence(seq))
+            .collect()
     }
 
     /// Encode multiple sequences in parallel (requires "parallel" feature)
     #[cfg(feature = "parallel")]
-    pub fn encode_batch_parallel(&self, sequences: &[&str]) -> Vec<Result<EncodedSequence, HdcError>> {
+    pub fn encode_batch_parallel(
+        &self,
+        sequences: &[&str],
+    ) -> Vec<Result<EncodedSequence, HdcError>> {
         use rayon::prelude::*;
-        sequences.par_iter().map(|seq| self.encode_sequence(seq)).collect()
+        sequences
+            .par_iter()
+            .map(|seq| self.encode_sequence(seq))
+            .collect()
     }
 
     /// Encode a DNA sequence with pre-computed k-mer codebook for faster encoding
     /// This is more efficient when encoding many sequences with the same parameters
-    pub fn encode_with_codebook(&self, sequence: &str, codebook: &KmerCodebook) -> Result<EncodedSequence, HdcError> {
+    pub fn encode_with_codebook(
+        &self,
+        sequence: &str,
+        codebook: &KmerCodebook,
+    ) -> Result<EncodedSequence, HdcError> {
         let seq = sequence.to_uppercase();
         let k = self.kmer_length as usize;
 
@@ -197,7 +210,11 @@ impl DnaEncoder {
         if self.kmer_length != codebook.kmer_length() {
             return Err(HdcError::InvalidConfig {
                 parameter: "kmer_length",
-                value: format!("encoder: {}, codebook: {}", self.kmer_length, codebook.kmer_length()),
+                value: format!(
+                    "encoder: {}, codebook: {}",
+                    self.kmer_length,
+                    codebook.kmer_length()
+                ),
                 reason: "k-mer length must match between encoder and learned codebook".to_string(),
             });
         }
@@ -363,20 +380,17 @@ impl LearnedKmerCodebook {
     /// The file should contain float vectors that will be binarized
     /// using threshold 0.0 (bipolar to binary conversion).
     pub fn load<P: AsRef<std::path::Path>>(path: P) -> Result<Self, HdcError> {
-        let file = std::fs::File::open(path.as_ref()).map_err(|e| {
-            HdcError::IoError {
-                operation: "open",
-                message: format!("Failed to open codebook file: {}", e),
-            }
+        let file = std::fs::File::open(path.as_ref()).map_err(|e| HdcError::IoError {
+            operation: "open",
+            message: format!("Failed to open codebook file: {}", e),
         })?;
 
         let reader = std::io::BufReader::new(file);
-        let data: LearnedCodebookFile = serde_json::from_reader(reader).map_err(|e| {
-            HdcError::IoError {
+        let data: LearnedCodebookFile =
+            serde_json::from_reader(reader).map_err(|e| HdcError::IoError {
                 operation: "parse",
                 message: format!("Failed to parse codebook JSON: {}", e),
-            }
-        })?;
+            })?;
 
         let mut vectors = std::collections::HashMap::new();
 
@@ -479,7 +493,8 @@ impl LearnedKmerCodebook {
     /// For lossless round-trip, save the original float embeddings.
     pub fn save<P: AsRef<std::path::Path>>(&self, path: P) -> Result<(), HdcError> {
         // Convert binary back to float (lossy - all values will be 0.0 or 1.0)
-        let embeddings: std::collections::HashMap<String, Vec<f32>> = self.vectors
+        let embeddings: std::collections::HashMap<String, Vec<f32>> = self
+            .vectors
             .iter()
             .map(|(kmer, hv)| {
                 let floats: Vec<f32> = (0..crate::HYPERVECTOR_DIM)
@@ -495,18 +510,14 @@ impl LearnedKmerCodebook {
             embeddings,
         };
 
-        let file = std::fs::File::create(path.as_ref()).map_err(|e| {
-            HdcError::IoError {
-                operation: "create",
-                message: format!("Failed to create codebook file: {}", e),
-            }
+        let file = std::fs::File::create(path.as_ref()).map_err(|e| HdcError::IoError {
+            operation: "create",
+            message: format!("Failed to create codebook file: {}", e),
         })?;
 
-        serde_json::to_writer_pretty(file, &data).map_err(|e| {
-            HdcError::IoError {
-                operation: "write",
-                message: format!("Failed to write codebook JSON: {}", e),
-            }
+        serde_json::to_writer_pretty(file, &data).map_err(|e| HdcError::IoError {
+            operation: "write",
+            message: format!("Failed to write codebook JSON: {}", e),
         })?;
 
         Ok(())
@@ -583,20 +594,17 @@ pub struct ClassificationResult {
 impl LearnedClassifier {
     /// Load classifier from a JSON file
     pub fn load<P: AsRef<std::path::Path>>(path: P) -> Result<Self, HdcError> {
-        let file = std::fs::File::open(path.as_ref()).map_err(|e| {
-            HdcError::IoError {
-                operation: "open",
-                message: format!("Failed to open classifier file: {}", e),
-            }
+        let file = std::fs::File::open(path.as_ref()).map_err(|e| HdcError::IoError {
+            operation: "open",
+            message: format!("Failed to open classifier file: {}", e),
         })?;
 
         let reader = std::io::BufReader::new(file);
-        let data: LearnedClassifierFile = serde_json::from_reader(reader).map_err(|e| {
-            HdcError::IoError {
+        let data: LearnedClassifierFile =
+            serde_json::from_reader(reader).map_err(|e| HdcError::IoError {
                 operation: "parse",
                 message: format!("Failed to parse classifier JSON: {}", e),
-            }
-        })?;
+            })?;
 
         Ok(LearnedClassifier {
             w1: data.w1,
@@ -850,15 +858,27 @@ impl MultiScaleEncoder {
     }
 
     /// Encode multiple sequences
-    pub fn encode_batch(&self, sequences: &[&str]) -> Vec<Result<MultiScaleEncodedSequence, HdcError>> {
-        sequences.iter().map(|seq| self.encode_sequence(seq)).collect()
+    pub fn encode_batch(
+        &self,
+        sequences: &[&str],
+    ) -> Vec<Result<MultiScaleEncodedSequence, HdcError>> {
+        sequences
+            .iter()
+            .map(|seq| self.encode_sequence(seq))
+            .collect()
     }
 
     /// Encode in parallel (requires "parallel" feature)
     #[cfg(feature = "parallel")]
-    pub fn encode_batch_parallel(&self, sequences: &[&str]) -> Vec<Result<MultiScaleEncodedSequence, HdcError>> {
+    pub fn encode_batch_parallel(
+        &self,
+        sequences: &[&str],
+    ) -> Vec<Result<MultiScaleEncodedSequence, HdcError>> {
         use rayon::prelude::*;
-        sequences.par_iter().map(|seq| self.encode_sequence(seq)).collect()
+        sequences
+            .par_iter()
+            .map(|seq| self.encode_sequence(seq))
+            .collect()
     }
 
     /// Get the scales used
@@ -995,7 +1015,8 @@ impl LocusWeightedHlaEncoder {
             return Err(HdcError::InvalidConfig {
                 parameter: "hla_alleles",
                 value: format!("{} alleles", hla_types.len()),
-                reason: "expected exactly 10 HLA alleles (2 per locus for A, B, C, DRB1, DQB1)".to_string()
+                reason: "expected exactly 10 HLA alleles (2 per locus for A, B, C, DRB1, DQB1)"
+                    .to_string(),
             });
         }
 
@@ -1129,7 +1150,8 @@ impl AlleleHlaEncoder {
             return Err(HdcError::InvalidConfig {
                 parameter: "hla_alleles",
                 value: format!("{} alleles", hla_types.len()),
-                reason: "expected exactly 10 HLA alleles (2 per locus for A, B, C, DRB1, DQB1)".to_string()
+                reason: "expected exactly 10 HLA alleles (2 per locus for A, B, C, DRB1, DQB1)"
+                    .to_string(),
             });
         }
 
@@ -1138,7 +1160,11 @@ impl AlleleHlaEncoder {
         for (i, allele) in hla_types.iter().enumerate() {
             let locus_idx = i / 2;
             let locus_name = match locus_idx {
-                0 => "A", 1 => "B", 2 => "C", 3 => "DRB1", 4 => "DQB1",
+                0 => "A",
+                1 => "B",
+                2 => "C",
+                3 => "DRB1",
+                4 => "DQB1",
                 _ => "UNK",
             };
 
@@ -1232,7 +1258,9 @@ impl AlleleEncodedHla {
                 locus_matches += 1.0;
             } else if sim_21 > threshold || sim_22 > threshold {
                 // Only count if allele 1 didn't already take this match
-                if !(sim_11 > threshold && sim_21 > threshold) && !(sim_12 > threshold && sim_22 > threshold) {
+                if !(sim_11 > threshold && sim_21 > threshold)
+                    && !(sim_12 > threshold && sim_22 > threshold)
+                {
                     locus_matches += 1.0;
                 }
             }
@@ -1360,15 +1388,15 @@ impl StarAlleleEncoder {
         }
         // No function alleles (activity value = 0.0)
         for allele in [
-            "*3", "*4", "*5", "*6", "*7", "*8", "*11", "*12", "*13", "*15", "*16",
-            "*18", "*19", "*20", "*31", "*36", "*38", "*40", "*42", "*47", "*51",
-            "*56", "*57", "*62", "*68", "*69", "*92", "*100",
+            "*3", "*4", "*5", "*6", "*7", "*8", "*11", "*12", "*13", "*15", "*16", "*18", "*19",
+            "*20", "*31", "*36", "*38", "*40", "*42", "*47", "*51", "*56", "*57", "*62", "*68",
+            "*69", "*92", "*100",
         ] {
             cyp2d6.insert(allele.to_string(), 0.0);
         }
         // Gene duplication increases function (represented as >2.0 when detected)
-        cyp2d6.insert("*1xN".to_string(), 2.0);  // Gene duplication
-        cyp2d6.insert("*2xN".to_string(), 2.0);  // Gene duplication
+        cyp2d6.insert("*1xN".to_string(), 2.0); // Gene duplication
+        cyp2d6.insert("*2xN".to_string(), 2.0); // Gene duplication
         self.activity_scores.insert("CYP2D6".to_string(), cyp2d6);
 
         // CYP2C19 activity scores (CPIC 2022 Guideline)
@@ -1406,20 +1434,22 @@ impl StarAlleleEncoder {
         // CYP3A5 activity scores (CPIC 2022 Tacrolimus Guideline)
         // Reference: https://cpicpgx.org/guidelines/guideline-for-tacrolimus-and-cyp3a5/
         let mut cyp3a5 = std::collections::HashMap::new();
-        cyp3a5.insert("*1".to_string(), 1.0);   // Normal function (expresser)
-        cyp3a5.insert("*3".to_string(), 0.0);   // No function (non-expresser)
-        cyp3a5.insert("*6".to_string(), 0.0);   // No function
-        cyp3a5.insert("*7".to_string(), 0.0);   // No function
+        cyp3a5.insert("*1".to_string(), 1.0); // Normal function (expresser)
+        cyp3a5.insert("*3".to_string(), 0.0); // No function (non-expresser)
+        cyp3a5.insert("*6".to_string(), 0.0); // No function
+        cyp3a5.insert("*7".to_string(), 0.0); // No function
         self.activity_scores.insert("CYP3A5".to_string(), cyp3a5);
 
         // TPMT activity scores (CPIC 2018 Thiopurine Guideline)
         // Reference: https://cpicpgx.org/guidelines/guideline-for-thiopurines-and-tpmt/
         let mut tpmt = std::collections::HashMap::new();
-        tpmt.insert("*1".to_string(), 1.0);   // Normal function
-        // No function alleles
-        for allele in ["*2", "*3A", "*3B", "*3C", "*4", "*5", "*6", "*7", "*8", "*9", "*10",
-                       "*11", "*12", "*13", "*14", "*15", "*16", "*17", "*18", "*19", "*20",
-                       "*21", "*22", "*23", "*24", "*25", "*26", "*27", "*28"] {
+        tpmt.insert("*1".to_string(), 1.0); // Normal function
+                                            // No function alleles
+        for allele in [
+            "*2", "*3A", "*3B", "*3C", "*4", "*5", "*6", "*7", "*8", "*9", "*10", "*11", "*12",
+            "*13", "*14", "*15", "*16", "*17", "*18", "*19", "*20", "*21", "*22", "*23", "*24",
+            "*25", "*26", "*27", "*28",
+        ] {
             tpmt.insert(allele.to_string(), 0.0);
         }
         self.activity_scores.insert("TPMT".to_string(), tpmt);
@@ -1427,31 +1457,31 @@ impl StarAlleleEncoder {
         // NUDT15 activity scores (CPIC 2019 Thiopurine Guideline)
         // Important for Asian populations
         let mut nudt15 = std::collections::HashMap::new();
-        nudt15.insert("*1".to_string(), 1.0);   // Normal function
-        nudt15.insert("*2".to_string(), 0.0);   // No function
-        nudt15.insert("*3".to_string(), 0.0);   // No function
-        nudt15.insert("*4".to_string(), 0.0);   // No function
-        nudt15.insert("*5".to_string(), 0.0);   // No function
-        nudt15.insert("*6".to_string(), 0.0);   // No function
+        nudt15.insert("*1".to_string(), 1.0); // Normal function
+        nudt15.insert("*2".to_string(), 0.0); // No function
+        nudt15.insert("*3".to_string(), 0.0); // No function
+        nudt15.insert("*4".to_string(), 0.0); // No function
+        nudt15.insert("*5".to_string(), 0.0); // No function
+        nudt15.insert("*6".to_string(), 0.0); // No function
         self.activity_scores.insert("NUDT15".to_string(), nudt15);
 
         // DPYD activity scores (CPIC 2017 Fluoropyrimidine Guideline)
         // Reference: https://cpicpgx.org/guidelines/guideline-for-fluoropyrimidines-and-dpyd/
         let mut dpyd = std::collections::HashMap::new();
-        dpyd.insert("*1".to_string(), 1.0);          // Normal function
-        dpyd.insert("*2A".to_string(), 0.0);         // No function (c.1905+1G>A, IVS14+1G>A)
-        dpyd.insert("*13".to_string(), 0.0);         // No function (c.1679T>G)
-        dpyd.insert("c.2846A>T".to_string(), 0.5);   // Decreased function (D949V)
+        dpyd.insert("*1".to_string(), 1.0); // Normal function
+        dpyd.insert("*2A".to_string(), 0.0); // No function (c.1905+1G>A, IVS14+1G>A)
+        dpyd.insert("*13".to_string(), 0.0); // No function (c.1679T>G)
+        dpyd.insert("c.2846A>T".to_string(), 0.5); // Decreased function (D949V)
         dpyd.insert("c.1129-5923C>G".to_string(), 0.5); // Decreased function (HapB3)
-        dpyd.insert("c.1236G>A".to_string(), 0.5);   // Decreased function
+        dpyd.insert("c.1236G>A".to_string(), 0.5); // Decreased function
         self.activity_scores.insert("DPYD".to_string(), dpyd);
 
         // SLCO1B1 activity scores (CPIC 2014 Simvastatin Guideline)
         // Reference: https://cpicpgx.org/guidelines/guideline-for-simvastatin-and-slco1b1/
         let mut slco1b1 = std::collections::HashMap::new();
-        slco1b1.insert("*1A".to_string(), 1.0);  // Normal function
-        slco1b1.insert("*1B".to_string(), 1.0);  // Normal function
-        // Decreased function alleles
+        slco1b1.insert("*1A".to_string(), 1.0); // Normal function
+        slco1b1.insert("*1B".to_string(), 1.0); // Normal function
+                                                // Decreased function alleles
         for allele in ["*5", "*15", "*17", "*21", "*31"] {
             slco1b1.insert(allele.to_string(), 0.5);
         }
@@ -1461,24 +1491,24 @@ impl StarAlleleEncoder {
 
         // UGT1A1 activity scores (CPIC Irinotecan Guideline)
         let mut ugt1a1 = std::collections::HashMap::new();
-        ugt1a1.insert("*1".to_string(), 1.0);    // Normal function
-        ugt1a1.insert("*6".to_string(), 0.5);    // Decreased function
-        ugt1a1.insert("*28".to_string(), 0.5);   // Decreased function (TA repeat)
-        ugt1a1.insert("*37".to_string(), 0.0);   // Poor function
+        ugt1a1.insert("*1".to_string(), 1.0); // Normal function
+        ugt1a1.insert("*6".to_string(), 0.5); // Decreased function
+        ugt1a1.insert("*28".to_string(), 0.5); // Decreased function (TA repeat)
+        ugt1a1.insert("*37".to_string(), 0.0); // Poor function
         self.activity_scores.insert("UGT1A1".to_string(), ugt1a1);
 
         // VKORC1 (CPIC Warfarin Guideline) - uses haplotype groups
         let mut vkorc1 = std::collections::HashMap::new();
-        vkorc1.insert("A".to_string(), 0.5);     // Low dose required
-        vkorc1.insert("B".to_string(), 1.0);     // Normal dose
+        vkorc1.insert("A".to_string(), 0.5); // Low dose required
+        vkorc1.insert("B".to_string(), 1.0); // Normal dose
         vkorc1.insert("-1639G>A".to_string(), 0.5); // rs9923231 - low dose
         self.activity_scores.insert("VKORC1".to_string(), vkorc1);
 
         // CYP2B6 (CPIC Efavirenz Guideline)
         let mut cyp2b6 = std::collections::HashMap::new();
-        cyp2b6.insert("*1".to_string(), 1.0);    // Normal function
-        cyp2b6.insert("*6".to_string(), 0.5);    // Decreased function
-        cyp2b6.insert("*18".to_string(), 0.0);   // No function
+        cyp2b6.insert("*1".to_string(), 1.0); // Normal function
+        cyp2b6.insert("*6".to_string(), 0.5); // Decreased function
+        cyp2b6.insert("*18".to_string(), 0.0); // No function
         self.activity_scores.insert("CYP2B6".to_string(), cyp2b6);
     }
 
@@ -1570,7 +1600,9 @@ impl StarAlleleEncoder {
         profile1: &EncodedPgxProfile,
         profile2: &EncodedPgxProfile,
     ) -> f64 {
-        profile1.profile_vector.normalized_cosine_similarity(&profile2.profile_vector)
+        profile1
+            .profile_vector
+            .normalized_cosine_similarity(&profile2.profile_vector)
     }
 
     /// Calculate per-gene similarity between profiles
@@ -1668,8 +1700,8 @@ impl StarAlleleEncoder {
             "ondansetron" | "tropisetron" => "CYP2D6",
             "paroxetine" | "fluvoxamine" => "CYP2D6",
             "atomoxetine" => "CYP2D6",
-            "nortriptyline" | "amitriptyline" | "clomipramine" | "desipramine" |
-            "doxepin" | "imipramine" | "trimipramine" => "CYP2D6",
+            "nortriptyline" | "amitriptyline" | "clomipramine" | "desipramine" | "doxepin"
+            | "imipramine" | "trimipramine" => "CYP2D6",
 
             // CYP2C19 substrates (clopidogrel, PPIs, antidepressants, antifungals)
             "clopidogrel" => "CYP2C19",
@@ -1857,7 +1889,14 @@ impl EncodedPgxProfile {
     pub fn summary(&self) -> String {
         self.diplotypes
             .iter()
-            .map(|d| format!("{}: {} (AS={})", d.to_notation(), d.phenotype, d.activity_score))
+            .map(|d| {
+                format!(
+                    "{}: {} (AS={})",
+                    d.to_notation(),
+                    d.phenotype,
+                    d.activity_score
+                )
+            })
             .collect::<Vec<_>>()
             .join("\n")
     }
@@ -2121,10 +2160,10 @@ impl AncestryInformedEncoder {
             allele: "*4".to_string(),
             frequencies: {
                 let mut m = map();
-                m.insert(Ancestry::European, 0.20);     // ~20% in Europeans
-                m.insert(Ancestry::African, 0.06);      // ~6% in Africans
-                m.insert(Ancestry::EastAsian, 0.01);    // ~1% in East Asians
-                m.insert(Ancestry::Latino, 0.10);       // ~10% in Latinos
+                m.insert(Ancestry::European, 0.20); // ~20% in Europeans
+                m.insert(Ancestry::African, 0.06); // ~6% in Africans
+                m.insert(Ancestry::EastAsian, 0.01); // ~1% in East Asians
+                m.insert(Ancestry::Latino, 0.10); // ~10% in Latinos
                 m.insert(Ancestry::CentralSouthAsian, 0.05); // ~5%
                 m
             },
@@ -2135,10 +2174,10 @@ impl AncestryInformedEncoder {
             allele: "*10".to_string(),
             frequencies: {
                 let mut m = map();
-                m.insert(Ancestry::EastAsian, 0.40);    // ~40% in East Asians
-                m.insert(Ancestry::European, 0.02);     // ~2% in Europeans
-                m.insert(Ancestry::African, 0.05);      // ~5%
-                m.insert(Ancestry::Latino, 0.04);       // ~4%
+                m.insert(Ancestry::EastAsian, 0.40); // ~40% in East Asians
+                m.insert(Ancestry::European, 0.02); // ~2% in Europeans
+                m.insert(Ancestry::African, 0.05); // ~5%
+                m.insert(Ancestry::Latino, 0.04); // ~4%
                 m
             },
         });
@@ -2148,8 +2187,8 @@ impl AncestryInformedEncoder {
             allele: "*17".to_string(),
             frequencies: {
                 let mut m = map();
-                m.insert(Ancestry::African, 0.20);      // ~20% in Africans
-                m.insert(Ancestry::European, 0.001);    // Very rare in Europeans
+                m.insert(Ancestry::African, 0.20); // ~20% in Africans
+                m.insert(Ancestry::European, 0.001); // Very rare in Europeans
                 m.insert(Ancestry::EastAsian, 0.001);
                 m.insert(Ancestry::Latino, 0.03);
                 m
@@ -2161,7 +2200,7 @@ impl AncestryInformedEncoder {
             allele: "*29".to_string(),
             frequencies: {
                 let mut m = map();
-                m.insert(Ancestry::African, 0.10);      // ~10% in Africans
+                m.insert(Ancestry::African, 0.10); // ~10% in Africans
                 m.insert(Ancestry::European, 0.001);
                 m.insert(Ancestry::EastAsian, 0.001);
                 m
@@ -2175,9 +2214,9 @@ impl AncestryInformedEncoder {
             allele: "*2".to_string(),
             frequencies: {
                 let mut m = map();
-                m.insert(Ancestry::EastAsian, 0.30);    // ~30% in East Asians
-                m.insert(Ancestry::European, 0.15);     // ~15% in Europeans
-                m.insert(Ancestry::African, 0.15);      // ~15%
+                m.insert(Ancestry::EastAsian, 0.30); // ~30% in East Asians
+                m.insert(Ancestry::European, 0.15); // ~15% in Europeans
+                m.insert(Ancestry::African, 0.15); // ~15%
                 m.insert(Ancestry::Latino, 0.12);
                 m
             },
@@ -2188,8 +2227,8 @@ impl AncestryInformedEncoder {
             allele: "*3".to_string(),
             frequencies: {
                 let mut m = map();
-                m.insert(Ancestry::EastAsian, 0.08);    // ~8% in East Asians
-                m.insert(Ancestry::European, 0.001);    // Very rare in Europeans
+                m.insert(Ancestry::EastAsian, 0.08); // ~8% in East Asians
+                m.insert(Ancestry::European, 0.001); // Very rare in Europeans
                 m.insert(Ancestry::African, 0.001);
                 m.insert(Ancestry::Latino, 0.001);
                 m
@@ -2201,9 +2240,9 @@ impl AncestryInformedEncoder {
             allele: "*17".to_string(),
             frequencies: {
                 let mut m = map();
-                m.insert(Ancestry::European, 0.21);     // ~21% in Europeans
-                m.insert(Ancestry::African, 0.16);      // ~16%
-                m.insert(Ancestry::EastAsian, 0.01);    // ~1% in East Asians
+                m.insert(Ancestry::European, 0.21); // ~21% in Europeans
+                m.insert(Ancestry::African, 0.16); // ~16%
+                m.insert(Ancestry::EastAsian, 0.01); // ~1% in East Asians
                 m.insert(Ancestry::Latino, 0.15);
                 m
             },
@@ -2215,9 +2254,9 @@ impl AncestryInformedEncoder {
             allele: "*2".to_string(),
             frequencies: {
                 let mut m = map();
-                m.insert(Ancestry::European, 0.13);     // ~13% in Europeans
-                m.insert(Ancestry::African, 0.02);      // ~2%
-                m.insert(Ancestry::EastAsian, 0.001);   // Very rare
+                m.insert(Ancestry::European, 0.13); // ~13% in Europeans
+                m.insert(Ancestry::African, 0.02); // ~2%
+                m.insert(Ancestry::EastAsian, 0.001); // Very rare
                 m.insert(Ancestry::Latino, 0.06);
                 m
             },
@@ -2228,9 +2267,9 @@ impl AncestryInformedEncoder {
             allele: "*3".to_string(),
             frequencies: {
                 let mut m = map();
-                m.insert(Ancestry::European, 0.07);     // ~7% in Europeans
-                m.insert(Ancestry::African, 0.01);      // ~1%
-                m.insert(Ancestry::EastAsian, 0.04);    // ~4%
+                m.insert(Ancestry::European, 0.07); // ~7% in Europeans
+                m.insert(Ancestry::African, 0.01); // ~1%
+                m.insert(Ancestry::EastAsian, 0.04); // ~4%
                 m.insert(Ancestry::Latino, 0.03);
                 m
             },
@@ -2242,9 +2281,9 @@ impl AncestryInformedEncoder {
             allele: "*3".to_string(),
             frequencies: {
                 let mut m = map();
-                m.insert(Ancestry::European, 0.85);     // ~85% in Europeans (loss of function)
-                m.insert(Ancestry::African, 0.30);      // ~30% in Africans
-                m.insert(Ancestry::EastAsian, 0.70);    // ~70%
+                m.insert(Ancestry::European, 0.85); // ~85% in Europeans (loss of function)
+                m.insert(Ancestry::African, 0.30); // ~30% in Africans
+                m.insert(Ancestry::EastAsian, 0.70); // ~70%
                 m.insert(Ancestry::Latino, 0.65);
                 m
             },
@@ -2256,7 +2295,7 @@ impl AncestryInformedEncoder {
             allele: "*2A".to_string(),
             frequencies: {
                 let mut m = map();
-                m.insert(Ancestry::European, 0.01);     // ~1% in Europeans
+                m.insert(Ancestry::European, 0.01); // ~1% in Europeans
                 m.insert(Ancestry::African, 0.001);
                 m.insert(Ancestry::EastAsian, 0.001);
                 m
@@ -2269,9 +2308,9 @@ impl AncestryInformedEncoder {
             allele: "*5".to_string(),
             frequencies: {
                 let mut m = map();
-                m.insert(Ancestry::European, 0.15);     // ~15% in Europeans
+                m.insert(Ancestry::European, 0.15); // ~15% in Europeans
                 m.insert(Ancestry::EastAsian, 0.10);
-                m.insert(Ancestry::African, 0.02);      // Lower in Africans
+                m.insert(Ancestry::African, 0.02); // Lower in Africans
                 m.insert(Ancestry::Latino, 0.08);
                 m
             },
@@ -2283,9 +2322,9 @@ impl AncestryInformedEncoder {
             allele: "*3A".to_string(),
             frequencies: {
                 let mut m = map();
-                m.insert(Ancestry::European, 0.05);     // ~5% in Europeans
-                m.insert(Ancestry::African, 0.01);      // Lower in Africans
-                m.insert(Ancestry::EastAsian, 0.001);   // Very rare
+                m.insert(Ancestry::European, 0.05); // ~5% in Europeans
+                m.insert(Ancestry::African, 0.01); // Lower in Africans
+                m.insert(Ancestry::EastAsian, 0.001); // Very rare
                 m.insert(Ancestry::Latino, 0.03);
                 m
             },
@@ -2296,8 +2335,8 @@ impl AncestryInformedEncoder {
             allele: "*3C".to_string(),
             frequencies: {
                 let mut m = map();
-                m.insert(Ancestry::EastAsian, 0.02);    // ~2% in East Asians
-                m.insert(Ancestry::African, 0.05);      // ~5% in Africans
+                m.insert(Ancestry::EastAsian, 0.02); // ~2% in East Asians
+                m.insert(Ancestry::African, 0.05); // ~5% in Africans
                 m.insert(Ancestry::European, 0.005);
                 m
             },
@@ -2309,9 +2348,9 @@ impl AncestryInformedEncoder {
             allele: "*28".to_string(),
             frequencies: {
                 let mut m = map();
-                m.insert(Ancestry::European, 0.32);     // ~32% in Europeans
-                m.insert(Ancestry::African, 0.42);      // ~42% in Africans
-                m.insert(Ancestry::EastAsian, 0.15);    // ~15% in East Asians
+                m.insert(Ancestry::European, 0.32); // ~32% in Europeans
+                m.insert(Ancestry::African, 0.42); // ~42% in Africans
+                m.insert(Ancestry::EastAsian, 0.15); // ~15% in East Asians
                 m.insert(Ancestry::Latino, 0.28);
                 m
             },
@@ -2323,9 +2362,9 @@ impl AncestryInformedEncoder {
             allele: "*3".to_string(),
             frequencies: {
                 let mut m = map();
-                m.insert(Ancestry::EastAsian, 0.10);    // ~10% in East Asians
+                m.insert(Ancestry::EastAsian, 0.10); // ~10% in East Asians
                 m.insert(Ancestry::Latino, 0.03);
-                m.insert(Ancestry::European, 0.002);    // Very rare
+                m.insert(Ancestry::European, 0.002); // Very rare
                 m.insert(Ancestry::African, 0.001);
                 m
             },
@@ -2356,23 +2395,23 @@ impl AncestryInformedEncoder {
     ) -> f64 {
         match (gene, phenotype, ancestry) {
             // CYP2D6 phenotype priors
-            ("CYP2D6", MetabolizerPhenotype::Poor, Ancestry::European) => 0.07,     // ~7%
-            ("CYP2D6", MetabolizerPhenotype::Poor, Ancestry::African) => 0.02,       // ~2%
-            ("CYP2D6", MetabolizerPhenotype::Poor, Ancestry::EastAsian) => 0.01,     // ~1%
+            ("CYP2D6", MetabolizerPhenotype::Poor, Ancestry::European) => 0.07, // ~7%
+            ("CYP2D6", MetabolizerPhenotype::Poor, Ancestry::African) => 0.02,  // ~2%
+            ("CYP2D6", MetabolizerPhenotype::Poor, Ancestry::EastAsian) => 0.01, // ~1%
             ("CYP2D6", MetabolizerPhenotype::Intermediate, Ancestry::EastAsian) => 0.35, // High due to *10
-            ("CYP2D6", MetabolizerPhenotype::Ultrarapid, Ancestry::African) => 0.10,  // Gene duplications
+            ("CYP2D6", MetabolizerPhenotype::Ultrarapid, Ancestry::African) => 0.10, // Gene duplications
 
             // CYP2C19 phenotype priors
-            ("CYP2C19", MetabolizerPhenotype::Poor, Ancestry::EastAsian) => 0.15,    // ~15%
-            ("CYP2C19", MetabolizerPhenotype::Poor, Ancestry::European) => 0.02,     // ~2%
+            ("CYP2C19", MetabolizerPhenotype::Poor, Ancestry::EastAsian) => 0.15, // ~15%
+            ("CYP2C19", MetabolizerPhenotype::Poor, Ancestry::European) => 0.02,  // ~2%
             ("CYP2C19", MetabolizerPhenotype::Ultrarapid, Ancestry::European) => 0.05, // *17/*17
 
             // CYP3A5 phenotype priors (for tacrolimus dosing)
-            ("CYP3A5", MetabolizerPhenotype::Poor, Ancestry::European) => 0.85,      // Most are *3/*3
-            ("CYP3A5", MetabolizerPhenotype::Poor, Ancestry::African) => 0.10,       // More expressers
+            ("CYP3A5", MetabolizerPhenotype::Poor, Ancestry::European) => 0.85, // Most are *3/*3
+            ("CYP3A5", MetabolizerPhenotype::Poor, Ancestry::African) => 0.10,  // More expressers
 
             // NUDT15 - critical for Asians on thiopurines
-            ("NUDT15", MetabolizerPhenotype::Poor, Ancestry::EastAsian) => 0.01,     // ~1%
+            ("NUDT15", MetabolizerPhenotype::Poor, Ancestry::EastAsian) => 0.01, // ~1%
             ("NUDT15", MetabolizerPhenotype::Intermediate, Ancestry::EastAsian) => 0.18, // ~18%
 
             // Default priors when no specific data
@@ -2404,8 +2443,8 @@ impl AncestryInformedEncoder {
         // Calculate diplotype frequency (Hardy-Weinberg assumption)
         let diplotype_frequency = match (freq1, freq2) {
             (Some(f1), Some(f2)) if allele1 == allele2 => f1 * f1, // homozygous
-            (Some(f1), Some(f2)) => 2.0 * f1 * f2,                  // heterozygous
-            _ => None.or(freq1).or(freq2).unwrap_or(0.01),          // fallback
+            (Some(f1), Some(f2)) => 2.0 * f1 * f2,                 // heterozygous
+            _ => None.or(freq1).or(freq2).unwrap_or(0.01),         // fallback
         };
 
         // Get phenotype prior for context
@@ -2436,7 +2475,10 @@ impl AncestryInformedEncoder {
         match (gene, ancestry) {
             ("CYP2D6", Ancestry::African) => {
                 if allele1.contains("*17") || allele2.contains("*17") {
-                    notes.push("CYP2D6*17 is common in African ancestry - reduced function allele".to_string());
+                    notes.push(
+                        "CYP2D6*17 is common in African ancestry - reduced function allele"
+                            .to_string(),
+                    );
                 }
                 if allele1.contains("*29") || allele2.contains("*29") {
                     notes.push("CYP2D6*29 is primarily found in African populations".to_string());
@@ -2444,19 +2486,27 @@ impl AncestryInformedEncoder {
             }
             ("CYP2D6", Ancestry::EastAsian) => {
                 if allele1.contains("*10") || allele2.contains("*10") {
-                    notes.push("CYP2D6*10 is very common in East Asian ancestry (~40%)".to_string());
-                    notes.push("Consider starting at lower doses for CYP2D6 substrates".to_string());
+                    notes
+                        .push("CYP2D6*10 is very common in East Asian ancestry (~40%)".to_string());
+                    notes
+                        .push("Consider starting at lower doses for CYP2D6 substrates".to_string());
                 }
             }
             ("CYP2C19", Ancestry::EastAsian) => {
                 if allele1.contains("*3") || allele2.contains("*3") {
-                    notes.push("CYP2C19*3 is primarily found in East Asian populations".to_string());
+                    notes
+                        .push("CYP2C19*3 is primarily found in East Asian populations".to_string());
                 }
-                notes.push("Higher prevalence of CYP2C19 poor metabolizers in East Asian ancestry".to_string());
+                notes.push(
+                    "Higher prevalence of CYP2C19 poor metabolizers in East Asian ancestry"
+                        .to_string(),
+                );
             }
             ("CYP3A5", Ancestry::African) => {
                 notes.push("CYP3A5 expression is more common in African ancestry".to_string());
-                notes.push("May require higher tacrolimus doses compared to other populations".to_string());
+                notes.push(
+                    "May require higher tacrolimus doses compared to other populations".to_string(),
+                );
             }
             ("NUDT15", Ancestry::EastAsian) => {
                 notes.push("NUDT15 variants are more common in East Asian ancestry".to_string());
@@ -2488,10 +2538,8 @@ impl AncestryInformedEncoder {
         }
 
         // Create composite vector
-        let vectors: Vec<&Hypervector> = encoded_diplotypes
-            .iter()
-            .map(|d| &d.base.vector)
-            .collect();
+        let vectors: Vec<&Hypervector> =
+            encoded_diplotypes.iter().map(|d| &d.base.vector).collect();
         let profile_vector = bundle(&vectors);
 
         // De-duplicate notes
@@ -2521,11 +2569,8 @@ impl AncestryInformedEncoder {
         )?;
 
         // Get ancestry-specific considerations
-        let ancestry_considerations = self.get_drug_ancestry_considerations(
-            drug,
-            &base_prediction.gene,
-            &profile.ancestry,
-        );
+        let ancestry_considerations =
+            self.get_drug_ancestry_considerations(drug, &base_prediction.gene, &profile.ancestry);
 
         // Adjust confidence based on ancestry data availability
         let ancestry_confidence = match &profile.ancestry {
@@ -2555,28 +2600,44 @@ impl AncestryInformedEncoder {
 
         match (drug.to_lowercase().as_str(), gene, ancestry) {
             ("clopidogrel", "CYP2C19", Ancestry::EastAsian) => {
-                considerations.push("Higher prevalence of CYP2C19 poor metabolizers in East Asian populations".to_string());
-                considerations.push("Consider alternative antiplatelet therapy or genetic testing".to_string());
+                considerations.push(
+                    "Higher prevalence of CYP2C19 poor metabolizers in East Asian populations"
+                        .to_string(),
+                );
+                considerations.push(
+                    "Consider alternative antiplatelet therapy or genetic testing".to_string(),
+                );
             }
             ("codeine" | "tramadol", "CYP2D6", Ancestry::EastAsian) => {
-                considerations.push("CYP2D6*10 is common - may have reduced conversion to active metabolite".to_string());
+                considerations.push(
+                    "CYP2D6*10 is common - may have reduced conversion to active metabolite"
+                        .to_string(),
+                );
             }
             ("codeine" | "tramadol", "CYP2D6", Ancestry::African) => {
-                considerations.push("Gene duplications more common - risk of ultrarapid metabolism".to_string());
+                considerations.push(
+                    "Gene duplications more common - risk of ultrarapid metabolism".to_string(),
+                );
             }
             ("tacrolimus", "CYP3A5", Ancestry::African) => {
-                considerations.push("CYP3A5 expressers more common in African ancestry".to_string());
-                considerations.push("May require higher tacrolimus doses for target trough levels".to_string());
+                considerations
+                    .push("CYP3A5 expressers more common in African ancestry".to_string());
+                considerations.push(
+                    "May require higher tacrolimus doses for target trough levels".to_string(),
+                );
             }
             ("azathioprine" | "mercaptopurine", _, Ancestry::EastAsian) => {
                 considerations.push("NUDT15 variants common in East Asian ancestry".to_string());
                 considerations.push("Consider reduced starting dose or NUDT15 testing".to_string());
             }
             ("warfarin", "CYP2C9", Ancestry::European) => {
-                considerations.push("CYP2C9*2 and *3 common in Europeans - may require dose reduction".to_string());
+                considerations.push(
+                    "CYP2C9*2 and *3 common in Europeans - may require dose reduction".to_string(),
+                );
             }
             ("simvastatin", "SLCO1B1", Ancestry::European) => {
-                considerations.push("SLCO1B1*5 common in Europeans - increased myopathy risk".to_string());
+                considerations
+                    .push("SLCO1B1*5 common in Europeans - increased myopathy risk".to_string());
             }
             _ => {}
         }
@@ -2593,42 +2654,61 @@ impl AncestryInformedEncoder {
         let prediction = self.predict_drug_interaction_with_ancestry(profile, drug)?;
 
         // Determine dose adjustment based on recommendation and ancestry
-        let (dose_adjustment, reasoning) = match (&prediction.base.recommendation, &profile.ancestry) {
-            (DrugRecommendation::Avoid, _) => {
-                (DoseAdjustment::Contraindicated, "Alternative therapy recommended".to_string())
-            }
-            (DrugRecommendation::StandardDose, _) => {
-                (DoseAdjustment::Standard, "Standard dosing appropriate".to_string())
-            }
-            (DrugRecommendation::ReducedDose, Ancestry::EastAsian) if prediction.base.gene == "CYP2D6" => {
-                // Additional reduction for East Asians with *10 allele (common)
-                (DoseAdjustment::Reduce(50), "Reduce dose by 50% (adjusted for East Asian CYP2D6*10 prevalence)".to_string())
-            }
-            (DrugRecommendation::ReducedDose, _) => {
-                (DoseAdjustment::Reduce(25), "Reduce dose by 25%".to_string())
-            }
-            (DrugRecommendation::ConsiderAlternative, Ancestry::African) if prediction.base.gene == "CYP3A5" => {
-                // CYP3A5 expressers in African ancestry may need higher doses
-                (DoseAdjustment::Increase(50), "Increase dose by 50% (CYP3A5 expresser, common in African ancestry)".to_string())
-            }
-            (DrugRecommendation::ConsiderAlternative, _) => {
-                // For ultrarapid metabolizers, may need dose increase
-                match &prediction.base.phenotype {
-                    MetabolizerPhenotype::Ultrarapid | MetabolizerPhenotype::RapidToNormal => {
-                        (DoseAdjustment::Increase(25), "Consider increased dose or alternative therapy".to_string())
-                    }
-                    _ => {
-                        (DoseAdjustment::CautionNeeded, "Consider alternative therapy".to_string())
+        let (dose_adjustment, reasoning) =
+            match (&prediction.base.recommendation, &profile.ancestry) {
+                (DrugRecommendation::Avoid, _) => (
+                    DoseAdjustment::Contraindicated,
+                    "Alternative therapy recommended".to_string(),
+                ),
+                (DrugRecommendation::StandardDose, _) => (
+                    DoseAdjustment::Standard,
+                    "Standard dosing appropriate".to_string(),
+                ),
+                (DrugRecommendation::ReducedDose, Ancestry::EastAsian)
+                    if prediction.base.gene == "CYP2D6" =>
+                {
+                    // Additional reduction for East Asians with *10 allele (common)
+                    (
+                        DoseAdjustment::Reduce(50),
+                        "Reduce dose by 50% (adjusted for East Asian CYP2D6*10 prevalence)"
+                            .to_string(),
+                    )
+                }
+                (DrugRecommendation::ReducedDose, _) => {
+                    (DoseAdjustment::Reduce(25), "Reduce dose by 25%".to_string())
+                }
+                (DrugRecommendation::ConsiderAlternative, Ancestry::African)
+                    if prediction.base.gene == "CYP3A5" =>
+                {
+                    // CYP3A5 expressers in African ancestry may need higher doses
+                    (
+                        DoseAdjustment::Increase(50),
+                        "Increase dose by 50% (CYP3A5 expresser, common in African ancestry)"
+                            .to_string(),
+                    )
+                }
+                (DrugRecommendation::ConsiderAlternative, _) => {
+                    // For ultrarapid metabolizers, may need dose increase
+                    match &prediction.base.phenotype {
+                        MetabolizerPhenotype::Ultrarapid | MetabolizerPhenotype::RapidToNormal => (
+                            DoseAdjustment::Increase(25),
+                            "Consider increased dose or alternative therapy".to_string(),
+                        ),
+                        _ => (
+                            DoseAdjustment::CautionNeeded,
+                            "Consider alternative therapy".to_string(),
+                        ),
                     }
                 }
-            }
-            (DrugRecommendation::UseWithCaution, _) => {
-                (DoseAdjustment::CautionNeeded, "Use with caution - enhanced monitoring recommended".to_string())
-            }
-            (DrugRecommendation::InsufficientEvidence, _) => {
-                (DoseAdjustment::CautionNeeded, "Clinical monitoring recommended - limited evidence".to_string())
-            }
-        };
+                (DrugRecommendation::UseWithCaution, _) => (
+                    DoseAdjustment::CautionNeeded,
+                    "Use with caution - enhanced monitoring recommended".to_string(),
+                ),
+                (DrugRecommendation::InsufficientEvidence, _) => (
+                    DoseAdjustment::CautionNeeded,
+                    "Clinical monitoring recommended - limited evidence".to_string(),
+                ),
+            };
 
         Some(DosingGuidance {
             drug: drug.to_string(),
@@ -2765,11 +2845,7 @@ mod tests {
         let seed = Seed::from_string("snp-test");
         let encoder = SnpEncoder::new(seed);
 
-        let panel = vec![
-            ("rs1234", 'A'),
-            ("rs5678", 'G'),
-            ("rs9012", 'C'),
-        ];
+        let panel = vec![("rs1234", 'A'), ("rs5678", 'G'), ("rs9012", 'C')];
 
         let result = encoder.encode_panel(&panel);
         assert!(result.is_ok());
@@ -2825,11 +2901,13 @@ mod tests {
         let seed = Seed::from_string("pharmaco-test");
         let encoder = StarAlleleEncoder::new(seed);
 
-        let profile = encoder.encode_profile(&[
-            ("CYP2D6", "*1", "*4"),   // Intermediate
-            ("CYP2C19", "*1", "*1"),  // Normal
-            ("CYP2C9", "*1", "*3"),   // Intermediate (0.5)
-        ]).unwrap();
+        let profile = encoder
+            .encode_profile(&[
+                ("CYP2D6", "*1", "*4"),  // Intermediate
+                ("CYP2C19", "*1", "*1"), // Normal
+                ("CYP2C9", "*1", "*3"),  // Intermediate (0.5)
+            ])
+            .unwrap();
 
         assert_eq!(profile.diplotypes.len(), 3);
 
@@ -2847,12 +2925,12 @@ mod tests {
         let encoder = StarAlleleEncoder::new(seed);
 
         // Patient with CYP2D6 *4/*4 (poor metabolizer)
-        let profile = encoder.encode_profile(&[
-            ("CYP2D6", "*4", "*4"),
-        ]).unwrap();
+        let profile = encoder.encode_profile(&[("CYP2D6", "*4", "*4")]).unwrap();
 
         // Codeine is metabolized by CYP2D6 to morphine
-        let prediction = encoder.predict_drug_interaction(&profile, "codeine").unwrap();
+        let prediction = encoder
+            .predict_drug_interaction(&profile, "codeine")
+            .unwrap();
         assert_eq!(prediction.gene, "CYP2D6");
         assert_eq!(prediction.phenotype, MetabolizerPhenotype::Poor);
         assert_eq!(prediction.recommendation, DrugRecommendation::Avoid);
@@ -2864,27 +2942,30 @@ mod tests {
         let encoder = StarAlleleEncoder::new(seed);
 
         // Identical profiles
-        let profile1 = encoder.encode_profile(&[
-            ("CYP2D6", "*1", "*1"),
-            ("CYP2C19", "*1", "*2"),
-        ]).unwrap();
+        let profile1 = encoder
+            .encode_profile(&[("CYP2D6", "*1", "*1"), ("CYP2C19", "*1", "*2")])
+            .unwrap();
 
-        let profile2 = encoder.encode_profile(&[
-            ("CYP2D6", "*1", "*1"),
-            ("CYP2C19", "*1", "*2"),
-        ]).unwrap();
+        let profile2 = encoder
+            .encode_profile(&[("CYP2D6", "*1", "*1"), ("CYP2C19", "*1", "*2")])
+            .unwrap();
 
         let sim_identical = encoder.profile_similarity(&profile1, &profile2);
-        assert!(sim_identical > 0.99, "Identical profiles should have sim > 0.99");
+        assert!(
+            sim_identical > 0.99,
+            "Identical profiles should have sim > 0.99"
+        );
 
         // Different profiles
-        let profile3 = encoder.encode_profile(&[
-            ("CYP2D6", "*4", "*4"),
-            ("CYP2C19", "*17", "*17"),
-        ]).unwrap();
+        let profile3 = encoder
+            .encode_profile(&[("CYP2D6", "*4", "*4"), ("CYP2C19", "*17", "*17")])
+            .unwrap();
 
         let sim_different = encoder.profile_similarity(&profile1, &profile3);
-        assert!(sim_different < sim_identical, "Different profiles should be less similar");
+        assert!(
+            sim_different < sim_identical,
+            "Different profiles should be less similar"
+        );
     }
 
     #[test]
@@ -2901,11 +2982,13 @@ mod tests {
         let seed = Seed::from_string("pharmaco-test");
         let encoder = StarAlleleEncoder::new(seed);
 
-        let profile = encoder.encode_profile(&[
-            ("CYP2D6", "*4", "*4"),   // Poor
-            ("CYP2C19", "*1", "*1"),  // Normal
-            ("CYP2C9", "*3", "*3"),   // Poor
-        ]).unwrap();
+        let profile = encoder
+            .encode_profile(&[
+                ("CYP2D6", "*4", "*4"),  // Poor
+                ("CYP2C19", "*1", "*1"), // Normal
+                ("CYP2C9", "*3", "*3"),  // Poor
+            ])
+            .unwrap();
 
         let poor_genes = profile.get_poor_metabolizer_genes();
         assert!(poor_genes.contains(&"CYP2D6"));
@@ -2920,10 +3003,8 @@ mod tests {
         let seed = Seed::from_string("ancestry-test");
         let encoder = AncestryInformedEncoder::new(seed);
 
-        let result = encoder.encode_diplotype_with_ancestry(
-            "CYP2D6", "*1", "*4",
-            &Ancestry::European,
-        );
+        let result =
+            encoder.encode_diplotype_with_ancestry("CYP2D6", "*1", "*4", &Ancestry::European);
         assert!(result.is_ok());
 
         let encoded = result.unwrap();
@@ -2957,14 +3038,18 @@ mod tests {
         let encoder = AncestryInformedEncoder::new(seed);
 
         // CYP2D6 poor metabolizer more common in Europeans
-        let european_pm = encoder.phenotype_prior("CYP2D6", &MetabolizerPhenotype::Poor, &Ancestry::European);
-        let african_pm = encoder.phenotype_prior("CYP2D6", &MetabolizerPhenotype::Poor, &Ancestry::African);
+        let european_pm =
+            encoder.phenotype_prior("CYP2D6", &MetabolizerPhenotype::Poor, &Ancestry::European);
+        let african_pm =
+            encoder.phenotype_prior("CYP2D6", &MetabolizerPhenotype::Poor, &Ancestry::African);
 
         assert!(european_pm > african_pm);
 
         // CYP2C19 poor metabolizer more common in East Asians
-        let east_asian_pm = encoder.phenotype_prior("CYP2C19", &MetabolizerPhenotype::Poor, &Ancestry::EastAsian);
-        let european_c19_pm = encoder.phenotype_prior("CYP2C19", &MetabolizerPhenotype::Poor, &Ancestry::European);
+        let east_asian_pm =
+            encoder.phenotype_prior("CYP2C19", &MetabolizerPhenotype::Poor, &Ancestry::EastAsian);
+        let european_c19_pm =
+            encoder.phenotype_prior("CYP2C19", &MetabolizerPhenotype::Poor, &Ancestry::European);
 
         assert!(east_asian_pm > european_c19_pm);
     }
@@ -2974,10 +3059,12 @@ mod tests {
         let seed = Seed::from_string("ancestry-test");
         let encoder = AncestryInformedEncoder::new(seed);
 
-        let profile = encoder.encode_profile_with_ancestry(&[
-            ("CYP2D6", "*10", "*10"),
-            ("CYP2C19", "*2", "*3"),
-        ], &Ancestry::EastAsian).unwrap();
+        let profile = encoder
+            .encode_profile_with_ancestry(
+                &[("CYP2D6", "*10", "*10"), ("CYP2C19", "*2", "*3")],
+                &Ancestry::EastAsian,
+            )
+            .unwrap();
 
         assert_eq!(profile.diplotypes.len(), 2);
         assert_eq!(profile.ancestry, Ancestry::EastAsian);
@@ -2990,9 +3077,9 @@ mod tests {
         let encoder = AncestryInformedEncoder::new(seed);
 
         // East Asian patient with CYP2C19*2/*3 (poor metabolizer)
-        let profile = encoder.encode_profile_with_ancestry(&[
-            ("CYP2C19", "*2", "*3"),
-        ], &Ancestry::EastAsian).unwrap();
+        let profile = encoder
+            .encode_profile_with_ancestry(&[("CYP2C19", "*2", "*3")], &Ancestry::EastAsian)
+            .unwrap();
 
         let prediction = encoder.predict_drug_interaction_with_ancestry(&profile, "clopidogrel");
         assert!(prediction.is_some());
@@ -3009,9 +3096,9 @@ mod tests {
         let encoder = AncestryInformedEncoder::new(seed);
 
         // African patient with CYP3A5*1/*1 (expresser)
-        let profile = encoder.encode_profile_with_ancestry(&[
-            ("CYP3A5", "*1", "*1"),
-        ], &Ancestry::African).unwrap();
+        let profile = encoder
+            .encode_profile_with_ancestry(&[("CYP3A5", "*1", "*1")], &Ancestry::African)
+            .unwrap();
 
         let guidance = encoder.get_dosing_guidance("tacrolimus", &profile);
         assert!(guidance.is_some());
@@ -3026,14 +3113,16 @@ mod tests {
         let encoder = AncestryInformedEncoder::new(seed);
 
         // East Asian with common *10 allele
-        let result = encoder.encode_diplotype_with_ancestry(
-            "CYP2D6", "*10", "*10",
-            &Ancestry::EastAsian,
-        ).unwrap();
+        let result = encoder
+            .encode_diplotype_with_ancestry("CYP2D6", "*10", "*10", &Ancestry::EastAsian)
+            .unwrap();
 
         // Should have ancestry-specific notes about *10
         assert!(result.ancestry_notes.iter().any(|n| n.contains("*10")));
-        assert!(result.ancestry_notes.iter().any(|n| n.contains("East Asian")));
+        assert!(result
+            .ancestry_notes
+            .iter()
+            .any(|n| n.contains("East Asian")));
     }
 
     #[test]
@@ -3042,10 +3131,15 @@ mod tests {
         let encoder = AncestryInformedEncoder::new(seed);
 
         // Include both TPMT (for drug mapping) and NUDT15 (for East Asian warnings)
-        let profile = encoder.encode_profile_with_ancestry(&[
-            ("TPMT", "*3A", "*3A"),  // Poor metabolizer
-            ("NUDT15", "*3", "*3"),
-        ], &Ancestry::EastAsian).unwrap();
+        let profile = encoder
+            .encode_profile_with_ancestry(
+                &[
+                    ("TPMT", "*3A", "*3A"), // Poor metabolizer
+                    ("NUDT15", "*3", "*3"),
+                ],
+                &Ancestry::EastAsian,
+            )
+            .unwrap();
 
         // Should have warning about NUDT15 in East Asians
         assert!(profile.ancestry_notes.iter().any(|n| n.contains("NUDT15")));
@@ -3077,9 +3171,18 @@ mod tests {
 
         // Add some k-mers with distinct embeddings
         // Positive values will become 1, negative become 0
-        embeddings.insert("ACGTAC".to_string(), vec![0.5, -0.3, 0.8, -0.1, 0.9, -0.5, 0.2, -0.8]);
-        embeddings.insert("CGTACG".to_string(), vec![-0.2, 0.8, -0.4, 0.6, -0.1, 0.9, -0.7, 0.3]);
-        embeddings.insert("GTACGT".to_string(), vec![0.1, 0.2, 0.3, -0.4, -0.5, 0.6, 0.7, -0.8]);
+        embeddings.insert(
+            "ACGTAC".to_string(),
+            vec![0.5, -0.3, 0.8, -0.1, 0.9, -0.5, 0.2, -0.8],
+        );
+        embeddings.insert(
+            "CGTACG".to_string(),
+            vec![-0.2, 0.8, -0.4, 0.6, -0.1, 0.9, -0.7, 0.3],
+        );
+        embeddings.insert(
+            "GTACGT".to_string(),
+            vec![0.1, 0.2, 0.3, -0.4, -0.5, 0.6, 0.7, -0.8],
+        );
 
         // Create codebook from embeddings
         let codebook = LearnedKmerCodebook::from_embeddings(embeddings, 6).unwrap();
@@ -3112,11 +3215,15 @@ mod tests {
                             for b6 in &bases {
                                 let kmer = format!("{}{}{}{}{}{}", b1, b2, b3, b4, b5, b6);
                                 // Create pseudo-random embedding based on k-mer
-                                let hash = kmer.bytes().fold(0u32, |acc, b| acc.wrapping_mul(31).wrapping_add(b as u32));
-                                let embedding: Vec<f32> = (0..100).map(|i| {
-                                    let v = ((hash.wrapping_add(i)) % 100) as f32 / 50.0 - 1.0;
-                                    v
-                                }).collect();
+                                let hash = kmer.bytes().fold(0u32, |acc, b| {
+                                    acc.wrapping_mul(31).wrapping_add(b as u32)
+                                });
+                                let embedding: Vec<f32> = (0..100)
+                                    .map(|i| {
+                                        let v = ((hash.wrapping_add(i)) % 100) as f32 / 50.0 - 1.0;
+                                        v
+                                    })
+                                    .collect();
                                 embeddings.insert(kmer, embedding);
                             }
                         }

@@ -11,7 +11,7 @@
 
 use mycelix_health_zkp::prover::{self, HealthProofRequest};
 use mycelix_health_zkp::verifier;
-use mycelix_health_zkp::{AttestorRole, HealthProofType, ProofSystem, verify_proof};
+use mycelix_health_zkp::{verify_proof, AttestorRole, HealthProofType, ProofSystem};
 
 #[cfg(feature = "verify-dilithium")]
 use mycelix_zkp_core::dilithium::DilithiumKeypair;
@@ -37,9 +37,15 @@ fn e2e_vitals_in_range() {
 
     // Prove (REAL Winterfell STARK)
     let proof_output = prover::prove(&request);
-    assert_eq!(proof_output.health_proof.metadata.system, ProofSystem::WinterfellStark);
-    assert!(proof_output.health_proof.proof_bytes.len() > 1000,
-        "STARK proof must be >1KB, got {}", proof_output.health_proof.proof_bytes.len());
+    assert_eq!(
+        proof_output.health_proof.metadata.system,
+        ProofSystem::WinterfellStark
+    );
+    assert!(
+        proof_output.health_proof.proof_bytes.len() > 1000,
+        "STARK proof must be >1KB, got {}",
+        proof_output.health_proof.proof_bytes.len()
+    );
 
     // Verify (REAL winterfell::verify)
     let verify_output = verifier::verify(&proof_output.health_proof);
@@ -47,8 +53,11 @@ fn e2e_vitals_in_range() {
 
     println!("  Prove:  {:.1} ms", proof_output.prove_time_ms);
     println!("  Verify: {:.1} ms", verify_output.verify_time_ms);
-    println!("  Proof:  {} bytes ({:.1} KB)", verify_output.proof_size_bytes,
-        verify_output.proof_size_bytes as f64 / 1024.0);
+    println!(
+        "  Proof:  {} bytes ({:.1} KB)",
+        verify_output.proof_size_bytes,
+        verify_output.proof_size_bytes as f64 / 1024.0
+    );
     println!("  PASSED");
 }
 
@@ -58,7 +67,10 @@ fn e2e_age_range() {
     println!("\n=== E2E: Age 35 ∈ [18, 65] ===");
 
     let request = HealthProofRequest {
-        proof_type: HealthProofType::AgeRange { min_age: 18, max_age: Some(65) },
+        proof_type: HealthProofType::AgeRange {
+            min_age: 18,
+            max_age: Some(65),
+        },
         value: 35,
         min: 18,
         max: 65,
@@ -68,7 +80,10 @@ fn e2e_age_range() {
     };
 
     let proof_output = prover::prove(&request);
-    assert_eq!(proof_output.health_proof.metadata.system, ProofSystem::WinterfellStark);
+    assert_eq!(
+        proof_output.health_proof.metadata.system,
+        ProofSystem::WinterfellStark
+    );
 
     let verify_output = verifier::verify(&proof_output.health_proof);
     assert!(verify_output.proof_valid);
@@ -91,14 +106,17 @@ fn e2e_lab_threshold() {
         },
         value: 54, // 5.4% in tenths
         min: 0,
-        max: 70,  // 7.0% in tenths
+        max: 70, // 7.0% in tenths
         patient_id: "did:mycelix:patient003".to_string(),
         health_data: b"a1c:5.4".to_vec(),
         attestor: AttestorRole::Laboratory,
     };
 
     let proof_output = prover::prove(&request);
-    assert_eq!(proof_output.health_proof.metadata.system, ProofSystem::WinterfellStark);
+    assert_eq!(
+        proof_output.health_proof.metadata.system,
+        ProofSystem::WinterfellStark
+    );
 
     let verify_output = verifier::verify(&proof_output.health_proof);
     assert!(verify_output.proof_valid);
@@ -155,7 +173,10 @@ fn e2e_tampered_proof_rejected() {
     }
 
     let verify_output = verifier::verify(&proof_output.health_proof);
-    assert!(!verify_output.proof_valid, "tampered proof MUST be rejected");
+    assert!(
+        !verify_output.proof_valid,
+        "tampered proof MUST be rejected"
+    );
 
     println!("  Tampered proof correctly rejected");
     println!("  PASSED");
@@ -187,31 +208,52 @@ fn e2e_full_dastark_pipeline() {
 
     // 1. Prove + Sign (REAL Winterfell STARK + REAL Dilithium5)
     let proof_output = prover::prove_and_sign(&request, &keypair);
-    let auth = proof_output.authenticated_proof.as_ref()
+    let auth = proof_output
+        .authenticated_proof
+        .as_ref()
         .expect("authenticated proof should be present");
 
-    assert!(!auth.signature.is_empty(), "Dilithium signature must be non-empty");
-    assert_eq!(proof_output.health_proof.metadata.system, ProofSystem::WinterfellStark);
-
-    // 2. Verify STARK + Dilithium (REAL verification of both)
-    let verify_output = verifier::verify_with_signature(
-        &proof_output.health_proof,
-        auth,
-        keypair.public_key(),
+    assert!(
+        !auth.signature.is_empty(),
+        "Dilithium signature must be non-empty"
+    );
+    assert_eq!(
+        proof_output.health_proof.metadata.system,
+        ProofSystem::WinterfellStark
     );
 
+    // 2. Verify STARK + Dilithium (REAL verification of both)
+    let verify_output =
+        verifier::verify_with_signature(&proof_output.health_proof, auth, keypair.public_key());
+
     assert!(verify_output.proof_valid, "STARK proof must verify");
-    assert_eq!(verify_output.signature_valid, Some(true), "Dilithium sig must verify");
+    assert_eq!(
+        verify_output.signature_valid,
+        Some(true),
+        "Dilithium sig must verify"
+    );
 
     // 3. Print paper-ready metrics
     println!("  --- PAPER METRICS ---");
     println!("  STARK prove:       {:.1} ms", proof_output.prove_time_ms);
     println!("  Dilithium5 sign:   {:.1} ms", proof_output.sign_time_ms);
-    println!("  STARK verify:      {:.1} ms", verify_output.verify_time_ms);
-    println!("  Dilithium5 verify: {:.1} ms", verify_output.signature_verify_time_ms);
-    println!("  Total pipeline:    {:.1} ms", proof_output.total_time_ms + verify_output.total_time_ms);
-    println!("  Proof size:        {} bytes ({:.1} KB)", verify_output.proof_size_bytes,
-        verify_output.proof_size_bytes as f64 / 1024.0);
+    println!(
+        "  STARK verify:      {:.1} ms",
+        verify_output.verify_time_ms
+    );
+    println!(
+        "  Dilithium5 verify: {:.1} ms",
+        verify_output.signature_verify_time_ms
+    );
+    println!(
+        "  Total pipeline:    {:.1} ms",
+        proof_output.total_time_ms + verify_output.total_time_ms
+    );
+    println!(
+        "  Proof size:        {} bytes ({:.1} KB)",
+        verify_output.proof_size_bytes,
+        verify_output.proof_size_bytes as f64 / 1024.0
+    );
     println!("  Signature size:    {} bytes", auth.signature.len());
     println!("  PASSED — All REAL, nothing mocked");
 }
@@ -248,10 +290,16 @@ fn e2e_wrong_dilithium_key_rejected() {
     );
 
     // STARK proof is still valid (it's the same proof)
-    assert!(verify_output.proof_valid, "STARK proof is valid regardless of key");
+    assert!(
+        verify_output.proof_valid,
+        "STARK proof is valid regardless of key"
+    );
     // But Dilithium signature check fails
-    assert_eq!(verify_output.signature_valid, Some(false),
-        "wrong Dilithium key MUST be rejected");
+    assert_eq!(
+        verify_output.signature_valid,
+        Some(false),
+        "wrong Dilithium key MUST be rejected"
+    );
 
     println!("  STARK valid, Dilithium rejected (correct behavior)");
     println!("  PASSED");

@@ -177,7 +177,10 @@ fn validate_resource_anchor(anchor: &FhirResourceAnchor) -> ExternResult<Validat
 
 /// Helper to extract a string field from FHIR JSON
 pub fn get_fhir_string(resource: &JsonValue, field: &str) -> Option<String> {
-    resource.get(field).and_then(|v| v.as_str()).map(|s| s.to_string())
+    resource
+        .get(field)
+        .and_then(|v| v.as_str())
+        .map(|s| s.to_string())
 }
 
 /// Helper to extract the resource type from FHIR JSON

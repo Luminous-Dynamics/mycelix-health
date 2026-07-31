@@ -21,8 +21,8 @@
 //! 4. Accuracy on classification tasks
 
 use hdc_core::{DnaEncoder, Hypervector, Seed, HYPERVECTOR_BYTES};
-use std::time::{Duration, Instant};
 use serde::{Deserialize, Serialize};
+use std::time::{Duration, Instant};
 
 /// Results from a benchmark run
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -108,9 +108,16 @@ pub fn benchmark_similarity_search(encoded: &[Hypervector], iterations: usize) -
 
     let elapsed = start.elapsed();
 
-    BenchmarkResult::new("HDC Similarity Search", elapsed, total_comparisons * iterations)
-        .with_memory(encoded.len() * HYPERVECTOR_BYTES)
-        .with_extra(&format!("{} sequences, {} comparisons/iter", n, total_comparisons))
+    BenchmarkResult::new(
+        "HDC Similarity Search",
+        elapsed,
+        total_comparisons * iterations,
+    )
+    .with_memory(encoded.len() * HYPERVECTOR_BYTES)
+    .with_extra(&format!(
+        "{} sequences, {} comparisons/iter",
+        n, total_comparisons
+    ))
 }
 
 /// Benchmark single similarity computation
@@ -279,9 +286,7 @@ impl ComparisonReport {
 /// Run the full benchmark suite
 pub fn run_benchmark_suite() -> ComparisonReport {
     // Generate test sequences of varying lengths
-    let short_seqs: Vec<String> = (0..100)
-        .map(|i| generate_random_dna(100, i))
-        .collect();
+    let short_seqs: Vec<String> = (0..100).map(|i| generate_random_dna(100, i)).collect();
 
     let medium_seqs: Vec<String> = (0..50)
         .map(|i| generate_random_dna(500, i + 1000))
@@ -336,7 +341,9 @@ fn generate_random_dna(length: usize, seed: u64) -> String {
     let mut state = seed;
     for _ in 0..length {
         // Simple LCG random number generator
-        state = state.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+        state = state
+            .wrapping_mul(6364136223846793005)
+            .wrapping_add(1442695040888963407);
         let idx = (state >> 60) as usize % 4;
         result.push(bases[idx]);
     }
@@ -384,9 +391,11 @@ mod tests {
 
     #[test]
     fn test_comparison_report() {
-        let results = vec![
-            BenchmarkResult::new("Test", Duration::from_millis(100), 1000),
-        ];
+        let results = vec![BenchmarkResult::new(
+            "Test",
+            Duration::from_millis(100),
+            1000,
+        )];
 
         let report = ComparisonReport::generate(results);
 

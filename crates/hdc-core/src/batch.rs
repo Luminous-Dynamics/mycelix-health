@@ -30,8 +30,8 @@
 //! ```
 
 use crate::{
-    HdcError, Hypervector, Seed,
     encoding::{DnaEncoder, EncodedSequence},
+    HdcError, Hypervector, Seed,
 };
 
 /// Configuration for batch encoding
@@ -142,7 +142,10 @@ impl BatchEncoder {
     }
 
     /// Encode multiple DNA sequences in batch
-    pub fn encode_sequences(&self, sequences: &[&str]) -> Result<BatchResult<EncodedSequence>, HdcError> {
+    pub fn encode_sequences(
+        &self,
+        sequences: &[&str],
+    ) -> Result<BatchResult<EncodedSequence>, HdcError> {
         let start_time = std::time::Instant::now();
         let encoder = DnaEncoder::new(self.seed.clone(), self.config.kmer_length);
 
@@ -155,7 +158,8 @@ impl BatchEncoder {
         let elapsed = start_time.elapsed();
         let stats = BatchStats {
             processing_time_ms: elapsed.as_millis() as u64,
-            chunks_processed: (sequences.len() + self.config.chunk_size - 1) / self.config.chunk_size,
+            chunks_processed: (sequences.len() + self.config.chunk_size - 1)
+                / self.config.chunk_size,
             avg_encoding_time_us: if items.is_empty() {
                 0.0
             } else {
@@ -253,7 +257,7 @@ impl BatchEncoder {
             let results: Vec<_> = (0..n)
                 .into_par_iter()
                 .flat_map(|i| {
-                    (i+1..n).into_par_iter().map(move |j| {
+                    (i + 1..n).into_par_iter().map(move |j| {
                         let sim = vectors[i].hamming_similarity(&vectors[j]);
                         (i, j, sim)
                     })
@@ -269,7 +273,7 @@ impl BatchEncoder {
         #[cfg(not(feature = "parallel"))]
         {
             for i in 0..n {
-                for j in i+1..n {
+                for j in i + 1..n {
                     let sim = vectors[i].hamming_similarity(&vectors[j]);
                     matrix[i][j] = sim;
                     matrix[j][i] = sim;
@@ -359,7 +363,7 @@ impl SimilarityMatrix {
         let mut best_sim = 0.0;
 
         for i in 0..self.size {
-            for j in i+1..self.size {
+            for j in i + 1..self.size {
                 if self.matrix[i][j] > best_sim {
                     best_sim = self.matrix[i][j];
                     best = Some((i, j, best_sim));
@@ -375,7 +379,7 @@ impl SimilarityMatrix {
         let mut pairs = Vec::new();
 
         for i in 0..self.size {
-            for j in i+1..self.size {
+            for j in i + 1..self.size {
                 if self.matrix[i][j] >= threshold {
                     pairs.push((i, j, self.matrix[i][j]));
                 }
@@ -395,7 +399,7 @@ impl SimilarityMatrix {
         let mut count = 0;
 
         for i in 0..self.size {
-            for j in i+1..self.size {
+            for j in i + 1..self.size {
                 sum += self.matrix[i][j];
                 count += 1;
             }
@@ -504,11 +508,7 @@ mod tests {
         let config = BatchConfig::default().with_parallel(false);
         let encoder = BatchEncoder::new(seed, config);
 
-        let sequences = vec![
-            "ACGTACGTACGTACGT",
-            "TGCATGCATGCATGCA",
-            "GGCCGGCCGGCCGGCC",
-        ];
+        let sequences = vec!["ACGTACGTACGTACGT", "TGCATGCATGCATGCA", "GGCCGGCCGGCCGGCC"];
 
         let result = encoder.encode_sequences(&sequences).unwrap();
         assert_eq!(result.success_count(), 3);
@@ -525,7 +525,7 @@ mod tests {
 
         let sequences = vec![
             "ACGTACGTACGTACGT",
-            "INVALID",  // This should fail
+            "INVALID", // This should fail
             "GGCCGGCCGGCCGGCC",
         ];
 
@@ -543,7 +543,7 @@ mod tests {
 
         let sequences = vec![
             "ACGTACGTACGTACGT",
-            "ACGTACGTACGTACGT",  // Identical to first
+            "ACGTACGTACGTACGT", // Identical to first
             "TGCATGCATGCATGCA",
         ];
 
@@ -569,7 +569,7 @@ mod tests {
         let corpus = vec![
             "ACGTACGTACGTACGT",
             "TGCATGCATGCATGCA",
-            "ACGTACGTACGTACGA",  // Very similar to first
+            "ACGTACGTACGTACGA", // Very similar to first
         ];
         let corpus_vecs = encoder.encode_to_vectors(&corpus).unwrap();
 
@@ -622,9 +622,9 @@ mod tests {
             .find_top_k(2)
             .unwrap();
 
-        assert_eq!(results.len(), 1);  // One query
-        assert_eq!(results[0].len(), 2);  // Top 2 results
-        assert_eq!(results[0][0].0, 0);  // Best match is index 0
+        assert_eq!(results.len(), 1); // One query
+        assert_eq!(results[0].len(), 2); // Top 2 results
+        assert_eq!(results[0][0].0, 0); // Best match is index 0
     }
 
     #[test]
@@ -633,9 +633,7 @@ mod tests {
         let config = BatchConfig::default().with_parallel(false);
         let encoder = BatchEncoder::new(seed, config);
 
-        let sequences: Vec<&str> = (0..100)
-            .map(|_| "ACGTACGTACGTACGT")
-            .collect();
+        let sequences: Vec<&str> = (0..100).map(|_| "ACGTACGTACGTACGT").collect();
 
         let result = encoder.encode_sequences(&sequences).unwrap();
         assert!(result.stats.processing_time_ms >= 0);

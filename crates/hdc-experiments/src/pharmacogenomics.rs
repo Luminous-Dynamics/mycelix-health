@@ -65,10 +65,10 @@ pub struct GeneStats {
 /// Parsed CYP gene from NCBI RefSeq
 #[derive(Clone, Debug)]
 pub struct CypGene {
-    pub name: String,       // e.g., "CYP2D6"
-    pub accession: String,  // e.g., "NG_008376.4"
+    pub name: String,      // e.g., "CYP2D6"
+    pub accession: String, // e.g., "NG_008376.4"
     pub sequence: String,
-    pub segments: Vec<String>,  // Gene split into overlapping segments
+    pub segments: Vec<String>, // Gene split into overlapping segments
 }
 
 /// Parse NCBI RefSeq FASTA file
@@ -89,10 +89,9 @@ fn parse_refseq_fasta(path: &Path) -> Result<CypGene, std::io::Error> {
         }
     }
 
-    let header = header.ok_or_else(|| std::io::Error::new(
-        std::io::ErrorKind::InvalidData,
-        "No header found in FASTA"
-    ))?;
+    let header = header.ok_or_else(|| {
+        std::io::Error::new(std::io::ErrorKind::InvalidData, "No header found in FASTA")
+    })?;
 
     // Parse header: "NG_008376.4 Homo sapiens cytochrome P450 family 2 subfamily D member 6..."
     let parts: Vec<&str> = header.split_whitespace().collect();
@@ -118,7 +117,8 @@ fn extract_gene_name(header: &str) -> String {
     let header_upper = header.to_uppercase();
     if let Some(start) = header_upper.find("CYP") {
         let rest = &header_upper[start..];
-        let end = rest.find(|c: char| c == ' ' || c == ',' || c == ')' || c == '(')
+        let end = rest
+            .find(|c: char| c == ' ' || c == ',' || c == ')' || c == '(')
             .unwrap_or(rest.len());
         let name = &rest[..end];
         // Clean up common suffixes
@@ -163,7 +163,10 @@ pub fn run_pharmacogenomics_experiment(
     fs::create_dir_all(&output_dir).expect("Failed to create output directory");
 
     println!("{}", "═".repeat(60).blue());
-    println!("{}", "  EXPERIMENT 7: PHARMACOGENOMICS VALIDATION".blue().bold());
+    println!(
+        "{}",
+        "  EXPERIMENT 7: PHARMACOGENOMICS VALIDATION".blue().bold()
+    );
     println!("{}", "  Using NCBI RefSeq CYP450 Gene Sequences".blue());
     println!("{}", "═".repeat(60).blue());
     println!();
@@ -185,8 +188,12 @@ pub fn run_pharmacogenomics_experiment(
             match parse_refseq_fasta(&path) {
                 Ok(mut gene) => {
                     gene.name = gene_name.to_string();
-                    println!("   {}: {} bp, {} segments",
-                             gene_name, gene.sequence.len(), gene.segments.len());
+                    println!(
+                        "   {}: {} bp, {} segments",
+                        gene_name,
+                        gene.sequence.len(),
+                        gene.segments.len()
+                    );
                     all_genes.push(gene);
                 }
                 Err(e) => {
@@ -199,7 +206,10 @@ pub fn run_pharmacogenomics_experiment(
     }
 
     if all_genes.is_empty() {
-        println!("{}", "No CYP gene files found. Please download from NCBI.".red());
+        println!(
+            "{}",
+            "No CYP gene files found. Please download from NCBI.".red()
+        );
         return;
     }
 
@@ -223,10 +233,12 @@ pub fn run_pharmacogenomics_experiment(
     }
     let encoding_time = start.elapsed();
 
-    println!("   Encoded {} segments in {:.2}s ({:.2}ms/segment)",
-             encoded.len(),
-             encoding_time.as_secs_f64(),
-             encoding_time.as_millis() as f64 / encoded.len().max(1) as f64);
+    println!(
+        "   Encoded {} segments in {:.2}s ({:.2}ms/segment)",
+        encoded.len(),
+        encoding_time.as_secs_f64(),
+        encoding_time.as_millis() as f64 / encoded.len().max(1) as f64
+    );
 
     // Compute similarity distributions
     println!("{}", "3. Computing similarities...".yellow());
@@ -270,19 +282,32 @@ pub fn run_pharmacogenomics_experiment(
 
     println!();
     println!("Similarity Distributions:");
-    println!("  Within gene:    {:.4} ± {:.4} (n={})",
-             within_stats.mean, within_stats.std_dev, within_stats.count);
-    println!("  Between genes:  {:.4} ± {:.4} (n={})",
-             between_stats.mean, between_stats.std_dev, between_stats.count);
+    println!(
+        "  Within gene:    {:.4} ± {:.4} (n={})",
+        within_stats.mean, within_stats.std_dev, within_stats.count
+    );
+    println!(
+        "  Between genes:  {:.4} ± {:.4} (n={})",
+        between_stats.mean, between_stats.std_dev, between_stats.count
+    );
 
     println!();
     let separation = within_stats.mean - between_stats.mean;
     println!("Separation gap: {:.4}", separation);
-    println!("Good separation: {}",
-             if good_separation { "YES ✓".green() } else { "NO ✗".red() });
+    println!(
+        "Good separation: {}",
+        if good_separation {
+            "YES ✓".green()
+        } else {
+            "NO ✗".red()
+        }
+    );
 
     println!();
-    println!("k-NN Gene Classification Accuracy (k=1): {:.1}%", gene_accuracy * 100.0);
+    println!(
+        "k-NN Gene Classification Accuracy (k=1): {:.1}%",
+        gene_accuracy * 100.0
+    );
 
     println!();
     println!("Timing:");
@@ -290,7 +315,8 @@ pub fn run_pharmacogenomics_experiment(
     println!("  Comparisons: {:.2}s", comparison_time.as_secs_f64());
 
     // Gene-level breakdown
-    let gene_stats: Vec<GeneStats> = all_genes.iter()
+    let gene_stats: Vec<GeneStats> = all_genes
+        .iter()
         .map(|g| GeneStats {
             name: g.name.clone(),
             sequence_length: g.sequence.len(),
@@ -348,7 +374,15 @@ fn compute_knn_accuracy_pgx(
             .iter()
             .enumerate()
             .filter(|(j, _)| *j != i)
-            .map(|(j, (_, _, enc))| (j, encoded[i].2.vector.normalized_cosine_similarity(&enc.vector)))
+            .map(|(j, (_, _, enc))| {
+                (
+                    j,
+                    encoded[i]
+                        .2
+                        .vector
+                        .normalized_cosine_similarity(&enc.vector),
+                )
+            })
             .collect();
 
         sims.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap());

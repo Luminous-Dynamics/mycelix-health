@@ -3,7 +3,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Commercial licensing: see COMMERCIAL_LICENSE.md at repository root
 //! Healthcare Provider Credentials and Licensing Integrity Zome
-//! 
+//!
 //! Defines entry types for healthcare providers, credentials,
 //! licenses, and specializations with verification tracking.
 
@@ -301,7 +301,9 @@ fn validate_certification(cert: &BoardCertification) -> ExternResult<ValidateCal
     Ok(ValidateCallbackResult::Valid)
 }
 
-fn validate_relationship(_rel: &ProviderPatientRelationship) -> ExternResult<ValidateCallbackResult> {
+fn validate_relationship(
+    _rel: &ProviderPatientRelationship,
+) -> ExternResult<ValidateCallbackResult> {
     // Relationship validation - hashes must exist (checked at runtime)
     Ok(ValidateCallbackResult::Valid)
 }

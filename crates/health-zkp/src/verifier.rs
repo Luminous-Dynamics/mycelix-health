@@ -81,10 +81,9 @@ pub fn verify_with_signature(
 
     // 2. Verify Dilithium5 signature
     let sig_start = Instant::now();
-    let signature_valid = dilithium::verify_authenticated_signature(
-        authenticated_proof,
-        prover_public_key,
-    ).unwrap_or(false);
+    let signature_valid =
+        dilithium::verify_authenticated_signature(authenticated_proof, prover_public_key)
+            .unwrap_or(false);
     let sig_time = sig_start.elapsed();
 
     let total_time = total_start.elapsed();
@@ -137,7 +136,10 @@ mod tests {
         let keypair = DilithiumKeypair::generate();
 
         let request = HealthProofRequest {
-            proof_type: HealthProofType::AgeRange { min_age: 18, max_age: Some(65) },
+            proof_type: HealthProofType::AgeRange {
+                min_age: 18,
+                max_age: Some(65),
+            },
             value: 35,
             min: 18,
             max: 65,
@@ -149,14 +151,14 @@ mod tests {
         let output = prover::prove_and_sign(&request, &keypair);
         let auth = output.authenticated_proof.as_ref().unwrap();
 
-        let verification = verify_with_signature(
-            &output.health_proof,
-            auth,
-            keypair.public_key(),
-        );
+        let verification = verify_with_signature(&output.health_proof, auth, keypair.public_key());
 
         assert!(verification.proof_valid, "STARK proof must verify");
-        assert_eq!(verification.signature_valid, Some(true), "Dilithium sig must verify");
+        assert_eq!(
+            verification.signature_valid,
+            Some(true),
+            "Dilithium sig must verify"
+        );
         println!(
             "STARK verify: {:.1}ms, Dilithium verify: {:.1}ms, Total: {:.1}ms",
             verification.verify_time_ms,

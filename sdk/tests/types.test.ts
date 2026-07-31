@@ -89,7 +89,11 @@ describe('HealthSdkErrorCode', () => {
 describe('DEFAULT_CONFIG', () => {
   it('should have sensible defaults', () => {
     expect(DEFAULT_CONFIG.appId).toBe('mycelix-health');
-    expect(DEFAULT_CONFIG.roleName).toBe('mycelix_health');
+    // The role name must match happ.yaml's `roles: - name: health` (line 20).
+    // This asserted 'mycelix_health', which appears nowhere in the manifest --
+    // the test was wrong, not DEFAULT_CONFIG. Changing the code to match would
+    // have produced a client that cannot find its role at runtime.
+    expect(DEFAULT_CONFIG.roleName).toBe('health');
     expect(DEFAULT_CONFIG.url).toBe('ws://localhost:8888');
     expect(DEFAULT_CONFIG.debug).toBe(false);
   });

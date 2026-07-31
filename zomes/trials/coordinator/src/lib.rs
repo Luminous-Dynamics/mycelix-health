@@ -15,16 +15,13 @@
 //! - Enable fair compensation for research participation
 
 use hdk::prelude::*;
+use mycelix_health_shared::{log_data_access, require_authorization, DataCategory, Permission};
 use trials_integrity::*;
-use mycelix_health_shared::{require_authorization, log_data_access, DataCategory, Permission};
 
 // ==================== DATA DIVIDENDS INTEGRATION ====================
 
 /// Create a data contribution record when patient enrolls in a trial
-fn try_create_trial_contribution(
-    participant: &TrialParticipant,
-    trial: &ClinicalTrial,
-) {
+fn try_create_trial_contribution(participant: &TrialParticipant, trial: &ClinicalTrial) {
     let _ = create_trial_contribution_internal(participant, trial);
 }
 
@@ -37,7 +34,10 @@ fn create_trial_contribution_internal(
     let data_categories = data_categories_for_trial(trial);
 
     // Get NCT number or use trial_id as fallback
-    let nct = trial.nct_number.clone().unwrap_or_else(|| trial.trial_id.clone());
+    let nct = trial
+        .nct_number
+        .clone()
+        .unwrap_or_else(|| trial.trial_id.clone());
 
     // Create contribution input
     let contribution = TrialDataContributionInput {
@@ -110,10 +110,7 @@ fn data_categories_for_trial(trial: &ClinicalTrial) -> Vec<String> {
 }
 
 /// Track data collection from a trial visit for dividends
-fn try_track_visit_data(
-    visit: &TrialVisit,
-    participant: &TrialParticipant,
-) {
+fn try_track_visit_data(visit: &TrialVisit, participant: &TrialParticipant) {
     let _ = track_visit_data_internal(visit, participant);
 }
 
@@ -136,7 +133,9 @@ fn track_visit_data_internal(
         visit_id: visit.visit_id.clone(),
         visit_number: visit.visit_number,
         data_points_count,
-        collected_at: visit.actual_date.map(|ts| ts.as_micros() as i64)
+        collected_at: visit
+            .actual_date
+            .map(|ts| ts.as_micros() as i64)
             .unwrap_or_else(|| sys_time().map(|t| t.as_micros() as i64).unwrap_or(0)),
     };
 
@@ -188,26 +187,30 @@ pub struct TrialVisitDataUsageInput {
 #[hdk_extern]
 pub fn create_trial(trial: ClinicalTrial) -> ExternResult<Record> {
     let trial_hash = create_entry(&EntryTypes::ClinicalTrial(trial.clone()))?;
-    let record = get(trial_hash.clone(), GetOptions::default())?
-        .ok_or(wasm_error!(WasmErrorInner::Guest("Could not find trial".to_string())))?;
-    
+    let record = get(trial_hash.clone(), GetOptions::default())?.ok_or(wasm_error!(
+        WasmErrorInner::Guest("Could not find trial".to_string())
+    ))?;
+
     // Link by status
     let status_anchor = match trial.status {
         TrialStatus::Recruiting | TrialStatus::EnrollingByInvitation => {
             anchor_hash("recruiting_trials")?
         }
-        TrialStatus::Completed | TrialStatus::Terminated => {
-            anchor_hash("completed_trials")?
-        }
+        TrialStatus::Completed | TrialStatus::Terminated => anchor_hash("completed_trials")?,
         _ => anchor_hash("active_trials")?,
     };
-    
-    create_link(status_anchor, trial_hash.clone(), LinkTypes::ActiveTrials, ())?;
-    
+
+    create_link(
+        status_anchor,
+        trial_hash.clone(),
+        LinkTypes::ActiveTrials,
+        (),
+    )?;
+
     // Link by phase
     let phase_anchor = anchor_hash(&format!("phase_{:?}", trial.phase))?;
     create_link(phase_anchor, trial_hash, LinkTypes::TrialsByPhase, ())?;
-    
+
     Ok(record)
 }
 
@@ -221,8 +224,11 @@ pub fn get_trial(trial_hash: ActionHash) -> ExternResult<Option<Record>> {
 #[hdk_extern]
 pub fn get_recruiting_trials(_: ()) -> ExternResult<Vec<Record>> {
     let recruiting_anchor = anchor_hash("recruiting_trials")?;
-    let links = get_links(LinkQuery::try_new(recruiting_anchor, LinkTypes::RecruitingTrials)?, GetStrategy::default())?;
-    
+    let links = get_links(
+        LinkQuery::try_new(recruiting_anchor, LinkTypes::RecruitingTrials)?,
+        GetStrategy::default(),
+    )?;
+
     let mut trials = Vec::new();
     for link in links {
         if let Some(hash) = link.target.into_action_hash() {
@@ -231,7 +237,7 @@ pub fn get_recruiting_trials(_: ()) -> ExternResult<Vec<Record>> {
             }
         }
     }
-    
+
     Ok(trials)
 }
 
@@ -246,8 +252,9 @@ pub fn enroll_participant(participant: TrialParticipant) -> ExternResult<Record>
     )?;
 
     let participant_hash = create_entry(&EntryTypes::TrialParticipant(participant.clone()))?;
-    let record = get(participant_hash.clone(), GetOptions::default())?
-        .ok_or(wasm_error!(WasmErrorInner::Guest("Could not find participant".to_string())))?;
+    let record = get(participant_hash.clone(), GetOptions::default())?.ok_or(wasm_error!(
+        WasmErrorInner::Guest("Could not find participant".to_string())
+    ))?;
 
     // Link to trial
     create_link(
@@ -267,7 +274,12 @@ pub fn enroll_participant(participant: TrialParticipant) -> ExternResult<Record>
 
     // Update trial enrollment count and create data contribution
     if let Some(trial_record) = get(participant.trial_hash.clone(), GetOptions::default())? {
-        if let Some(mut trial) = trial_record.entry().to_app_option::<ClinicalTrial>().ok().flatten() {
+        if let Some(mut trial) = trial_record
+            .entry()
+            .to_app_option::<ClinicalTrial>()
+            .ok()
+            .flatten()
+        {
             trial.current_enrollment += 1;
             trial.updated_at = sys_time()?;
             update_entry(participant.trial_hash.clone(), &trial)?;
@@ -293,16 +305,20 @@ pub fn enroll_participant(participant: TrialParticipant) -> ExternResult<Record>
 #[hdk_extern]
 pub fn get_trial_participants(trial_hash: ActionHash) -> ExternResult<Vec<Record>> {
     let caller = agent_info()?.agent_initial_pubkey;
-    let trial_record = get(trial_hash.clone(), GetOptions::default())?
-        .ok_or(wasm_error!(WasmErrorInner::Guest("Trial not found".to_string())))?;
+    let trial_record = get(trial_hash.clone(), GetOptions::default())?.ok_or(wasm_error!(
+        WasmErrorInner::Guest("Trial not found".to_string())
+    ))?;
     if trial_record.action().author() != &caller {
         return Err(wasm_error!(WasmErrorInner::Guest(
             "Only the trial creator can view participants".to_string()
         )));
     }
 
-    let links = get_links(LinkQuery::try_new(trial_hash, LinkTypes::TrialToParticipants)?, GetStrategy::default())?;
-    
+    let links = get_links(
+        LinkQuery::try_new(trial_hash, LinkTypes::TrialToParticipants)?,
+        GetStrategy::default(),
+    )?;
+
     let mut participants = Vec::new();
     for link in links {
         if let Some(hash) = link.target.into_action_hash() {
@@ -311,21 +327,24 @@ pub fn get_trial_participants(trial_hash: ActionHash) -> ExternResult<Vec<Record
             }
         }
     }
-    
+
     Ok(participants)
 }
 
 /// Withdraw participant from trial
 #[hdk_extern]
 pub fn withdraw_participant(input: WithdrawInput) -> ExternResult<Record> {
-    let record = get(input.participant_hash.clone(), GetOptions::default())?
-        .ok_or(wasm_error!(WasmErrorInner::Guest("Participant not found".to_string())))?;
-    
+    let record = get(input.participant_hash.clone(), GetOptions::default())?.ok_or(wasm_error!(
+        WasmErrorInner::Guest("Participant not found".to_string())
+    ))?;
+
     let mut participant: TrialParticipant = record
         .entry()
         .to_app_option()
         .map_err(|e| wasm_error!(WasmErrorInner::Guest(e.to_string())))?
-        .ok_or(wasm_error!(WasmErrorInner::Guest("Invalid participant".to_string())))?;
+        .ok_or(wasm_error!(WasmErrorInner::Guest(
+            "Invalid participant".to_string()
+        )))?;
 
     let patient_hash = participant.patient_hash.clone();
     let auth = require_authorization(
@@ -334,11 +353,11 @@ pub fn withdraw_participant(input: WithdrawInput) -> ExternResult<Record> {
         Permission::Amend,
         false,
     )?;
-    
+
     participant.status = ParticipantStatus::Withdrawn;
     participant.withdrawal_date = Some(sys_time()?);
     participant.withdrawal_reason = Some(input.reason);
-    
+
     let updated_hash = update_entry(input.participant_hash, &participant)?;
 
     log_data_access(
@@ -349,9 +368,10 @@ pub fn withdraw_participant(input: WithdrawInput) -> ExternResult<Record> {
         auth.emergency_override,
         None,
     )?;
-    
-    get(updated_hash, GetOptions::default())?
-        .ok_or(wasm_error!(WasmErrorInner::Guest("Could not find updated participant".to_string())))
+
+    get(updated_hash, GetOptions::default())?.ok_or(wasm_error!(WasmErrorInner::Guest(
+        "Could not find updated participant".to_string()
+    )))
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -363,13 +383,16 @@ pub struct WithdrawInput {
 /// Record trial visit
 #[hdk_extern]
 pub fn record_visit(visit: TrialVisit) -> ExternResult<Record> {
-    let participant_record = get(visit.participant_hash.clone(), GetOptions::default())?
-        .ok_or(wasm_error!(WasmErrorInner::Guest("Participant not found".to_string())))?;
+    let participant_record = get(visit.participant_hash.clone(), GetOptions::default())?.ok_or(
+        wasm_error!(WasmErrorInner::Guest("Participant not found".to_string())),
+    )?;
     let participant: TrialParticipant = participant_record
         .entry()
         .to_app_option()
         .map_err(|e| wasm_error!(WasmErrorInner::Guest(e.to_string())))?
-        .ok_or(wasm_error!(WasmErrorInner::Guest("Invalid participant".to_string())))?;
+        .ok_or(wasm_error!(WasmErrorInner::Guest(
+            "Invalid participant".to_string()
+        )))?;
 
     let patient_hash = participant.patient_hash.clone();
     let auth = require_authorization(
@@ -380,8 +403,9 @@ pub fn record_visit(visit: TrialVisit) -> ExternResult<Record> {
     )?;
 
     let visit_hash = create_entry(&EntryTypes::TrialVisit(visit.clone()))?;
-    let record = get(visit_hash.clone(), GetOptions::default())?
-        .ok_or(wasm_error!(WasmErrorInner::Guest("Could not find visit".to_string())))?;
+    let record = get(visit_hash.clone(), GetOptions::default())?.ok_or(wasm_error!(
+        WasmErrorInner::Guest("Could not find visit".to_string())
+    ))?;
 
     create_link(
         visit.trial_hash.clone(),
@@ -410,14 +434,17 @@ pub fn record_visit(visit: TrialVisit) -> ExternResult<Record> {
 #[hdk_extern]
 pub fn get_participant_visits(participant_hash: ActionHash) -> ExternResult<Vec<Record>> {
     // Get participant to find trial
-    let record = get(participant_hash.clone(), GetOptions::default())?
-        .ok_or(wasm_error!(WasmErrorInner::Guest("Participant not found".to_string())))?;
-    
+    let record = get(participant_hash.clone(), GetOptions::default())?.ok_or(wasm_error!(
+        WasmErrorInner::Guest("Participant not found".to_string())
+    ))?;
+
     let participant: TrialParticipant = record
         .entry()
         .to_app_option()
         .map_err(|e| wasm_error!(WasmErrorInner::Guest(e.to_string())))?
-        .ok_or(wasm_error!(WasmErrorInner::Guest("Invalid participant".to_string())))?;
+        .ok_or(wasm_error!(WasmErrorInner::Guest(
+            "Invalid participant".to_string()
+        )))?;
 
     let patient_hash = participant.patient_hash.clone();
     let auth = require_authorization(
@@ -426,14 +453,22 @@ pub fn get_participant_visits(participant_hash: ActionHash) -> ExternResult<Vec<
         Permission::Read,
         false,
     )?;
-    
-    let links = get_links(LinkQuery::try_new(participant.trial_hash, LinkTypes::TrialToVisits)?, GetStrategy::default())?;
-    
+
+    let links = get_links(
+        LinkQuery::try_new(participant.trial_hash, LinkTypes::TrialToVisits)?,
+        GetStrategy::default(),
+    )?;
+
     let mut visits = Vec::new();
     for link in links {
         if let Some(hash) = link.target.into_action_hash() {
             if let Some(visit_record) = get(hash, GetOptions::default())? {
-                if let Some(visit) = visit_record.entry().to_app_option::<TrialVisit>().ok().flatten() {
+                if let Some(visit) = visit_record
+                    .entry()
+                    .to_app_option::<TrialVisit>()
+                    .ok()
+                    .flatten()
+                {
                     if visit.participant_hash == participant_hash {
                         visits.push(visit_record);
                     }
@@ -452,20 +487,23 @@ pub fn get_participant_visits(participant_hash: ActionHash) -> ExternResult<Vec<
             None,
         )?;
     }
-    
+
     Ok(visits)
 }
 
 /// Report adverse event
 #[hdk_extern]
 pub fn report_adverse_event(event: AdverseEvent) -> ExternResult<Record> {
-    let participant_record = get(event.participant_hash.clone(), GetOptions::default())?
-        .ok_or(wasm_error!(WasmErrorInner::Guest("Participant not found".to_string())))?;
+    let participant_record = get(event.participant_hash.clone(), GetOptions::default())?.ok_or(
+        wasm_error!(WasmErrorInner::Guest("Participant not found".to_string())),
+    )?;
     let participant: TrialParticipant = participant_record
         .entry()
         .to_app_option()
         .map_err(|e| wasm_error!(WasmErrorInner::Guest(e.to_string())))?
-        .ok_or(wasm_error!(WasmErrorInner::Guest("Invalid participant".to_string())))?;
+        .ok_or(wasm_error!(WasmErrorInner::Guest(
+            "Invalid participant".to_string()
+        )))?;
 
     let patient_hash = participant.patient_hash.clone();
     let auth = require_authorization(
@@ -476,9 +514,10 @@ pub fn report_adverse_event(event: AdverseEvent) -> ExternResult<Record> {
     )?;
 
     let event_hash = create_entry(&EntryTypes::AdverseEvent(event.clone()))?;
-    let record = get(event_hash.clone(), GetOptions::default())?
-        .ok_or(wasm_error!(WasmErrorInner::Guest("Could not find adverse event".to_string())))?;
-    
+    let record = get(event_hash.clone(), GetOptions::default())?.ok_or(wasm_error!(
+        WasmErrorInner::Guest("Could not find adverse event".to_string())
+    ))?;
+
     create_link(
         event.trial_hash,
         event_hash,
@@ -494,7 +533,7 @@ pub fn report_adverse_event(event: AdverseEvent) -> ExternResult<Record> {
         auth.emergency_override,
         None,
     )?;
-    
+
     Ok(record)
 }
 
@@ -502,16 +541,20 @@ pub fn report_adverse_event(event: AdverseEvent) -> ExternResult<Record> {
 #[hdk_extern]
 pub fn get_trial_adverse_events(trial_hash: ActionHash) -> ExternResult<Vec<Record>> {
     let caller = agent_info()?.agent_initial_pubkey;
-    let trial_record = get(trial_hash.clone(), GetOptions::default())?
-        .ok_or(wasm_error!(WasmErrorInner::Guest("Trial not found".to_string())))?;
+    let trial_record = get(trial_hash.clone(), GetOptions::default())?.ok_or(wasm_error!(
+        WasmErrorInner::Guest("Trial not found".to_string())
+    ))?;
     if trial_record.action().author() != &caller {
         return Err(wasm_error!(WasmErrorInner::Guest(
             "Only the trial creator can view adverse events".to_string()
         )));
     }
 
-    let links = get_links(LinkQuery::try_new(trial_hash, LinkTypes::TrialToAdverseEvents)?, GetStrategy::default())?;
-    
+    let links = get_links(
+        LinkQuery::try_new(trial_hash, LinkTypes::TrialToAdverseEvents)?,
+        GetStrategy::default(),
+    )?;
+
     let mut events = Vec::new();
     for link in links {
         if let Some(hash) = link.target.into_action_hash() {
@@ -520,7 +563,7 @@ pub fn get_trial_adverse_events(trial_hash: ActionHash) -> ExternResult<Vec<Reco
             }
         }
     }
-    
+
     Ok(events)
 }
 
@@ -528,63 +571,80 @@ pub fn get_trial_adverse_events(trial_hash: ActionHash) -> ExternResult<Vec<Reco
 #[hdk_extern]
 pub fn get_serious_adverse_events(trial_hash: ActionHash) -> ExternResult<Vec<Record>> {
     let all_events = get_trial_adverse_events(trial_hash)?;
-    
+
     let serious: Vec<Record> = all_events
         .into_iter()
         .filter(|record| {
-            if let Some(event) = record.entry().to_app_option::<AdverseEvent>().ok().flatten() {
+            if let Some(event) = record
+                .entry()
+                .to_app_option::<AdverseEvent>()
+                .ok()
+                .flatten()
+            {
                 event.is_serious
             } else {
                 false
             }
         })
         .collect();
-    
+
     Ok(serious)
 }
 
 /// Check patient eligibility for a trial
 #[hdk_extern]
 pub fn check_eligibility(input: EligibilityCheckInput) -> ExternResult<EligibilityResult> {
-    let trial_record = get(input.trial_hash, GetOptions::default())?
-        .ok_or(wasm_error!(WasmErrorInner::Guest("Trial not found".to_string())))?;
-    
+    let trial_record = get(input.trial_hash, GetOptions::default())?.ok_or(wasm_error!(
+        WasmErrorInner::Guest("Trial not found".to_string())
+    ))?;
+
     let trial: ClinicalTrial = trial_record
         .entry()
         .to_app_option()
         .map_err(|e| wasm_error!(WasmErrorInner::Guest(e.to_string())))?
-        .ok_or(wasm_error!(WasmErrorInner::Guest("Invalid trial".to_string())))?;
-    
+        .ok_or(wasm_error!(WasmErrorInner::Guest(
+            "Invalid trial".to_string()
+        )))?;
+
     let mut eligible = true;
     let mut reasons = Vec::new();
-    
+
     // Check age
     if let Some(min_age) = trial.eligibility.min_age {
         if input.patient_age < min_age {
             eligible = false;
-            reasons.push(format!("Patient age {} is below minimum {}", input.patient_age, min_age));
+            reasons.push(format!(
+                "Patient age {} is below minimum {}",
+                input.patient_age, min_age
+            ));
         }
     }
-    
+
     if let Some(max_age) = trial.eligibility.max_age {
         if input.patient_age > max_age {
             eligible = false;
-            reasons.push(format!("Patient age {} is above maximum {}", input.patient_age, max_age));
+            reasons.push(format!(
+                "Patient age {} is above maximum {}",
+                input.patient_age, max_age
+            ));
         }
     }
-    
+
     // Check if trial is recruiting
-    if !matches!(trial.status, TrialStatus::Recruiting | TrialStatus::EnrollingByInvitation) {
+    if !matches!(
+        trial.status,
+        TrialStatus::Recruiting | TrialStatus::EnrollingByInvitation
+    ) {
         eligible = false;
         reasons.push("Trial is not currently recruiting".to_string());
     }
-    
+
     // Check enrollment capacity
     if trial.current_enrollment >= trial.target_enrollment {
         eligible = false;
         reasons.push("Trial has reached target enrollment".to_string());
     }
-    
+
     Ok(EligibilityResult {
         eligible,
         reasons,

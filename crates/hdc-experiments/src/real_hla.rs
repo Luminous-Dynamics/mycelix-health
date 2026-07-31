@@ -66,9 +66,9 @@ pub struct LocusStats {
 /// Parsed HLA allele from IMGT format
 #[derive(Clone, Debug)]
 pub struct HlaAllele {
-    pub name: String,       // e.g., "A*01:01:01:01"
-    pub locus: String,      // e.g., "A"
-    pub two_field: String,  // e.g., "A*01:01"
+    pub name: String,      // e.g., "A*01:01:01:01"
+    pub locus: String,     // e.g., "A"
+    pub two_field: String, // e.g., "A*01:01"
     pub sequence: String,
 }
 
@@ -122,7 +122,9 @@ fn parse_hla_header(header: &str, sequence: &str) -> Option<HlaAllele> {
     let allele_name = parts[1].to_string();
 
     // Extract locus (before *)
-    let locus = allele_name.split('*').next()
+    let locus = allele_name
+        .split('*')
+        .next()
         .unwrap_or("unknown")
         .to_string();
 
@@ -193,7 +195,8 @@ pub fn run_real_hla_experiment(
     // Limit to 200 alleles per locus for reasonable runtime
     let max_per_locus = 50;
     let mut locus_counts: HashMap<String, usize> = HashMap::new();
-    let limited_alleles: Vec<HlaAllele> = all_alleles.into_iter()
+    let limited_alleles: Vec<HlaAllele> = all_alleles
+        .into_iter()
         .filter(|a| {
             let count = locus_counts.entry(a.locus.clone()).or_insert(0);
             if *count < max_per_locus {
@@ -205,17 +208,25 @@ pub fn run_real_hla_experiment(
         })
         .collect();
 
-    println!("   Using {} alleles (max {} per locus)", limited_alleles.len(), max_per_locus);
+    println!(
+        "   Using {} alleles (max {} per locus)",
+        limited_alleles.len(),
+        max_per_locus
+    );
 
     // Compute statistics
-    let locus_set: std::collections::HashSet<_> = limited_alleles.iter()
-        .map(|a| a.locus.clone())
-        .collect();
-    let two_field_set: std::collections::HashSet<_> = limited_alleles.iter()
+    let locus_set: std::collections::HashSet<_> =
+        limited_alleles.iter().map(|a| a.locus.clone()).collect();
+    let two_field_set: std::collections::HashSet<_> = limited_alleles
+        .iter()
         .map(|a| a.two_field.clone())
         .collect();
 
-    println!("   Loci: {}, Two-field groups: {}", locus_set.len(), two_field_set.len());
+    println!(
+        "   Loci: {}, Two-field groups: {}",
+        locus_set.len(),
+        two_field_set.len()
+    );
     println!();
 
     // Encode sequences
@@ -224,19 +235,23 @@ pub fn run_real_hla_experiment(
     let seed = Seed::from_string("real-hla-v1");
     let encoder = DnaEncoder::new(seed, kmer_length);
 
-    let encoded: Vec<_> = limited_alleles.iter()
+    let encoded: Vec<_> = limited_alleles
+        .iter()
         .filter_map(|allele| {
-            encoder.encode_sequence(&allele.sequence).ok().map(|enc| {
-                (allele.clone(), enc)
-            })
+            encoder
+                .encode_sequence(&allele.sequence)
+                .ok()
+                .map(|enc| (allele.clone(), enc))
         })
         .collect();
     let encoding_time = start.elapsed();
 
-    println!("   Encoded {} alleles in {:.2}s ({:.2}ms/allele)",
-             encoded.len(),
-             encoding_time.as_secs_f64(),
-             encoding_time.as_millis() as f64 / encoded.len().max(1) as f64);
+    println!(
+        "   Encoded {} alleles in {:.2}s ({:.2}ms/allele)",
+        encoded.len(),
+        encoding_time.as_secs_f64(),
+        encoding_time.as_millis() as f64 / encoded.len().max(1) as f64
+    );
 
     // Compute similarity distributions
     println!("{}", "3. Computing similarities...".yellow());
@@ -270,8 +285,8 @@ pub fn run_real_hla_experiment(
     let different_stats = SimilarityStats::from_values(&different_locus_sims);
 
     // Check monotonic separation
-    let monotonic = two_field_stats.mean > locus_stats.mean
-        && locus_stats.mean > different_stats.mean;
+    let monotonic =
+        two_field_stats.mean > locus_stats.mean && locus_stats.mean > different_stats.mean;
 
     // k-NN accuracy for locus classification
     println!("{}", "4. Computing k-NN accuracy...".yellow());
@@ -286,12 +301,18 @@ pub fn run_real_hla_experiment(
 
     println!();
     println!("Similarity Distributions (Real IMGT/HLA Data):");
-    println!("  Same two-field:    {:.4} ± {:.4} (n={})",
-             two_field_stats.mean, two_field_stats.std_dev, two_field_stats.count);
-    println!("  Same locus:        {:.4} ± {:.4} (n={})",
-             locus_stats.mean, locus_stats.std_dev, locus_stats.count);
-    println!("  Different locus:   {:.4} ± {:.4} (n={})",
-             different_stats.mean, different_stats.std_dev, different_stats.count);
+    println!(
+        "  Same two-field:    {:.4} ± {:.4} (n={})",
+        two_field_stats.mean, two_field_stats.std_dev, two_field_stats.count
+    );
+    println!(
+        "  Same locus:        {:.4} ± {:.4} (n={})",
+        locus_stats.mean, locus_stats.std_dev, locus_stats.count
+    );
+    println!(
+        "  Different locus:   {:.4} ± {:.4} (n={})",
+        different_stats.mean, different_stats.std_dev, different_stats.count
+    );
 
     println!();
     let sep_two_field_locus = two_field_stats.mean - locus_stats.mean;
@@ -301,8 +322,14 @@ pub fn run_real_hla_experiment(
     println!("  Same locus → Different: {:.4}", sep_locus_different);
 
     println!();
-    println!("Monotonic separation: {}",
-             if monotonic { "YES ✓".green() } else { "NO ✗".red() });
+    println!(
+        "Monotonic separation: {}",
+        if monotonic {
+            "YES ✓".green()
+        } else {
+            "NO ✗".red()
+        }
+    );
 
     println!();
     println!("k-NN Accuracy (k=1):");
@@ -320,7 +347,8 @@ pub fn run_real_hla_experiment(
         *locus_counts_final.entry(allele.locus.clone()).or_insert(0) += 1;
     }
 
-    let locus_stats_vec: Vec<LocusStats> = locus_counts_final.iter()
+    let locus_stats_vec: Vec<LocusStats> = locus_counts_final
+        .iter()
         .map(|(name, count)| LocusStats {
             name: name.clone(),
             num_alleles: *count,
@@ -364,17 +392,22 @@ pub fn run_real_hla_experiment(
              HDC encoding achieves {:.0}% locus classification accuracy\n\
              with clear monotonic separation:\n\
              same-two-field ({:.3}) > same-locus ({:.3}) > different-locus ({:.3}).\"",
-            encoded.len(), locus_set.len(),
+            encoded.len(),
+            locus_set.len(),
             locus_accuracy * 100.0,
-            two_field_stats.mean, locus_stats.mean, different_stats.mean
+            two_field_stats.mean,
+            locus_stats.mean,
+            different_stats.mean
         );
     } else {
         println!(
             "Real HLA validation: {} alleles, {} loci\n\
              Locus accuracy: {:.1}%, Two-field accuracy: {:.1}%\n\
              Monotonic: {}",
-            encoded.len(), locus_set.len(),
-            locus_accuracy * 100.0, two_field_accuracy * 100.0,
+            encoded.len(),
+            locus_set.len(),
+            locus_accuracy * 100.0,
+            two_field_accuracy * 100.0,
             if monotonic { "Yes" } else { "No" }
         );
     }
@@ -412,7 +445,15 @@ where
             .iter()
             .enumerate()
             .filter(|(j, _)| *j != i)
-            .map(|(j, (_, enc))| (j, encoded[i].1.vector.normalized_cosine_similarity(&enc.vector)))
+            .map(|(j, (_, enc))| {
+                (
+                    j,
+                    encoded[i]
+                        .1
+                        .vector
+                        .normalized_cosine_similarity(&enc.vector),
+                )
+            })
             .collect();
 
         sims.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap());

@@ -7,7 +7,7 @@
 //! - Random k-mer codebook (generated on-the-fly)
 //! - Learned k-mer codebook (pre-trained embeddings)
 
-use criterion::{black_box, criterion_group, criterion_main, Criterion, BenchmarkId};
+use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criterion};
 use hdc_core::encoding::{DnaEncoder, KmerCodebook, LearnedKmerCodebook};
 use hdc_core::Seed;
 
@@ -60,7 +60,10 @@ fn bench_learned_codebook(c: &mut Criterion) {
     let codebook = match LearnedKmerCodebook::load(codebook_path) {
         Ok(cb) => cb,
         Err(e) => {
-            eprintln!("Could not load learned codebook: {}. Skipping benchmark.", e);
+            eprintln!(
+                "Could not load learned codebook: {}. Skipping benchmark.",
+                e
+            );
             return;
         }
     };
@@ -83,9 +86,7 @@ fn bench_codebook_loading(c: &mut Criterion) {
     let seed = Seed::from_string("benchmark");
 
     c.bench_function("random_codebook_create", |b| {
-        b.iter(|| {
-            black_box(KmerCodebook::new(&seed, 6))
-        })
+        b.iter(|| black_box(KmerCodebook::new(&seed, 6)))
     });
 
     let codebook_path = "../../research/learned_hdc/models/learned_6mers.json";
@@ -113,30 +114,22 @@ fn bench_sequence_lengths(c: &mut Criterion) {
     for length in [50, 100, 200, 500, 1000].iter() {
         let sequences = generate_sequences(10, *length, 42);
 
-        group.bench_with_input(
-            BenchmarkId::new("random", length),
-            length,
-            |b, _| {
-                b.iter(|| {
-                    for seq in &sequences {
-                        let _ = black_box(encoder.encode_with_codebook(seq, &random_codebook));
-                    }
-                })
-            },
-        );
+        group.bench_with_input(BenchmarkId::new("random", length), length, |b, _| {
+            b.iter(|| {
+                for seq in &sequences {
+                    let _ = black_box(encoder.encode_with_codebook(seq, &random_codebook));
+                }
+            })
+        });
 
         if let Some(ref learned) = learned_codebook {
-            group.bench_with_input(
-                BenchmarkId::new("learned", length),
-                length,
-                |b, _| {
-                    b.iter(|| {
-                        for seq in &sequences {
-                            let _ = black_box(encoder.encode_with_learned_codebook(seq, learned));
-                        }
-                    })
-                },
-            );
+            group.bench_with_input(BenchmarkId::new("learned", length), length, |b, _| {
+                b.iter(|| {
+                    for seq in &sequences {
+                        let _ = black_box(encoder.encode_with_learned_codebook(seq, learned));
+                    }
+                })
+            });
         }
     }
 

@@ -7,11 +7,11 @@
 //! Verifiable health credentials with issuer verification and revocation.
 //! Uses LinkQuery::try_new() for link queries.
 
-use hdk::prelude::*;
 use credentials_integrity::{
     Anchor as CredentialsAnchor, CredentialRevocation, CredentialType, EntryTypes,
     HealthCredential, LinkTypes,
 };
+use hdk::prelude::*;
 
 // ============================================================================
 // Anchor Helpers
@@ -98,10 +98,9 @@ pub fn issue_credential(input: IssueCredentialInput) -> ExternResult<Record> {
         (),
     )?;
 
-    get(action_hash, GetOptions::default())?
-        .ok_or(wasm_error!(WasmErrorInner::Guest(
-            "Credential not found after creation".into()
-        )))
+    get(action_hash, GetOptions::default())?.ok_or(wasm_error!(WasmErrorInner::Guest(
+        "Credential not found after creation".into()
+    )))
 }
 
 #[hdk_extern]
@@ -215,7 +214,9 @@ pub fn get_issued_credentials(_: ()) -> ExternResult<Vec<CredentialWithStatus>> 
 }
 
 #[hdk_extern]
-pub fn get_credentials_by_type(credential_type: CredentialType) -> ExternResult<Vec<CredentialWithStatus>> {
+pub fn get_credentials_by_type(
+    credential_type: CredentialType,
+) -> ExternResult<Vec<CredentialWithStatus>> {
     let my_did = get_my_did()?;
     let type_anchor = get_or_create_anchor(&format!("credential_type:{:?}", credential_type))?;
 
@@ -271,10 +272,9 @@ pub fn revoke_credential(input: RevokeCredentialInput) -> ExternResult<Record> {
     let now = sys_time()?;
 
     // Get the credential to verify issuer
-    let credential_record = get(input.credential_hash.clone(), GetOptions::default())?
-        .ok_or(wasm_error!(WasmErrorInner::Guest(
-            "Credential not found".into()
-        )))?;
+    let credential_record = get(input.credential_hash.clone(), GetOptions::default())?.ok_or(
+        wasm_error!(WasmErrorInner::Guest("Credential not found".into())),
+    )?;
 
     let credential = credential_record
         .entry()
@@ -325,10 +325,9 @@ pub fn revoke_credential(input: RevokeCredentialInput) -> ExternResult<Record> {
         (),
     )?;
 
-    get(action_hash, GetOptions::default())?
-        .ok_or(wasm_error!(WasmErrorInner::Guest(
-            "Revocation not found after creation".into()
-        )))
+    get(action_hash, GetOptions::default())?.ok_or(wasm_error!(WasmErrorInner::Guest(
+        "Revocation not found after creation".into()
+    )))
 }
 
 #[hdk_extern]

@@ -104,6 +104,23 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+
+      # cargo-deny builds the dependency graph, which means resolving this repo's
+      # four path dependencies -- and those reach OUTSIDE the repo root into the
+      # parent mycelix repo (../crates, ../mycelix-core), because this repo is
+      # designed to be consumed as mycelix's mycelix-health submodule. Without
+      # this step the job failed with:
+      #   failed to read `/github/crates/mycelix-bridge-common/Cargo.toml`
+      # The `rust` job above already does exactly this; `deny` was simply never
+      # given the same treatment. See CONTRACT.md's "Building this repo standalone".
+      - name: Check out sibling crates/ and mycelix-core/ from parent mycelix repo
+        run: |
+          git clone --depth 1 https://github.com/Luminous-Dynamics/mycelix.git /tmp/mycelix-parent
+          mkdir -p ../crates ../mycelix-core
+          cp -r /tmp/mycelix-parent/crates/. ../crates/
+          cp -r /tmp/mycelix-parent/mycelix-core/. ../mycelix-core/
+          rm -rf /tmp/mycelix-parent
+
       - uses: EmbarkStudios/cargo-deny-action@v2
         with:
           command: check

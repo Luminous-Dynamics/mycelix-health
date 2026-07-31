@@ -3,12 +3,12 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Commercial licensing: see COMMERCIAL_LICENSE.md at repository root
 //! Mycelix Health Bridge Coordinator Zome
-//! 
+//!
 //! Provides extern functions for cross-hApp communication,
 //! data federation, and reputation integration.
 
-use hdk::prelude::*;
 use bridge_integrity::*;
+use hdk::prelude::*;
 use mycelix_bridge_common::{check_rate_limit_count, RATE_LIMIT_WINDOW_SECS};
 
 fn enforce_rate_limit(target_fn: &str) -> ExternResult<()> {
@@ -22,7 +22,12 @@ fn enforce_rate_limit(target_fn: &str) -> ExternResult<()> {
     let window_start = Timestamp::from_micros(window_start_micros);
     let recent_count = links.iter().filter(|l| l.timestamp >= window_start).count();
     check_rate_limit_count(recent_count).map_err(|msg| wasm_error!(WasmErrorInner::Guest(msg)))?;
-    create_link(agent.clone(), agent, LinkTypes::DispatchRateLimit, target_fn.as_bytes().to_vec())?;
+    create_link(
+        agent.clone(),
+        agent,
+        LinkTypes::DispatchRateLimit,
+        target_fn.as_bytes().to_vec(),
+    )?;
     Ok(())
 }
 
@@ -40,11 +45,12 @@ pub fn register_with_bridge(input: RegisterBridgeInput) -> ExternResult<Record> 
         registered_at: sys_time()?,
         status: BridgeStatus::Active,
     };
-    
+
     let reg_hash = create_entry(&EntryTypes::HealthBridgeRegistration(registration.clone()))?;
-    let record = get(reg_hash.clone(), GetOptions::default())?
-        .ok_or(wasm_error!(WasmErrorInner::Guest("Could not find registration".to_string())))?;
-    
+    let record = get(reg_hash.clone(), GetOptions::default())?.ok_or(wasm_error!(
+        WasmErrorInner::Guest("Could not find registration".to_string())
+    ))?;
+
     // Link to identity
     create_link(
         registration.mycelix_identity_hash,
@@ -52,16 +58,11 @@ pub fn register_with_bridge(input: RegisterBridgeInput) -> ExternResult<Record> 
         LinkTypes::IdentityToRegistrations,
         (),
     )?;
-    
+
     // Add to active registrations
     let active_anchor = anchor_hash("active_registrations")?;
-    create_link(
-        active_anchor,
-        reg_hash,
-        LinkTypes::ActiveRegistrations,
-        (),
-    )?;
-    
+    create_link(active_anchor, reg_hash, LinkTypes::ActiveRegistrations, ())?;
+
     Ok(record)
 }
 
@@ -79,17 +80,13 @@ pub struct RegisterBridgeInput {
 pub fn query_federated_data(query: HealthDataQuery) -> ExternResult<Record> {
     enforce_rate_limit("query_federated_data")?;
     let query_hash = create_entry(&EntryTypes::HealthDataQuery(query.clone()))?;
-    let record = get(query_hash.clone(), GetOptions::default())?
-        .ok_or(wasm_error!(WasmErrorInner::Guest("Could not find query".to_string())))?;
-    
+    let record = get(query_hash.clone(), GetOptions::default())?.ok_or(wasm_error!(
+        WasmErrorInner::Guest("Could not find query".to_string())
+    ))?;
+
     let pending_anchor = anchor_hash("pending_queries")?;
-    create_link(
-        pending_anchor,
-        query_hash,
-        LinkTypes::PendingQueries,
-        (),
-    )?;
-    
+    create_link(pending_anchor, query_hash, LinkTypes::PendingQueries, ())?;
+
     Ok(record)
 }
 
@@ -98,24 +95,28 @@ pub fn query_federated_data(query: HealthDataQuery) -> ExternResult<Record> {
 pub fn respond_to_query(response: HealthDataResponse) -> ExternResult<Record> {
     enforce_rate_limit("respond_to_query")?;
     let response_hash = create_entry(&EntryTypes::HealthDataResponse(response.clone()))?;
-    let record = get(response_hash.clone(), GetOptions::default())?
-        .ok_or(wasm_error!(WasmErrorInner::Guest("Could not find response".to_string())))?;
-    
+    let record = get(response_hash.clone(), GetOptions::default())?.ok_or(wasm_error!(
+        WasmErrorInner::Guest("Could not find response".to_string())
+    ))?;
+
     create_link(
         response.query_hash,
         response_hash,
         LinkTypes::QueryToResponses,
         (),
     )?;
-    
+
     Ok(record)
 }
 
 /// Get responses for a query
 #[hdk_extern]
 pub fn get_query_responses(query_hash: ActionHash) -> ExternResult<Vec<Record>> {
-    let links = get_links(LinkQuery::try_new(query_hash, LinkTypes::QueryToResponses)?, GetStrategy::default())?;
-    
+    let links = get_links(
+        LinkQuery::try_new(query_hash, LinkTypes::QueryToResponses)?,
+        GetStrategy::default(),
+    )?;
+
     let mut responses = Vec::new();
     for link in links {
         if let Some(hash) = link.target.into_action_hash() {
@@ -124,7 +125,7 @@ pub fn get_query_responses(query_hash: ActionHash) -> ExternResult<Vec<Record>> 
             }
         }
     }
-    
+
     Ok(responses)
 }
 
@@ -133,16 +134,17 @@ pub fn get_query_responses(query_hash: ActionHash) -> ExternResult<Vec<Record>> 
 pub fn request_provider_verification(request: ProviderVerificationRequest) -> ExternResult<Record> {
     enforce_rate_limit("request_provider_verification")?;
     let request_hash = create_entry(&EntryTypes::ProviderVerificationRequest(request.clone()))?;
-    let record = get(request_hash.clone(), GetOptions::default())?
-        .ok_or(wasm_error!(WasmErrorInner::Guest("Could not find request".to_string())))?;
-    
+    let record = get(request_hash.clone(), GetOptions::default())?.ok_or(wasm_error!(
+        WasmErrorInner::Guest("Could not find request".to_string())
+    ))?;
+
     create_link(
         request.provider_hash,
         request_hash,
         LinkTypes::ProviderToVerifications,
         (),
     )?;
-    
+
     Ok(record)
 }
 
@@ -151,18 +153,24 @@ pub fn request_provider_verification(request: ProviderVerificationRequest) -> Ex
 pub fn submit_verification_result(result: ProviderVerificationResult) -> ExternResult<Record> {
     enforce_rate_limit("submit_verification_result")?;
     let result_hash = create_entry(&EntryTypes::ProviderVerificationResult(result.clone()))?;
-    let record = get(result_hash.clone(), GetOptions::default())?
-        .ok_or(wasm_error!(WasmErrorInner::Guest("Could not find result".to_string())))?;
-    
+    let record = get(result_hash.clone(), GetOptions::default())?.ok_or(wasm_error!(
+        WasmErrorInner::Guest("Could not find result".to_string())
+    ))?;
+
     // Update the request with result
     if let Some(request_record) = get(result.request_hash.clone(), GetOptions::default())? {
-        if let Some(mut request) = request_record.entry().to_app_option::<ProviderVerificationRequest>().ok().flatten() {
+        if let Some(mut request) = request_record
+            .entry()
+            .to_app_option::<ProviderVerificationRequest>()
+            .ok()
+            .flatten()
+        {
             request.status = VerificationStatus::Verified;
             request.result_hash = Some(result_hash.clone());
             update_entry(result.request_hash, &request)?;
         }
     }
-    
+
     Ok(record)
 }
 
@@ -171,33 +179,32 @@ pub fn submit_verification_result(result: ProviderVerificationResult) -> ExternR
 pub fn create_epistemic_claim(claim: HealthEpistemicClaim) -> ExternResult<Record> {
     enforce_rate_limit("create_epistemic_claim")?;
     let claim_hash = create_entry(&EntryTypes::HealthEpistemicClaim(claim.clone()))?;
-    let record = get(claim_hash.clone(), GetOptions::default())?
-        .ok_or(wasm_error!(WasmErrorInner::Guest("Could not find claim".to_string())))?;
-    
+    let record = get(claim_hash.clone(), GetOptions::default())?.ok_or(wasm_error!(
+        WasmErrorInner::Guest("Could not find claim".to_string())
+    ))?;
+
     create_link(
         claim.subject_hash,
         claim_hash.clone(),
         LinkTypes::EntityToClaims,
         (),
     )?;
-    
+
     // Link by claim type
     let type_anchor = anchor_hash(&format!("claims_{:?}", claim.claim_type))?;
-    create_link(
-        type_anchor,
-        claim_hash,
-        LinkTypes::ClaimsByType,
-        (),
-    )?;
-    
+    create_link(type_anchor, claim_hash, LinkTypes::ClaimsByType, ())?;
+
     Ok(record)
 }
 
 /// Get claims for an entity (patient, provider, trial, etc.)
 #[hdk_extern]
 pub fn get_entity_claims(entity_hash: ActionHash) -> ExternResult<Vec<Record>> {
-    let links = get_links(LinkQuery::try_new(entity_hash, LinkTypes::EntityToClaims)?, GetStrategy::default())?;
-    
+    let links = get_links(
+        LinkQuery::try_new(entity_hash, LinkTypes::EntityToClaims)?,
+        GetStrategy::default(),
+    )?;
+
     let mut claims = Vec::new();
     for link in links {
         if let Some(hash) = link.target.into_action_hash() {
@@ -206,7 +213,7 @@ pub fn get_entity_claims(entity_hash: ActionHash) -> ExternResult<Vec<Record>> {
             }
         }
     }
-    
+
     Ok(claims)
 }
 
@@ -214,21 +221,25 @@ pub fn get_entity_claims(entity_hash: ActionHash) -> ExternResult<Vec<Record>> {
 #[hdk_extern]
 pub fn verify_claim(input: VerifyClaimInput) -> ExternResult<Record> {
     enforce_rate_limit("verify_claim")?;
-    let record = get(input.claim_hash.clone(), GetOptions::default())?
-        .ok_or(wasm_error!(WasmErrorInner::Guest("Claim not found".to_string())))?;
-    
+    let record = get(input.claim_hash.clone(), GetOptions::default())?.ok_or(wasm_error!(
+        WasmErrorInner::Guest("Claim not found".to_string())
+    ))?;
+
     let mut claim: HealthEpistemicClaim = record
         .entry()
         .to_app_option()
         .map_err(|e| wasm_error!(WasmErrorInner::Guest(e.to_string())))?
-        .ok_or(wasm_error!(WasmErrorInner::Guest("Invalid claim".to_string())))?;
-    
+        .ok_or(wasm_error!(WasmErrorInner::Guest(
+            "Invalid claim".to_string()
+        )))?;
+
     claim.verified = true;
     claim.verified_by.push(agent_info()?.agent_initial_pubkey);
-    
+
     let updated_hash = update_entry(input.claim_hash, &claim)?;
-    get(updated_hash, GetOptions::default())?
-        .ok_or(wasm_error!(WasmErrorInner::Guest("Could not find updated claim".to_string())))
+    get(updated_hash, GetOptions::default())?.ok_or(wasm_error!(WasmErrorInner::Guest(
+        "Could not find updated claim".to_string()
+    )))
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -241,31 +252,40 @@ pub struct VerifyClaimInput {
 pub fn update_federated_reputation(federation: HealthReputationFederation) -> ExternResult<Record> {
     enforce_rate_limit("update_federated_reputation")?;
     let fed_hash = create_entry(&EntryTypes::HealthReputationFederation(federation.clone()))?;
-    let record = get(fed_hash.clone(), GetOptions::default())?
-        .ok_or(wasm_error!(WasmErrorInner::Guest("Could not find federation".to_string())))?;
-    
+    let record = get(fed_hash.clone(), GetOptions::default())?.ok_or(wasm_error!(
+        WasmErrorInner::Guest("Could not find federation".to_string())
+    ))?;
+
     create_link(
         federation.entity_hash,
         fed_hash,
         LinkTypes::EntityToReputation,
         (),
     )?;
-    
+
     Ok(record)
 }
 
 /// Get entity's federated reputation
 #[hdk_extern]
 pub fn get_federated_reputation(entity_hash: ActionHash) -> ExternResult<Option<Record>> {
-    let links = get_links(LinkQuery::try_new(entity_hash, LinkTypes::EntityToReputation)?, GetStrategy::default())?;
-    
+    let links = get_links(
+        LinkQuery::try_new(entity_hash, LinkTypes::EntityToReputation)?,
+        GetStrategy::default(),
+    )?;
+
     // Get the most recent federation record
     let mut latest: Option<(Timestamp, ActionHash)> = None;
-    
+
     for link in links {
         if let Some(hash) = link.target.into_action_hash() {
             if let Some(record) = get(hash.clone(), GetOptions::default())? {
-                if let Some(fed) = record.entry().to_app_option::<HealthReputationFederation>().ok().flatten() {
+                if let Some(fed) = record
+                    .entry()
+                    .to_app_option::<HealthReputationFederation>()
+                    .ok()
+                    .flatten()
+                {
                     match &latest {
                         None => latest = Some((fed.aggregated_at, hash)),
                         Some((ts, _)) if fed.aggregated_at > *ts => {
@@ -277,30 +297,29 @@ pub fn get_federated_reputation(entity_hash: ActionHash) -> ExternResult<Option<
             }
         }
     }
-    
+
     if let Some((_, hash)) = latest {
         return get(hash, GetOptions::default());
     }
-    
+
     Ok(None)
 }
 
 /// Aggregate reputation from multiple sources
 #[hdk_extern]
-pub fn aggregate_reputation(input: AggregateReputationInput) -> ExternResult<HealthReputationFederation> {
+pub fn aggregate_reputation(
+    input: AggregateReputationInput,
+) -> ExternResult<HealthReputationFederation> {
     let total_weight: f64 = input.scores.iter().map(|s| s.weight).sum();
-    
-    let weighted_sum: f64 = input.scores
-        .iter()
-        .map(|s| s.score * s.weight)
-        .sum();
-    
+
+    let weighted_sum: f64 = input.scores.iter().map(|s| s.score * s.weight).sum();
+
     let aggregated_score = if total_weight > 0.0 {
         weighted_sum / total_weight
     } else {
         0.5 // Default neutral score
     };
-    
+
     let federation = HealthReputationFederation {
         federation_id: input.federation_id,
         entity_hash: input.entity_hash,
@@ -309,7 +328,7 @@ pub fn aggregate_reputation(input: AggregateReputationInput) -> ExternResult<Hea
         aggregated_score,
         aggregated_at: sys_time()?,
     };
-    
+
     Ok(federation)
 }
 
@@ -325,8 +344,11 @@ pub struct AggregateReputationInput {
 #[hdk_extern]
 pub fn get_active_registrations(_: ()) -> ExternResult<Vec<Record>> {
     let active_anchor = anchor_hash("active_registrations")?;
-    let links = get_links(LinkQuery::try_new(active_anchor, LinkTypes::ActiveRegistrations)?, GetStrategy::default())?;
-    
+    let links = get_links(
+        LinkQuery::try_new(active_anchor, LinkTypes::ActiveRegistrations)?,
+        GetStrategy::default(),
+    )?;
+
     let mut registrations = Vec::new();
     for link in links {
         if let Some(hash) = link.target.into_action_hash() {
@@ -335,7 +357,7 @@ pub fn get_active_registrations(_: ()) -> ExternResult<Vec<Record>> {
             }
         }
     }
-    
+
     Ok(registrations)
 }
 
@@ -386,7 +408,8 @@ pub struct SubmitHealthAttestationInput {
     /// Patient identity hash (not the identity itself).
     pub patient_id_hash: Vec<u8>,
     /// Consciousness attestation (if consciousness-gated).
-    pub consciousness_attestation: Option<mycelix_bridge_common::consciousness_zkp::ConsciousnessAttestation>,
+    pub consciousness_attestation:
+        Option<mycelix_bridge_common::consciousness_zkp::ConsciousnessAttestation>,
 }
 
 /// Result of attestation submission.
@@ -456,13 +479,19 @@ pub fn submit_health_attestation(
     let claim = HealthEpistemicClaim {
         claim_id: format!("zkp-{}-{}", input.proof_type, now.as_micros()),
         claimant: agent_info.agent_initial_pubkey.clone(),
-        subject_hash: ActionHash::from_raw_36(agent_info.agent_initial_pubkey.get_raw_36().to_vec()), // Agent as subject
+        subject_hash: ActionHash::from_raw_36(
+            agent_info.agent_initial_pubkey.get_raw_36().to_vec(),
+        ), // Agent as subject
         claim_type: HealthClaimType::ResearchFinding, // Closest match for ZKP attestation
         claim_content: format!(
             "ZKP health attestation: type={}, proof_size={}, commitment={}",
             input.proof_type,
             input.proof_bytes.len(),
-            input.data_commitment.iter().map(|b| format!("{:02x}", b)).collect::<String>()
+            input
+                .data_commitment
+                .iter()
+                .map(|b| format!("{:02x}", b))
+                .collect::<String>()
         ),
         evidence_hashes: vec![], // Proof bytes stored in claim_content reference
         classification: EpistemicClassification {

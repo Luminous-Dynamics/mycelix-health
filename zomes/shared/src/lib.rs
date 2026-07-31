@@ -164,8 +164,7 @@ pub mod patient_encryption {
         let cipher = XChaCha20Poly1305::new(key);
 
         let mut nonce_arr = [0u8; 24];
-        getrandom::fill(&mut nonce_arr)
-            .map_err(|e| format!("Nonce generation failed: {}", e))?;
+        getrandom::fill(&mut nonce_arr).map_err(|e| format!("Nonce generation failed: {}", e))?;
         let nonce = chacha20poly1305::XNonce::from_slice(&nonce_arr);
 
         let ciphertext = cipher
@@ -749,7 +748,6 @@ pub mod access_control {
         pub original_consent: Option<ActionHash>,
         pub categories: Vec<DataCategory>,
     }
-
 
     /// Check if the caller is the patient themselves.
     fn is_patient_self(patient_hash: &ActionHash, caller: &AgentPubKey) -> ExternResult<bool> {
@@ -2308,16 +2306,10 @@ mod tests {
         let key = [7u8; 32];
         let aad = b"patient=alice;category=LabResults;type=LabResult";
         let (ciphertext, nonce) =
-            patient_encryption::encrypt_with_aad(b"private result", aad, &key)
-                .expect("encrypt");
+            patient_encryption::encrypt_with_aad(b"private result", aad, &key).expect("encrypt");
 
-        let plaintext = patient_encryption::decrypt_with_aad(
-            &ciphertext,
-            &nonce,
-            aad,
-            &key,
-        )
-        .expect("decrypt");
+        let plaintext =
+            patient_encryption::decrypt_with_aad(&ciphertext, &nonce, aad, &key).expect("decrypt");
         assert_eq!(plaintext, b"private result");
 
         assert!(patient_encryption::decrypt_with_aad(

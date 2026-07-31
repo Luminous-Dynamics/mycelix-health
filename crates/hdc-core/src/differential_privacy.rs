@@ -51,14 +51,20 @@ impl DpParams {
     /// Create pure ε-differential privacy parameters
     pub fn pure(epsilon: f64) -> Self {
         assert!(epsilon > 0.0, "Epsilon must be positive");
-        DpParams { epsilon, delta: None }
+        DpParams {
+            epsilon,
+            delta: None,
+        }
     }
 
     /// Create (ε, δ)-differential privacy parameters
     pub fn approximate(epsilon: f64, delta: f64) -> Self {
         assert!(epsilon > 0.0, "Epsilon must be positive");
         assert!(delta > 0.0 && delta < 1.0, "Delta must be in (0, 1)");
-        DpParams { epsilon, delta: Some(delta) }
+        DpParams {
+            epsilon,
+            delta: Some(delta),
+        }
     }
 
     /// Calculate the bit flip probability for randomized response
@@ -124,8 +130,8 @@ impl DpHypervector {
             }
         }
 
-        let noisy_vector = Hypervector::from_bytes(noisy_data)
-            .expect("Noisy vector should have valid dimensions");
+        let noisy_vector =
+            Hypervector::from_bytes(noisy_data).expect("Noisy vector should have valid dimensions");
 
         DpHypervector {
             vector: noisy_vector,
@@ -237,9 +243,15 @@ pub enum PrivacyError {
 impl std::fmt::Display for PrivacyError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            PrivacyError::BudgetExhausted { requested, remaining } => {
-                write!(f, "Privacy budget exhausted: requested {:.2}, only {:.2} remaining",
-                       requested, remaining)
+            PrivacyError::BudgetExhausted {
+                requested,
+                remaining,
+            } => {
+                write!(
+                    f,
+                    "Privacy budget exhausted: requested {:.2}, only {:.2} remaining",
+                    requested, remaining
+                )
             }
             PrivacyError::InvalidEpsilon(e) => {
                 write!(f, "Invalid epsilon value: {}", e)
@@ -325,8 +337,15 @@ mod tests {
         let similarity = hv.normalized_cosine_similarity(&dp_hv.vector);
 
         // With ε=0.1, we expect ~47% bit flips, so similarity should be low
-        assert!(similarity < 0.7, "Expected significant noise, got similarity {}", similarity);
-        assert!(similarity > 0.3, "Noise shouldn't be complete randomization");
+        assert!(
+            similarity < 0.7,
+            "Expected significant noise, got similarity {}",
+            similarity
+        );
+        assert!(
+            similarity > 0.3,
+            "Noise shouldn't be complete randomization"
+        );
     }
 
     #[test]

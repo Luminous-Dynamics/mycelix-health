@@ -6,14 +6,13 @@
 //! Tests combining multiple modules: DP + star alleles, VCF + encoding, etc.
 
 use hdc_core::{
-    DnaEncoder, Hypervector, Seed, SnpEncoder,
-    StarAlleleEncoder, MetabolizerPhenotype,
-    VcfReader, VcfEncoder, Genotype,
+    DnaEncoder, Genotype, Hypervector, MetabolizerPhenotype, Seed, SnpEncoder, StarAlleleEncoder,
+    VcfEncoder, VcfReader,
 };
 use std::io::Cursor;
 
 #[cfg(feature = "dp")]
-use hdc_core::{DpParams, DpHypervector, PrivacyBudget};
+use hdc_core::{DpHypervector, DpParams, PrivacyBudget};
 
 // =============================================================================
 // DP + Star Alleles Integration: Private Pharmacogenomics
@@ -31,11 +30,13 @@ mod dp_pharmacogenomics {
         let encoder = StarAlleleEncoder::new(seed);
 
         // Create a patient profile with multiple genes
-        let profile = encoder.encode_profile(&[
-            ("CYP2D6", "*1", "*4"),   // Intermediate metabolizer
-            ("CYP2C19", "*1", "*1"),  // Normal metabolizer
-            ("CYP2C9", "*2", "*3"),   // Poor metabolizer
-        ]).unwrap();
+        let profile = encoder
+            .encode_profile(&[
+                ("CYP2D6", "*1", "*4"),  // Intermediate metabolizer
+                ("CYP2C19", "*1", "*1"), // Normal metabolizer
+                ("CYP2C9", "*2", "*3"),  // Poor metabolizer
+            ])
+            .unwrap();
 
         // Apply differential privacy to the profile vector
         let dp_params = DpParams::pure(2.0); // Moderate privacy
@@ -48,8 +49,14 @@ mod dp_pharmacogenomics {
         );
 
         // The DP vector should be similar but not identical
-        let raw_sim = profile.profile_vector.normalized_cosine_similarity(&dp_profile.vector);
-        assert!(raw_sim > 0.5, "DP profile should retain structure: {}", raw_sim);
+        let raw_sim = profile
+            .profile_vector
+            .normalized_cosine_similarity(&dp_profile.vector);
+        assert!(
+            raw_sim > 0.5,
+            "DP profile should retain structure: {}",
+            raw_sim
+        );
         assert!(raw_sim < 1.0, "DP profile should have noise added");
 
         println!("DP PGx Profile - Raw similarity: {:.3}", raw_sim);
@@ -62,21 +69,18 @@ mod dp_pharmacogenomics {
         let encoder = StarAlleleEncoder::new(seed);
 
         // Two patients with similar profiles
-        let patient1 = encoder.encode_profile(&[
-            ("CYP2D6", "*1", "*1"),
-            ("CYP2C19", "*1", "*2"),
-        ]).unwrap();
+        let patient1 = encoder
+            .encode_profile(&[("CYP2D6", "*1", "*1"), ("CYP2C19", "*1", "*2")])
+            .unwrap();
 
-        let patient2 = encoder.encode_profile(&[
-            ("CYP2D6", "*1", "*1"),
-            ("CYP2C19", "*1", "*2"),
-        ]).unwrap();
+        let patient2 = encoder
+            .encode_profile(&[("CYP2D6", "*1", "*1"), ("CYP2C19", "*1", "*2")])
+            .unwrap();
 
         // Patient with different profile
-        let patient3 = encoder.encode_profile(&[
-            ("CYP2D6", "*4", "*4"),
-            ("CYP2C19", "*17", "*17"),
-        ]).unwrap();
+        let patient3 = encoder
+            .encode_profile(&[("CYP2D6", "*4", "*4"), ("CYP2C19", "*17", "*17")])
+            .unwrap();
 
         // Apply DP to all profiles
         let dp_params = DpParams::pure(3.0); // Moderate-high privacy
@@ -88,13 +92,19 @@ mod dp_pharmacogenomics {
         let sim_similar = dp1.similarity(&dp2);
         let sim_different = dp1.similarity(&dp3);
 
-        println!("DP matching - Similar: {:.3}, Different: {:.3}", sim_similar, sim_different);
+        println!(
+            "DP matching - Similar: {:.3}, Different: {:.3}",
+            sim_similar, sim_different
+        );
 
         // The corrected similarity should better reflect true relationships
         let corrected_similar = dp1.corrected_similarity(&dp2);
         let corrected_different = dp1.corrected_similarity(&dp3);
 
-        println!("Corrected - Similar: {:.3}, Different: {:.3}", corrected_similar, corrected_different);
+        println!(
+            "Corrected - Similar: {:.3}, Different: {:.3}",
+            corrected_similar, corrected_different
+        );
 
         // Corrected similar should be higher than corrected different
         assert!(
@@ -131,9 +141,7 @@ mod dp_pharmacogenomics {
         let seed = Seed::from_string("privacy-levels");
         let encoder = StarAlleleEncoder::new(seed);
 
-        let profile = encoder.encode_profile(&[
-            ("CYP2D6", "*1", "*4"),
-        ]).unwrap();
+        let profile = encoder.encode_profile(&[("CYP2D6", "*1", "*4")]).unwrap();
 
         // High privacy (ε=0.5) - more noise
         let high_privacy = DpParams::pure(0.5);
@@ -143,13 +151,23 @@ mod dp_pharmacogenomics {
         let low_privacy = DpParams::pure(5.0);
         let dp_low = DpHypervector::from_vector(&profile.profile_vector, low_privacy, Some(1));
 
-        let sim_high = profile.profile_vector.normalized_cosine_similarity(&dp_high.vector);
-        let sim_low = profile.profile_vector.normalized_cosine_similarity(&dp_low.vector);
+        let sim_high = profile
+            .profile_vector
+            .normalized_cosine_similarity(&dp_high.vector);
+        let sim_low = profile
+            .profile_vector
+            .normalized_cosine_similarity(&dp_low.vector);
 
-        println!("Privacy levels - High ε=0.5: {:.3}, Low ε=5.0: {:.3}", sim_high, sim_low);
+        println!(
+            "Privacy levels - High ε=0.5: {:.3}, Low ε=5.0: {:.3}",
+            sim_high, sim_low
+        );
 
         // Lower privacy (higher ε) should preserve more similarity
-        assert!(sim_low > sim_high, "Lower privacy should preserve more utility");
+        assert!(
+            sim_low > sim_high,
+            "Lower privacy should preserve more utility"
+        );
     }
 }
 
@@ -181,9 +199,16 @@ mod dna_pipeline {
 
         // Different species should be distinguishable
         let sim_diff = enc_a.vector.normalized_cosine_similarity(&enc_b.vector);
-        assert!(sim_diff < 0.9, "Different species should differ: {}", sim_diff);
+        assert!(
+            sim_diff < 0.9,
+            "Different species should differ: {}",
+            sim_diff
+        );
 
-        println!("DNA Pipeline - Same: {:.3}, Different: {:.3}", sim_same, sim_diff);
+        println!(
+            "DNA Pipeline - Same: {:.3}, Different: {:.3}",
+            sim_same, sim_diff
+        );
     }
 
     /// Test DNA encoding with DP protection
@@ -201,11 +226,16 @@ mod dna_pipeline {
         let dp_encoded = DpHypervector::from_vector(&encoded.vector, dp_params, Some(42));
 
         // Should maintain structure
-        let sim = encoded.vector.normalized_cosine_similarity(&dp_encoded.vector);
+        let sim = encoded
+            .vector
+            .normalized_cosine_similarity(&dp_encoded.vector);
         assert!(sim > 0.6, "DP DNA should retain structure: {}", sim);
 
-        println!("DP DNA - Similarity: {:.3}, Expected retention: {:.3}",
-                 sim, dp_params.expected_similarity_retention());
+        println!(
+            "DP DNA - Similarity: {:.3}, Expected retention: {:.3}",
+            sim,
+            dp_params.expected_similarity_retention()
+        );
     }
 }
 
@@ -226,9 +256,9 @@ mod snp_pgx_integration {
 
         // SNP panel that might influence a star allele
         let snp_panel = vec![
-            ("rs3892097", 'A'),  // CYP2D6*4 defining variant
-            ("rs1065852", 'G'),  // CYP2D6 variant
-            ("rs16947", 'C'),    // CYP2D6*2 defining variant
+            ("rs3892097", 'A'), // CYP2D6*4 defining variant
+            ("rs1065852", 'G'), // CYP2D6 variant
+            ("rs16947", 'C'),   // CYP2D6*2 defining variant
         ];
 
         let snp_vector = snp_encoder.encode_panel(&snp_panel).unwrap();
@@ -237,7 +267,10 @@ mod snp_pgx_integration {
         let diplotype = star_encoder.encode_diplotype("CYP2D6", "*2", "*4").unwrap();
 
         // Both should be valid hypervectors
-        assert_eq!(snp_vector.as_bytes().len(), diplotype.vector.as_bytes().len());
+        assert_eq!(
+            snp_vector.as_bytes().len(),
+            diplotype.vector.as_bytes().len()
+        );
 
         // The encodings are independent but both represent CYP2D6 information
         let sim = snp_vector.normalized_cosine_similarity(&diplotype.vector);
@@ -259,28 +292,22 @@ mod snp_pgx_integration {
 
         // SNP panel (disease risk, traits)
         let snp_encoder = SnpEncoder::new(seed);
-        let snps = snp_encoder.encode_panel(&[
-            ("rs1234", 'A'),
-            ("rs5678", 'G'),
-        ]).unwrap();
+        let snps = snp_encoder
+            .encode_panel(&[("rs1234", 'A'), ("rs5678", 'G')])
+            .unwrap();
 
         // Pharmacogenomics (drug response)
         let pgx_encoder = StarAlleleEncoder::new(seed);
-        let pgx = pgx_encoder.encode_profile(&[
-            ("CYP2D6", "*1", "*1"),
-            ("CYP2C19", "*1", "*2"),
-        ]).unwrap();
+        let pgx = pgx_encoder
+            .encode_profile(&[("CYP2D6", "*1", "*1"), ("CYP2C19", "*1", "*2")])
+            .unwrap();
 
         // All vectors should have same dimensions
         assert_eq!(barcode.vector.as_bytes().len(), snps.as_bytes().len());
         assert_eq!(snps.as_bytes().len(), pgx.profile_vector.as_bytes().len());
 
         // Create a combined profile by bundling
-        let combined = hdc_core::bundle(&[
-            &barcode.vector,
-            &snps,
-            &pgx.profile_vector,
-        ]);
+        let combined = hdc_core::bundle(&[&barcode.vector, &snps, &pgx.profile_vector]);
 
         // Combined should have same dimensions
         assert_eq!(combined.as_bytes().len(), barcode.vector.as_bytes().len());
@@ -290,8 +317,10 @@ mod snp_pgx_integration {
         let sim_snp = combined.normalized_cosine_similarity(&snps);
         let sim_pgx = combined.normalized_cosine_similarity(&pgx.profile_vector);
 
-        println!("Combined profile similarities - DNA: {:.3}, SNP: {:.3}, PGx: {:.3}",
-                 sim_dna, sim_snp, sim_pgx);
+        println!(
+            "Combined profile similarities - DNA: {:.3}, SNP: {:.3}, PGx: {:.3}",
+            sim_dna, sim_snp, sim_pgx
+        );
 
         // Each component should contribute to the combined vector
         assert!(sim_dna > 0.3 && sim_dna < 0.9);
@@ -314,9 +343,11 @@ mod clinical_scenarios {
         let encoder = StarAlleleEncoder::new(seed);
 
         // Patient presents for codeine prescription
-        let patient = encoder.encode_profile(&[
-            ("CYP2D6", "*4", "*4"),  // Poor metabolizer!
-        ]).unwrap();
+        let patient = encoder
+            .encode_profile(&[
+                ("CYP2D6", "*4", "*4"), // Poor metabolizer!
+            ])
+            .unwrap();
 
         // Check drug interaction
         let prediction = encoder.predict_drug_interaction(&patient, "codeine");
@@ -326,8 +357,10 @@ mod clinical_scenarios {
         assert_eq!(pred.phenotype, MetabolizerPhenotype::Poor);
 
         // Should recommend avoiding codeine
-        println!("Clinical recommendation for codeine: {} - {}",
-                 pred.phenotype, pred.recommendation);
+        println!(
+            "Clinical recommendation for codeine: {} - {}",
+            pred.phenotype, pred.recommendation
+        );
     }
 
     /// Test multi-drug interaction screening
@@ -337,12 +370,14 @@ mod clinical_scenarios {
         let encoder = StarAlleleEncoder::new(seed);
 
         // Comprehensive pharmacogenomic profile
-        let patient = encoder.encode_profile(&[
-            ("CYP2D6", "*1", "*4"),   // Intermediate
-            ("CYP2C19", "*2", "*2"),  // Poor
-            ("CYP2C9", "*1", "*1"),   // Normal
-            ("TPMT", "*1", "*3A"),    // Intermediate
-        ]).unwrap();
+        let patient = encoder
+            .encode_profile(&[
+                ("CYP2D6", "*1", "*4"),  // Intermediate
+                ("CYP2C19", "*2", "*2"), // Poor
+                ("CYP2C9", "*1", "*1"),  // Normal
+                ("TPMT", "*1", "*3A"),   // Intermediate
+            ])
+            .unwrap();
 
         // Screen multiple drugs
         let drugs = ["codeine", "clopidogrel", "warfarin", "azathioprine"];
@@ -355,10 +390,14 @@ mod clinical_scenarios {
         }
 
         // Verify specific interactions
-        let codeine_pred = encoder.predict_drug_interaction(&patient, "codeine").unwrap();
+        let codeine_pred = encoder
+            .predict_drug_interaction(&patient, "codeine")
+            .unwrap();
         assert_eq!(codeine_pred.phenotype, MetabolizerPhenotype::Intermediate);
 
-        let clopidogrel_pred = encoder.predict_drug_interaction(&patient, "clopidogrel").unwrap();
+        let clopidogrel_pred = encoder
+            .predict_drug_interaction(&patient, "clopidogrel")
+            .unwrap();
         assert_eq!(clopidogrel_pred.phenotype, MetabolizerPhenotype::Poor);
     }
 
@@ -368,11 +407,13 @@ mod clinical_scenarios {
         let seed = Seed::from_string("alert");
         let encoder = StarAlleleEncoder::new(seed);
 
-        let patient = encoder.encode_profile(&[
-            ("CYP2D6", "*4", "*5"),   // Poor (0+0)
-            ("CYP2C19", "*1", "*1"),  // Normal
-            ("DPYD", "*2A", "*2A"),   // Poor - CRITICAL for fluorouracil!
-        ]).unwrap();
+        let patient = encoder
+            .encode_profile(&[
+                ("CYP2D6", "*4", "*5"),  // Poor (0+0)
+                ("CYP2C19", "*1", "*1"), // Normal
+                ("DPYD", "*2A", "*2A"),  // Poor - CRITICAL for fluorouracil!
+            ])
+            .unwrap();
 
         let poor_genes = patient.get_poor_metabolizer_genes();
 
@@ -383,8 +424,10 @@ mod clinical_scenarios {
         assert!(!poor_genes.contains(&"CYP2C19"));
 
         // DPYD poor metabolizer is critical - fluorouracil can be fatal
-        assert!(poor_genes.contains(&"DPYD"),
-                "DPYD poor metabolizer status is critical for fluorouracil safety!");
+        assert!(
+            poor_genes.contains(&"DPYD"),
+            "DPYD poor metabolizer status is critical for fluorouracil safety!"
+        );
     }
 }
 
@@ -443,10 +486,17 @@ chr7	500	rs12248560	C	T	45	PASS	DP=70	GT	1/1
 
         // Encode to hypervector
         let encoded = encoder.encode_variants(&variants).unwrap();
-        assert_eq!(encoded.as_bytes().len(), hdc_core::HYPERVECTOR_BYTES, "Should be HYPERVECTOR_DIM bits");
+        assert_eq!(
+            encoded.as_bytes().len(),
+            hdc_core::HYPERVECTOR_BYTES,
+            "Should be HYPERVECTOR_DIM bits"
+        );
 
-        println!("VCF Pipeline: Parsed {} variants, encoded to {} bytes",
-                 variants.len(), encoded.as_bytes().len());
+        println!(
+            "VCF Pipeline: Parsed {} variants, encoded to {} bytes",
+            variants.len(),
+            encoded.as_bytes().len()
+        );
     }
 
     /// Test VCF similarity between identical patients
@@ -467,7 +517,11 @@ chr7	500	rs12248560	C	T	45	PASS	DP=70	GT	1/1
 
         let similarity = enc1.normalized_cosine_similarity(&enc2);
 
-        assert!(similarity > 0.99, "Identical VCF should have sim > 0.99, got {}", similarity);
+        assert!(
+            similarity > 0.99,
+            "Identical VCF should have sim > 0.99, got {}",
+            similarity
+        );
         println!("Identical patients similarity: {:.4}", similarity);
     }
 
@@ -488,7 +542,11 @@ chr7	500	rs12248560	C	T	45	PASS	DP=70	GT	1/1
 
         let similarity = enc1.normalized_cosine_similarity(&enc3);
 
-        assert!(similarity < 0.9, "Different genotypes should have sim < 0.9, got {}", similarity);
+        assert!(
+            similarity < 0.9,
+            "Different genotypes should have sim < 0.9, got {}",
+            similarity
+        );
         println!("Different patients similarity: {:.4}", similarity);
     }
 
@@ -511,11 +569,18 @@ chr7	500	rs12248560	C	T	45	PASS	DP=70	GT	1/1
         // DP vector should be similar but not identical
         let similarity = encoded.normalized_cosine_similarity(&dp_encoded.vector);
 
-        assert!(similarity > 0.6, "DP should retain structure: {}", similarity);
+        assert!(
+            similarity > 0.6,
+            "DP should retain structure: {}",
+            similarity
+        );
         assert!(similarity < 1.0, "DP should add noise");
 
-        println!("VCF + DP Pipeline: Raw similarity = {:.4}, Expected retention = {:.4}",
-                 similarity, dp_params.expected_similarity_retention());
+        println!(
+            "VCF + DP Pipeline: Raw similarity = {:.4}, Expected retention = {:.4}",
+            similarity,
+            dp_params.expected_similarity_retention()
+        );
     }
 
     /// Test privacy-preserving patient matching via VCF
@@ -560,8 +625,10 @@ chr7	500	rs12248560	C	T	45	PASS	DP=70	GT	1/1
         println!("  Corrected different: {:.4}", corr_different);
 
         // Similar patients should have higher corrected similarity
-        assert!(corr_similar > corr_different,
-                "Similar patients should have higher corrected similarity");
+        assert!(
+            corr_similar > corr_different,
+            "Similar patients should have higher corrected similarity"
+        );
     }
 
     /// Full end-to-end test: VCF → Encoding → DP → Similarity Index
@@ -664,8 +731,15 @@ mod stress_tests {
         let encoded = encoder.encode_variants(&variants).unwrap();
         let elapsed = start.elapsed();
 
-        println!("Stress test: Encoded {} variants in {:?}", variants.len(), elapsed);
-        assert!(elapsed.as_millis() < 2000, "Should encode 1000 variants in < 2 seconds");
+        println!(
+            "Stress test: Encoded {} variants in {:?}",
+            variants.len(),
+            elapsed
+        );
+        assert!(
+            elapsed.as_millis() < 2000,
+            "Should encode 1000 variants in < 2 seconds"
+        );
         assert_eq!(encoded.as_bytes().len(), hdc_core::HYPERVECTOR_BYTES);
     }
 
@@ -683,7 +757,7 @@ mod stress_tests {
         let mut comparisons = 0;
 
         for i in 0..vectors.len() {
-            for j in i+1..vectors.len() {
+            for j in i + 1..vectors.len() {
                 let _ = vectors[i].normalized_cosine_similarity(&vectors[j]);
                 comparisons += 1;
             }
@@ -692,10 +766,15 @@ mod stress_tests {
         let elapsed = start.elapsed();
         let ops_per_sec = comparisons as f64 / elapsed.as_secs_f64();
 
-        println!("Similarity performance: {} comparisons in {:?} ({:.0} ops/sec)",
-                 comparisons, elapsed, ops_per_sec);
+        println!(
+            "Similarity performance: {} comparisons in {:?} ({:.0} ops/sec)",
+            comparisons, elapsed, ops_per_sec
+        );
 
         // Adjusted for 16,384-bit vectors (larger than original 10,000)
-        assert!(ops_per_sec > 60_000.0, "Should achieve > 60K comparisons/sec");
+        assert!(
+            ops_per_sec > 60_000.0,
+            "Should achieve > 60K comparisons/sec"
+        );
     }
 }

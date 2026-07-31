@@ -145,9 +145,15 @@ impl SimilarityWithConfidence {
         // Approximation using error function
         let t = 1.0 / (1.0 + 0.2316419 * z.abs());
         let d = 0.3989423 * (-z * z / 2.0).exp();
-        let p = d * t * (0.3193815 + t * (-0.3565638 + t * (1.781478 + t * (-1.821256 + t * 1.330274))));
+        let p = d
+            * t
+            * (0.3193815 + t * (-0.3565638 + t * (1.781478 + t * (-1.821256 + t * 1.330274))));
 
-        if z > 0.0 { p } else { 1.0 - p }
+        if z > 0.0 {
+            p
+        } else {
+            1.0 - p
+        }
     }
 }
 
@@ -180,21 +186,27 @@ impl BatchSimilarityStats {
 
         let mean = similarities.iter().sum::<f64>() / similarities.len() as f64;
 
-        let variance = similarities.iter()
-            .map(|s| (s - mean).powi(2))
-            .sum::<f64>() / similarities.len() as f64;
+        let variance = similarities.iter().map(|s| (s - mean).powi(2)).sum::<f64>()
+            / similarities.len() as f64;
         let std_dev = variance.sqrt();
 
-        let max = similarities.iter().cloned().fold(f64::NEG_INFINITY, f64::max);
+        let max = similarities
+            .iter()
+            .cloned()
+            .fold(f64::NEG_INFINITY, f64::max);
         let min = similarities.iter().cloned().fold(f64::INFINITY, f64::min);
 
-        let high_confidence_count = comparisons.iter()
-            .filter(|c| matches!(c.confidence, MatchConfidence::High | MatchConfidence::VeryHigh))
+        let high_confidence_count = comparisons
+            .iter()
+            .filter(|c| {
+                matches!(
+                    c.confidence,
+                    MatchConfidence::High | MatchConfidence::VeryHigh
+                )
+            })
             .count();
 
-        let clinical_grade_count = comparisons.iter()
-            .filter(|c| c.is_clinical_grade())
-            .count();
+        let clinical_grade_count = comparisons.iter().filter(|c| c.is_clinical_grade()).count();
 
         BatchSimilarityStats {
             comparisons,
@@ -222,11 +234,23 @@ mod tests {
 
     #[test]
     fn test_confidence_from_similarity() {
-        assert_eq!(MatchConfidence::from_similarity(0.90), MatchConfidence::VeryHigh);
-        assert_eq!(MatchConfidence::from_similarity(0.75), MatchConfidence::High);
-        assert_eq!(MatchConfidence::from_similarity(0.60), MatchConfidence::Moderate);
+        assert_eq!(
+            MatchConfidence::from_similarity(0.90),
+            MatchConfidence::VeryHigh
+        );
+        assert_eq!(
+            MatchConfidence::from_similarity(0.75),
+            MatchConfidence::High
+        );
+        assert_eq!(
+            MatchConfidence::from_similarity(0.60),
+            MatchConfidence::Moderate
+        );
         assert_eq!(MatchConfidence::from_similarity(0.53), MatchConfidence::Low);
-        assert_eq!(MatchConfidence::from_similarity(0.50), MatchConfidence::VeryLow);
+        assert_eq!(
+            MatchConfidence::from_similarity(0.50),
+            MatchConfidence::VeryLow
+        );
     }
 
     #[test]

@@ -3,7 +3,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Commercial licensing: see COMMERCIAL_LICENSE.md at repository root
 //! Prescription Management Integrity Zome
-//! 
+//!
 //! Defines entry types for prescriptions, medication orders,
 //! refills, and pharmacy interactions with RxNorm alignment.
 

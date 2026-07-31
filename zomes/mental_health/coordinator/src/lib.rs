@@ -9,17 +9,10 @@
 use hdk::prelude::*;
 use mental_health_integrity::*;
 use mycelix_health_shared::{
-    require_authorization,
-    log_data_access,
-    DataCategory,
-    Permission,
-    validation::{
-        validate_screening_responses,
-        validate_mood_entry_scores,
-        validate_sleep_hours,
-    },
-    batch::{links_to_records_paginated, links_to_recent_records},
-    PaginationInput,
+    batch::{links_to_recent_records, links_to_records_paginated},
+    log_data_access, require_authorization,
+    validation::{validate_mood_entry_scores, validate_screening_responses, validate_sleep_hours},
+    DataCategory, PaginationInput, Permission,
 };
 
 /// Input for creating a screening
@@ -57,8 +50,16 @@ fn interpret_score(instrument: &MentalHealthInstrument, score: u32) -> (Severity
         }
         MentalHealthInstrument::PHQ2 => {
             let follow_up = score >= 3;
-            let severity = if score >= 3 { Severity::Moderate } else { Severity::None };
-            (severity, format!("PHQ-2 score: {} (positive if >= 3)", score), follow_up)
+            let severity = if score >= 3 {
+                Severity::Moderate
+            } else {
+                Severity::None
+            };
+            (
+                severity,
+                format!("PHQ-2 score: {} (positive if >= 3)", score),
+                follow_up,
+            )
         }
         MentalHealthInstrument::AUDIT => {
             let (severity, interpretation) = match score {
@@ -75,8 +76,14 @@ fn interpret_score(instrument: &MentalHealthInstrument, score: u32) -> (Severity
             let (severity, interpretation) = match score {
                 0 => (Severity::None, "No problems reported"),
                 1..=2 => (Severity::Minimal, "Low level of drug-related problems"),
-                3..=5 => (Severity::Moderate, "Moderate level of drug-related problems"),
-                6..=8 => (Severity::ModeratelySevere, "Substantial level of drug-related problems"),
+                3..=5 => (
+                    Severity::Moderate,
+                    "Moderate level of drug-related problems",
+                ),
+                6..=8 => (
+                    Severity::ModeratelySevere,
+                    "Substantial level of drug-related problems",
+                ),
                 _ => (Severity::Severe, "Severe level of drug-related problems"),
             };
             let follow_up = score >= 3;
@@ -86,7 +93,10 @@ fn interpret_score(instrument: &MentalHealthInstrument, score: u32) -> (Severity
         MentalHealthInstrument::CAGE => {
             let (severity, interpretation) = match score {
                 0..=1 => (Severity::None, "Low probability of alcohol use disorder"),
-                2..=3 => (Severity::Moderate, "Clinically significant: further assessment recommended"),
+                2..=3 => (
+                    Severity::Moderate,
+                    "Clinically significant: further assessment recommended",
+                ),
                 _ => (Severity::Severe, "High probability of alcohol use disorder"),
             };
             let follow_up = score >= 2;
@@ -145,8 +155,7 @@ pub fn create_screening(input: CreateScreeningInput) -> ExternResult<Record> {
     let caller = agent_info()?.agent_initial_pubkey;
 
     let raw_score: u32 = input.responses.iter().map(|(_, s)| *s as u32).sum();
-    let (severity, interpretation, follow_up) =
-        interpret_score(&input.instrument, raw_score);
+    let (severity, interpretation, follow_up) = interpret_score(&input.instrument, raw_score);
     let crisis_indicators = check_crisis_indicators(&input.instrument, &input.responses);
 
     let screening = MentalHealthScreening {
@@ -192,8 +201,9 @@ pub fn create_screening(input: CreateScreeningInput) -> ExternResult<Record> {
         })?;
     }
 
-    get(action_hash, GetOptions::default())?
-        .ok_or(wasm_error!(WasmErrorInner::Guest("Failed to get screening".to_string())))
+    get(action_hash, GetOptions::default())?.ok_or(wasm_error!(WasmErrorInner::Guest(
+        "Failed to get screening".to_string()
+    )))
 }
 
 /// Crisis alert signal
@@ -247,7 +257,9 @@ pub fn get_patient_screenings(patient_hash: ActionHash) -> ExternResult<Vec<Reco
 
 /// Get patient's mental health screenings with pagination
 #[hdk_extern]
-pub fn get_patient_screenings_paginated(input: GetScreeningsInput) -> ExternResult<mycelix_health_shared::PaginatedResult<Record>> {
+pub fn get_patient_screenings_paginated(
+    input: GetScreeningsInput,
+) -> ExternResult<mycelix_health_shared::PaginatedResult<Record>> {
     let auth = require_authorization(
         input.patient_hash.clone(),
         DataCategory::MentalHealth,
@@ -350,8 +362,9 @@ pub fn create_mood_entry(input: CreateMoodEntryInput) -> ExternResult<Record> {
         None,
     )?;
 
-    get(action_hash, GetOptions::default())?
-        .ok_or(wasm_error!(WasmErrorInner::Guest("Failed to get mood entry".to_string())))
+    get(action_hash, GetOptions::default())?.ok_or(wasm_error!(WasmErrorInner::Guest(
+        "Failed to get mood entry".to_string()
+    )))
 }
 
 /// Input for paginated mood entry queries
@@ -399,7 +412,9 @@ pub fn get_mood_entries(patient_hash: ActionHash) -> ExternResult<Vec<Record>> {
 
 /// Get patient's mood entries with pagination
 #[hdk_extern]
-pub fn get_mood_entries_paginated(input: GetMoodEntriesInput) -> ExternResult<mycelix_health_shared::PaginatedResult<Record>> {
+pub fn get_mood_entries_paginated(
+    input: GetMoodEntriesInput,
+) -> ExternResult<mycelix_health_shared::PaginatedResult<Record>> {
     let auth = require_authorization(
         input.patient_hash.clone(),
         DataCategory::MentalHealth,
@@ -536,8 +551,9 @@ pub fn create_safety_plan(input: CreateSafetyPlanInput) -> ExternResult<Record> 
         None,
     )?;
 
-    get(action_hash, GetOptions::default())?
-        .ok_or(wasm_error!(WasmErrorInner::Guest("Failed to get safety plan".to_string())))
+    get(action_hash, GetOptions::default())?.ok_or(wasm_error!(WasmErrorInner::Guest(
+        "Failed to get safety plan".to_string()
+    )))
 }
 
 /// Get patient's current safety plan
@@ -550,7 +566,8 @@ pub fn get_safety_plan(patient_hash: ActionHash) -> ExternResult<Option<Record>>
         false,
     )?;
     let links = get_links(
-        LinkQuery::try_new(patient_hash.clone(), LinkTypes::PatientToSafetyPlan)?, GetStrategy::default(),
+        LinkQuery::try_new(patient_hash.clone(), LinkTypes::PatientToSafetyPlan)?,
+        GetStrategy::default(),
     )?;
 
     // Get most recent
@@ -640,7 +657,10 @@ pub fn report_crisis_event(input: ReportCrisisEventInput) -> ExternResult<Record
     )?;
 
     // Emit signal for high-risk events
-    if matches!(input.crisis_level, CrisisLevel::HighRisk | CrisisLevel::Imminent) {
+    if matches!(
+        input.crisis_level,
+        CrisisLevel::HighRisk | CrisisLevel::Imminent
+    ) {
         emit_signal(CrisisSignal {
             patient_hash,
             screening_hash: action_hash.clone(),
@@ -648,8 +668,9 @@ pub fn report_crisis_event(input: ReportCrisisEventInput) -> ExternResult<Record
         })?;
     }
 
-    get(action_hash, GetOptions::default())?
-        .ok_or(wasm_error!(WasmErrorInner::Guest("Failed to get crisis event".to_string())))
+    get(action_hash, GetOptions::default())?.ok_or(wasm_error!(WasmErrorInner::Guest(
+        "Failed to get crisis event".to_string()
+    )))
 }
 
 /// Get patient's crisis history
@@ -662,7 +683,8 @@ pub fn get_crisis_history(patient_hash: ActionHash) -> ExternResult<Vec<Record>>
         false,
     )?;
     let links = get_links(
-        LinkQuery::try_new(patient_hash.clone(), LinkTypes::PatientToCrisisEvents)?, GetStrategy::default(),
+        LinkQuery::try_new(patient_hash.clone(), LinkTypes::PatientToCrisisEvents)?,
+        GetStrategy::default(),
     )?;
 
     let mut records = Vec::new();
@@ -750,21 +772,25 @@ pub fn create_part2_consent(input: CreatePart2ConsentInput) -> ExternResult<Reco
         None,
     )?;
 
-    get(action_hash, GetOptions::default())?
-        .ok_or(wasm_error!(WasmErrorInner::Guest("Failed to get Part 2 consent".to_string())))
+    get(action_hash, GetOptions::default())?.ok_or(wasm_error!(WasmErrorInner::Guest(
+        "Failed to get Part 2 consent".to_string()
+    )))
 }
 
 /// Revoke a Part 2 consent
 #[hdk_extern]
 pub fn revoke_part2_consent(consent_hash: ActionHash) -> ExternResult<Record> {
-    let record = get(consent_hash.clone(), GetOptions::default())?
-        .ok_or(wasm_error!(WasmErrorInner::Guest("Consent not found".to_string())))?;
+    let record = get(consent_hash.clone(), GetOptions::default())?.ok_or(wasm_error!(
+        WasmErrorInner::Guest("Consent not found".to_string())
+    ))?;
 
     let mut consent: Part2Consent = record
         .entry()
         .to_app_option()
         .map_err(|e| wasm_error!(WasmErrorInner::Guest(e.to_string())))?
-        .ok_or(wasm_error!(WasmErrorInner::Guest("Invalid consent".to_string())))?;
+        .ok_or(wasm_error!(WasmErrorInner::Guest(
+            "Invalid consent".to_string()
+        )))?;
 
     let auth = require_authorization(
         consent.patient_hash.clone(),
@@ -787,8 +813,9 @@ pub fn revoke_part2_consent(consent_hash: ActionHash) -> ExternResult<Record> {
         None,
     )?;
 
-    get(action_hash, GetOptions::default())?
-        .ok_or(wasm_error!(WasmErrorInner::Guest("Failed to get updated consent".to_string())))
+    get(action_hash, GetOptions::default())?.ok_or(wasm_error!(WasmErrorInner::Guest(
+        "Failed to get updated consent".to_string()
+    )))
 }
 
 /// Get patient's Part 2 consents
@@ -801,7 +828,8 @@ pub fn get_part2_consents(patient_hash: ActionHash) -> ExternResult<Vec<Record>>
         false,
     )?;
     let links = get_links(
-        LinkQuery::try_new(patient_hash.clone(), LinkTypes::PatientToPart2Consents)?, GetStrategy::default(),
+        LinkQuery::try_new(patient_hash.clone(), LinkTypes::PatientToPart2Consents)?,
+        GetStrategy::default(),
     )?;
 
     let mut records = Vec::new();
@@ -895,8 +923,9 @@ pub fn create_therapy_note(input: CreateTherapyNoteInput) -> ExternResult<Record
         None,
     )?;
 
-    get(action_hash, GetOptions::default())?
-        .ok_or(wasm_error!(WasmErrorInner::Guest("Failed to get therapy note".to_string())))
+    get(action_hash, GetOptions::default())?.ok_or(wasm_error!(WasmErrorInner::Guest(
+        "Failed to get therapy note".to_string()
+    )))
 }
 
 /// Get therapy notes (provider access only, respects psychotherapy note protection)
@@ -909,7 +938,8 @@ pub fn get_therapy_notes(patient_hash: ActionHash) -> ExternResult<Vec<Record>> 
         false,
     )?;
     let links = get_links(
-        LinkQuery::try_new(patient_hash.clone(), LinkTypes::PatientToTherapyNotes)?, GetStrategy::default(),
+        LinkQuery::try_new(patient_hash.clone(), LinkTypes::PatientToTherapyNotes)?,
+        GetStrategy::default(),
     )?;
 
     let mut records = Vec::new();
@@ -1003,8 +1033,9 @@ pub fn create_treatment_plan(input: CreateTreatmentPlanInput) -> ExternResult<Re
         None,
     )?;
 
-    get(action_hash, GetOptions::default())?
-        .ok_or(wasm_error!(WasmErrorInner::Guest("Failed to get treatment plan".to_string())))
+    get(action_hash, GetOptions::default())?.ok_or(wasm_error!(WasmErrorInner::Guest(
+        "Failed to get treatment plan".to_string()
+    )))
 }
 
 /// Get all treatment plans for a patient
@@ -1017,7 +1048,8 @@ pub fn get_treatment_plans(patient_hash: ActionHash) -> ExternResult<Vec<Record>
         false,
     )?;
     let links = get_links(
-        LinkQuery::try_new(patient_hash.clone(), LinkTypes::PatientToTreatmentPlans)?, GetStrategy::default(),
+        LinkQuery::try_new(patient_hash.clone(), LinkTypes::PatientToTreatmentPlans)?,
+        GetStrategy::default(),
     )?;
 
     let mut records = Vec::new();
@@ -1049,7 +1081,12 @@ pub fn get_active_treatment_plan(patient_hash: ActionHash) -> ExternResult<Optio
     let plans = get_treatment_plans(patient_hash)?;
 
     for record in plans {
-        if let Some(plan) = record.entry().to_app_option::<MentalHealthTreatmentPlan>().ok().flatten() {
+        if let Some(plan) = record
+            .entry()
+            .to_app_option::<MentalHealthTreatmentPlan>()
+            .ok()
+            .flatten()
+        {
             if plan.status == "Active" {
                 return Ok(Some(record));
             }
@@ -1071,14 +1108,17 @@ pub struct UpdateTreatmentGoalInput {
 /// Update progress on a treatment plan goal
 #[hdk_extern]
 pub fn update_treatment_goal(input: UpdateTreatmentGoalInput) -> ExternResult<Record> {
-    let record = get(input.plan_hash.clone(), GetOptions::default())?
-        .ok_or(wasm_error!(WasmErrorInner::Guest("Treatment plan not found".to_string())))?;
+    let record = get(input.plan_hash.clone(), GetOptions::default())?.ok_or(wasm_error!(
+        WasmErrorInner::Guest("Treatment plan not found".to_string())
+    ))?;
 
     let mut plan: MentalHealthTreatmentPlan = record
         .entry()
         .to_app_option()
         .map_err(|e| wasm_error!(WasmErrorInner::Guest(e.to_string())))?
-        .ok_or(wasm_error!(WasmErrorInner::Guest("Invalid treatment plan".to_string())))?;
+        .ok_or(wasm_error!(WasmErrorInner::Guest(
+            "Invalid treatment plan".to_string()
+        )))?;
 
     let auth = require_authorization(
         plan.patient_hash.clone(),
@@ -1117,8 +1157,9 @@ pub fn update_treatment_goal(input: UpdateTreatmentGoalInput) -> ExternResult<Re
         None,
     )?;
 
-    get(updated_hash, GetOptions::default())?
-        .ok_or(wasm_error!(WasmErrorInner::Guest("Failed to get updated plan".to_string())))
+    get(updated_hash, GetOptions::default())?.ok_or(wasm_error!(WasmErrorInner::Guest(
+        "Failed to get updated plan".to_string()
+    )))
 }
 
 /// Input for closing a treatment plan
@@ -1131,14 +1172,17 @@ pub struct CloseTreatmentPlanInput {
 /// Close a treatment plan
 #[hdk_extern]
 pub fn close_treatment_plan(input: CloseTreatmentPlanInput) -> ExternResult<Record> {
-    let record = get(input.plan_hash.clone(), GetOptions::default())?
-        .ok_or(wasm_error!(WasmErrorInner::Guest("Treatment plan not found".to_string())))?;
+    let record = get(input.plan_hash.clone(), GetOptions::default())?.ok_or(wasm_error!(
+        WasmErrorInner::Guest("Treatment plan not found".to_string())
+    ))?;
 
     let mut plan: MentalHealthTreatmentPlan = record
         .entry()
         .to_app_option()
         .map_err(|e| wasm_error!(WasmErrorInner::Guest(e.to_string())))?
-        .ok_or(wasm_error!(WasmErrorInner::Guest("Invalid treatment plan".to_string())))?;
+        .ok_or(wasm_error!(WasmErrorInner::Guest(
+            "Invalid treatment plan".to_string()
+        )))?;
 
     let auth = require_authorization(
         plan.patient_hash.clone(),
@@ -1161,8 +1205,9 @@ pub fn close_treatment_plan(input: CloseTreatmentPlanInput) -> ExternResult<Reco
         None,
     )?;
 
-    get(updated_hash, GetOptions::default())?
-        .ok_or(wasm_error!(WasmErrorInner::Guest("Failed to get closed plan".to_string())))
+    get(updated_hash, GetOptions::default())?.ok_or(wasm_error!(WasmErrorInner::Guest(
+        "Failed to get closed plan".to_string()
+    )))
 }
 
 // ============================================================================
@@ -1205,7 +1250,8 @@ pub fn calculate_mood_trend(patient_hash: ActionHash) -> ExternResult<MoodTrendA
     )?;
 
     let links = get_links(
-        LinkQuery::try_new(patient_hash.clone(), LinkTypes::PatientToMoodEntries)?, GetStrategy::default(),
+        LinkQuery::try_new(patient_hash.clone(), LinkTypes::PatientToMoodEntries)?,
+        GetStrategy::default(),
     )?;
 
     let mut entries: Vec<MoodEntry> = Vec::new();
@@ -1259,11 +1305,13 @@ pub fn calculate_mood_trend(patient_hash: ActionHash) -> ExternResult<MoodTrendA
     let first_half_mood: f32 = entries[..(mid_point as usize)]
         .iter()
         .map(|e| e.mood_score as f32)
-        .sum::<f32>() / mid_point as f32;
+        .sum::<f32>()
+        / mid_point as f32;
     let second_half_mood: f32 = entries[(mid_point as usize)..]
         .iter()
         .map(|e| e.mood_score as f32)
-        .sum::<f32>() / (entry_count - mid_point) as f32;
+        .sum::<f32>()
+        / (entry_count - mid_point) as f32;
 
     let mood_trend = if second_half_mood > first_half_mood + 0.5 {
         MoodTrendDirection::Improving
@@ -1274,8 +1322,10 @@ pub fn calculate_mood_trend(patient_hash: ActionHash) -> ExternResult<MoodTrendA
     };
 
     // Collect common triggers and coping strategies
-    let mut trigger_counts: std::collections::HashMap<String, u32> = std::collections::HashMap::new();
-    let mut coping_counts: std::collections::HashMap<String, u32> = std::collections::HashMap::new();
+    let mut trigger_counts: std::collections::HashMap<String, u32> =
+        std::collections::HashMap::new();
+    let mut coping_counts: std::collections::HashMap<String, u32> =
+        std::collections::HashMap::new();
 
     for entry in &entries {
         for trigger in &entry.triggers {
@@ -1288,11 +1338,16 @@ pub fn calculate_mood_trend(patient_hash: ActionHash) -> ExternResult<MoodTrendA
 
     let mut common_triggers: Vec<(String, u32)> = trigger_counts.into_iter().collect();
     common_triggers.sort_by(|a, b| b.1.cmp(&a.1));
-    let common_triggers: Vec<String> = common_triggers.into_iter().take(5).map(|(t, _)| t).collect();
+    let common_triggers: Vec<String> = common_triggers
+        .into_iter()
+        .take(5)
+        .map(|(t, _)| t)
+        .collect();
 
     let mut common_coping: Vec<(String, u32)> = coping_counts.into_iter().collect();
     common_coping.sort_by(|a, b| b.1.cmp(&a.1));
-    let common_coping_strategies: Vec<String> = common_coping.into_iter().take(5).map(|(s, _)| s).collect();
+    let common_coping_strategies: Vec<String> =
+        common_coping.into_iter().take(5).map(|(s, _)| s).collect();
 
     // Calculate period in days
     // Safety: `entries` is guaranteed non-empty here — we already returned early
@@ -1359,20 +1414,23 @@ pub fn get_mental_health_summary(patient_hash: ActionHash) -> ExternResult<Menta
 
     // Calculate mood trend
     let mood_trend_analysis = calculate_mood_trend(patient_hash.clone()).ok();
-    let mood_trend = mood_trend_analysis.map(|analysis| {
-        match analysis.mood_trend {
-            MoodTrendDirection::Improving => "Improving".to_string(),
-            MoodTrendDirection::Stable => "Stable".to_string(),
-            MoodTrendDirection::Declining => "Declining".to_string(),
-            MoodTrendDirection::InsufficientData => "Insufficient data".to_string(),
-        }
+    let mood_trend = mood_trend_analysis.map(|analysis| match analysis.mood_trend {
+        MoodTrendDirection::Improving => "Improving".to_string(),
+        MoodTrendDirection::Stable => "Stable".to_string(),
+        MoodTrendDirection::Declining => "Declining".to_string(),
+        MoodTrendDirection::InsufficientData => "Insufficient data".to_string(),
     });
 
     let mut latest_phq9: Option<(u32, Severity)> = None;
     let mut latest_gad7: Option<u32> = None;
 
     for record in &screenings {
-        if let Some(screening) = record.entry().to_app_option::<MentalHealthScreening>().ok().flatten() {
+        if let Some(screening) = record
+            .entry()
+            .to_app_option::<MentalHealthScreening>()
+            .ok()
+            .flatten()
+        {
             match screening.instrument {
                 MentalHealthInstrument::PHQ9 => {
                     latest_phq9 = Some((screening.raw_score, screening.severity));
@@ -1454,8 +1512,9 @@ pub fn log_milestone(input: CreateMilestoneInput) -> ExternResult<Record> {
         None,
     )?;
 
-    get(action_hash, GetOptions::default())?
-        .ok_or(wasm_error!(WasmErrorInner::Guest("Failed to get milestone".to_string())))
+    get(action_hash, GetOptions::default())?.ok_or(wasm_error!(WasmErrorInner::Guest(
+        "Failed to get milestone".to_string()
+    )))
 }
 
 /// Verify a milestone (sponsor/counselor attestation)
@@ -1475,14 +1534,17 @@ pub fn verify_milestone(input: VerifyMilestoneInput) -> ExternResult<Record> {
     )?;
     let verifier = agent_info()?.agent_initial_pubkey;
 
-    let record = get(input.milestone_hash.clone(), GetOptions::default())?
-        .ok_or(wasm_error!(WasmErrorInner::Guest("Milestone not found".to_string())))?;
+    let record = get(input.milestone_hash.clone(), GetOptions::default())?.ok_or(wasm_error!(
+        WasmErrorInner::Guest("Milestone not found".to_string())
+    ))?;
 
     let mut milestone: RecoveryMilestone = record
         .entry()
         .to_app_option()
         .map_err(|e| wasm_error!(WasmErrorInner::Guest(format!("Deserialize error: {}", e))))?
-        .ok_or(wasm_error!(WasmErrorInner::Guest("Not a milestone entry".to_string())))?;
+        .ok_or(wasm_error!(WasmErrorInner::Guest(
+            "Not a milestone entry".to_string()
+        )))?;
 
     milestone.verified_by = Some(verifier);
 
@@ -1497,8 +1559,9 @@ pub fn verify_milestone(input: VerifyMilestoneInput) -> ExternResult<Record> {
         None,
     )?;
 
-    get(updated_hash, GetOptions::default())?
-        .ok_or(wasm_error!(WasmErrorInner::Guest("Failed to get updated milestone".to_string())))
+    get(updated_hash, GetOptions::default())?.ok_or(wasm_error!(WasmErrorInner::Guest(
+        "Failed to get updated milestone".to_string()
+    )))
 }
 
 /// Get patient's recovery milestones
@@ -1584,8 +1647,9 @@ pub fn create_relapse_prevention(input: CreateRelapsePlanInput) -> ExternResult<
         None,
     )?;
 
-    get(action_hash, GetOptions::default())?
-        .ok_or(wasm_error!(WasmErrorInner::Guest("Failed to get relapse plan".to_string())))
+    get(action_hash, GetOptions::default())?.ok_or(wasm_error!(WasmErrorInner::Guest(
+        "Failed to get relapse plan".to_string()
+    )))
 }
 
 /// Input for a recovery check-in
@@ -1642,8 +1706,9 @@ pub fn record_check_in(input: CreateCheckInInput) -> ExternResult<Record> {
         None,
     )?;
 
-    get(action_hash, GetOptions::default())?
-        .ok_or(wasm_error!(WasmErrorInner::Guest("Failed to get check-in".to_string())))
+    get(action_hash, GetOptions::default())?.ok_or(wasm_error!(WasmErrorInner::Guest(
+        "Failed to get check-in".to_string()
+    )))
 }
 
 /// Get patient's recovery check-ins (most recent first)
@@ -1734,30 +1799,44 @@ pub fn get_recovery_dashboard(patient_hash: ActionHash) -> ExternResult<Recovery
             link.target
                 .into_action_hash()
                 .and_then(|ah| get(ah, GetOptions::default()).ok().flatten())
-                .and_then(|r| r.entry().to_app_option::<RecoveryMilestone>().ok().flatten())
+                .and_then(|r| {
+                    r.entry()
+                        .to_app_option::<RecoveryMilestone>()
+                        .ok()
+                        .flatten()
+                })
         })
         .collect();
 
     let milestone_count = milestones.len() as u32;
-    let verified_milestone_count = milestones.iter().filter(|m| m.verified_by.is_some()).count() as u32;
+    let verified_milestone_count = milestones
+        .iter()
+        .filter(|m| m.verified_by.is_some())
+        .count() as u32;
 
     // Find sobriety days from most recent SobrietyDate milestone
-    let sobriety_days = milestones.iter().filter_map(|m| {
-        if let MilestoneType::SobrietyDate { days } = &m.milestone_type {
-            Some(*days)
-        } else {
-            None
-        }
-    }).max();
+    let sobriety_days = milestones
+        .iter()
+        .filter_map(|m| {
+            if let MilestoneType::SobrietyDate { days } = &m.milestone_type {
+                Some(*days)
+            } else {
+                None
+            }
+        })
+        .max();
 
     // Find current treatment phase from most recent transition
-    let treatment_phase = milestones.iter().filter_map(|m| {
-        if let MilestoneType::TreatmentPhaseTransition { to, .. } = &m.milestone_type {
-            Some(to.clone())
-        } else {
-            None
-        }
-    }).last();
+    let treatment_phase = milestones
+        .iter()
+        .filter_map(|m| {
+            if let MilestoneType::TreatmentPhaseTransition { to, .. } = &m.milestone_type {
+                Some(to.clone())
+            } else {
+                None
+            }
+        })
+        .last();
 
     // Gather check-ins
     let check_in_links = get_links(
@@ -1938,6 +2017,7 @@ pub fn log_peer_support_session(input: LogPeerSessionInput) -> ExternResult<Reco
         None,
     )?;
 
-    get(action_hash, GetOptions::default())?
-        .ok_or(wasm_error!(WasmErrorInner::Guest("Failed to get peer session".to_string())))
+    get(action_hash, GetOptions::default())?.ok_or(wasm_error!(WasmErrorInner::Guest(
+        "Failed to get peer session".to_string()
+    )))
 }

@@ -6,10 +6,10 @@
 //! Tests performance across all encoding types, operations, and similarity metrics.
 //! Run with: cargo bench --features "std dp" -- --verbose
 
-use criterion::{black_box, criterion_group, criterion_main, Criterion, BenchmarkId, Throughput};
+use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criterion, Throughput};
 use hdc_core::{
-    Hypervector, Seed, HYPERVECTOR_DIM, HYPERVECTOR_BYTES,
-    encoding::{DnaEncoder, SnpEncoder, HlaEncoder},
+    encoding::{DnaEncoder, HlaEncoder, SnpEncoder},
+    Hypervector, Seed, HYPERVECTOR_BYTES, HYPERVECTOR_DIM,
 };
 
 // ============================================================================
@@ -26,13 +26,9 @@ fn bench_hypervector_creation(c: &mut Criterion) {
         b.iter(|| Hypervector::random(black_box(&seed)))
     });
 
-    group.bench_function("zeros", |b| {
-        b.iter(|| Hypervector::zeros())
-    });
+    group.bench_function("zeros", |b| b.iter(|| Hypervector::zeros()));
 
-    group.bench_function("ones", |b| {
-        b.iter(|| Hypervector::ones())
-    });
+    group.bench_function("ones", |b| b.iter(|| Hypervector::ones()));
 
     let bytes = vec![0xAA; HYPERVECTOR_BYTES];
     group.bench_function("from_bytes", |b| {
@@ -54,17 +50,11 @@ fn bench_hypervector_operations(c: &mut Criterion) {
         b.iter(|| black_box(&v1).xor(black_box(&v2)))
     });
 
-    group.bench_function("permute_1", |b| {
-        b.iter(|| black_box(&v1).permute(1))
-    });
+    group.bench_function("permute_1", |b| b.iter(|| black_box(&v1).permute(1)));
 
-    group.bench_function("permute_100", |b| {
-        b.iter(|| black_box(&v1).permute(100))
-    });
+    group.bench_function("permute_100", |b| b.iter(|| black_box(&v1).permute(100)));
 
-    group.bench_function("popcount", |b| {
-        b.iter(|| black_box(&v1).popcount())
-    });
+    group.bench_function("popcount", |b| b.iter(|| black_box(&v1).popcount()));
 
     group.bench_function("hamming_distance", |b| {
         b.iter(|| black_box(&v1).hamming_distance(black_box(&v2)))
@@ -77,9 +67,7 @@ fn bench_bundling(c: &mut Criterion) {
     let seeds: Vec<_> = (0..100)
         .map(|i| Seed::from_string(&format!("bundle-{}", i)))
         .collect();
-    let vectors: Vec<_> = seeds.iter()
-        .map(|s| Hypervector::random(s))
-        .collect();
+    let vectors: Vec<_> = seeds.iter().map(|s| Hypervector::random(s)).collect();
 
     let mut group = c.benchmark_group("bundling");
 
@@ -89,9 +77,7 @@ fn bench_bundling(c: &mut Criterion) {
         group.bench_with_input(
             BenchmarkId::new("majority_bundle", count),
             &subset,
-            |b, vecs| {
-                b.iter(|| Hypervector::majority_bundle(black_box(vecs)))
-            },
+            |b, vecs| b.iter(|| Hypervector::majority_bundle(black_box(vecs))),
         );
     }
 
@@ -129,9 +115,7 @@ fn bench_batch_similarity(c: &mut Criterion) {
     let seeds: Vec<_> = (0..500)
         .map(|i| Seed::from_string(&format!("batch-sim-{}", i)))
         .collect();
-    let vectors: Vec<_> = seeds.iter()
-        .map(|s| Hypervector::random(s))
-        .collect();
+    let vectors: Vec<_> = seeds.iter().map(|s| Hypervector::random(s)).collect();
 
     let mut group = c.benchmark_group("batch_similarity");
 
@@ -140,21 +124,17 @@ fn bench_batch_similarity(c: &mut Criterion) {
         let pairs = n * (n - 1) / 2;
         group.throughput(Throughput::Elements(pairs as u64));
 
-        group.bench_with_input(
-            BenchmarkId::new("pairwise_cosine", count),
-            &n,
-            |b, &n| {
-                b.iter(|| {
-                    let mut sum = 0.0;
-                    for i in 0..n {
-                        for j in (i+1)..n {
-                            sum += vectors[i].normalized_cosine_similarity(&vectors[j]);
-                        }
+        group.bench_with_input(BenchmarkId::new("pairwise_cosine", count), &n, |b, &n| {
+            b.iter(|| {
+                let mut sum = 0.0;
+                for i in 0..n {
+                    for j in (i + 1)..n {
+                        sum += vectors[i].normalized_cosine_similarity(&vectors[j]);
                     }
-                    black_box(sum)
-                })
-            },
-        );
+                }
+                black_box(sum)
+            })
+        });
     }
 
     group.finish();
@@ -174,11 +154,9 @@ fn bench_dna_encoder(c: &mut Criterion) {
         let encoder = DnaEncoder::new(seed.clone(), *k);
         let seq = "ATCGATCGATCG".repeat(10); // 120bp
 
-        group.bench_with_input(
-            BenchmarkId::new("encode_kmer", k),
-            &seq,
-            |b, s| b.iter(|| encoder.encode_sequence(black_box(s))),
-        );
+        group.bench_with_input(BenchmarkId::new("encode_kmer", k), &seq, |b, s| {
+            b.iter(|| encoder.encode_sequence(black_box(s)))
+        });
     }
 
     group.finish();
@@ -194,11 +172,9 @@ fn bench_dna_sequence_lengths(c: &mut Criterion) {
         let seq = "ATCG".repeat(*length / 4);
         group.throughput(Throughput::Bytes(*length as u64));
 
-        group.bench_with_input(
-            BenchmarkId::new("encode", length),
-            &seq,
-            |b, s| b.iter(|| encoder.encode_sequence(black_box(s))),
-        );
+        group.bench_with_input(BenchmarkId::new("encode", length), &seq, |b, s| {
+            b.iter(|| encoder.encode_sequence(black_box(s)))
+        });
     }
 
     group.finish();
@@ -220,9 +196,7 @@ fn bench_snp_encoder(c: &mut Criterion) {
             .map(|i| (format!("rs{}", 1000000 + i), 0u8)) // homozygous ref
             .collect();
 
-        let snp_refs: Vec<_> = snps.iter()
-            .map(|(id, gt)| (id.as_str(), *gt))
-            .collect();
+        let snp_refs: Vec<_> = snps.iter().map(|(id, gt)| (id.as_str(), *gt)).collect();
 
         group.throughput(Throughput::Elements(*count as u64));
 
@@ -248,9 +222,7 @@ fn bench_snp_genotypes(c: &mut Criterion) {
             .map(|i| (format!("rs{}", 1000000 + i), *genotype))
             .collect();
 
-        let snp_refs: Vec<_> = snps.iter()
-            .map(|(id, gt)| (id.as_str(), *gt))
-            .collect();
+        let snp_refs: Vec<_> = snps.iter().map(|(id, gt)| (id.as_str(), *gt)).collect();
 
         group.bench_with_input(
             BenchmarkId::new("genotype", genotype),
@@ -276,11 +248,31 @@ fn bench_hla_encoder(c: &mut Criterion) {
     let allele_sets = [
         vec!["A*01:01", "A*02:01"],
         vec!["A*01:01", "A*02:01", "B*07:02", "B*08:01"],
-        vec!["A*01:01", "A*02:01", "B*07:02", "B*08:01", "C*01:02", "C*07:01"],
-        vec!["A*01:01", "A*02:01", "B*07:02", "B*08:01", "C*01:02", "C*07:01",
-             "DRB1*03:01", "DRB1*04:01"],
-        vec!["A*01:01", "A*02:01", "B*07:02", "B*08:01", "C*01:02", "C*07:01",
-             "DRB1*03:01", "DRB1*04:01", "DQB1*02:01", "DQB1*03:02"],
+        vec![
+            "A*01:01", "A*02:01", "B*07:02", "B*08:01", "C*01:02", "C*07:01",
+        ],
+        vec![
+            "A*01:01",
+            "A*02:01",
+            "B*07:02",
+            "B*08:01",
+            "C*01:02",
+            "C*07:01",
+            "DRB1*03:01",
+            "DRB1*04:01",
+        ],
+        vec![
+            "A*01:01",
+            "A*02:01",
+            "B*07:02",
+            "B*08:01",
+            "C*01:02",
+            "C*07:01",
+            "DRB1*03:01",
+            "DRB1*04:01",
+            "DQB1*02:01",
+            "DQB1*03:02",
+        ],
     ];
 
     for alleles in allele_sets.iter() {
@@ -330,18 +322,12 @@ fn bench_memory_layout(c: &mut Criterion) {
             .map(|i| Seed::from_string(&format!("mem-{}", i)))
             .collect();
 
-        group.bench_with_input(
-            BenchmarkId::new("create_vectors", count),
-            &seeds,
-            |b, s| {
-                b.iter(|| {
-                    let vecs: Vec<_> = s.iter()
-                        .map(|seed| Hypervector::random(seed))
-                        .collect();
-                    black_box(vecs)
-                })
-            },
-        );
+        group.bench_with_input(BenchmarkId::new("create_vectors", count), &seeds, |b, s| {
+            b.iter(|| {
+                let vecs: Vec<_> = s.iter().map(|seed| Hypervector::random(seed)).collect();
+                black_box(vecs)
+            })
+        });
     }
 
     group.finish();
@@ -362,9 +348,7 @@ fn bench_genetic_profile_creation(c: &mut Criterion) {
     let snps: Vec<_> = (0..100)
         .map(|i| (format!("rs{}", 1000000 + i), (i % 3) as u8))
         .collect();
-    let snp_refs: Vec<_> = snps.iter()
-        .map(|(id, gt)| (id.as_str(), *gt))
-        .collect();
+    let snp_refs: Vec<_> = snps.iter().map(|(id, gt)| (id.as_str(), *gt)).collect();
     let hla_alleles = vec!["A*01:01", "A*02:01", "B*07:02", "B*08:01"];
 
     let mut group = c.benchmark_group("genetic_profile");
@@ -393,9 +377,7 @@ fn bench_genetic_profile_creation(c: &mut Criterion) {
         let snps2: Vec<_> = (0..100)
             .map(|i| (format!("rs{}", 1000000 + i), ((i + 1) % 3) as u8))
             .collect();
-        let snp_refs2: Vec<_> = snps2.iter()
-            .map(|(id, gt)| (id.as_str(), *gt))
-            .collect();
+        let snp_refs2: Vec<_> = snps2.iter().map(|(id, gt)| (id.as_str(), *gt)).collect();
 
         let profile2 = {
             let dna = dna_encoder.encode_sequence(&dna_seq).unwrap();
@@ -404,9 +386,7 @@ fn bench_genetic_profile_creation(c: &mut Criterion) {
             dna.vector.xor(&snp).xor(&hla)
         };
 
-        b.iter(|| {
-            black_box(profile1.normalized_cosine_similarity(black_box(&profile2)))
-        })
+        b.iter(|| black_box(profile1.normalized_cosine_similarity(black_box(&profile2))))
     });
 
     group.finish();
@@ -431,7 +411,10 @@ fn bench_population_search(c: &mut Criterion) {
             .collect();
 
         // Query vector
-        let query = encoder.encode_sequence(&"ATCGATCG".repeat(12)).unwrap().vector;
+        let query = encoder
+            .encode_sequence(&"ATCGATCG".repeat(12))
+            .unwrap()
+            .vector;
 
         group.throughput(Throughput::Elements(pop_size as u64));
 
@@ -440,7 +423,8 @@ fn bench_population_search(c: &mut Criterion) {
             &population,
             |b, pop| {
                 b.iter(|| {
-                    let mut scores: Vec<_> = pop.iter()
+                    let mut scores: Vec<_> = pop
+                        .iter()
                         .enumerate()
                         .map(|(i, v)| (i, query.normalized_cosine_similarity(v)))
                         .collect();
@@ -480,11 +464,7 @@ criterion_group!(
     bench_hla_encoder,
 );
 
-criterion_group!(
-    advanced_benches,
-    bench_confidence,
-    bench_memory_layout,
-);
+criterion_group!(advanced_benches, bench_confidence, bench_memory_layout,);
 
 criterion_group!(
     scenario_benches,

@@ -7,8 +7,8 @@
 //! is decrypted via k-of-n threshold. Even a compromised aggregator learns
 //! nothing about individual contributions.
 
-use serde::{Deserialize, Serialize};
 use crate::{HealthGradient, HEALTH_GRADIENT_DIM};
+use serde::{Deserialize, Serialize};
 
 /// Encrypted health gradient — Paillier-encrypted feature vector.
 /// Each feature is independently encrypted as a fixed-point integer.
@@ -67,11 +67,10 @@ pub fn paillier_decrypt(ciphertext: &[u8], _private_key: &[u8]) -> i64 {
 
 /// Encrypt a health gradient with Paillier.
 /// DP noise should be applied BEFORE this function (encrypt the noised gradient).
-pub fn encrypt_gradient(
-    gradient: &HealthGradient,
-    public_key: &[u8],
-) -> EncryptedHealthGradient {
-    let encrypted_features = gradient.features.iter()
+pub fn encrypt_gradient(gradient: &HealthGradient, public_key: &[u8]) -> EncryptedHealthGradient {
+    let encrypted_features = gradient
+        .features
+        .iter()
         .map(|&f| {
             let encoded = encode_feature(f);
             paillier_encrypt_feature(encoded, public_key)
@@ -88,16 +87,17 @@ pub fn encrypt_gradient(
 
 /// Aggregate encrypted gradients homomorphically.
 /// Returns the encrypted sum (to be decrypted by threshold key holders).
-pub fn aggregate_encrypted(
-    gradients: &[EncryptedHealthGradient],
-) -> Result<Vec<Vec<u8>>, String> {
+pub fn aggregate_encrypted(gradients: &[EncryptedHealthGradient]) -> Result<Vec<Vec<u8>>, String> {
     if gradients.is_empty() {
         return Err("No gradients to aggregate".into());
     }
 
     let dim = gradients[0].encrypted_features.len();
     if dim != HEALTH_GRADIENT_DIM {
-        return Err(format!("Expected {} features, got {}", HEALTH_GRADIENT_DIM, dim));
+        return Err(format!(
+            "Expected {} features, got {}",
+            HEALTH_GRADIENT_DIM, dim
+        ));
     }
 
     // Homomorphic summation: for each feature dimension, add all ciphertexts
@@ -112,12 +112,9 @@ pub fn aggregate_encrypted(
 }
 
 /// Decrypt the aggregate and compute the mean.
-pub fn decrypt_aggregate(
-    encrypted_sum: &[Vec<u8>],
-    private_key: &[u8],
-    count: usize,
-) -> Vec<f32> {
-    encrypted_sum.iter()
+pub fn decrypt_aggregate(encrypted_sum: &[Vec<u8>], private_key: &[u8], count: usize) -> Vec<f32> {
+    encrypted_sum
+        .iter()
         .map(|ct| {
             let sum = paillier_decrypt(ct, private_key);
             decode_feature(sum, count)
@@ -136,13 +133,21 @@ mod tests {
         let fake_sk = vec![0u8; 32];
 
         // Create 5 gradients
-        let gradients: Vec<_> = (0..5).map(|i| {
-            extract_gradient(
-                &format!("{}", 80 + i * 5),
-                "70-100", false, false, 1.0, true, "2345-7",
-                &format!("patient-{}", i), 1,
-            )
-        }).collect();
+        let gradients: Vec<_> = (0..5)
+            .map(|i| {
+                extract_gradient(
+                    &format!("{}", 80 + i * 5),
+                    "70-100",
+                    false,
+                    false,
+                    1.0,
+                    true,
+                    "2345-7",
+                    &format!("patient-{}", i),
+                    1,
+                )
+            })
+            .collect();
 
         // Plaintext average
         let mut plain_sum = vec![0.0f32; HEALTH_GRADIENT_DIM];
@@ -154,7 +159,8 @@ mod tests {
         let plain_avg: Vec<f32> = plain_sum.iter().map(|s| s / 5.0).collect();
 
         // Encrypted aggregation
-        let encrypted: Vec<_> = gradients.iter()
+        let encrypted: Vec<_> = gradients
+            .iter()
             .map(|g| encrypt_gradient(g, &fake_pk))
             .collect();
 
@@ -165,7 +171,10 @@ mod tests {
         for (i, (p, d)) in plain_avg.iter().zip(decrypted_avg.iter()).enumerate() {
             assert!(
                 (p - d).abs() < 0.01,
-                "Feature {}: plaintext {:.4} vs encrypted {:.4}", i, p, d
+                "Feature {}: plaintext {:.4} vs encrypted {:.4}",
+                i,
+                p,
+                d
             );
         }
     }
@@ -175,7 +184,13 @@ mod tests {
         for val in [0.0, 0.5, 1.0, 0.123456, 0.999999] {
             let encoded = encode_feature(val);
             let decoded = decode_feature(encoded, 1);
-            assert!((val - decoded).abs() < 0.001, "{} → {} → {}", val, encoded, decoded);
+            assert!(
+                (val - decoded).abs() < 0.001,
+                "{} → {} → {}",
+                val,
+                encoded,
+                decoded
+            );
         }
     }
 }

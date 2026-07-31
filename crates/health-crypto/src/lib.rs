@@ -14,9 +14,9 @@
 //!
 //! Decryption requires the patient's ML-KEM private key (never stored on DHT).
 
+use chacha20poly1305::{aead::Aead, KeyInit, XChaCha20Poly1305};
 use serde::{Deserialize, Serialize};
-use sha2::{Sha256, Digest};
-use chacha20poly1305::{XChaCha20Poly1305, KeyInit, aead::Aead};
+use sha2::{Digest, Sha256};
 
 /// ML-KEM-768 public key size (1184 bytes).
 pub const KEM_PUBLIC_KEY_SIZE: usize = 1184;
@@ -108,7 +108,8 @@ where
     let cipher = XChaCha20Poly1305::new(cipher_key);
     let xnonce = chacha20poly1305::XNonce::from_slice(&nonce);
 
-    let aead_ciphertext = cipher.encrypt(xnonce, plaintext)
+    let aead_ciphertext = cipher
+        .encrypt(xnonce, plaintext)
         .map_err(|e| format!("AEAD encryption failed: {}", e))?;
 
     Ok(PqEncryptedRecord {
@@ -124,10 +125,7 @@ where
 /// Decrypt a hybrid PQ encrypted health record.
 ///
 /// The `kem_decapsulate` closure abstracts the ML-KEM decapsulation.
-pub fn decrypt_hybrid<F>(
-    record: &PqEncryptedRecord,
-    kem_decapsulate: F,
-) -> Result<Vec<u8>, String>
+pub fn decrypt_hybrid<F>(record: &PqEncryptedRecord, kem_decapsulate: F) -> Result<Vec<u8>, String>
 where
     F: FnOnce(&[u8]) -> Result<Vec<u8>, String>, // Takes kem_ciphertext, returns shared_secret
 {
@@ -142,8 +140,12 @@ where
     let cipher = XChaCha20Poly1305::new(cipher_key);
     let xnonce = chacha20poly1305::XNonce::from_slice(&record.nonce);
 
-    cipher.decrypt(xnonce, record.aead_ciphertext.as_ref())
-        .map_err(|_| "Decryption failed: authentication tag mismatch (wrong key or tampered data)".to_string())
+    cipher
+        .decrypt(xnonce, record.aead_ciphertext.as_ref())
+        .map_err(|_| {
+            "Decryption failed: authentication tag mismatch (wrong key or tampered data)"
+                .to_string()
+        })
 }
 
 /// Compute key fingerprint (SHA-256, first 8 bytes).
@@ -172,18 +174,17 @@ mod tests {
             1,
             "LabResults",
             "LabResult",
-        ).unwrap();
+        )
+        .unwrap();
 
         assert_eq!(encrypted.kem_ciphertext.len(), 1088);
         assert!(encrypted.aead_ciphertext.len() > plaintext.len()); // ciphertext + tag
 
-        let decrypted = decrypt_hybrid(
-            &encrypted,
-            |ct| {
-                assert_eq!(ct.len(), 1088);
-                Ok(fake_shared_secret.clone())
-            },
-        ).unwrap();
+        let decrypted = decrypt_hybrid(&encrypted, |ct| {
+            assert_eq!(ct.len(), 1088);
+            Ok(fake_shared_secret.clone())
+        })
+        .unwrap();
 
         assert_eq!(decrypted, plaintext);
     }
@@ -196,14 +197,14 @@ mod tests {
         let encrypted = encrypt_hybrid(
             plaintext,
             || Ok((vec![0u8; 1088], shared_secret.clone())),
-            1, "LabResults", "LabResult",
-        ).unwrap();
+            1,
+            "LabResults",
+            "LabResult",
+        )
+        .unwrap();
 
         let wrong_secret = vec![99u8; 32]; // Wrong key
-        let result = decrypt_hybrid(
-            &encrypted,
-            |_| Ok(wrong_secret.clone()),
-        );
+        let result = decrypt_hybrid(&encrypted, |_| Ok(wrong_secret.clone()));
 
         assert!(result.is_err(), "Wrong key must fail decryption");
     }

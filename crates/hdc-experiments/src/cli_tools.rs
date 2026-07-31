@@ -11,10 +11,8 @@
 
 use colored::*;
 use hdc_core::{
-    DpHypervector, DpParams, Hypervector, Seed,
-    StarAlleleEncoder, MetabolizerPhenotype, DrugRecommendation,
-    VcfReader, VcfEncoder,
-    similarity::HdcIndex,
+    similarity::HdcIndex, DpHypervector, DpParams, DrugRecommendation, Hypervector,
+    MetabolizerPhenotype, Seed, StarAlleleEncoder, VcfEncoder, VcfReader,
 };
 
 #[cfg(feature = "gpu")]
@@ -95,16 +93,23 @@ pub fn encode_vcf(
     let (final_vector, dp_applied) = if let Some(epsilon) = dp_epsilon {
         let dp_params = DpParams::pure(epsilon);
         let dp_vec = DpHypervector::from_vector(&encoded, dp_params, None);
-        println!("  Differential privacy: {} (ε={})", "applied".yellow(), epsilon);
-        println!("    Expected similarity retention: {:.1}%",
-                 dp_params.expected_similarity_retention() * 100.0);
+        println!(
+            "  Differential privacy: {} (ε={})",
+            "applied".yellow(),
+            epsilon
+        );
+        println!(
+            "    Expected similarity retention: {:.1}%",
+            dp_params.expected_similarity_retention() * 100.0
+        );
         (dp_vec.vector, true)
     } else {
         (encoded, false)
     };
 
     // Output
-    let hex_vector = final_vector.as_bytes()
+    let hex_vector = final_vector
+        .as_bytes()
         .iter()
         .map(|b| format!("{:02x}", b))
         .collect::<String>();
@@ -124,7 +129,10 @@ pub fn encode_vcf(
 
             if let Some(out_path) = output {
                 fs::write(out_path, &json).expect("Failed to write output");
-                println!("\n  Output saved to: {}", out_path.display().to_string().green());
+                println!(
+                    "\n  Output saved to: {}",
+                    out_path.display().to_string().green()
+                );
             } else {
                 println!("\n{}", json);
             }
@@ -132,7 +140,10 @@ pub fn encode_vcf(
         "hex" => {
             if let Some(out_path) = output {
                 fs::write(out_path, &hex_vector).expect("Failed to write output");
-                println!("\n  Output saved to: {}", out_path.display().to_string().green());
+                println!(
+                    "\n  Output saved to: {}",
+                    out_path.display().to_string().green()
+                );
             } else {
                 println!("\n{}", hex_vector);
             }
@@ -140,9 +151,15 @@ pub fn encode_vcf(
         "binary" => {
             if let Some(out_path) = output {
                 fs::write(out_path, final_vector.as_bytes()).expect("Failed to write output");
-                println!("\n  Output saved to: {}", out_path.display().to_string().green());
+                println!(
+                    "\n  Output saved to: {}",
+                    out_path.display().to_string().green()
+                );
             } else {
-                eprintln!("{} Binary format requires output file path", "Error:".red().bold());
+                eprintln!(
+                    "{} Binary format requires output file path",
+                    "Error:".red().bold()
+                );
             }
         }
         _ => {
@@ -256,21 +273,28 @@ pub fn pharmacogenomics(
             _ => "green",
         };
 
-        println!("  {} {}/{}",
-                 format!("{:10}", dt.gene).bold(),
-                 dt.allele1,
-                 dt.allele2);
+        println!(
+            "  {} {}/{}",
+            format!("{:10}", dt.gene).bold(),
+            dt.allele1,
+            dt.allele2
+        );
         println!("    Activity Score: {:.2}", dt.activity_score);
-        println!("    Phenotype: {}",
-                 match color {
-                     "red" => phenotype_str.red().bold(),
-                     "yellow" => phenotype_str.yellow(),
-                     "magenta" => phenotype_str.magenta(),
-                     _ => phenotype_str.green(),
-                 });
+        println!(
+            "    Phenotype: {}",
+            match color {
+                "red" => phenotype_str.red().bold(),
+                "yellow" => phenotype_str.yellow(),
+                "magenta" => phenotype_str.magenta(),
+                _ => phenotype_str.green(),
+            }
+        );
 
         if dt.phenotype == MetabolizerPhenotype::Poor {
-            let warning = format!("{} is a POOR METABOLIZER - clinical action may be required", dt.gene);
+            let warning = format!(
+                "{} is a POOR METABOLIZER - clinical action may be required",
+                dt.gene
+            );
             warnings.push(warning.clone());
         }
 
@@ -287,8 +311,16 @@ pub fn pharmacogenomics(
 
     // Drug interactions
     let drugs_to_check: Vec<&str> = if all_drugs {
-        vec!["codeine", "tramadol", "clopidogrel", "omeprazole",
-             "warfarin", "azathioprine", "fluorouracil", "simvastatin"]
+        vec![
+            "codeine",
+            "tramadol",
+            "clopidogrel",
+            "omeprazole",
+            "warfarin",
+            "azathioprine",
+            "fluorouracil",
+            "simvastatin",
+        ]
     } else if let Some(d) = drug {
         vec![d]
     } else {
@@ -304,23 +336,31 @@ pub fn pharmacogenomics(
                 let rec_str = format!("{}", pred.recommendation);
                 let rec_color = match pred.recommendation {
                     DrugRecommendation::Avoid => "red",
-                    DrugRecommendation::ReducedDose | DrugRecommendation::UseWithCaution => "yellow",
+                    DrugRecommendation::ReducedDose | DrugRecommendation::UseWithCaution => {
+                        "yellow"
+                    }
                     DrugRecommendation::ConsiderAlternative => "magenta",
                     _ => "green",
                 };
 
                 println!("  {} (via {})", drug_name.bold(), pred.gene);
                 println!("    Phenotype: {}", pred.phenotype);
-                println!("    Recommendation: {}",
-                         match rec_color {
-                             "red" => rec_str.red().bold(),
-                             "yellow" => rec_str.yellow(),
-                             "magenta" => rec_str.magenta(),
-                             _ => rec_str.green(),
-                         });
+                println!(
+                    "    Recommendation: {}",
+                    match rec_color {
+                        "red" => rec_str.red().bold(),
+                        "yellow" => rec_str.yellow(),
+                        "magenta" => rec_str.magenta(),
+                        _ => rec_str.green(),
+                    }
+                );
 
                 if pred.recommendation == DrugRecommendation::Avoid {
-                    warnings.push(format!("AVOID {} - {} poor metabolizer", drug_name.to_uppercase(), pred.gene));
+                    warnings.push(format!(
+                        "AVOID {} - {} poor metabolizer",
+                        drug_name.to_uppercase(),
+                        pred.gene
+                    ));
                 }
 
                 drug_predictions.push(DrugPrediction {
@@ -384,13 +424,15 @@ pub fn search_patients(
 
     let db_index_path = database_path.join("index.json");
     if !db_index_path.exists() {
-        eprintln!("{} Database index not found. Run 'build-db' first.", "Error:".red().bold());
+        eprintln!(
+            "{} Database index not found. Run 'build-db' first.",
+            "Error:".red().bold()
+        );
         return;
     }
 
-    let index_data: serde_json::Value = serde_json::from_str(
-        &fs::read_to_string(&db_index_path).unwrap()
-    ).unwrap();
+    let index_data: serde_json::Value =
+        serde_json::from_str(&fs::read_to_string(&db_index_path).unwrap()).unwrap();
 
     let patients = index_data["patients"].as_array().unwrap();
 
@@ -404,7 +446,7 @@ pub fn search_patients(
         let hex = patient["vector_hex"].as_str().unwrap();
         let bytes: Vec<u8> = (0..hex.len())
             .step_by(2)
-            .map(|i| u8::from_str_radix(&hex[i..i+2], 16).unwrap())
+            .map(|i| u8::from_str_radix(&hex[i..i + 2], 16).unwrap())
             .collect();
         let vector = Hypervector::from_bytes(bytes).unwrap();
 
@@ -413,7 +455,10 @@ pub fn search_patients(
         index.add(id.to_string(), vector);
     }
 
-    println!("  Database loaded: {} patients", patient_ids.len().to_string().cyan());
+    println!(
+        "  Database loaded: {} patients",
+        patient_ids.len().to_string().cyan()
+    );
 
     // Encode query
     println!("  Encoding query: {}", query_path.display());
@@ -421,7 +466,9 @@ pub fn search_patients(
     let file = File::open(query_path).expect("Failed to open query VCF");
     let mut reader = VcfReader::new(BufReader::new(file)).expect("Failed to parse VCF");
     let variants = reader.read_variants().expect("Failed to read variants");
-    let query_encoded = encoder.encode_variants(&variants).expect("Failed to encode");
+    let query_encoded = encoder
+        .encode_variants(&variants)
+        .expect("Failed to encode");
 
     // Apply DP if requested
     let query_vector = if let Some(epsilon) = dp_epsilon {
@@ -438,7 +485,10 @@ pub fn search_patients(
 
     #[cfg(feature = "gpu")]
     let results = if use_gpu {
-        println!("  Using {} for similarity computation...", "GPU".magenta().bold());
+        println!(
+            "  Using {} for similarity computation...",
+            "GPU".magenta().bold()
+        );
         search_with_gpu(&query_vector, &patient_vectors, &patient_ids, top_k)
     } else {
         println!("  Using {} for similarity computation...", "CPU".cyan());
@@ -448,7 +498,10 @@ pub fn search_patients(
     #[cfg(not(feature = "gpu"))]
     let results = {
         if use_gpu {
-            eprintln!("{} GPU feature not enabled. Using CPU instead.", "Warning:".yellow());
+            eprintln!(
+                "{} GPU feature not enabled. Using CPU instead.",
+                "Warning:".yellow()
+            );
             eprintln!("  Build with: cargo build --features gpu");
         }
         println!("  Using {} for similarity computation...", "CPU".cyan());
@@ -466,23 +519,32 @@ pub fn search_patients(
         if *similarity >= threshold {
             found += 1;
             let sim_pct = *similarity * 100.0;
-            let sim_color = if sim_pct > 90.0 { "green" }
-                           else if sim_pct > 70.0 { "yellow" }
-                           else { "white" };
+            let sim_color = if sim_pct > 90.0 {
+                "green"
+            } else if sim_pct > 70.0 {
+                "yellow"
+            } else {
+                "white"
+            };
 
-            println!("  {}. {} - {:.1}%",
-                     rank + 1,
-                     id.bold(),
-                     match sim_color {
-                         "green" => format!("{:.1}", sim_pct).green(),
-                         "yellow" => format!("{:.1}", sim_pct).yellow(),
-                         _ => format!("{:.1}", sim_pct).normal(),
-                     });
+            println!(
+                "  {}. {} - {:.1}%",
+                rank + 1,
+                id.bold(),
+                match sim_color {
+                    "green" => format!("{:.1}", sim_pct).green(),
+                    "yellow" => format!("{:.1}", sim_pct).yellow(),
+                    _ => format!("{:.1}", sim_pct).normal(),
+                }
+            );
         }
     }
 
     if found == 0 {
-        println!("  No matches found above threshold ({:.0}%)", threshold * 100.0);
+        println!(
+            "  No matches found above threshold ({:.0}%)",
+            threshold * 100.0
+        );
     }
 
     println!();
@@ -492,7 +554,8 @@ pub fn search_patients(
 
 /// CPU-based similarity search
 fn search_with_cpu(index: &HdcIndex, query: &Hypervector, top_k: usize) -> Vec<(String, f64)> {
-    index.search(query, top_k)
+    index
+        .search(query, top_k)
         .into_iter()
         .map(|r| (r.id, r.similarity))
         .collect()
@@ -513,7 +576,11 @@ fn search_with_gpu(
             e
         }
         Err(e) => {
-            eprintln!("{} GPU initialization failed: {}. Falling back to CPU.", "Warning:".yellow(), e);
+            eprintln!(
+                "{} GPU initialization failed: {}. Falling back to CPU.",
+                "Warning:".yellow(),
+                e
+            );
             // Fallback to CPU
             let mut index = HdcIndex::new();
             for (id, vec) in patient_ids.iter().zip(database.iter()) {
@@ -528,7 +595,11 @@ fn search_with_gpu(
     let top_k_results = match gpu::sync::top_k_similarity(&engine, &queries, database, top_k) {
         Ok(results) => results,
         Err(e) => {
-            eprintln!("{} GPU computation failed: {}. Falling back to CPU.", "Warning:".yellow(), e);
+            eprintln!(
+                "{} GPU computation failed: {}. Falling back to CPU.",
+                "Warning:".yellow(),
+                e
+            );
             let mut index = HdcIndex::new();
             for (id, vec) in patient_ids.iter().zip(database.iter()) {
                 index.add(id.clone(), vec.clone());
@@ -538,10 +609,12 @@ fn search_with_gpu(
     };
 
     // Convert GPU results to output format
-    top_k_results.into_iter()
+    top_k_results
+        .into_iter()
         .next()
         .map(|results| {
-            results.into_iter()
+            results
+                .into_iter()
                 .map(|(idx, sim)| (patient_ids[idx].clone(), sim as f64))
                 .collect()
         })
@@ -608,12 +681,17 @@ pub fn build_database(
 
     for (idx, entry) in vcf_files.iter().enumerate() {
         let path = entry.path();
-        let patient_id = path.file_stem()
+        let patient_id = path
+            .file_stem()
             .map(|s| s.to_string_lossy().to_string())
             .unwrap_or_else(|| format!("patient_{}", idx));
 
-        print!("  Processing {} [{}/{}]... ",
-               patient_id, idx + 1, vcf_files.len());
+        print!(
+            "  Processing {} [{}/{}]... ",
+            patient_id,
+            idx + 1,
+            vcf_files.len()
+        );
 
         // Read and encode
         let file = match File::open(&path) {
@@ -660,7 +738,8 @@ pub fn build_database(
             encoded
         };
 
-        let hex_vector = final_vector.as_bytes()
+        let hex_vector = final_vector
+            .as_bytes()
             .iter()
             .map(|b| format!("{:02x}", b))
             .collect::<String>();
@@ -690,8 +769,18 @@ pub fn build_database(
 
     println!();
     println!("{}", "─".repeat(50));
-    println!("  Patients encoded: {}", index.patient_count.to_string().green());
-    println!("  Errors: {}", if errors > 0 { errors.to_string().red() } else { "0".to_string().green() });
+    println!(
+        "  Patients encoded: {}",
+        index.patient_count.to_string().green()
+    );
+    println!(
+        "  Errors: {}",
+        if errors > 0 {
+            errors.to_string().red()
+        } else {
+            "0".to_string().green()
+        }
+    );
     println!("  Index saved to: {}", index_path.display());
     println!();
     println!("{}", "Database build complete!".green().bold());

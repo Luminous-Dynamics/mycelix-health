@@ -9,11 +9,10 @@
 //!
 //! All data access functions enforce consent-based access control.
 
-use hdk::prelude::*;
 use fhir_mapping_integrity::*;
+use hdk::prelude::*;
 use mycelix_health_shared::{
-    require_authorization, log_data_access,
-    DataCategory, Permission, anchor_hash,
+    anchor_hash, log_data_access, require_authorization, DataCategory, Permission,
 };
 
 // ============================================================================
@@ -30,8 +29,9 @@ pub fn create_fhir_patient_mapping(mapping: FhirPatientMapping) -> ExternResult<
         false,
     )?;
     let mapping_hash = create_entry(&EntryTypes::FhirPatientMapping(mapping.clone()))?;
-    let record = get(mapping_hash.clone(), GetOptions::default())?
-        .ok_or(wasm_error!(WasmErrorInner::Guest("Could not find newly created FHIR patient mapping".to_string())))?;
+    let record = get(mapping_hash.clone(), GetOptions::default())?.ok_or(wasm_error!(
+        WasmErrorInner::Guest("Could not find newly created FHIR patient mapping".to_string())
+    ))?;
 
     // Link from internal patient to FHIR mapping
     create_link(
@@ -86,7 +86,12 @@ pub fn get_fhir_patient_mapping(input: GetFhirMappingInput) -> ExternResult<Opti
 
     if let Some(ref rec) = record {
         // Get the mapping to find patient hash
-        if let Some(mapping) = rec.entry().to_app_option::<FhirPatientMapping>().ok().flatten() {
+        if let Some(mapping) = rec
+            .entry()
+            .to_app_option::<FhirPatientMapping>()
+            .ok()
+            .flatten()
+        {
             // Require authorization
             let auth = require_authorization(
                 mapping.internal_patient_hash.clone(),
@@ -129,7 +134,9 @@ pub fn get_patient_fhir_mappings(input: GetPatientFhirMappingsInput) -> ExternRe
     )?;
 
     let links = get_links(
-        LinkQuery::try_new(input.patient_hash.clone(), LinkTypes::PatientToFhirMappings)?, GetStrategy::default())?;
+        LinkQuery::try_new(input.patient_hash.clone(), LinkTypes::PatientToFhirMappings)?,
+        GetStrategy::default(),
+    )?;
 
     let mut mappings = Vec::new();
     for link in links {
@@ -167,8 +174,9 @@ pub fn create_fhir_observation_mapping(mapping: FhirObservationMapping) -> Exter
         false,
     )?;
     let mapping_hash = create_entry(&EntryTypes::FhirObservationMapping(mapping.clone()))?;
-    let record = get(mapping_hash.clone(), GetOptions::default())?
-        .ok_or(wasm_error!(WasmErrorInner::Guest("Could not find newly created FHIR observation mapping".to_string())))?;
+    let record = get(mapping_hash.clone(), GetOptions::default())?.ok_or(wasm_error!(
+        WasmErrorInner::Guest("Could not find newly created FHIR observation mapping".to_string())
+    ))?;
 
     // Link from internal record to FHIR mapping
     create_link(
@@ -204,7 +212,12 @@ pub fn get_fhir_observation_mapping(input: GetFhirMappingInput) -> ExternResult<
     let record = get(input.mapping_hash.clone(), GetOptions::default())?;
 
     if let Some(ref rec) = record {
-        if let Some(mapping) = rec.entry().to_app_option::<FhirObservationMapping>().ok().flatten() {
+        if let Some(mapping) = rec
+            .entry()
+            .to_app_option::<FhirObservationMapping>()
+            .ok()
+            .flatten()
+        {
             let auth = require_authorization(
                 mapping.patient_hash.clone(),
                 DataCategory::LabResults,
@@ -240,8 +253,9 @@ pub fn create_fhir_condition_mapping(mapping: FhirConditionMapping) -> ExternRes
         false,
     )?;
     let mapping_hash = create_entry(&EntryTypes::FhirConditionMapping(mapping.clone()))?;
-    let record = get(mapping_hash.clone(), GetOptions::default())?
-        .ok_or(wasm_error!(WasmErrorInner::Guest("Could not find newly created FHIR condition mapping".to_string())))?;
+    let record = get(mapping_hash.clone(), GetOptions::default())?.ok_or(wasm_error!(
+        WasmErrorInner::Guest("Could not find newly created FHIR condition mapping".to_string())
+    ))?;
 
     // Link from internal diagnosis to FHIR mapping
     create_link(
@@ -277,7 +291,12 @@ pub fn get_fhir_condition_mapping(input: GetFhirMappingInput) -> ExternResult<Op
     let record = get(input.mapping_hash.clone(), GetOptions::default())?;
 
     if let Some(ref rec) = record {
-        if let Some(mapping) = rec.entry().to_app_option::<FhirConditionMapping>().ok().flatten() {
+        if let Some(mapping) = rec
+            .entry()
+            .to_app_option::<FhirConditionMapping>()
+            .ok()
+            .flatten()
+        {
             let auth = require_authorization(
                 mapping.patient_hash.clone(),
                 DataCategory::Diagnoses,
@@ -313,8 +332,9 @@ pub fn create_fhir_medication_mapping(mapping: FhirMedicationMapping) -> ExternR
         false,
     )?;
     let mapping_hash = create_entry(&EntryTypes::FhirMedicationMapping(mapping.clone()))?;
-    let record = get(mapping_hash.clone(), GetOptions::default())?
-        .ok_or(wasm_error!(WasmErrorInner::Guest("Could not find newly created FHIR medication mapping".to_string())))?;
+    let record = get(mapping_hash.clone(), GetOptions::default())?.ok_or(wasm_error!(
+        WasmErrorInner::Guest("Could not find newly created FHIR medication mapping".to_string())
+    ))?;
 
     // Link from internal medication to FHIR mapping
     create_link(
@@ -350,7 +370,12 @@ pub fn get_fhir_medication_mapping(input: GetFhirMappingInput) -> ExternResult<O
     let record = get(input.mapping_hash.clone(), GetOptions::default())?;
 
     if let Some(ref rec) = record {
-        if let Some(mapping) = rec.entry().to_app_option::<FhirMedicationMapping>().ok().flatten() {
+        if let Some(mapping) = rec
+            .entry()
+            .to_app_option::<FhirMedicationMapping>()
+            .ok()
+            .flatten()
+        {
             let auth = require_authorization(
                 mapping.patient_hash.clone(),
                 DataCategory::Medications,
@@ -410,7 +435,9 @@ pub fn export_patient_bundle(input: ExportPatientBundleInput) -> ExternResult<Fh
 
     // Get all FHIR mappings for this patient
     let links = get_links(
-        LinkQuery::try_new(input.patient_hash.clone(), LinkTypes::PatientToFhirMappings)?, GetStrategy::default())?;
+        LinkQuery::try_new(input.patient_hash.clone(), LinkTypes::PatientToFhirMappings)?,
+        GetStrategy::default(),
+    )?;
 
     let mut patient_mapping: Option<Record> = None;
     let mut observations: Vec<Record> = Vec::new();
@@ -421,13 +448,40 @@ pub fn export_patient_bundle(input: ExportPatientBundleInput) -> ExternResult<Fh
         if let Some(hash) = link.target.into_action_hash() {
             if let Some(record) = get(hash.clone(), GetOptions::default())? {
                 // Determine the type of mapping
-                if record.entry().to_app_option::<FhirPatientMapping>().ok().flatten().is_some() {
+                if record
+                    .entry()
+                    .to_app_option::<FhirPatientMapping>()
+                    .ok()
+                    .flatten()
+                    .is_some()
+                {
                     patient_mapping = Some(record);
-                } else if input.include_observations && record.entry().to_app_option::<FhirObservationMapping>().ok().flatten().is_some() {
+                } else if input.include_observations
+                    && record
+                        .entry()
+                        .to_app_option::<FhirObservationMapping>()
+                        .ok()
+                        .flatten()
+                        .is_some()
+                {
                     observations.push(record);
-                } else if input.include_conditions && record.entry().to_app_option::<FhirConditionMapping>().ok().flatten().is_some() {
+                } else if input.include_conditions
+                    && record
+                        .entry()
+                        .to_app_option::<FhirConditionMapping>()
+                        .ok()
+                        .flatten()
+                        .is_some()
+                {
                     conditions.push(record);
-                } else if input.include_medications && record.entry().to_app_option::<FhirMedicationMapping>().ok().flatten().is_some() {
+                } else if input.include_medications
+                    && record
+                        .entry()
+                        .to_app_option::<FhirMedicationMapping>()
+                        .ok()
+                        .flatten()
+                        .is_some()
+                {
                     medications.push(record);
                 }
             }
@@ -474,8 +528,9 @@ pub fn export_patient_bundle(input: ExportPatientBundleInput) -> ExternResult<Fh
     };
 
     let bundle_hash = create_entry(&EntryTypes::FhirBundleRecord(bundle))?;
-    let bundle_record = get(bundle_hash.clone(), GetOptions::default())?
-        .ok_or(wasm_error!(WasmErrorInner::Guest("Could not find bundle record".to_string())))?;
+    let bundle_record = get(bundle_hash.clone(), GetOptions::default())?.ok_or(wasm_error!(
+        WasmErrorInner::Guest("Could not find bundle record".to_string())
+    ))?;
 
     // Link bundle to patient
     create_link(
@@ -563,7 +618,10 @@ pub fn import_fhir_bundle(input: ImportFhirBundleInput) -> ExternResult<ImportBu
                 )?;
                 imported_observations.push(hash);
             }
-            Err(e) => errors.push(format!("Failed to import observation {}: {}", obs.fhir_observation_id, e)),
+            Err(e) => errors.push(format!(
+                "Failed to import observation {}: {}",
+                obs.fhir_observation_id, e
+            )),
         }
     }
 
@@ -579,7 +637,10 @@ pub fn import_fhir_bundle(input: ImportFhirBundleInput) -> ExternResult<ImportBu
                 )?;
                 imported_conditions.push(hash);
             }
-            Err(e) => errors.push(format!("Failed to import condition {}: {}", cond.fhir_condition_id, e)),
+            Err(e) => errors.push(format!(
+                "Failed to import condition {}: {}",
+                cond.fhir_condition_id, e
+            )),
         }
     }
 
@@ -595,7 +656,10 @@ pub fn import_fhir_bundle(input: ImportFhirBundleInput) -> ExternResult<ImportBu
                 )?;
                 imported_medications.push(hash);
             }
-            Err(e) => errors.push(format!("Failed to import medication {}: {}", med.fhir_medication_id, e)),
+            Err(e) => errors.push(format!(
+                "Failed to import medication {}: {}",
+                med.fhir_medication_id, e
+            )),
         }
     }
 
@@ -620,18 +684,31 @@ pub fn import_fhir_bundle(input: ImportFhirBundleInput) -> ExternResult<ImportBu
         timestamp: sys_time()?,
         patient_hash: Some(input.patient_hash.clone()),
         resource_summary: vec![
-            ResourceTypeSummary { resource_type: "Patient".to_string(), count: if imported_patient.is_some() { 1 } else { 0 } },
-            ResourceTypeSummary { resource_type: "Observation".to_string(), count: imported_observations.len() as u32 },
-            ResourceTypeSummary { resource_type: "Condition".to_string(), count: imported_conditions.len() as u32 },
-            ResourceTypeSummary { resource_type: "MedicationRequest".to_string(), count: imported_medications.len() as u32 },
+            ResourceTypeSummary {
+                resource_type: "Patient".to_string(),
+                count: if imported_patient.is_some() { 1 } else { 0 },
+            },
+            ResourceTypeSummary {
+                resource_type: "Observation".to_string(),
+                count: imported_observations.len() as u32,
+            },
+            ResourceTypeSummary {
+                resource_type: "Condition".to_string(),
+                count: imported_conditions.len() as u32,
+            },
+            ResourceTypeSummary {
+                resource_type: "MedicationRequest".to_string(),
+                count: imported_medications.len() as u32,
+            },
         ],
         status,
         errors: errors.clone(),
     };
 
     let bundle_hash = create_entry(&EntryTypes::FhirBundleRecord(bundle))?;
-    let bundle_record = get(bundle_hash.clone(), GetOptions::default())?
-        .ok_or(wasm_error!(WasmErrorInner::Guest("Could not find bundle record".to_string())))?;
+    let bundle_record = get(bundle_hash.clone(), GetOptions::default())?.ok_or(wasm_error!(
+        WasmErrorInner::Guest("Could not find bundle record".to_string())
+    ))?;
 
     create_link(
         input.patient_hash,
@@ -682,8 +759,9 @@ pub fn validate_loinc_code(input: ValidateCodeInput) -> ExternResult<Record> {
     };
 
     let hash = create_entry(&EntryTypes::TerminologyValidation(validation))?;
-    get(hash, GetOptions::default())?
-        .ok_or(wasm_error!(WasmErrorInner::Guest("Could not find validation record".to_string())))
+    get(hash, GetOptions::default())?.ok_or(wasm_error!(WasmErrorInner::Guest(
+        "Could not find validation record".to_string()
+    )))
 }
 
 /// Validate a SNOMED CT code
@@ -706,8 +784,9 @@ pub fn validate_snomed_code(input: ValidateCodeInput) -> ExternResult<Record> {
     };
 
     let hash = create_entry(&EntryTypes::TerminologyValidation(validation))?;
-    get(hash, GetOptions::default())?
-        .ok_or(wasm_error!(WasmErrorInner::Guest("Could not find validation record".to_string())))
+    get(hash, GetOptions::default())?.ok_or(wasm_error!(WasmErrorInner::Guest(
+        "Could not find validation record".to_string()
+    )))
 }
 
 /// Validate an ICD-10 code
@@ -730,8 +809,9 @@ pub fn validate_icd10_code(input: ValidateCodeInput) -> ExternResult<Record> {
     };
 
     let hash = create_entry(&EntryTypes::TerminologyValidation(validation))?;
-    get(hash, GetOptions::default())?
-        .ok_or(wasm_error!(WasmErrorInner::Guest("Could not find validation record".to_string())))
+    get(hash, GetOptions::default())?.ok_or(wasm_error!(WasmErrorInner::Guest(
+        "Could not find validation record".to_string()
+    )))
 }
 
 /// Validate an RxNorm code
@@ -754,8 +834,9 @@ pub fn validate_rxnorm_code(input: ValidateCodeInput) -> ExternResult<Record> {
     };
 
     let hash = create_entry(&EntryTypes::TerminologyValidation(validation))?;
-    get(hash, GetOptions::default())?
-        .ok_or(wasm_error!(WasmErrorInner::Guest("Could not find validation record".to_string())))
+    get(hash, GetOptions::default())?.ok_or(wasm_error!(WasmErrorInner::Guest(
+        "Could not find validation record".to_string()
+    )))
 }
 
 // ============================================================================
@@ -768,8 +849,10 @@ fn validate_loinc_format(code: &str) -> bool {
     if parts.len() != 2 {
         return false;
     }
-    parts[0].len() >= 3 && parts[0].chars().all(|c| c.is_ascii_digit())
-        && parts[1].len() == 1 && parts[1].chars().all(|c| c.is_ascii_digit())
+    parts[0].len() >= 3
+        && parts[0].chars().all(|c| c.is_ascii_digit())
+        && parts[1].len() == 1
+        && parts[1].chars().all(|c| c.is_ascii_digit())
 }
 
 fn validate_snomed_format(code: &str) -> bool {
@@ -816,14 +899,17 @@ pub struct UpdateSyncStatusInput {
 /// Update the sync status of a FHIR patient mapping
 #[hdk_extern]
 pub fn update_patient_mapping_sync_status(input: UpdateSyncStatusInput) -> ExternResult<Record> {
-    let record = get(input.mapping_hash.clone(), GetOptions::default())?
-        .ok_or(wasm_error!(WasmErrorInner::Guest("Mapping not found".to_string())))?;
+    let record = get(input.mapping_hash.clone(), GetOptions::default())?.ok_or(wasm_error!(
+        WasmErrorInner::Guest("Mapping not found".to_string())
+    ))?;
 
     let mut mapping: FhirPatientMapping = record
         .entry()
         .to_app_option()
         .map_err(|e| wasm_error!(WasmErrorInner::Guest(e.to_string())))?
-        .ok_or(wasm_error!(WasmErrorInner::Guest("Invalid mapping entry".to_string())))?;
+        .ok_or(wasm_error!(WasmErrorInner::Guest(
+            "Invalid mapping entry".to_string()
+        )))?;
 
     mapping.sync_status = input.new_status;
     mapping.last_synced = sys_time()?;
@@ -832,8 +918,9 @@ pub fn update_patient_mapping_sync_status(input: UpdateSyncStatusInput) -> Exter
     }
 
     let updated_hash = update_entry(input.mapping_hash.clone(), &mapping)?;
-    let updated_record = get(updated_hash.clone(), GetOptions::default())?
-        .ok_or(wasm_error!(WasmErrorInner::Guest("Could not find updated mapping".to_string())))?;
+    let updated_record = get(updated_hash.clone(), GetOptions::default())?.ok_or(wasm_error!(
+        WasmErrorInner::Guest("Could not find updated mapping".to_string())
+    ))?;
 
     create_link(
         input.mapping_hash,

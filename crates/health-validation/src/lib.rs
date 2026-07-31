@@ -212,12 +212,7 @@ pub fn validate_confidence_score(score: f64, field_name: &str) -> ValidationResu
 }
 
 /// Validate a score within a specified range.
-pub fn validate_score_range(
-    score: u32,
-    min: u32,
-    max: u32,
-    field_name: &str,
-) -> ValidationResult {
+pub fn validate_score_range(score: u32, min: u32, max: u32, field_name: &str) -> ValidationResult {
     let mut result = ValidationResult::new();
 
     if score < min || score > max {
@@ -282,7 +277,9 @@ mod tests {
 
     #[test]
     fn test_did_valid() {
-        assert!(validate_did("did:key:z6MkhaXgBZDvotDkL5257faiztiGiC2QtKLGpbnnEGta2doK").is_valid());
+        assert!(
+            validate_did("did:key:z6MkhaXgBZDvotDkL5257faiztiGiC2QtKLGpbnnEGta2doK").is_valid()
+        );
         assert!(validate_did("did:web:example.com").is_valid());
         assert!(validate_did("did:holo:uhCAkX5678").is_valid());
         assert!(validate_did("did:ethr:0x1234abcd").is_valid());
@@ -378,7 +375,7 @@ mod tests {
     #[test]
     fn test_validation_result_merge() {
         let mut r1 = validate_mrn(""); // Has error
-        let r2 = validate_did("");     // Has error
+        let r2 = validate_did(""); // Has error
         r1.merge(r2);
         assert_eq!(r1.errors.len(), 2);
     }

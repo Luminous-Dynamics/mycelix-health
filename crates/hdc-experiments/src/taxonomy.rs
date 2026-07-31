@@ -92,17 +92,18 @@ impl From<SimilarityStats> for SimilarityDistribution {
 }
 
 /// Generate synthetic specimens with taxonomic structure
-fn generate_specimens(
-    sequences_per_species: usize,
-    rng: &mut ChaCha8Rng,
-) -> Vec<Specimen> {
+fn generate_specimens(sequences_per_species: usize, rng: &mut ChaCha8Rng) -> Vec<Specimen> {
     let taxonomy = vec![
         // Family -> Genus -> Species
         ("Canidae", "Canis", vec!["lupus", "familiaris", "latrans"]),
         ("Canidae", "Vulpes", vec!["vulpes", "lagopus", "zerda"]),
         ("Felidae", "Felis", vec!["catus", "silvestris", "margarita"]),
         ("Felidae", "Panthera", vec!["leo", "tigris", "pardus"]),
-        ("Ursidae", "Ursus", vec!["arctos", "americanus", "maritimus"]),
+        (
+            "Ursidae",
+            "Ursus",
+            vec!["arctos", "americanus", "maritimus"],
+        ),
     ];
 
     let nucleotides = ['A', 'C', 'G', 'T'];
@@ -157,11 +158,7 @@ fn generate_specimens(
     specimens
 }
 
-pub fn run_taxonomy_experiment(
-    sequences_per_species: usize,
-    kmer_length: u8,
-    output_dir: PathBuf,
-) {
+pub fn run_taxonomy_experiment(sequences_per_species: usize, kmer_length: u8, output_dir: PathBuf) {
     fs::create_dir_all(&output_dir).expect("Failed to create output directory");
 
     println!("Configuration:");
@@ -175,11 +172,13 @@ pub fn run_taxonomy_experiment(
     let specimens = generate_specimens(sequences_per_species, &mut rng);
     println!("   Generated {} specimens", specimens.len());
 
-    let num_species: usize = specimens.iter()
+    let num_species: usize = specimens
+        .iter()
         .map(|s| s.species.clone())
         .collect::<std::collections::HashSet<_>>()
         .len();
-    let num_genera: usize = specimens.iter()
+    let num_genera: usize = specimens
+        .iter()
         .map(|s| s.genus.clone())
         .collect::<std::collections::HashSet<_>>()
         .len();
@@ -194,11 +193,18 @@ pub fn run_taxonomy_experiment(
     let encoded: Vec<_> = specimens
         .iter()
         .filter_map(|spec| {
-            encoder.encode_sequence(&spec.sequence).ok().map(|enc| (spec, enc))
+            encoder
+                .encode_sequence(&spec.sequence)
+                .ok()
+                .map(|enc| (spec, enc))
         })
         .collect();
     let encoding_time = start.elapsed();
-    println!("   Encoded {} sequences in {:.2}s", encoded.len(), encoding_time.as_secs_f64());
+    println!(
+        "   Encoded {} sequences in {:.2}s",
+        encoded.len(),
+        encoding_time.as_secs_f64()
+    );
 
     // Compute similarity distributions
     println!("{}", "3. Computing similarities...".yellow());
@@ -253,18 +259,32 @@ pub fn run_taxonomy_experiment(
 
     println!();
     println!("Similarity Distributions:");
-    println!("  Same species:  {:.3} ± {:.3} (n={})",
-             species_stats.mean, species_stats.std_dev, species_stats.count);
-    println!("  Same genus:    {:.3} ± {:.3} (n={})",
-             genus_stats.mean, genus_stats.std_dev, genus_stats.count);
-    println!("  Same family:   {:.3} ± {:.3} (n={})",
-             family_stats.mean, family_stats.std_dev, family_stats.count);
-    println!("  Random pairs:  {:.3} ± {:.3} (n={})",
-             random_stats.mean, random_stats.std_dev, random_stats.count);
+    println!(
+        "  Same species:  {:.3} ± {:.3} (n={})",
+        species_stats.mean, species_stats.std_dev, species_stats.count
+    );
+    println!(
+        "  Same genus:    {:.3} ± {:.3} (n={})",
+        genus_stats.mean, genus_stats.std_dev, genus_stats.count
+    );
+    println!(
+        "  Same family:   {:.3} ± {:.3} (n={})",
+        family_stats.mean, family_stats.std_dev, family_stats.count
+    );
+    println!(
+        "  Random pairs:  {:.3} ± {:.3} (n={})",
+        random_stats.mean, random_stats.std_dev, random_stats.count
+    );
 
     println!();
-    println!("Monotonic separation: {}",
-             if monotonic { "YES ✓".green() } else { "NO ✗".red() });
+    println!(
+        "Monotonic separation: {}",
+        if monotonic {
+            "YES ✓".green()
+        } else {
+            "NO ✗".red()
+        }
+    );
 
     println!();
     println!("k-NN Accuracy (k=1):");
@@ -273,9 +293,11 @@ pub fn run_taxonomy_experiment(
 
     println!();
     println!("Timing:");
-    println!("  Encoding: {:.2}s ({:.2}ms/seq)",
-             encoding_time.as_secs_f64(),
-             encoding_time.as_millis() as f64 / encoded.len() as f64);
+    println!(
+        "  Encoding: {:.2}s ({:.2}ms/seq)",
+        encoding_time.as_secs_f64(),
+        encoding_time.as_millis() as f64 / encoded.len() as f64
+    );
     println!("  Comparisons: {:.2}s", comparison_time.as_secs_f64());
 
     // Save results
@@ -315,8 +337,12 @@ pub fn run_taxonomy_experiment(
              same-species similarity ({:.2}) > same-genus ({:.2}) >\n\
              same-family ({:.2}) ≥ random ({:.2}),\n\
              with {:.0}% species and {:.0}% genus classification accuracy.\"",
-            species_stats.mean, genus_stats.mean, family_stats.mean, random_stats.mean,
-            species_accuracy * 100.0, genus_accuracy * 100.0
+            species_stats.mean,
+            genus_stats.mean,
+            family_stats.mean,
+            random_stats.mean,
+            species_accuracy * 100.0,
+            genus_accuracy * 100.0
         );
     } else {
         println!("{}", "WARNING: Monotonic separation not achieved!".red());
@@ -343,7 +369,12 @@ where
             .iter()
             .enumerate()
             .filter(|(j, _)| *j != i)
-            .map(|(j, (_, enc))| (j, query_enc.vector.normalized_cosine_similarity(&enc.vector)))
+            .map(|(j, (_, enc))| {
+                (
+                    j,
+                    query_enc.vector.normalized_cosine_similarity(&enc.vector),
+                )
+            })
             .collect();
 
         sims.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap());
@@ -363,11 +394,7 @@ where
     correct as f64 / total as f64
 }
 
-pub fn run_parameter_sweep(
-    kmer_lengths: &[u8],
-    sequences_per_species: usize,
-    output_dir: PathBuf,
-) {
+pub fn run_parameter_sweep(kmer_lengths: &[u8], sequences_per_species: usize, output_dir: PathBuf) {
     fs::create_dir_all(&output_dir).expect("Failed to create output directory");
 
     println!("{}", "PARAMETER SWEEP".yellow().bold());
@@ -395,7 +422,10 @@ pub fn run_parameter_sweep(
         let encoded: Vec<_> = specimens
             .iter()
             .filter_map(|spec| {
-                encoder.encode_sequence(&spec.sequence).ok().map(|enc| (spec, enc))
+                encoder
+                    .encode_sequence(&spec.sequence)
+                    .ok()
+                    .map(|enc| (spec, enc))
             })
             .collect();
 
@@ -424,7 +454,11 @@ pub fn run_parameter_sweep(
 
         println!(
             "k={:2}: species={:.3}, random={:.3}, sep={:.3}, acc={:.1}%",
-            kmer, species_mean, random_mean, separation, species_accuracy * 100.0
+            kmer,
+            species_mean,
+            random_mean,
+            separation,
+            species_accuracy * 100.0
         );
 
         results.push(SweepResult {
@@ -437,12 +471,22 @@ pub fn run_parameter_sweep(
     }
 
     // Find optimal
-    let best_sep = results.iter().max_by(|a, b| a.separation.partial_cmp(&b.separation).unwrap());
-    let best_acc = results.iter().max_by(|a, b| a.species_accuracy.partial_cmp(&b.species_accuracy).unwrap());
+    let best_sep = results
+        .iter()
+        .max_by(|a, b| a.separation.partial_cmp(&b.separation).unwrap());
+    let best_acc = results
+        .iter()
+        .max_by(|a, b| a.species_accuracy.partial_cmp(&b.species_accuracy).unwrap());
 
     println!();
-    println!("Optimal k-mer for separation: {}", best_sep.map(|r| r.kmer_length).unwrap_or(6));
-    println!("Optimal k-mer for accuracy: {}", best_acc.map(|r| r.kmer_length).unwrap_or(6));
+    println!(
+        "Optimal k-mer for separation: {}",
+        best_sep.map(|r| r.kmer_length).unwrap_or(6)
+    );
+    println!(
+        "Optimal k-mer for accuracy: {}",
+        best_acc.map(|r| r.kmer_length).unwrap_or(6)
+    );
 
     // Save results
     let output_path = output_dir.join("parameter-sweep.json");
@@ -452,11 +496,7 @@ pub fn run_parameter_sweep(
 }
 
 /// Run taxonomy experiment with real BOLD COI sequences
-pub fn run_real_taxonomy_experiment(
-    data_path: PathBuf,
-    kmer_length: u8,
-    output_dir: PathBuf,
-) {
+pub fn run_real_taxonomy_experiment(data_path: PathBuf, kmer_length: u8, output_dir: PathBuf) {
     fs::create_dir_all(&output_dir).expect("Failed to create output directory");
 
     println!("{}", "═".repeat(60).blue());
@@ -477,30 +517,38 @@ pub fn run_real_taxonomy_experiment(
     println!("   Sequences: {}", data.sequences.len());
 
     // Convert to specimens
-    let specimens: Vec<Specimen> = data.sequences.iter().map(|seq| {
-        Specimen {
+    let specimens: Vec<Specimen> = data
+        .sequences
+        .iter()
+        .map(|seq| Specimen {
             id: seq.id.clone(),
             sequence: seq.sequence.clone(),
             species: seq.species.clone(),
             genus: seq.genus.clone(),
             family: seq.family.clone(),
-        }
-    }).collect();
+        })
+        .collect();
 
-    let num_species: usize = specimens.iter()
+    let num_species: usize = specimens
+        .iter()
         .map(|s| s.species.clone())
         .collect::<std::collections::HashSet<_>>()
         .len();
-    let num_genera: usize = specimens.iter()
+    let num_genera: usize = specimens
+        .iter()
         .map(|s| s.genus.clone())
         .collect::<std::collections::HashSet<_>>()
         .len();
-    let num_families: usize = specimens.iter()
+    let num_families: usize = specimens
+        .iter()
         .map(|s| s.family.clone())
         .collect::<std::collections::HashSet<_>>()
         .len();
 
-    println!("   {} species, {} genera, {} families", num_species, num_genera, num_families);
+    println!(
+        "   {} species, {} genera, {} families",
+        num_species, num_genera, num_families
+    );
     println!();
 
     // Encode all specimens
@@ -512,11 +560,18 @@ pub fn run_real_taxonomy_experiment(
     let encoded: Vec<_> = specimens
         .iter()
         .filter_map(|spec| {
-            encoder.encode_sequence(&spec.sequence).ok().map(|enc| (spec, enc))
+            encoder
+                .encode_sequence(&spec.sequence)
+                .ok()
+                .map(|enc| (spec, enc))
         })
         .collect();
     let encoding_time = start.elapsed();
-    println!("   Encoded {} sequences in {:.2}s", encoded.len(), encoding_time.as_secs_f64());
+    println!(
+        "   Encoded {} sequences in {:.2}s",
+        encoded.len(),
+        encoding_time.as_secs_f64()
+    );
 
     // Compute similarity distributions
     println!("{}", "3. Computing similarities...".yellow());
@@ -571,22 +626,36 @@ pub fn run_real_taxonomy_experiment(
 
     println!();
     println!("Similarity Distributions (Real BOLD Sequences):");
-    println!("  Same species:    {:.4} ± {:.4} (n={})",
-             species_stats.mean, species_stats.std_dev, species_stats.count);
+    println!(
+        "  Same species:    {:.4} ± {:.4} (n={})",
+        species_stats.mean, species_stats.std_dev, species_stats.count
+    );
     if genus_stats.count > 0 {
-        println!("  Same genus:      {:.4} ± {:.4} (n={})",
-                 genus_stats.mean, genus_stats.std_dev, genus_stats.count);
+        println!(
+            "  Same genus:      {:.4} ± {:.4} (n={})",
+            genus_stats.mean, genus_stats.std_dev, genus_stats.count
+        );
     }
     if family_stats.count > 0 {
-        println!("  Same family:     {:.4} ± {:.4} (n={})",
-                 family_stats.mean, family_stats.std_dev, family_stats.count);
+        println!(
+            "  Same family:     {:.4} ± {:.4} (n={})",
+            family_stats.mean, family_stats.std_dev, family_stats.count
+        );
     }
-    println!("  Between family:  {:.4} ± {:.4} (n={})",
-             between_stats.mean, between_stats.std_dev, between_stats.count);
+    println!(
+        "  Between family:  {:.4} ± {:.4} (n={})",
+        between_stats.mean, between_stats.std_dev, between_stats.count
+    );
 
     println!();
-    println!("Monotonic separation: {}",
-             if monotonic { "YES ✓".green() } else { "NO ✗".red() });
+    println!(
+        "Monotonic separation: {}",
+        if monotonic {
+            "YES ✓".green()
+        } else {
+            "NO ✗".red()
+        }
+    );
 
     println!();
     println!("k-NN Accuracy (k=1):");
@@ -595,9 +664,11 @@ pub fn run_real_taxonomy_experiment(
 
     println!();
     println!("Timing:");
-    println!("  Encoding: {:.2}s ({:.2}ms/seq)",
-             encoding_time.as_secs_f64(),
-             encoding_time.as_millis() as f64 / encoded.len().max(1) as f64);
+    println!(
+        "  Encoding: {:.2}s ({:.2}ms/seq)",
+        encoding_time.as_secs_f64(),
+        encoding_time.as_millis() as f64 / encoded.len().max(1) as f64
+    );
     println!("  Comparisons: {:.2}s", comparison_time.as_secs_f64());
 
     // Save results
@@ -637,13 +708,19 @@ pub fn run_real_taxonomy_experiment(
              HDC encoding preserves taxonomic structure:\n\
              same-species ({:.3}) > same-genus ({:.3}) > same-family ({:.3})\n\
              with {:.0}% species classification accuracy (k-NN, k=1).\"",
-            num_species, species_stats.mean, genus_stats.mean, family_stats.mean,
+            num_species,
+            species_stats.mean,
+            genus_stats.mean,
+            family_stats.mean,
             species_accuracy * 100.0
         );
         println!();
         println!("Data source: {} ({})", data.source, data.retrieval_date);
     } else {
-        println!("{}", "WARNING: Monotonic separation not achieved with real data!".red());
+        println!(
+            "{}",
+            "WARNING: Monotonic separation not achieved with real data!".red()
+        );
         println!("This may indicate need for parameter tuning or more diverse dataset.");
     }
 }

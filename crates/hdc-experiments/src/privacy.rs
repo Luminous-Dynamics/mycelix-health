@@ -39,8 +39,8 @@ pub struct PrivacyConfig {
 pub struct MembershipResults {
     pub accuracy: f64,
     pub auc: f64,
-    pub fpr: f64,  // False positive rate
-    pub fnr: f64,  // False negative rate
+    pub fpr: f64, // False positive rate
+    pub fnr: f64, // False negative rate
 }
 
 #[derive(Serialize, Deserialize)]
@@ -139,12 +139,16 @@ fn membership_inference_attack(
     // Compute AUC using trapezoidal rule with various thresholds
     let mut auc_points: Vec<(f64, f64)> = Vec::new();
     for threshold in (40..=70).map(|t| t as f64 / 100.0) {
-        let tpr = member_vectors.iter()
+        let tpr = member_vectors
+            .iter()
             .filter(|hv| hv.normalized_cosine_similarity(&centroid) > threshold)
-            .count() as f64 / member_vectors.len() as f64;
-        let fpr = non_member_vectors.iter()
+            .count() as f64
+            / member_vectors.len() as f64;
+        let fpr = non_member_vectors
+            .iter()
             .filter(|hv| hv.normalized_cosine_similarity(&centroid) > threshold)
-            .count() as f64 / non_member_vectors.len() as f64;
+            .count() as f64
+            / non_member_vectors.len() as f64;
         auc_points.push((fpr, tpr));
     }
     auc_points.sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap());
@@ -152,17 +156,23 @@ fn membership_inference_attack(
     let auc = if auc_points.len() > 1 {
         let mut area = 0.0;
         for i in 1..auc_points.len() {
-            area += (auc_points[i].0 - auc_points[i-1].0) * (auc_points[i].1 + auc_points[i-1].1) / 2.0;
+            area += (auc_points[i].0 - auc_points[i - 1].0)
+                * (auc_points[i].1 + auc_points[i - 1].1)
+                / 2.0;
         }
         area
     } else {
         0.5
     };
 
-    let fpr = if non_member_vectors.is_empty() { 0.0 } else {
+    let fpr = if non_member_vectors.is_empty() {
+        0.0
+    } else {
         false_positives as f64 / non_member_vectors.len() as f64
     };
-    let fnr = if member_vectors.is_empty() { 0.0 } else {
+    let fnr = if member_vectors.is_empty() {
+        0.0
+    } else {
         false_negatives as f64 / member_vectors.len() as f64
     };
 
@@ -188,21 +198,39 @@ fn attribute_inference_attack(
     let gc_contents: Vec<f64> = sequences.iter().map(|s| gc_content(s)).collect();
 
     // Use popcount as a proxy (high-dimensional, should be near 0.5)
-    let popcounts: Vec<f64> = vectors.iter()
+    let popcounts: Vec<f64> = vectors
+        .iter()
         .map(|v| v.popcount() as f64 / HYPERVECTOR_DIM as f64)
         .collect();
 
     let gc_mean = gc_contents.iter().sum::<f64>() / gc_contents.len() as f64;
     let pop_mean = popcounts.iter().sum::<f64>() / popcounts.len() as f64;
 
-    let cov: f64 = gc_contents.iter().zip(popcounts.iter())
+    let cov: f64 = gc_contents
+        .iter()
+        .zip(popcounts.iter())
         .map(|(gc, pop)| (gc - gc_mean) * (pop - pop_mean))
-        .sum::<f64>() / gc_contents.len() as f64;
+        .sum::<f64>()
+        / gc_contents.len() as f64;
 
-    let gc_std = (gc_contents.iter().map(|x| (x - gc_mean).powi(2)).sum::<f64>() / gc_contents.len() as f64).sqrt();
-    let pop_std = (popcounts.iter().map(|x| (x - pop_mean).powi(2)).sum::<f64>() / popcounts.len() as f64).sqrt();
+    let gc_std = (gc_contents
+        .iter()
+        .map(|x| (x - gc_mean).powi(2))
+        .sum::<f64>()
+        / gc_contents.len() as f64)
+        .sqrt();
+    let pop_std = (popcounts
+        .iter()
+        .map(|x| (x - pop_mean).powi(2))
+        .sum::<f64>()
+        / popcounts.len() as f64)
+        .sqrt();
 
-    let gc_correlation = if gc_std * pop_std > 0.0 { cov / (gc_std * pop_std) } else { 0.0 };
+    let gc_correlation = if gc_std * pop_std > 0.0 {
+        cov / (gc_std * pop_std)
+    } else {
+        0.0
+    };
 
     // 2. K-mer presence detection
     // Try to detect if specific k-mers are present
@@ -303,7 +331,8 @@ fn reconstruction_attack(
 
         // Try to reconstruct sequence (very naive)
         // Just check sequence similarity based on k-mer overlap
-        let similarity = correct_recovered as f64 / (true_kmers.len() + recovered_kmers.len() - correct_recovered).max(1) as f64;
+        let similarity = correct_recovered as f64
+            / (true_kmers.len() + recovered_kmers.len() - correct_recovered).max(1) as f64;
         total_similarity += similarity;
 
         // Check for exact match (extremely unlikely)
@@ -356,9 +385,12 @@ pub fn run_privacy_analysis(
     println!("{}", "2. Encoding sequences...".yellow());
     let member_vectors: Vec<Hypervector> = member_sequences
         .iter()
-        .filter_map(|seq| encoder.encode_sequence(seq).ok().map(|e| {
-            add_noise(&e.vector, noise_level, &mut rng)
-        }))
+        .filter_map(|seq| {
+            encoder
+                .encode_sequence(seq)
+                .ok()
+                .map(|e| add_noise(&e.vector, noise_level, &mut rng))
+        })
         .collect();
     let non_member_vectors: Vec<Hypervector> = non_member_sequences
         .iter()
@@ -388,21 +420,41 @@ pub fn run_privacy_analysis(
         &seed,
         kmer_length,
     );
-    println!("   GC content correlation: {:.3}", attributes.gc_content_correlation);
-    println!("   K-mer presence accuracy: {:.1}%", attributes.kmer_presence_accuracy * 100.0);
-    println!("   Organism classification: {:.1}%", attributes.organism_classification * 100.0);
+    println!(
+        "   GC content correlation: {:.3}",
+        attributes.gc_content_correlation
+    );
+    println!(
+        "   K-mer presence accuracy: {:.1}%",
+        attributes.kmer_presence_accuracy * 100.0
+    );
+    println!(
+        "   Organism classification: {:.1}%",
+        attributes.organism_classification * 100.0
+    );
 
     println!("{}", "5. Reconstruction attack...".yellow());
     let reconstruction = reconstruction_attack(
-        &member_sequences[..member_sequences.len().min(50)].to_vec().as_slice(),
+        &member_sequences[..member_sequences.len().min(50)]
+            .to_vec()
+            .as_slice(),
         &member_vectors[..member_vectors.len().min(50)],
         &encoder,
         &seed,
         kmer_length,
     );
-    println!("   K-mer recovery rate: {:.1}%", reconstruction.kmer_recovery_rate * 100.0);
-    println!("   Sequence similarity: {:.1}%", reconstruction.sequence_similarity * 100.0);
-    println!("   Exact match rate: {:.1}%", reconstruction.exact_match_rate * 100.0);
+    println!(
+        "   K-mer recovery rate: {:.1}%",
+        reconstruction.kmer_recovery_rate * 100.0
+    );
+    println!(
+        "   Sequence similarity: {:.1}%",
+        reconstruction.sequence_similarity * 100.0
+    );
+    println!(
+        "   Exact match rate: {:.1}%",
+        reconstruction.exact_match_rate * 100.0
+    );
 
     // Utility metrics
     println!("{}", "6. Utility metrics...".yellow());
@@ -412,7 +464,11 @@ pub fn run_privacy_analysis(
         let sample_size = 20.min(member_vectors.len());
         for i in 0..sample_size {
             for j in (i + 1)..sample_size {
-                let seq_sim = jaccard_similarity(&member_sequences[i], &member_sequences[j], kmer_length as usize);
+                let seq_sim = jaccard_similarity(
+                    &member_sequences[i],
+                    &member_sequences[j],
+                    kmer_length as usize,
+                );
                 let vec_sim = member_vectors[i].normalized_cosine_similarity(&member_vectors[j]);
                 // Check correlation direction
                 if (seq_sim > 0.5 && vec_sim > 0.5) || (seq_sim < 0.5 && vec_sim < 0.6) {
@@ -433,18 +489,45 @@ pub fn run_privacy_analysis(
     println!("{}", "PRIVACY ANALYSIS SUMMARY".green().bold());
     println!("{}", "═".repeat(50).green());
 
-    let membership_risk = if membership.accuracy < 0.6 { "LOW" } else if membership.accuracy < 0.75 { "MODERATE" } else { "HIGH" };
-    let attribute_risk = if attributes.gc_content_correlation < 0.1 { "LOW" } else if attributes.gc_content_correlation < 0.3 { "MODERATE" } else { "HIGH" };
-    let reconstruction_risk = if reconstruction.kmer_recovery_rate < 0.3 { "LOW" } else if reconstruction.kmer_recovery_rate < 0.5 { "MODERATE" } else { "HIGH" };
+    let membership_risk = if membership.accuracy < 0.6 {
+        "LOW"
+    } else if membership.accuracy < 0.75 {
+        "MODERATE"
+    } else {
+        "HIGH"
+    };
+    let attribute_risk = if attributes.gc_content_correlation < 0.1 {
+        "LOW"
+    } else if attributes.gc_content_correlation < 0.3 {
+        "MODERATE"
+    } else {
+        "HIGH"
+    };
+    let reconstruction_risk = if reconstruction.kmer_recovery_rate < 0.3 {
+        "LOW"
+    } else if reconstruction.kmer_recovery_rate < 0.5 {
+        "MODERATE"
+    } else {
+        "HIGH"
+    };
 
     println!();
     println!("Privacy Risk Assessment:");
-    println!("  - Membership inference: {} (accuracy: {:.1}%)",
-             color_risk(membership_risk), membership.accuracy * 100.0);
-    println!("  - Attribute inference: {} (GC correlation: {:.3})",
-             color_risk(attribute_risk), attributes.gc_content_correlation);
-    println!("  - Reconstruction: {} (k-mer recovery: {:.1}%)",
-             color_risk(reconstruction_risk), reconstruction.kmer_recovery_rate * 100.0);
+    println!(
+        "  - Membership inference: {} (accuracy: {:.1}%)",
+        color_risk(membership_risk),
+        membership.accuracy * 100.0
+    );
+    println!(
+        "  - Attribute inference: {} (GC correlation: {:.3})",
+        color_risk(attribute_risk),
+        attributes.gc_content_correlation
+    );
+    println!(
+        "  - Reconstruction: {} (k-mer recovery: {:.1}%)",
+        color_risk(reconstruction_risk),
+        reconstruction.kmer_recovery_rate * 100.0
+    );
 
     println!();
     println!("Utility Preservation:");
@@ -466,7 +549,11 @@ pub fn run_privacy_analysis(
         },
     };
 
-    let output_path = output_dir.join(format!("privacy-results-k{}-noise{}.json", kmer_length, (noise_level * 100.0) as u32));
+    let output_path = output_dir.join(format!(
+        "privacy-results-k{}-noise{}.json",
+        kmer_length,
+        (noise_level * 100.0) as u32
+    ));
     let file = File::create(&output_path).expect("Failed to create output file");
     serde_json::to_writer_pretty(file, &results).expect("Failed to write results");
     println!();
@@ -509,5 +596,9 @@ fn jaccard_similarity(seq1: &str, seq2: &str, k: usize) -> f64 {
     let intersection = kmers1.intersection(&kmers2).count();
     let union = kmers1.len() + kmers2.len() - intersection;
 
-    if union == 0 { 1.0 } else { intersection as f64 / union as f64 }
+    if union == 0 {
+        1.0
+    } else {
+        intersection as f64 / union as f64
+    }
 }

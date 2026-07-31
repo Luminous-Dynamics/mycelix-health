@@ -32,12 +32,12 @@
 //! println!("Similarity: {:.3}", similarity);
 //! ```
 
-pub mod ops;
+pub mod batch;
+pub mod confidence;
 pub mod encoding;
+pub mod ops;
 pub mod similarity;
 pub mod vcf;
-pub mod confidence;
-pub mod batch;
 
 #[cfg(feature = "dp")]
 pub mod differential_privacy;
@@ -49,36 +49,52 @@ pub mod rare_disease_pipeline;
 pub mod gpu;
 
 // Re-export commonly used types for convenience
-pub use encoding::{
-    DnaEncoder, HlaEncoder, SnpEncoder, EncodedSequence, HlaMatch,
-    LocusWeightedHlaEncoder, LocusEncodedHla,
-    AlleleHlaEncoder, AlleleEncodedHla,
-    // Star allele / pharmacogenomics
-    StarAlleleEncoder, EncodedDiplotype, EncodedPgxProfile,
-    MetabolizerPhenotype, DrugRecommendation, DrugInteractionPrediction,
-    // Ancestry-informed pharmacogenomics
-    Ancestry, AncestryInformedEncoder, AncestryEncodedDiplotype,
-    AncestryEncodedProfile, AncestryDrugPrediction, DoseAdjustment, DosingGuidance,
+pub use batch::{
+    BatchConfig, BatchEncoder, BatchQueryBuilder, BatchResult, BatchStats, SimilarityMatrix,
 };
-pub use vcf::{VcfReader, VcfEncoder, Variant, Genotype, EncodedVcf};
-pub use vcf::{WgsVcfEncoder, WgsEncodingConfig, WgsEncodedResult, VariantIterator, GenomicRegion};
 pub use confidence::{MatchConfidence, SimilarityWithConfidence};
-pub use batch::{BatchEncoder, BatchConfig, BatchResult, BatchStats, SimilarityMatrix, BatchQueryBuilder};
+pub use encoding::{
+    AlleleEncodedHla,
+    AlleleHlaEncoder,
+    // Ancestry-informed pharmacogenomics
+    Ancestry,
+    AncestryDrugPrediction,
+    AncestryEncodedDiplotype,
+    AncestryEncodedProfile,
+    AncestryInformedEncoder,
+    DnaEncoder,
+    DoseAdjustment,
+    DosingGuidance,
+    DrugInteractionPrediction,
+    DrugRecommendation,
+    EncodedDiplotype,
+    EncodedPgxProfile,
+    EncodedSequence,
+    HlaEncoder,
+    HlaMatch,
+    LocusEncodedHla,
+    LocusWeightedHlaEncoder,
+    MetabolizerPhenotype,
+    SnpEncoder,
+    // Star allele / pharmacogenomics
+    StarAlleleEncoder,
+};
+pub use vcf::{EncodedVcf, Genotype, Variant, VcfEncoder, VcfReader};
+pub use vcf::{GenomicRegion, VariantIterator, WgsEncodedResult, WgsEncodingConfig, WgsVcfEncoder};
 
 #[cfg(feature = "dp")]
-pub use differential_privacy::{DpParams, DpHypervector, PrivacyBudget, PrivacyError};
+pub use differential_privacy::{DpHypervector, DpParams, PrivacyBudget, PrivacyError};
 
 #[cfg(feature = "dp")]
 pub use rare_disease_pipeline::{
-    RareDiseasePipeline, RareDiseaseVariant, PatientProfile, DiseaseSignature,
-    MatchResult, ClinicalSignificance, InheritancePattern,
-    build_reference_database, populate_reference_database,
-    hamming_similarity as rare_disease_hamming_similarity,
-    cosine_similarity_binary as rare_disease_cosine_similarity,
+    build_reference_database, cosine_similarity_binary as rare_disease_cosine_similarity,
+    hamming_similarity as rare_disease_hamming_similarity, populate_reference_database,
+    ClinicalSignificance, DiseaseSignature, InheritancePattern, MatchResult, PatientProfile,
+    RareDiseasePipeline, RareDiseaseVariant,
 };
 
 #[cfg(feature = "gpu")]
-pub use gpu::{GpuSimilarityEngine, GpuError};
+pub use gpu::{GpuError, GpuSimilarityEngine};
 
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
@@ -227,12 +243,16 @@ impl Hypervector {
 
     /// Jaccard similarity (intersection over union)
     pub fn jaccard_similarity(&self, other: &Hypervector) -> f64 {
-        let intersection: usize = self.data.iter()
+        let intersection: usize = self
+            .data
+            .iter()
             .zip(other.data.iter())
             .map(|(a, b)| (a & b).count_ones() as usize)
             .sum();
 
-        let union: usize = self.data.iter()
+        let union: usize = self
+            .data
+            .iter()
             .zip(other.data.iter())
             .map(|(a, b)| (a | b).count_ones() as usize)
             .sum();
@@ -254,9 +274,7 @@ pub fn bundle(vectors: &[&Hypervector]) -> Hypervector {
 
 /// Weighted bundle using thresholded sums
 pub fn weighted_bundle(vectors: &[(&Hypervector, f64)]) -> Hypervector {
-    let weighted: Vec<(&[u8], f64)> = vectors.iter()
-        .map(|(v, w)| (v.as_bytes(), *w))
-        .collect();
+    let weighted: Vec<(&[u8], f64)> = vectors.iter().map(|(v, w)| (v.as_bytes(), *w)).collect();
     let data = ops::weighted_bundle(&weighted);
     Hypervector { data }
 }
@@ -277,22 +295,19 @@ pub enum HdcError {
     /// IO error during file operations
     IoError {
         operation: &'static str,
-        message: String
+        message: String,
     },
     /// VCF file format error
     VcfFormatError {
         line_number: Option<usize>,
-        message: String
+        message: String,
     },
     /// Invalid genomic region specification
-    InvalidRegion {
-        input: String,
-        reason: String
-    },
+    InvalidRegion { input: String, reason: String },
     /// Invalid genotype in VCF
     InvalidGenotype {
         sample: Option<String>,
-        value: String
+        value: String,
     },
 
     // === Pharmacogenomics Errors ===
@@ -305,7 +320,7 @@ pub enum HdcError {
     InvalidStarAllele {
         gene: String,
         allele: String,
-        reason: String
+        reason: String,
     },
     /// Unsupported drug for pharmacogenomics prediction
     UnsupportedDrug {
@@ -318,20 +333,17 @@ pub enum HdcError {
     BatchError {
         successful: usize,
         failed: usize,
-        first_error: String
+        first_error: String,
     },
     /// Index out of bounds in batch operation
-    IndexOutOfBounds {
-        index: usize,
-        length: usize
-    },
+    IndexOutOfBounds { index: usize, length: usize },
 
     // === Configuration Errors ===
     /// Invalid configuration parameter
     InvalidConfig {
         parameter: &'static str,
         value: String,
-        reason: String
+        reason: String,
     },
 
     /// Other error (legacy, prefer specific variants)
@@ -343,10 +355,21 @@ impl std::fmt::Display for HdcError {
         match self {
             // Core errors
             HdcError::InvalidDimension { expected, got } => {
-                write!(f, "Invalid dimension: expected {} bytes, got {}", expected, got)
+                write!(
+                    f,
+                    "Invalid dimension: expected {} bytes, got {}",
+                    expected, got
+                )
             }
-            HdcError::SequenceTooShort { length, kmer_length } => {
-                write!(f, "Sequence too short: {} < k-mer length {}", length, kmer_length)
+            HdcError::SequenceTooShort {
+                length,
+                kmer_length,
+            } => {
+                write!(
+                    f,
+                    "Sequence too short: {} < k-mer length {}",
+                    length, kmer_length
+                )
             }
             HdcError::InvalidNucleotide(c) => {
                 write!(f, "Invalid nucleotide: '{}'", c)
@@ -359,7 +382,10 @@ impl std::fmt::Display for HdcError {
             HdcError::IoError { operation, message } => {
                 write!(f, "IO error during {}: {}", operation, message)
             }
-            HdcError::VcfFormatError { line_number, message } => {
+            HdcError::VcfFormatError {
+                line_number,
+                message,
+            } => {
                 if let Some(line) = line_number {
                     write!(f, "VCF format error at line {}: {}", line, message)
                 } else {
@@ -385,31 +411,56 @@ impl std::fmt::Display for HdcError {
                     write!(f, "Unknown gene '{}'", gene)
                 }
             }
-            HdcError::InvalidStarAllele { gene, allele, reason } => {
+            HdcError::InvalidStarAllele {
+                gene,
+                allele,
+                reason,
+            } => {
                 write!(f, "Invalid star allele {} {} for {}", gene, allele, reason)
             }
-            HdcError::UnsupportedDrug { drug, available_drugs } => {
+            HdcError::UnsupportedDrug {
+                drug,
+                available_drugs,
+            } => {
                 if available_drugs.is_empty() {
                     write!(f, "Unsupported drug: '{}'", drug)
                 } else {
-                    write!(f, "Unsupported drug: '{}'. Available: {}", drug,
-                           available_drugs.join(", "))
+                    write!(
+                        f,
+                        "Unsupported drug: '{}'. Available: {}",
+                        drug,
+                        available_drugs.join(", ")
+                    )
                 }
             }
 
             // Batch errors
-            HdcError::BatchError { successful, failed, first_error } => {
-                write!(f, "Batch processing: {} succeeded, {} failed. First error: {}",
-                       successful, failed, first_error)
+            HdcError::BatchError {
+                successful,
+                failed,
+                first_error,
+            } => {
+                write!(
+                    f,
+                    "Batch processing: {} succeeded, {} failed. First error: {}",
+                    successful, failed, first_error
+                )
             }
             HdcError::IndexOutOfBounds { index, length } => {
                 write!(f, "Index {} out of bounds for length {}", index, length)
             }
 
             // Configuration errors
-            HdcError::InvalidConfig { parameter, value, reason } => {
-                write!(f, "Invalid configuration for '{}': value '{}' - {}",
-                       parameter, value, reason)
+            HdcError::InvalidConfig {
+                parameter,
+                value,
+                reason,
+            } => {
+                write!(
+                    f,
+                    "Invalid configuration for '{}': value '{}' - {}",
+                    parameter, value, reason
+                )
             }
 
             // Legacy catch-all
@@ -426,7 +477,7 @@ impl From<std::io::Error> for HdcError {
     fn from(err: std::io::Error) -> Self {
         HdcError::IoError {
             operation: "file operation",
-            message: err.to_string()
+            message: err.to_string(),
         }
     }
 }
@@ -436,7 +487,7 @@ impl HdcError {
     pub fn io_error(operation: &'static str, err: std::io::Error) -> Self {
         HdcError::IoError {
             operation,
-            message: err.to_string()
+            message: err.to_string(),
         }
     }
 
@@ -444,7 +495,7 @@ impl HdcError {
     pub fn vcf_error(message: impl Into<String>) -> Self {
         HdcError::VcfFormatError {
             line_number: None,
-            message: message.into()
+            message: message.into(),
         }
     }
 
@@ -452,7 +503,7 @@ impl HdcError {
     pub fn vcf_error_at_line(line: usize, message: impl Into<String>) -> Self {
         HdcError::VcfFormatError {
             line_number: Some(line),
-            message: message.into()
+            message: message.into(),
         }
     }
 
@@ -460,15 +511,18 @@ impl HdcError {
     pub fn unknown_gene(gene: impl Into<String>) -> Self {
         HdcError::UnknownGene {
             gene: gene.into(),
-            suggestion: None
+            suggestion: None,
         }
     }
 
     /// Create an unknown gene error with suggestion
-    pub fn unknown_gene_with_suggestion(gene: impl Into<String>, suggestion: impl Into<String>) -> Self {
+    pub fn unknown_gene_with_suggestion(
+        gene: impl Into<String>,
+        suggestion: impl Into<String>,
+    ) -> Self {
         HdcError::UnknownGene {
             gene: gene.into(),
-            suggestion: Some(suggestion.into())
+            suggestion: Some(suggestion.into()),
         }
     }
 
@@ -479,12 +533,22 @@ impl HdcError {
 
     /// Check if this is a VCF-related error
     pub fn is_vcf_error(&self) -> bool {
-        matches!(self, HdcError::VcfFormatError { .. } | HdcError::InvalidRegion { .. } | HdcError::InvalidGenotype { .. })
+        matches!(
+            self,
+            HdcError::VcfFormatError { .. }
+                | HdcError::InvalidRegion { .. }
+                | HdcError::InvalidGenotype { .. }
+        )
     }
 
     /// Check if this is a pharmacogenomics-related error
     pub fn is_pgx_error(&self) -> bool {
-        matches!(self, HdcError::UnknownGene { .. } | HdcError::InvalidStarAllele { .. } | HdcError::UnsupportedDrug { .. })
+        matches!(
+            self,
+            HdcError::UnknownGene { .. }
+                | HdcError::InvalidStarAllele { .. }
+                | HdcError::UnsupportedDrug { .. }
+        )
     }
 }
 

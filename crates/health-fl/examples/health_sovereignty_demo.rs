@@ -16,12 +16,12 @@
 //! Run: `cargo run --example health_sovereignty_demo`
 
 use mycelix_health_fl::{
-    extract_gradient, aggregate_health_gradients,
-    HEALTH_GRADIENT_DIM, FEAT_VALUE, FEAT_DEVIATION, FEAT_IS_CRITICAL,
+    aggregate_health_gradients, extract_gradient, FEAT_DEVIATION, FEAT_IS_CRITICAL, FEAT_VALUE,
+    HEALTH_GRADIENT_DIM,
 };
 
-use chacha20poly1305::{XChaCha20Poly1305, KeyInit, aead::Aead};
-use sha2::{Sha256, Digest};
+use chacha20poly1305::{aead::Aead, KeyInit, XChaCha20Poly1305};
+use sha2::{Digest, Sha256};
 
 fn main() {
     println!("╔════════════════════════════════════════════════════════╗");
@@ -36,17 +36,19 @@ fn main() {
     println!();
 
     let patients = vec![
-        ("Alice",   "85",  "70-100", false, false, "2345-7", "Glucose"),
-        ("Bob",     "92",  "70-100", false, false, "2345-7", "Glucose"),
-        ("Carol",   "310", "70-100", true,  true,  "2345-7", "Glucose"),  // Critical!
-        ("David",   "78",  "70-100", false, false, "2345-7", "Glucose"),
-        ("Eve",     "95",  "70-100", false, false, "2345-7", "Glucose"),
+        ("Alice", "85", "70-100", false, false, "2345-7", "Glucose"),
+        ("Bob", "92", "70-100", false, false, "2345-7", "Glucose"),
+        ("Carol", "310", "70-100", true, true, "2345-7", "Glucose"), // Critical!
+        ("David", "78", "70-100", false, false, "2345-7", "Glucose"),
+        ("Eve", "95", "70-100", false, false, "2345-7", "Glucose"),
     ];
 
     for (name, value, range, critical, abnormal, _loinc, test) in &patients {
         let status = if *critical { " *** CRITICAL ***" } else { "" };
-        println!("  {} — {} {} mg/dL (ref: {}){}",
-            name, test, value, range, status);
+        println!(
+            "  {} — {} {} mg/dL (ref: {}){}",
+            name, test, value, range, status
+        );
     }
     println!();
 
@@ -80,9 +82,16 @@ fn main() {
         // Fingerprint: first 8 bytes of SHA-256 of the key
         let fp = Sha256::digest(&patient_key);
 
-        println!("  {} — {} bytes plaintext → {} bytes ciphertext (key: {:02x}{:02x}..{:02x}{:02x})",
-            name, plaintext.len(), ciphertext.len(),
-            fp[0], fp[1], fp[6], fp[7]);
+        println!(
+            "  {} — {} bytes plaintext → {} bytes ciphertext (key: {:02x}{:02x}..{:02x}{:02x})",
+            name,
+            plaintext.len(),
+            ciphertext.len(),
+            fp[0],
+            fp[1],
+            fp[6],
+            fp[7]
+        );
 
         // Verify: wrong key fails
         let wrong_key = derive_key(b"wrong_patient");
@@ -121,14 +130,15 @@ fn main() {
             range,
             *critical,
             *abnormal,
-            1.0,                             // 1 day old
-            true,                            // acknowledged
+            1.0,  // 1 day old
+            true, // acknowledged
             loinc,
-            &format!("patient-{:03}", i),    // pseudonymized ID
-            1,                               // FL round 1
+            &format!("patient-{:03}", i), // pseudonymized ID
+            1,                            // FL round 1
         );
 
-        println!("  {} → gradient[{:.3}, {:.3}, {:.1}, {:.1}, ...]",
+        println!(
+            "  {} → gradient[{:.3}, {:.3}, {:.1}, {:.1}, ...]",
             name,
             g.features[FEAT_VALUE],
             g.features[FEAT_DEVIATION],
@@ -140,7 +150,11 @@ fn main() {
     }
 
     println!();
-    println!("  ✓ {} gradients extracted from {} patients", gradients.len(), patients.len());
+    println!(
+        "  ✓ {} gradients extracted from {} patients",
+        gradients.len(),
+        patients.len()
+    );
     println!("  ✓ Original lab values (85, 92, 310, 78, 95) are NOT in the gradients");
     println!("  ✓ Gradients are sigmoid-normalized — cannot be reversed to original values");
     println!();
@@ -152,10 +166,10 @@ fn main() {
     println!();
 
     let poisoned = extract_gradient(
-        "99999",     // Absurdly high value
+        "99999", // Absurdly high value
         "70-100",
-        true,        // Claims critical
-        true,        // Claims abnormal
+        true, // Claims critical
+        true, // Claims abnormal
         0.0,
         false,
         "2345-7",
@@ -164,7 +178,8 @@ fn main() {
     );
 
     println!("  ATTACKER: Injecting poisoned gradient");
-    println!("    → gradient[{:.3}, {:.3}, {:.1}, {:.1}, ...]",
+    println!(
+        "    → gradient[{:.3}, {:.3}, {:.1}, {:.1}, ...]",
         poisoned.features[FEAT_VALUE],
         poisoned.features[FEAT_DEVIATION],
         poisoned.features[FEAT_IS_CRITICAL],
@@ -186,14 +201,22 @@ fn main() {
     let clean_insight = aggregate_health_gradients(&gradients, 1).unwrap();
     println!("  Clean cohort (5 patients):");
     println!("    {}", clean_insight.interpretation);
-    println!("    Quality: {:.0}% | Excluded: {}", clean_insight.quality * 100.0, clean_insight.excluded_count);
+    println!(
+        "    Quality: {:.0}% | Excluded: {}",
+        clean_insight.quality * 100.0,
+        clean_insight.excluded_count
+    );
 
     // Aggregate WITH attacker (defense)
     let defended_insight = aggregate_health_gradients(&gradients_with_attacker, 1).unwrap();
     println!();
     println!("  Defended cohort (5 honest + 1 Byzantine):");
     println!("    {}", defended_insight.interpretation);
-    println!("    Quality: {:.0}% | Excluded: {}", defended_insight.quality * 100.0, defended_insight.excluded_count);
+    println!(
+        "    Quality: {:.0}% | Excluded: {}",
+        defended_insight.quality * 100.0,
+        defended_insight.excluded_count
+    );
 
     // Compare: the defended result should be close to clean
     let clean_crit = clean_insight.aggregate[FEAT_IS_CRITICAL];
@@ -205,7 +228,10 @@ fn main() {
     if drift < 0.1 {
         println!("  ✓ TrimmedMean successfully filtered the Byzantine gradient!");
     } else {
-        println!("  ⚠ Byzantine gradient had some impact (drift: {:.4})", drift);
+        println!(
+            "  ⚠ Byzantine gradient had some impact (drift: {:.4})",
+            drift
+        );
     }
     println!();
 
@@ -224,7 +250,10 @@ fn main() {
     println!();
 
     for (name, _, _, _, _, _, _) in &patients {
-        println!("  {} — dividend: ${:.2} (auto-deposited to TEND wallet)", name, per_patient);
+        println!(
+            "  {} — dividend: ${:.2} (auto-deposited to TEND wallet)",
+            name, per_patient
+        );
     }
     println!();
 
@@ -240,14 +269,20 @@ fn main() {
 
     println!("  Scenario: Dr. Smith received Carol's substance abuse records");
     println!("  Source: {}", provenance_source);
-    println!("  Consent: no_further_disclosure = {}", provenance_restricted);
+    println!(
+        "  Consent: no_further_disclosure = {}",
+        provenance_restricted
+    );
     println!();
 
     // Attempt 1: Dr. Smith tries to share with a researcher
     println!("  Dr. Smith attempts to SHARE with researcher...");
     if provenance_restricted {
         println!("  ✗ BLOCKED: RE-DISCLOSURE PREVENTED");
-        println!("    Data from '{}' was received under consent with", provenance_source);
+        println!(
+            "    Data from '{}' was received under consent with",
+            provenance_source
+        );
         println!("    no_further_disclosure=true. Carol must grant explicit");
         println!("    re-disclosure consent before sharing.");
     }
@@ -281,7 +316,10 @@ fn main() {
     println!("║     - Byzantine defense: poisoned gradient FILTERED    ║");
     println!("║     - Collective insight: produced without exposure     ║");
     println!("║                                                        ║");
-    println!("║  3. Data Dividends: ${:.2}/patient from research       ║", per_patient);
+    println!(
+        "║  3. Data Dividends: ${:.2}/patient from research       ║",
+        per_patient
+    );
     println!("║     - Fair attribution via contribution tracking        ║");
     println!("║     - Revenue distributed to TEND wallets              ║");
     println!("║                                                        ║");

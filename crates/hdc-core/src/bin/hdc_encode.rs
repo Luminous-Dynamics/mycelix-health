@@ -172,24 +172,32 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     };
 
     let result = match cli.command {
-        Commands::Dna { sequence, kmer_length, codebook } => {
-            encode_dna(&sequence, kmer_length, codebook, &seed)?
-        }
-        Commands::Vcf { file, chromosome, pass_only, parallel } => {
-            encode_vcf(&file, chromosome, pass_only, parallel)?
-        }
-        Commands::Snp { snps } => {
-            encode_snps(&snps, &seed)?
-        }
-        Commands::Hla { alleles, weighted, allele_level } => {
-            encode_hla(&alleles, weighted, allele_level, &seed)?
-        }
-        Commands::Pgx { diplotypes, ancestry } => {
-            encode_pgx(&diplotypes, ancestry, &seed)?
-        }
-        Commands::Batch { file, kmer_length, parallel } => {
-            encode_batch(&file, kmer_length, parallel, &seed)?
-        }
+        Commands::Dna {
+            sequence,
+            kmer_length,
+            codebook,
+        } => encode_dna(&sequence, kmer_length, codebook, &seed)?,
+        Commands::Vcf {
+            file,
+            chromosome,
+            pass_only,
+            parallel,
+        } => encode_vcf(&file, chromosome, pass_only, parallel)?,
+        Commands::Snp { snps } => encode_snps(&snps, &seed)?,
+        Commands::Hla {
+            alleles,
+            weighted,
+            allele_level,
+        } => encode_hla(&alleles, weighted, allele_level, &seed)?,
+        Commands::Pgx {
+            diplotypes,
+            ancestry,
+        } => encode_pgx(&diplotypes, ancestry, &seed)?,
+        Commands::Batch {
+            file,
+            kmer_length,
+            parallel,
+        } => encode_batch(&file, kmer_length, parallel, &seed)?,
     };
 
     // Output result
@@ -249,7 +257,7 @@ fn encode_vcf(
     pass_only: bool,
     _parallel: bool,
 ) -> Result<EncodingResult, Box<dyn std::error::Error>> {
-    use hdc_core::vcf::{WgsVcfEncoder, WgsVcfConfig};
+    use hdc_core::vcf::{WgsVcfConfig, WgsVcfEncoder};
 
     let config = WgsVcfConfig {
         chunk_size: 10000,
@@ -261,7 +269,9 @@ fn encode_vcf(
     let result = encoder.encode_file(file)?;
 
     let vector = if let Some(chr) = chromosome {
-        result.chromosome_vectors.get(&chr)
+        result
+            .chromosome_vectors
+            .get(&chr)
             .ok_or_else(|| format!("Chromosome {} not found in VCF", chr))?
             .clone()
     } else {
@@ -292,13 +302,13 @@ fn encode_vcf(
     _pass_only: bool,
     _parallel: bool,
 ) -> Result<EncodingResult, Box<dyn std::error::Error>> {
-    Err("VCF encoding requires the 'gzip' feature. Rebuild with: cargo build --features gzip".into())
+    Err(
+        "VCF encoding requires the 'gzip' feature. Rebuild with: cargo build --features gzip"
+            .into(),
+    )
 }
 
-fn encode_snps(
-    snps_str: &str,
-    seed: &Seed,
-) -> Result<EncodingResult, Box<dyn std::error::Error>> {
+fn encode_snps(snps_str: &str, seed: &Seed) -> Result<EncodingResult, Box<dyn std::error::Error>> {
     let snps: Vec<(String, char)> = snps_str
         .split(',')
         .map(|s| {
@@ -306,7 +316,9 @@ fn encode_snps(
             if parts.len() != 2 {
                 return Err(format!("Invalid SNP format: {}. Expected rsID:allele", s));
             }
-            let allele = parts[1].chars().next()
+            let allele = parts[1]
+                .chars()
+                .next()
                 .ok_or_else(|| format!("Empty allele for SNP: {}", parts[0]))?;
             Ok((parts[0].to_string(), allele))
         })
@@ -383,21 +395,32 @@ fn encode_pgx(
         .map(|s| {
             let parts: Vec<&str> = s.trim().split(':').collect();
             if parts.len() != 2 {
-                return Err(format!("Invalid diplotype format: {}. Expected gene:allele1/allele2", s));
+                return Err(format!(
+                    "Invalid diplotype format: {}. Expected gene:allele1/allele2",
+                    s
+                ));
             }
             let gene = parts[0].to_string();
             let allele_parts: Vec<&str> = parts[1].split('/').collect();
             if allele_parts.len() != 2 {
-                return Err(format!("Invalid allele format: {}. Expected allele1/allele2", parts[1]));
+                return Err(format!(
+                    "Invalid allele format: {}. Expected allele1/allele2",
+                    parts[1]
+                ));
             }
-            Ok((gene, allele_parts[0].to_string(), allele_parts[1].to_string()))
+            Ok((
+                gene,
+                allele_parts[0].to_string(),
+                allele_parts[1].to_string(),
+            ))
         })
         .collect::<Result<Vec<_>, String>>()?;
 
     let vector = if let Some(ancestry_str) = &ancestry {
         let ancestry_enum = parse_ancestry(ancestry_str)?;
         let encoder = AncestryInformedEncoder::new(seed.clone());
-        let profile: Vec<_> = diplotypes.iter()
+        let profile: Vec<_> = diplotypes
+            .iter()
             .map(|(g, a1, a2)| (g.as_str(), a1.as_str(), a2.as_str()))
             .collect();
         let result = encoder.encode_profile_with_ancestry(&profile, ancestry_enum)?;
@@ -436,7 +459,8 @@ fn encode_batch(
     seed: &Seed,
 ) -> Result<BatchResult, Box<dyn std::error::Error>> {
     let content = fs::read_to_string(file)?;
-    let sequences: Vec<&str> = content.lines()
+    let sequences: Vec<&str> = content
+        .lines()
         .filter(|l| !l.starts_with('>') && !l.is_empty())
         .collect();
 

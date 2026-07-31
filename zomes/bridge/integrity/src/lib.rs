@@ -3,7 +3,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Commercial licensing: see COMMERCIAL_LICENSE.md at repository root
 //! Mycelix Bridge for Cross-hApp Health Data Federation Integrity Zome
-//! 
+//!
 //! Defines entry types for cross-hApp communication, reputation federation,
 //! and ecosystem integration following the Mycelix bridge protocol.
 
@@ -373,7 +373,9 @@ fn validate_response(response: &HealthDataResponse) -> ExternResult<ValidateCall
     Ok(ValidateCallbackResult::Valid)
 }
 
-fn validate_verification_request(req: &ProviderVerificationRequest) -> ExternResult<ValidateCallbackResult> {
+fn validate_verification_request(
+    req: &ProviderVerificationRequest,
+) -> ExternResult<ValidateCallbackResult> {
     if req.request_id.is_empty() {
         return Ok(ValidateCallbackResult::Invalid(
             "Request ID is required".to_string(),
@@ -382,7 +384,9 @@ fn validate_verification_request(req: &ProviderVerificationRequest) -> ExternRes
     Ok(ValidateCallbackResult::Valid)
 }
 
-fn validate_verification_result(result: &ProviderVerificationResult) -> ExternResult<ValidateCallbackResult> {
+fn validate_verification_result(
+    result: &ProviderVerificationResult,
+) -> ExternResult<ValidateCallbackResult> {
     if result.result_id.is_empty() {
         return Ok(ValidateCallbackResult::Invalid(
             "Result ID is required".to_string(),
@@ -408,9 +412,10 @@ fn validate_claim(claim: &HealthEpistemicClaim) -> ExternResult<ValidateCallback
         ));
     }
     // Validate epistemic classification ranges
-    if claim.classification.empirical_level > 3 
-        || claim.classification.materiality_level > 3 
-        || claim.classification.normative_level > 3 {
+    if claim.classification.empirical_level > 3
+        || claim.classification.materiality_level > 3
+        || claim.classification.normative_level > 3
+    {
         return Ok(ValidateCallbackResult::Invalid(
             "Epistemic levels must be 0-3".to_string(),
         ));

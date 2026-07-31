@@ -53,7 +53,7 @@ fn get_order(species: &str) -> &'static str {
         s if s.contains("Danaus") || s.contains("Papilio") => "Lepidoptera",
         s if s.contains("Pan") || s.contains("Gorilla") || s.contains("Homo") => "Primates",
         s if s.contains("Passer") || s.contains("Corvus") => "Passeriformes",
-        _ => "Unknown"
+        _ => "Unknown",
     }
 }
 
@@ -65,19 +65,18 @@ fn get_family(species: &str) -> &'static str {
         s if s.contains("Gorilla") => "Hominidae",
         s if s.contains("Passer") => "Passeridae",
         s if s.contains("Corvus") => "Corvidae",
-        _ => "Unknown"
+        _ => "Unknown",
     }
 }
 
-pub fn run_real_taxonomy_experiment(
-    data_dir: PathBuf,
-    kmer_length: u8,
-    output_dir: PathBuf,
-) {
+pub fn run_real_taxonomy_experiment(data_dir: PathBuf, kmer_length: u8, output_dir: PathBuf) {
     fs::create_dir_all(&output_dir).expect("Failed to create output directory");
 
     println!("{}", "═".repeat(60).blue());
-    println!("{}", "  EXPERIMENT 5: REAL TAXONOMY VALIDATION".blue().bold());
+    println!(
+        "{}",
+        "  EXPERIMENT 5: REAL TAXONOMY VALIDATION".blue().bold()
+    );
     println!("{}", "  Using BOLD COI Barcode Sequences".blue());
     println!("{}", "═".repeat(60).blue());
     println!();
@@ -120,14 +119,18 @@ pub fn run_real_taxonomy_experiment(
     println!("   Total: {} sequences", all_sequences.len());
 
     // Compute statistics
-    let species_set: std::collections::HashSet<_> = all_sequences.iter()
+    let species_set: std::collections::HashSet<_> = all_sequences
+        .iter()
         .map(|(s, _, _)| s.species.clone())
         .collect();
-    let order_set: std::collections::HashSet<_> = all_sequences.iter()
-        .map(|(_, o, _)| *o)
-        .collect();
+    let order_set: std::collections::HashSet<_> =
+        all_sequences.iter().map(|(_, o, _)| *o).collect();
 
-    println!("   Species: {}, Orders: {}", species_set.len(), order_set.len());
+    println!(
+        "   Species: {}, Orders: {}",
+        species_set.len(),
+        order_set.len()
+    );
     println!();
 
     // Encode sequences
@@ -136,19 +139,23 @@ pub fn run_real_taxonomy_experiment(
     let seed = Seed::from_string("real-taxonomy-v2");
     let encoder = DnaEncoder::new(seed, kmer_length);
 
-    let encoded: Vec<_> = all_sequences.iter()
+    let encoded: Vec<_> = all_sequences
+        .iter()
         .filter_map(|(seq, order, family)| {
-            encoder.encode_sequence(&seq.sequence).ok().map(|enc| {
-                (seq.species.clone(), *order, *family, enc)
-            })
+            encoder
+                .encode_sequence(&seq.sequence)
+                .ok()
+                .map(|enc| (seq.species.clone(), *order, *family, enc))
         })
         .collect();
     let encoding_time = start.elapsed();
 
-    println!("   Encoded {} sequences in {:.2}s ({:.2}ms/seq)",
-             encoded.len(),
-             encoding_time.as_secs_f64(),
-             encoding_time.as_millis() as f64 / encoded.len().max(1) as f64);
+    println!(
+        "   Encoded {} sequences in {:.2}s ({:.2}ms/seq)",
+        encoded.len(),
+        encoding_time.as_secs_f64(),
+        encoding_time.as_millis() as f64 / encoded.len().max(1) as f64
+    );
 
     // Compute similarity distributions
     println!("{}", "3. Computing similarities...".yellow());
@@ -182,8 +189,7 @@ pub fn run_real_taxonomy_experiment(
     let between_stats = SimilarityStats::from_values(&between_order_sims);
 
     // Check monotonic separation
-    let monotonic = species_stats.mean > order_stats.mean
-        && order_stats.mean > between_stats.mean;
+    let monotonic = species_stats.mean > order_stats.mean && order_stats.mean > between_stats.mean;
 
     // k-NN accuracy
     println!("{}", "4. Computing k-NN accuracy...".yellow());
@@ -198,12 +204,18 @@ pub fn run_real_taxonomy_experiment(
 
     println!();
     println!("Similarity Distributions (Real BOLD Data):");
-    println!("  Same species:    {:.4} ± {:.4} (n={})",
-             species_stats.mean, species_stats.std_dev, species_stats.count);
-    println!("  Same order:      {:.4} ± {:.4} (n={})",
-             order_stats.mean, order_stats.std_dev, order_stats.count);
-    println!("  Between orders:  {:.4} ± {:.4} (n={})",
-             between_stats.mean, between_stats.std_dev, between_stats.count);
+    println!(
+        "  Same species:    {:.4} ± {:.4} (n={})",
+        species_stats.mean, species_stats.std_dev, species_stats.count
+    );
+    println!(
+        "  Same order:      {:.4} ± {:.4} (n={})",
+        order_stats.mean, order_stats.std_dev, order_stats.count
+    );
+    println!(
+        "  Between orders:  {:.4} ± {:.4} (n={})",
+        between_stats.mean, between_stats.std_dev, between_stats.count
+    );
 
     println!();
     let sep_species_order = species_stats.mean - order_stats.mean;
@@ -213,8 +225,14 @@ pub fn run_real_taxonomy_experiment(
     println!("  Order → Between: {:.4}", sep_order_between);
 
     println!();
-    println!("Monotonic separation: {}",
-             if monotonic { "YES ✓".green() } else { "NO ✗".red() });
+    println!(
+        "Monotonic separation: {}",
+        if monotonic {
+            "YES ✓".green()
+        } else {
+            "NO ✗".red()
+        }
+    );
 
     println!();
     println!("k-NN Accuracy (k=1):");
@@ -227,14 +245,18 @@ pub fn run_real_taxonomy_experiment(
     println!("  Comparisons: {:.2}s", comparison_time.as_secs_f64());
 
     // Order-level breakdown
-    let mut order_counts: HashMap<&str, (usize, std::collections::HashSet<String>)> = HashMap::new();
+    let mut order_counts: HashMap<&str, (usize, std::collections::HashSet<String>)> =
+        HashMap::new();
     for (sp, order, _, _) in &encoded {
-        let entry = order_counts.entry(order).or_insert((0, std::collections::HashSet::new()));
+        let entry = order_counts
+            .entry(order)
+            .or_insert((0, std::collections::HashSet::new()));
         entry.0 += 1;
         entry.1.insert(sp.clone());
     }
 
-    let order_stats_vec: Vec<OrderStats> = order_counts.iter()
+    let order_stats_vec: Vec<OrderStats> = order_counts
+        .iter()
         .map(|(name, (count, species))| OrderStats {
             name: name.to_string(),
             num_species: species.len(),
@@ -280,17 +302,24 @@ pub fn run_real_taxonomy_experiment(
              HDC encoding achieves {:.0}% order classification accuracy\n\
              with clear monotonic separation:\n\
              same-species ({:.3}) > same-order ({:.3}) > between-orders ({:.3}).\"",
-            encoded.len(), species_set.len(), order_set.len(),
+            encoded.len(),
+            species_set.len(),
+            order_set.len(),
             order_accuracy * 100.0,
-            species_stats.mean, order_stats.mean, between_stats.mean
+            species_stats.mean,
+            order_stats.mean,
+            between_stats.mean
         );
     } else {
         println!(
             "Real data validation: {} sequences, {} species, {} orders\n\
              Order accuracy: {:.1}%, Species accuracy: {:.1}%\n\
              Monotonic: {}",
-            encoded.len(), species_set.len(), order_set.len(),
-            order_accuracy * 100.0, species_accuracy * 100.0,
+            encoded.len(),
+            species_set.len(),
+            order_set.len(),
+            order_accuracy * 100.0,
+            species_accuracy * 100.0,
             if monotonic { "Yes" } else { "No" }
         );
     }
@@ -323,7 +352,15 @@ fn compute_knn_accuracy_species(
             .iter()
             .enumerate()
             .filter(|(j, _)| *j != i)
-            .map(|(j, e)| (j, encoded[i].3.vector.normalized_cosine_similarity(&e.3.vector)))
+            .map(|(j, e)| {
+                (
+                    j,
+                    encoded[i]
+                        .3
+                        .vector
+                        .normalized_cosine_similarity(&e.3.vector),
+                )
+            })
             .collect();
 
         sims.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap());
@@ -356,7 +393,15 @@ fn compute_knn_accuracy_order(
             .iter()
             .enumerate()
             .filter(|(j, _)| *j != i)
-            .map(|(j, e)| (j, encoded[i].3.vector.normalized_cosine_similarity(&e.3.vector)))
+            .map(|(j, e)| {
+                (
+                    j,
+                    encoded[i]
+                        .3
+                        .vector
+                        .normalized_cosine_similarity(&e.3.vector),
+                )
+            })
             .collect();
 
         sims.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap());

@@ -30,7 +30,7 @@
 //!     result.total_variants, result.chromosome_vectors.len());
 //! ```
 
-use crate::{HdcError, Hypervector, Seed, bundle};
+use crate::{bundle, HdcError, Hypervector, Seed};
 use std::collections::HashMap;
 use std::io::{BufRead, BufReader, Read};
 use std::path::Path;
@@ -117,10 +117,11 @@ impl<R: Read> VcfReader<R> {
         // Read header lines
         loop {
             line.clear();
-            let bytes_read = buf_reader.read_line(&mut line)
+            let bytes_read = buf_reader
+                .read_line(&mut line)
                 .map_err(|e| HdcError::IoError {
                     operation: "read VCF header",
-                    message: e.to_string()
+                    message: e.to_string(),
                 })?;
 
             if bytes_read == 0 {
@@ -159,10 +160,12 @@ impl<R: Read> VcfReader<R> {
 
         loop {
             line.clear();
-            let bytes_read = self.reader.read_line(&mut line)
+            let bytes_read = self
+                .reader
+                .read_line(&mut line)
                 .map_err(|e| HdcError::IoError {
                     operation: "read VCF variant line",
-                    message: e.to_string()
+                    message: e.to_string(),
                 })?;
 
             if bytes_read == 0 {
@@ -267,7 +270,10 @@ impl VcfEncoder {
 
     /// Encode variants with position-based weighting
     /// Variants are weighted by their position to preserve genomic structure
-    pub fn encode_variants_positional(&self, variants: &[Variant]) -> Result<Hypervector, HdcError> {
+    pub fn encode_variants_positional(
+        &self,
+        variants: &[Variant],
+    ) -> Result<Hypervector, HdcError> {
         if variants.is_empty() {
             return Err(HdcError::EmptyInput);
         }
@@ -305,7 +311,11 @@ impl VcfEncoder {
     }
 
     /// Encode only variants matching specific rsIDs
-    pub fn encode_panel(&self, variants: &[Variant], rsids: &[&str]) -> Result<Hypervector, HdcError> {
+    pub fn encode_panel(
+        &self,
+        variants: &[Variant],
+        rsids: &[&str],
+    ) -> Result<Hypervector, HdcError> {
         let rsid_set: std::collections::HashSet<&str> = rsids.iter().copied().collect();
 
         let filtered: Vec<&Variant> = variants
@@ -465,16 +475,13 @@ impl WgsVcfEncoder {
     /// Encode a VCF file (supports .vcf and .vcf.gz)
     pub fn encode_file<P: AsRef<Path>>(&self, path: P) -> Result<WgsEncodedResult, HdcError> {
         let path = path.as_ref();
-        let file = std::fs::File::open(path)
-            .map_err(|e| HdcError::IoError {
-                operation: "open VCF file",
-                message: e.to_string()
-            })?;
+        let file = std::fs::File::open(path).map_err(|e| HdcError::IoError {
+            operation: "open VCF file",
+            message: e.to_string(),
+        })?;
 
         // Check for gzip
-        let is_gzip = path.extension()
-            .map(|ext| ext == "gz")
-            .unwrap_or(false);
+        let is_gzip = path.extension().map(|ext| ext == "gz").unwrap_or(false);
 
         if is_gzip {
             #[cfg(feature = "gzip")]
@@ -487,7 +494,8 @@ impl WgsVcfEncoder {
                 Err(HdcError::InvalidConfig {
                     parameter: "gzip",
                     value: path.display().to_string(),
-                    reason: "gzip support requires 'gzip' feature. Rebuild with --features gzip".to_string()
+                    reason: "gzip support requires 'gzip' feature. Rebuild with --features gzip"
+                        .to_string(),
                 })
             }
         } else {
@@ -605,7 +613,8 @@ impl WgsVcfEncoder {
         // Group by chromosome
         let mut by_chrom: HashMap<String, Vec<&Variant>> = HashMap::new();
         for variant in variants {
-            by_chrom.entry(variant.chrom.clone())
+            by_chrom
+                .entry(variant.chrom.clone())
                 .or_default()
                 .push(variant);
         }
@@ -616,7 +625,8 @@ impl WgsVcfEncoder {
             if self.config.parallel {
                 use rayon::prelude::*;
 
-                let results: Vec<_> = by_chrom.par_iter()
+                let results: Vec<_> = by_chrom
+                    .par_iter()
                     .map(|(chrom, vars)| {
                         let vectors = self.encode_variant_batch(vars);
                         (chrom.clone(), vectors)
@@ -624,7 +634,8 @@ impl WgsVcfEncoder {
                     .collect();
 
                 for (chrom, vectors) in results {
-                    chromosome_variants.entry(chrom)
+                    chromosome_variants
+                        .entry(chrom)
                         .or_default()
                         .extend(vectors);
                 }
@@ -632,7 +643,8 @@ impl WgsVcfEncoder {
                 // Sequential when parallel disabled in config
                 for (chrom, vars) in by_chrom {
                     let vectors = self.encode_variant_batch(&vars);
-                    chromosome_variants.entry(chrom)
+                    chromosome_variants
+                        .entry(chrom)
                         .or_default()
                         .extend(vectors);
                 }
@@ -643,7 +655,8 @@ impl WgsVcfEncoder {
         {
             for (chrom, vars) in by_chrom {
                 let vectors = self.encode_variant_batch(&vars);
-                chromosome_variants.entry(chrom)
+                chromosome_variants
+                    .entry(chrom)
                     .or_default()
                     .extend(vectors);
             }
@@ -654,12 +667,15 @@ impl WgsVcfEncoder {
 
     /// Encode a batch of variants to hypervectors
     fn encode_variant_batch(&self, variants: &[&Variant]) -> Vec<Hypervector> {
-        variants.iter()
+        variants
+            .iter()
             .filter_map(|v| {
                 let genotype = v.genotype.as_ref()?;
                 let variant_key = format!(
                     "{}:{}:{}:{}:{}",
-                    v.chrom, v.pos, v.ref_allele,
+                    v.chrom,
+                    v.pos,
+                    v.ref_allele,
                     v.alt_alleles.join(","),
                     genotype.as_code()
                 );
@@ -736,10 +752,11 @@ impl<R: Read> VariantIterator<R> {
         // Skip header, capture sample names
         loop {
             line.clear();
-            let bytes_read = buf_reader.read_line(&mut line)
+            let bytes_read = buf_reader
+                .read_line(&mut line)
                 .map_err(|e| HdcError::IoError {
                     operation: "read VCF header in iterator",
-                    message: e.to_string()
+                    message: e.to_string(),
                 })?;
 
             if bytes_read == 0 {
@@ -784,10 +801,12 @@ impl<R: Read> Iterator for VariantIterator<R> {
                     }
                     return Some(parse_variant_line_static(trimmed));
                 }
-                Err(e) => return Some(Err(HdcError::IoError {
-                    operation: "read VCF variant line",
-                    message: e.to_string()
-                })),
+                Err(e) => {
+                    return Some(Err(HdcError::IoError {
+                        operation: "read VCF variant line",
+                        message: e.to_string(),
+                    }))
+                }
             }
         }
     }
@@ -799,15 +818,14 @@ fn parse_variant_line_static(line: &str) -> Result<Variant, HdcError> {
     if parts.len() < 8 {
         return Err(HdcError::VcfFormatError {
             line_number: None,
-            message: format!("too few fields (expected 8+, got {})", parts.len())
+            message: format!("too few fields (expected 8+, got {})", parts.len()),
         });
     }
 
-    let pos = parts[1].parse()
-        .map_err(|_| HdcError::VcfFormatError {
-            line_number: None,
-            message: format!("invalid position value: '{}'", parts[1])
-        })?;
+    let pos = parts[1].parse().map_err(|_| HdcError::VcfFormatError {
+        line_number: None,
+        message: format!("invalid position value: '{}'", parts[1]),
+    })?;
 
     let genotype = if parts.len() > 9 {
         Some(Genotype::from_gt(parts[9]))
@@ -850,9 +868,7 @@ impl GenomicRegion {
 
     /// Check if a variant falls within this region
     pub fn contains(&self, variant: &Variant) -> bool {
-        variant.chrom == self.chrom
-            && variant.pos >= self.start
-            && variant.pos <= self.end
+        variant.chrom == self.chrom && variant.pos >= self.start && variant.pos <= self.end
     }
 
     /// Parse from string "chr1:1000-2000"
@@ -861,7 +877,7 @@ impl GenomicRegion {
         if parts.len() != 2 {
             return Err(HdcError::InvalidRegion {
                 input: s.to_string(),
-                reason: "expected format 'chr:start-end'".to_string()
+                reason: "expected format 'chr:start-end'".to_string(),
             });
         }
 
@@ -870,19 +886,21 @@ impl GenomicRegion {
         if range_parts.len() != 2 {
             return Err(HdcError::InvalidRegion {
                 input: s.to_string(),
-                reason: "expected format 'start-end' for range".to_string()
+                reason: "expected format 'start-end' for range".to_string(),
             });
         }
 
-        let start = range_parts[0].parse()
+        let start = range_parts[0]
+            .parse()
             .map_err(|_| HdcError::InvalidRegion {
                 input: s.to_string(),
-                reason: format!("invalid start position: '{}'", range_parts[0])
+                reason: format!("invalid start position: '{}'", range_parts[0]),
             })?;
-        let end = range_parts[1].parse()
+        let end = range_parts[1]
+            .parse()
             .map_err(|_| HdcError::InvalidRegion {
                 input: s.to_string(),
-                reason: format!("invalid end position: '{}'", range_parts[1])
+                reason: format!("invalid end position: '{}'", range_parts[1]),
             })?;
 
         Ok(GenomicRegion { chrom, start, end })
@@ -990,7 +1008,11 @@ chrX	200	rs010	C	G	70	PASS	DP=35	GT	0/1
         let result = encoder.encode_reader(cursor).unwrap();
 
         // Should encode exactly 3 variants (truncated to max)
-        assert_eq!(result.total_variants, 3, "Expected exactly 3 variants, got {}", result.total_variants);
+        assert_eq!(
+            result.total_variants, 3,
+            "Expected exactly 3 variants, got {}",
+            result.total_variants
+        );
     }
 
     #[test]

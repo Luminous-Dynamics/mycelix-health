@@ -10,13 +10,12 @@
 //! All data access functions enforce consent-based access control.
 
 use hdk::prelude::*;
-use patient_integrity::*;
 use mycelix_health_shared::{
-    require_authorization, require_admin_authorization,
-    log_data_access,
-    DataCategory, Permission, GetPatientInput,
-    validation::{validate_mrn, validate_confidence_score, ValidationResult},
+    log_data_access, require_admin_authorization, require_authorization,
+    validation::{validate_confidence_score, validate_mrn, ValidationResult},
+    DataCategory, GetPatientInput, Permission,
 };
+use patient_integrity::*;
 
 /// Validate patient data before creation/update
 fn validate_patient(patient: &Patient) -> ValidationResult {
@@ -28,30 +27,62 @@ fn validate_patient(patient: &Patient) -> ValidationResult {
     }
 
     // Validate MATL trust score (should be 0.0 - 1.0)
-    result.merge(validate_confidence_score(patient.matl_trust_score, "matl_trust_score"));
+    result.merge(validate_confidence_score(
+        patient.matl_trust_score,
+        "matl_trust_score",
+    ));
 
     // Validate required fields are not empty
     if patient.first_name.trim().is_empty() {
-        result.add_error("first_name", "First name is required", mycelix_health_shared::validation::ValidationErrorCode::Required);
+        result.add_error(
+            "first_name",
+            "First name is required",
+            mycelix_health_shared::validation::ValidationErrorCode::Required,
+        );
     }
     if patient.last_name.trim().is_empty() {
-        result.add_error("last_name", "Last name is required", mycelix_health_shared::validation::ValidationErrorCode::Required);
+        result.add_error(
+            "last_name",
+            "Last name is required",
+            mycelix_health_shared::validation::ValidationErrorCode::Required,
+        );
     }
     if patient.patient_id.trim().is_empty() {
-        result.add_error("patient_id", "Patient ID is required", mycelix_health_shared::validation::ValidationErrorCode::Required);
+        result.add_error(
+            "patient_id",
+            "Patient ID is required",
+            mycelix_health_shared::validation::ValidationErrorCode::Required,
+        );
     }
 
     // Validate date of birth format (YYYY-MM-DD)
     if !patient.date_of_birth.is_empty() {
         let dob_parts: Vec<&str> = patient.date_of_birth.split('-').collect();
         if dob_parts.len() != 3 {
-            result.add_error("date_of_birth", "Date of birth must be in YYYY-MM-DD format", mycelix_health_shared::validation::ValidationErrorCode::InvalidFormat);
+            result.add_error(
+                "date_of_birth",
+                "Date of birth must be in YYYY-MM-DD format",
+                mycelix_health_shared::validation::ValidationErrorCode::InvalidFormat,
+            );
         } else {
-            let year_ok = dob_parts[0].len() == 4 && dob_parts[0].chars().all(|c| c.is_ascii_digit());
-            let month_ok = dob_parts[1].len() == 2 && dob_parts[1].parse::<u8>().map(|m| m >= 1 && m <= 12).unwrap_or(false);
-            let day_ok = dob_parts[2].len() == 2 && dob_parts[2].parse::<u8>().map(|d| d >= 1 && d <= 31).unwrap_or(false);
+            let year_ok =
+                dob_parts[0].len() == 4 && dob_parts[0].chars().all(|c| c.is_ascii_digit());
+            let month_ok = dob_parts[1].len() == 2
+                && dob_parts[1]
+                    .parse::<u8>()
+                    .map(|m| m >= 1 && m <= 12)
+                    .unwrap_or(false);
+            let day_ok = dob_parts[2].len() == 2
+                && dob_parts[2]
+                    .parse::<u8>()
+                    .map(|d| d >= 1 && d <= 31)
+                    .unwrap_or(false);
             if !year_ok || !month_ok || !day_ok {
-                result.add_error("date_of_birth", "Invalid date of birth", mycelix_health_shared::validation::ValidationErrorCode::InvalidFormat);
+                result.add_error(
+                    "date_of_birth",
+                    "Invalid date of birth",
+                    mycelix_health_shared::validation::ValidationErrorCode::InvalidFormat,
+                );
             }
         }
     }
@@ -66,18 +97,14 @@ pub fn create_patient(patient: Patient) -> ExternResult<Record> {
     validate_patient(&patient).into_result()?;
 
     let patient_hash = create_entry(&EntryTypes::Patient(patient.clone()))?;
-    let record = get(patient_hash.clone(), GetOptions::default())?
-        .ok_or(wasm_error!(WasmErrorInner::Guest("Could not find newly created patient".to_string())))?;
-    
+    let record = get(patient_hash.clone(), GetOptions::default())?.ok_or(wasm_error!(
+        WasmErrorInner::Guest("Could not find newly created patient".to_string())
+    ))?;
+
     // Link to global patients anchor
     let patients_anchor = anchor_hash("all_patients")?;
-    create_link(
-        patients_anchor,
-        patient_hash,
-        LinkTypes::AllPatients,
-        (),
-    )?;
-    
+    create_link(patients_anchor, patient_hash, LinkTypes::AllPatients, ())?;
+
     Ok(record)
 }
 
@@ -139,8 +166,9 @@ pub fn update_patient(input: UpdatePatientInput) -> ExternResult<Record> {
     )?;
 
     let updated_hash = update_entry(input.original_hash.clone(), &input.updated_patient)?;
-    let record = get(updated_hash.clone(), GetOptions::default())?
-        .ok_or(wasm_error!(WasmErrorInner::Guest("Could not find updated patient".to_string())))?;
+    let record = get(updated_hash.clone(), GetOptions::default())?.ok_or(wasm_error!(
+        WasmErrorInner::Guest("Could not find updated patient".to_string())
+    ))?;
 
     // Create update link for history tracking
     create_link(
@@ -204,7 +232,10 @@ pub fn get_all_patients(_: ()) -> ExternResult<Vec<Record>> {
     require_admin_authorization()?;
 
     let patients_anchor = anchor_hash("all_patients")?;
-    let links = get_links(LinkQuery::try_new(patients_anchor, LinkTypes::AllPatients)?, GetStrategy::default())?;
+    let links = get_links(
+        LinkQuery::try_new(patients_anchor, LinkTypes::AllPatients)?,
+        GetStrategy::default(),
+    )?;
 
     let mut patients = Vec::new();
     for link in links {
@@ -221,7 +252,10 @@ pub fn get_all_patients(_: ()) -> ExternResult<Vec<Record>> {
 /// Internal version without access control for internal queries
 fn get_all_patients_internal() -> ExternResult<Vec<Record>> {
     let patients_anchor = anchor_hash("all_patients")?;
-    let links = get_links(LinkQuery::try_new(patients_anchor, LinkTypes::AllPatients)?, GetStrategy::default())?;
+    let links = get_links(
+        LinkQuery::try_new(patients_anchor, LinkTypes::AllPatients)?,
+        GetStrategy::default(),
+    )?;
 
     let mut patients = Vec::new();
     for link in links {
@@ -290,8 +324,9 @@ pub fn link_patient_to_identity(input: LinkIdentityInput) -> ExternResult<Record
     };
 
     let link_hash = create_entry(&EntryTypes::PatientIdentityLink(link))?;
-    let record = get(link_hash.clone(), GetOptions::default())?
-        .ok_or(wasm_error!(WasmErrorInner::Guest("Could not find identity link".to_string())))?;
+    let record = get(link_hash.clone(), GetOptions::default())?.ok_or(wasm_error!(
+        WasmErrorInner::Guest("Could not find identity link".to_string())
+    ))?;
 
     // Create DID anchor for bidirectional lookups
     let did_anchor = anchor_hash(&format!("did:{}", input.did))?;
@@ -436,7 +471,12 @@ pub fn get_did_for_patient(input: GetDIDForPatientInput) -> ExternResult<Option<
     for link in links {
         if let Some(link_hash) = link.target.into_action_hash() {
             if let Some(record) = get(link_hash, GetOptions::default())? {
-                if let Some(identity_link) = record.entry().to_app_option::<PatientIdentityLink>().ok().flatten() {
+                if let Some(identity_link) = record
+                    .entry()
+                    .to_app_option::<PatientIdentityLink>()
+                    .ok()
+                    .flatten()
+                {
                     log_data_access(
                         input.patient_hash.clone(),
                         vec![DataCategory::Demographics],
@@ -502,8 +542,9 @@ pub fn create_health_summary(summary: PatientHealthSummary) -> ExternResult<Reco
         false,
     )?;
     let summary_hash = create_entry(&EntryTypes::PatientHealthSummary(summary.clone()))?;
-    let record = get(summary_hash, GetOptions::default())?
-        .ok_or(wasm_error!(WasmErrorInner::Guest("Could not find health summary".to_string())))?;
+    let record = get(summary_hash, GetOptions::default())?.ok_or(wasm_error!(
+        WasmErrorInner::Guest("Could not find health summary".to_string())
+    ))?;
 
     log_data_access(
         summary.patient_hash,
@@ -513,7 +554,7 @@ pub fn create_health_summary(summary: PatientHealthSummary) -> ExternResult<Reco
         auth.emergency_override,
         None,
     )?;
-    
+
     Ok(record)
 }
 
@@ -566,21 +607,25 @@ pub fn add_patient_allergy(input: AddAllergyInput) -> ExternResult<Record> {
         input.is_emergency,
     )?;
 
-    let record = get_patient_internal(input.patient_hash.clone())?
-        .ok_or(wasm_error!(WasmErrorInner::Guest("Patient not found".to_string())))?;
+    let record = get_patient_internal(input.patient_hash.clone())?.ok_or(wasm_error!(
+        WasmErrorInner::Guest("Patient not found".to_string())
+    ))?;
 
     let mut patient: Patient = record
         .entry()
         .to_app_option()
         .map_err(|e| wasm_error!(WasmErrorInner::Guest(e.to_string())))?
-        .ok_or(wasm_error!(WasmErrorInner::Guest("Invalid patient entry".to_string())))?;
+        .ok_or(wasm_error!(WasmErrorInner::Guest(
+            "Invalid patient entry".to_string()
+        )))?;
 
     patient.allergies.push(input.allergy);
     patient.updated_at = sys_time()?;
 
     let updated_hash = update_entry(input.patient_hash.clone(), &patient)?;
-    let updated_record = get(updated_hash.clone(), GetOptions::default())?
-        .ok_or(wasm_error!(WasmErrorInner::Guest("Could not find updated patient".to_string())))?;
+    let updated_record = get(updated_hash.clone(), GetOptions::default())?.ok_or(wasm_error!(
+        WasmErrorInner::Guest("Could not find updated patient".to_string())
+    ))?;
 
     create_link(
         input.patient_hash.clone(),
@@ -704,7 +749,11 @@ mod tests {
     fn test_validate_patient_valid() {
         let patient = make_patient("Alice", "Smith", "P-001", "1990-01-15", 0.85);
         let result = validate_patient(&patient);
-        assert!(result.is_valid(), "Valid patient should pass: {:?}", result.errors);
+        assert!(
+            result.is_valid(),
+            "Valid patient should pass: {:?}",
+            result.errors
+        );
     }
 
     #[test]
@@ -817,7 +866,9 @@ mod tests {
 
     #[test]
     fn test_serde_roundtrip_search_patients_input() {
-        let input = SearchPatientsInput { name: "alice".to_string() };
+        let input = SearchPatientsInput {
+            name: "alice".to_string(),
+        };
         let json = serde_json::to_string(&input).expect("serialize");
         let decoded: SearchPatientsInput = serde_json::from_str(&json).expect("deserialize");
         assert_eq!(decoded.name, "alice");
@@ -860,7 +911,12 @@ mod tests {
         let result = validate_patient(&patient);
         assert!(!result.is_valid());
         // Should have errors for first_name, last_name, and matl_trust_score at minimum
-        assert!(result.errors.len() >= 3, "Expected >= 3 errors, got {}: {:?}", result.errors.len(), result.errors);
+        assert!(
+            result.errors.len() >= 3,
+            "Expected >= 3 errors, got {}: {:?}",
+            result.errors.len(),
+            result.errors
+        );
     }
 
     #[test]

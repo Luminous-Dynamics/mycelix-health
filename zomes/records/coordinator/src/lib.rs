@@ -17,13 +17,11 @@
 //! continuous model updates and health predictions.
 
 use hdk::prelude::*;
-use records_integrity::*;
 use mycelix_health_shared::{
-    require_authorization, require_admin_authorization,
-    log_data_access,
+    batch::links_to_records, log_data_access, require_admin_authorization, require_authorization,
     DataCategory, Permission,
-    batch::links_to_records,
 };
+use records_integrity::*;
 
 const ENCRYPTED_RECORD_ENVELOPE_VERSION: u8 = 1;
 
@@ -108,7 +106,10 @@ fn try_feed_to_health_twin(patient_hash: &ActionHash, data_point: TwinDataPointI
 }
 
 /// Internal function to feed data to health twin
-fn feed_to_health_twin_internal(patient_hash: &ActionHash, data_point: TwinDataPointInput) -> ExternResult<()> {
+fn feed_to_health_twin_internal(
+    patient_hash: &ActionHash,
+    data_point: TwinDataPointInput,
+) -> ExternResult<()> {
     // First, check if patient has a twin
     let twin_response = call(
         CallTargetCell::Local,
@@ -120,8 +121,12 @@ fn feed_to_health_twin_internal(patient_hash: &ActionHash, data_point: TwinDataP
 
     // Decode the response
     let twin_record: Option<Record> = match twin_response {
-        ZomeCallResponse::Ok(io) => io.decode()
-            .map_err(|e| wasm_error!(WasmErrorInner::Guest(format!("Failed to decode twin response: {}", e))))?,
+        ZomeCallResponse::Ok(io) => io.decode().map_err(|e| {
+            wasm_error!(WasmErrorInner::Guest(format!(
+                "Failed to decode twin response: {}",
+                e
+            )))
+        })?,
         // Any non-success response means we can't reach the twin - that's ok
         _ => return Ok(()),
     };
@@ -250,7 +255,8 @@ fn lab_result_to_twin_data_point(lab: &LabResult) -> TwinDataPointInput {
         "interpretation": format!("{:?}", lab.interpretation),
         "loinc_code": lab.loinc_code,
         "test_name": lab.test_name,
-    }).to_string();
+    })
+    .to_string();
 
     TwinDataPointInput {
         data_type: TwinDataType::LabResult(lab.loinc_code.clone()),
@@ -280,7 +286,10 @@ fn vitals_to_twin_data_points(vitals: &VitalSigns) -> Vec<TwinDataPointInput> {
     }
 
     // Blood pressure (combined)
-    if let (Some(sys), Some(dia)) = (vitals.blood_pressure_systolic, vitals.blood_pressure_diastolic) {
+    if let (Some(sys), Some(dia)) = (
+        vitals.blood_pressure_systolic,
+        vitals.blood_pressure_diastolic,
+    ) {
         data_points.push(TwinDataPointInput {
             data_type: TwinDataType::VitalSign(TwinVitalSignType::BloodPressure),
             value: serde_json::json!({"systolic": sys, "diastolic": dia}).to_string(),
@@ -377,7 +386,8 @@ fn diagnosis_to_twin_data_point(diagnosis: &Diagnosis) -> TwinDataPointInput {
         "severity": diagnosis.severity.as_ref().map(|s| format!("{:?}", s)),
         "onset_date": diagnosis.onset_date,
         "epistemic_level": format!("{:?}", diagnosis.epistemic_level),
-    }).to_string();
+    })
+    .to_string();
 
     TwinDataPointInput {
         data_type: TwinDataType::Diagnosis(diagnosis.icd10_code.clone()),
@@ -398,7 +408,8 @@ fn procedure_to_twin_data_point(procedure: &ProcedurePerformed) -> TwinDataPoint
         "location": procedure.location,
         "outcome": format!("{:?}", procedure.outcome),
         "complications": procedure.complications,
-    }).to_string();
+    })
+    .to_string();
 
     TwinDataPointInput {
         data_type: TwinDataType::Procedure(procedure.cpt_code.clone()),
@@ -431,8 +442,9 @@ pub fn create_encounter(input: CreateEncounterInput) -> ExternResult<Record> {
     )?;
 
     let encounter_hash = create_entry(&EntryTypes::Encounter(input.encounter.clone()))?;
-    let record = get(encounter_hash.clone(), GetOptions::default())?
-        .ok_or(wasm_error!(WasmErrorInner::Guest("Could not find encounter".to_string())))?;
+    let record = get(encounter_hash.clone(), GetOptions::default())?.ok_or(wasm_error!(
+        WasmErrorInner::Guest("Could not find encounter".to_string())
+    ))?;
 
     // Link to patient
     create_link(
@@ -487,7 +499,9 @@ pub fn get_encounter(input: GetEncounterInput) -> ExternResult<Option<Record>> {
             .entry()
             .to_app_option()
             .map_err(|e| wasm_error!(WasmErrorInner::Guest(e.to_string())))?
-            .ok_or(wasm_error!(WasmErrorInner::Guest("Invalid encounter entry".to_string())))?;
+            .ok_or(wasm_error!(WasmErrorInner::Guest(
+                "Invalid encounter entry".to_string()
+            )))?;
 
         // Require Read authorization
         let auth = require_authorization(
@@ -532,7 +546,10 @@ pub fn get_patient_encounters(input: GetPatientEncountersInput) -> ExternResult<
         input.is_emergency,
     )?;
 
-    let links = get_links(LinkQuery::try_new(input.patient_hash.clone(), LinkTypes::PatientToEncounters)?, GetStrategy::default())?;
+    let links = get_links(
+        LinkQuery::try_new(input.patient_hash.clone(), LinkTypes::PatientToEncounters)?,
+        GetStrategy::default(),
+    )?;
 
     // FIXED N+1: Use batch fetch instead of individual get() calls
     let encounters = links_to_records(links)?;
@@ -574,8 +591,9 @@ pub fn create_diagnosis(input: CreateDiagnosisInput) -> ExternResult<Record> {
     )?;
 
     let diagnosis_hash = create_entry(&EntryTypes::Diagnosis(input.diagnosis.clone()))?;
-    let record = get(diagnosis_hash.clone(), GetOptions::default())?
-        .ok_or(wasm_error!(WasmErrorInner::Guest("Could not find diagnosis".to_string())))?;
+    let record = get(diagnosis_hash.clone(), GetOptions::default())?.ok_or(wasm_error!(
+        WasmErrorInner::Guest("Could not find diagnosis".to_string())
+    ))?;
 
     // ================ HEALTH TWIN INTEGRATION ================
     // Feed the diagnosis to the patient's Health Twin for model updates
@@ -621,14 +639,17 @@ pub struct GetEncounterDiagnosesInput {
 #[hdk_extern]
 pub fn get_encounter_diagnoses(input: GetEncounterDiagnosesInput) -> ExternResult<Vec<Record>> {
     // First get the encounter to find the patient_hash
-    let encounter_record = get_encounter_internal(input.encounter_hash.clone())?
-        .ok_or(wasm_error!(WasmErrorInner::Guest("Encounter not found".to_string())))?;
+    let encounter_record = get_encounter_internal(input.encounter_hash.clone())?.ok_or(
+        wasm_error!(WasmErrorInner::Guest("Encounter not found".to_string())),
+    )?;
 
     let encounter: Encounter = encounter_record
         .entry()
         .to_app_option()
         .map_err(|e| wasm_error!(WasmErrorInner::Guest(e.to_string())))?
-        .ok_or(wasm_error!(WasmErrorInner::Guest("Invalid encounter entry".to_string())))?;
+        .ok_or(wasm_error!(WasmErrorInner::Guest(
+            "Invalid encounter entry".to_string()
+        )))?;
 
     // Require Read authorization for Diagnoses category
     let auth = require_authorization(
@@ -638,7 +659,10 @@ pub fn get_encounter_diagnoses(input: GetEncounterDiagnosesInput) -> ExternResul
         input.is_emergency,
     )?;
 
-    let links = get_links(LinkQuery::try_new(input.encounter_hash, LinkTypes::EncounterToDiagnoses)?, GetStrategy::default())?;
+    let links = get_links(
+        LinkQuery::try_new(input.encounter_hash, LinkTypes::EncounterToDiagnoses)?,
+        GetStrategy::default(),
+    )?;
 
     // FIXED N+1: Use batch fetch instead of individual get() calls
     let diagnoses = links_to_records(links)?;
@@ -680,8 +704,9 @@ pub fn create_procedure(input: CreateProcedureInput) -> ExternResult<Record> {
     )?;
 
     let procedure_hash = create_entry(&EntryTypes::ProcedurePerformed(input.procedure.clone()))?;
-    let record = get(procedure_hash.clone(), GetOptions::default())?
-        .ok_or(wasm_error!(WasmErrorInner::Guest("Could not find procedure".to_string())))?;
+    let record = get(procedure_hash.clone(), GetOptions::default())?.ok_or(wasm_error!(
+        WasmErrorInner::Guest("Could not find procedure".to_string())
+    ))?;
 
     // ================ HEALTH TWIN INTEGRATION ================
     // Feed the procedure to the patient's Health Twin for model updates
@@ -734,8 +759,9 @@ pub fn create_lab_result(input: CreateLabResultInput) -> ExternResult<Record> {
     )?;
 
     let result_hash = create_entry(&EntryTypes::LabResult(input.lab_result.clone()))?;
-    let record = get(result_hash.clone(), GetOptions::default())?
-        .ok_or(wasm_error!(WasmErrorInner::Guest("Could not find lab result".to_string())))?;
+    let record = get(result_hash.clone(), GetOptions::default())?.ok_or(wasm_error!(
+        WasmErrorInner::Guest("Could not find lab result".to_string())
+    ))?;
 
     // Link to patient
     create_link(
@@ -748,12 +774,7 @@ pub fn create_lab_result(input: CreateLabResultInput) -> ExternResult<Record> {
     // If critical, add to critical results
     if input.lab_result.is_critical {
         let critical_anchor = anchor_hash("critical_results")?;
-        create_link(
-            critical_anchor,
-            result_hash,
-            LinkTypes::CriticalResults,
-            (),
-        )?;
+        create_link(critical_anchor, result_hash, LinkTypes::CriticalResults, ())?;
     }
 
     // ==================== HEALTH TWIN INTEGRATION ====================
@@ -833,7 +854,8 @@ pub fn create_encrypted_lab_result(input: CreateEncryptedLabResultInput) -> Exte
     // Validate key length
     if input.encryption_key.len() != 32 {
         return Err(wasm_error!(WasmErrorInner::Guest(format!(
-            "Encryption key must be 32 bytes, got {}", input.encryption_key.len()
+            "Encryption key must be 32 bytes, got {}",
+            input.encryption_key.len()
         ))));
     }
 
@@ -848,18 +870,16 @@ pub fn create_encrypted_lab_result(input: CreateEncryptedLabResultInput) -> Exte
         encrypted_at: now.as_micros() as i64,
     };
     let aad = encrypted_record_aad(&encrypted)?;
-    let (ciphertext, nonce) = patient_encryption::encrypt_with_aad(
-        plaintext.as_bytes(),
-        &aad,
-        &input.encryption_key,
-    )
-    .map_err(|e| wasm_error!(WasmErrorInner::Guest(format!("Encryption failed: {}", e))))?;
+    let (ciphertext, nonce) =
+        patient_encryption::encrypt_with_aad(plaintext.as_bytes(), &aad, &input.encryption_key)
+            .map_err(|e| wasm_error!(WasmErrorInner::Guest(format!("Encryption failed: {}", e))))?;
     encrypted.ciphertext = ciphertext;
     encrypted.nonce = nonce;
 
     let record_hash = create_entry(&EntryTypes::EncryptedRecord(encrypted))?;
-    let record = get(record_hash.clone(), GetOptions::default())?
-        .ok_or(wasm_error!(WasmErrorInner::Guest("Could not find encrypted record".to_string())))?;
+    let record = get(record_hash.clone(), GetOptions::default())?.ok_or(wasm_error!(
+        WasmErrorInner::Guest("Could not find encrypted record".to_string())
+    ))?;
 
     // Link to patient (via encrypted records link)
     create_link(
@@ -921,14 +941,22 @@ pub fn decrypt_lab_result(input: DecryptLabResultInput) -> ExternResult<LabResul
     )?;
 
     // Step 2: Retrieve the encrypted record
-    let record = get(input.encrypted_record_hash, GetOptions::default())?
-        .ok_or(wasm_error!(WasmErrorInner::Guest("Encrypted record not found".to_string())))?;
+    let record = get(input.encrypted_record_hash, GetOptions::default())?.ok_or(wasm_error!(
+        WasmErrorInner::Guest("Encrypted record not found".to_string())
+    ))?;
 
     let encrypted: EncryptedRecord = record
         .entry()
         .to_app_option()
-        .map_err(|e| wasm_error!(WasmErrorInner::Guest(format!("Invalid encrypted record: {}", e))))?
-        .ok_or(wasm_error!(WasmErrorInner::Guest("Not an EncryptedRecord entry".to_string())))?;
+        .map_err(|e| {
+            wasm_error!(WasmErrorInner::Guest(format!(
+                "Invalid encrypted record: {}",
+                e
+            )))
+        })?
+        .ok_or(wasm_error!(WasmErrorInner::Guest(
+            "Not an EncryptedRecord entry".to_string()
+        )))?;
 
     // Step 3: Verify this record belongs to the claimed patient
     if encrypted.patient_hash != input.patient_hash {
@@ -945,16 +973,21 @@ pub fn decrypt_lab_result(input: DecryptLabResultInput) -> ExternResult<LabResul
         &aad,
         &input.decryption_key,
     )
-    .map_err(|e| wasm_error!(WasmErrorInner::Guest(format!(
-        "Decryption failed (wrong key or data or metadata tampered): {}", e
-    ))))?;
+    .map_err(|e| {
+        wasm_error!(WasmErrorInner::Guest(format!(
+            "Decryption failed (wrong key or data or metadata tampered): {}",
+            e
+        )))
+    })?;
 
     // Step 5: Deserialize the lab result from MessagePack (ExternIO format)
     let extern_io = ExternIO::from(plaintext);
-    let lab_result: LabResult = extern_io.decode()
-        .map_err(|e| wasm_error!(WasmErrorInner::Guest(format!(
-            "Deserialization failed: {}", e
-        ))))?;
+    let lab_result: LabResult = extern_io.decode().map_err(|e| {
+        wasm_error!(WasmErrorInner::Guest(format!(
+            "Deserialization failed: {}",
+            e
+        )))
+    })?;
 
     // Step 6: Log the decryption access
     log_data_access(
@@ -1048,10 +1081,9 @@ pub fn store_encrypted_record(input: StoreEncryptedRecordInput) -> ExternResult<
     };
 
     let record_hash = create_entry(&EntryTypes::EncryptedRecord(encrypted))?;
-    let record = get(record_hash.clone(), GetOptions::default())?
-        .ok_or(wasm_error!(WasmErrorInner::Guest(
-            "Could not find encrypted record".to_string()
-        )))?;
+    let record = get(record_hash.clone(), GetOptions::default())?.ok_or(wasm_error!(
+        WasmErrorInner::Guest("Could not find encrypted record".to_string())
+    ))?;
 
     create_link(
         input.patient_hash.clone(),
@@ -1131,7 +1163,8 @@ pub fn create_encrypted_record(input: CreateEncryptedRecordInput) -> ExternResul
     // Validate key
     if input.encryption_key.len() != 32 {
         return Err(wasm_error!(WasmErrorInner::Guest(format!(
-            "Encryption key must be 32 bytes, got {}", input.encryption_key.len()
+            "Encryption key must be 32 bytes, got {}",
+            input.encryption_key.len()
         ))));
     }
 
@@ -1147,18 +1180,16 @@ pub fn create_encrypted_record(input: CreateEncryptedRecordInput) -> ExternResul
         encrypted_at: now.as_micros() as i64,
     };
     let aad = encrypted_record_aad(&encrypted)?;
-    let (ciphertext, nonce) = patient_encryption::encrypt_with_aad(
-        &input.plaintext_entry,
-        &aad,
-        &input.encryption_key,
-    )
-    .map_err(|e| wasm_error!(WasmErrorInner::Guest(format!("Encryption failed: {}", e))))?;
+    let (ciphertext, nonce) =
+        patient_encryption::encrypt_with_aad(&input.plaintext_entry, &aad, &input.encryption_key)
+            .map_err(|e| wasm_error!(WasmErrorInner::Guest(format!("Encryption failed: {}", e))))?;
     encrypted.ciphertext = ciphertext;
     encrypted.nonce = nonce;
 
     let record_hash = create_entry(&EntryTypes::EncryptedRecord(encrypted))?;
-    let record = get(record_hash.clone(), GetOptions::default())?
-        .ok_or(wasm_error!(WasmErrorInner::Guest("Could not find encrypted record".to_string())))?;
+    let record = get(record_hash.clone(), GetOptions::default())?.ok_or(wasm_error!(
+        WasmErrorInner::Guest("Could not find encrypted record".to_string())
+    ))?;
 
     create_link(
         input.patient_hash.clone(),
@@ -1204,14 +1235,22 @@ pub fn decrypt_record(input: DecryptRecordInput) -> ExternResult<ExternIO> {
     use mycelix_health_shared::patient_encryption;
 
     // Retrieve encrypted record
-    let record = get(input.encrypted_record_hash, GetOptions::default())?
-        .ok_or(wasm_error!(WasmErrorInner::Guest("Encrypted record not found".to_string())))?;
+    let record = get(input.encrypted_record_hash, GetOptions::default())?.ok_or(wasm_error!(
+        WasmErrorInner::Guest("Encrypted record not found".to_string())
+    ))?;
 
     let encrypted: EncryptedRecord = record
         .entry()
         .to_app_option()
-        .map_err(|e| wasm_error!(WasmErrorInner::Guest(format!("Invalid encrypted record: {}", e))))?
-        .ok_or(wasm_error!(WasmErrorInner::Guest("Not an EncryptedRecord".to_string())))?;
+        .map_err(|e| {
+            wasm_error!(WasmErrorInner::Guest(format!(
+                "Invalid encrypted record: {}",
+                e
+            )))
+        })?
+        .ok_or(wasm_error!(WasmErrorInner::Guest(
+            "Not an EncryptedRecord".to_string()
+        )))?;
 
     // Verify patient ownership
     if encrypted.patient_hash != input.patient_hash {
@@ -1243,9 +1282,12 @@ pub fn decrypt_record(input: DecryptRecordInput) -> ExternResult<ExternIO> {
         &aad,
         &input.decryption_key,
     )
-    .map_err(|e| wasm_error!(WasmErrorInner::Guest(format!(
-        "Decryption failed (wrong key or ciphertext or metadata tampered): {}", e
-    ))))?;
+    .map_err(|e| {
+        wasm_error!(WasmErrorInner::Guest(format!(
+            "Decryption failed (wrong key or ciphertext or metadata tampered): {}",
+            e
+        )))
+    })?;
 
     // Log access
     log_data_access(
@@ -1262,7 +1304,9 @@ pub fn decrypt_record(input: DecryptRecordInput) -> ExternResult<ExternIO> {
 
 /// Get all encrypted records for a patient.
 #[hdk_extern]
-pub fn get_patient_encrypted_records(input: GetPatientLabResultsInput) -> ExternResult<Vec<Record>> {
+pub fn get_patient_encrypted_records(
+    input: GetPatientLabResultsInput,
+) -> ExternResult<Vec<Record>> {
     let auth = require_authorization(
         input.patient_hash.clone(),
         DataCategory::All,
@@ -1321,7 +1365,10 @@ pub fn get_patient_lab_results(input: GetPatientLabResultsInput) -> ExternResult
         input.is_emergency,
     )?;
 
-    let links = get_links(LinkQuery::try_new(input.patient_hash.clone(), LinkTypes::PatientToLabResults)?, GetStrategy::default())?;
+    let links = get_links(
+        LinkQuery::try_new(input.patient_hash.clone(), LinkTypes::PatientToLabResults)?,
+        GetStrategy::default(),
+    )?;
 
     // FIXED N+1: Use batch fetch instead of individual get() calls
     let results = links_to_records(links)?;
@@ -1353,14 +1400,17 @@ pub struct AcknowledgeInput {
 #[hdk_extern]
 pub fn acknowledge_critical_result(input: AcknowledgeInput) -> ExternResult<Record> {
     require_encrypted_phi("acknowledge_critical_result")?;
-    let record = get(input.result_hash.clone(), GetOptions::default())?
-        .ok_or(wasm_error!(WasmErrorInner::Guest("Lab result not found".to_string())))?;
+    let record = get(input.result_hash.clone(), GetOptions::default())?.ok_or(wasm_error!(
+        WasmErrorInner::Guest("Lab result not found".to_string())
+    ))?;
 
     let mut lab_result: LabResult = record
         .entry()
         .to_app_option()
         .map_err(|e| wasm_error!(WasmErrorInner::Guest(e.to_string())))?
-        .ok_or(wasm_error!(WasmErrorInner::Guest("Invalid lab result".to_string())))?;
+        .ok_or(wasm_error!(WasmErrorInner::Guest(
+            "Invalid lab result".to_string()
+        )))?;
 
     // Require Write authorization (Amend would be more specific but Write is sufficient)
     let auth = require_authorization(
@@ -1374,8 +1424,9 @@ pub fn acknowledge_critical_result(input: AcknowledgeInput) -> ExternResult<Reco
     lab_result.acknowledged_at = Some(sys_time()?);
 
     let updated_hash = update_entry(input.result_hash, &lab_result)?;
-    let updated_record = get(updated_hash, GetOptions::default())?
-        .ok_or(wasm_error!(WasmErrorInner::Guest("Could not find updated result".to_string())))?;
+    let updated_record = get(updated_hash, GetOptions::default())?.ok_or(wasm_error!(
+        WasmErrorInner::Guest("Could not find updated result".to_string())
+    ))?;
 
     // Log the access
     log_data_access(
@@ -1411,8 +1462,9 @@ pub fn create_imaging_study(input: CreateImagingStudyInput) -> ExternResult<Reco
     )?;
 
     let imaging_hash = create_entry(&EntryTypes::ImagingStudy(input.imaging.clone()))?;
-    let record = get(imaging_hash.clone(), GetOptions::default())?
-        .ok_or(wasm_error!(WasmErrorInner::Guest("Could not find imaging study".to_string())))?;
+    let record = get(imaging_hash.clone(), GetOptions::default())?.ok_or(wasm_error!(
+        WasmErrorInner::Guest("Could not find imaging study".to_string())
+    ))?;
 
     create_link(
         input.imaging.patient_hash.clone(),
@@ -1465,7 +1517,10 @@ pub fn get_patient_imaging(input: GetPatientImagingInput) -> ExternResult<Vec<Re
         input.is_emergency,
     )?;
 
-    let links = get_links(LinkQuery::try_new(input.patient_hash.clone(), LinkTypes::PatientToImaging)?, GetStrategy::default())?;
+    let links = get_links(
+        LinkQuery::try_new(input.patient_hash.clone(), LinkTypes::PatientToImaging)?,
+        GetStrategy::default(),
+    )?;
 
     // FIXED N+1: Use batch fetch instead of individual get() calls
     let studies = links_to_records(links)?;
@@ -1509,8 +1564,9 @@ pub fn record_vital_signs(input: RecordVitalSignsInput) -> ExternResult<Record> 
     )?;
 
     let vitals_hash = create_entry(&EntryTypes::VitalSigns(input.vitals.clone()))?;
-    let record = get(vitals_hash.clone(), GetOptions::default())?
-        .ok_or(wasm_error!(WasmErrorInner::Guest("Could not find vitals".to_string())))?;
+    let record = get(vitals_hash.clone(), GetOptions::default())?.ok_or(wasm_error!(
+        WasmErrorInner::Guest("Could not find vitals".to_string())
+    ))?;
 
     create_link(
         input.vitals.patient_hash.clone(),
@@ -1562,7 +1618,10 @@ pub fn get_patient_vitals(input: GetPatientVitalsInput) -> ExternResult<Vec<Reco
         input.is_emergency,
     )?;
 
-    let links = get_links(LinkQuery::try_new(input.patient_hash.clone(), LinkTypes::PatientToVitals)?, GetStrategy::default())?;
+    let links = get_links(
+        LinkQuery::try_new(input.patient_hash.clone(), LinkTypes::PatientToVitals)?,
+        GetStrategy::default(),
+    )?;
 
     // FIXED N+1: Use batch fetch instead of individual get() calls
     let vitals = links_to_records(links)?;
@@ -1592,7 +1651,10 @@ pub fn get_critical_results(_: ()) -> ExternResult<Vec<Record>> {
     require_admin_authorization()?;
 
     let critical_anchor = anchor_hash("critical_results")?;
-    let links = get_links(LinkQuery::try_new(critical_anchor, LinkTypes::CriticalResults)?, GetStrategy::default())?;
+    let links = get_links(
+        LinkQuery::try_new(critical_anchor, LinkTypes::CriticalResults)?,
+        GetStrategy::default(),
+    )?;
 
     // FIXED N+1: Batch fetch all records first, then filter
     let all_records = links_to_records(links)?;
@@ -1605,7 +1667,12 @@ pub fn get_critical_results(_: ()) -> ExternResult<Vec<Record>> {
                 return lab.acknowledged_by.is_none();
             }
             // Check if imaging is critical
-            if let Some(imaging) = record.entry().to_app_option::<ImagingStudy>().ok().flatten() {
+            if let Some(imaging) = record
+                .entry()
+                .to_app_option::<ImagingStudy>()
+                .ok()
+                .flatten()
+            {
                 return imaging.is_critical;
             }
             false
@@ -1637,8 +1704,9 @@ pub fn update_encounter(input: UpdateEncounterInput) -> ExternResult<Record> {
     )?;
 
     let updated_hash = update_entry(input.original_hash.clone(), &input.updated_encounter)?;
-    let record = get(updated_hash.clone(), GetOptions::default())?
-        .ok_or(wasm_error!(WasmErrorInner::Guest("Could not find updated encounter".to_string())))?;
+    let record = get(updated_hash.clone(), GetOptions::default())?.ok_or(wasm_error!(
+        WasmErrorInner::Guest("Could not find updated encounter".to_string())
+    ))?;
 
     create_link(
         input.original_hash,
@@ -1683,8 +1751,9 @@ pub fn update_diagnosis(input: UpdateDiagnosisInput) -> ExternResult<Record> {
     )?;
 
     let updated_hash = update_entry(input.original_hash.clone(), &input.updated_diagnosis)?;
-    let record = get(updated_hash, GetOptions::default())?
-        .ok_or(wasm_error!(WasmErrorInner::Guest("Could not find updated diagnosis".to_string())))?;
+    let record = get(updated_hash, GetOptions::default())?.ok_or(wasm_error!(
+        WasmErrorInner::Guest("Could not find updated diagnosis".to_string())
+    ))?;
 
     // Log the access
     log_data_access(
@@ -1721,8 +1790,9 @@ pub fn update_lab_result(input: UpdateLabResultInput) -> ExternResult<Record> {
     )?;
 
     let updated_hash = update_entry(input.original_hash.clone(), &input.updated_result)?;
-    let record = get(updated_hash, GetOptions::default())?
-        .ok_or(wasm_error!(WasmErrorInner::Guest("Could not find updated lab result".to_string())))?;
+    let record = get(updated_hash, GetOptions::default())?.ok_or(wasm_error!(
+        WasmErrorInner::Guest("Could not find updated lab result".to_string())
+    ))?;
 
     // Log the access
     log_data_access(
@@ -1749,14 +1819,17 @@ pub struct DeleteEncounterInput {
 #[hdk_extern]
 pub fn delete_encounter(input: DeleteEncounterInput) -> ExternResult<ActionHash> {
     // First get the encounter to find the patient_hash
-    let record = get_encounter_internal(input.encounter_hash.clone())?
-        .ok_or(wasm_error!(WasmErrorInner::Guest("Encounter not found".to_string())))?;
+    let record = get_encounter_internal(input.encounter_hash.clone())?.ok_or(wasm_error!(
+        WasmErrorInner::Guest("Encounter not found".to_string())
+    ))?;
 
     let encounter: Encounter = record
         .entry()
         .to_app_option()
         .map_err(|e| wasm_error!(WasmErrorInner::Guest(e.to_string())))?
-        .ok_or(wasm_error!(WasmErrorInner::Guest("Invalid encounter entry".to_string())))?;
+        .ok_or(wasm_error!(WasmErrorInner::Guest(
+            "Invalid encounter entry".to_string()
+        )))?;
 
     // Require Delete authorization
     let auth = require_authorization(
@@ -1795,14 +1868,17 @@ pub struct GetEncounterHistoryInput {
 #[hdk_extern]
 pub fn get_encounter_history(input: GetEncounterHistoryInput) -> ExternResult<Vec<Record>> {
     // First get the encounter to find the patient_hash
-    let original = get_encounter_internal(input.encounter_hash.clone())?
-        .ok_or(wasm_error!(WasmErrorInner::Guest("Encounter not found".to_string())))?;
+    let original = get_encounter_internal(input.encounter_hash.clone())?.ok_or(wasm_error!(
+        WasmErrorInner::Guest("Encounter not found".to_string())
+    ))?;
 
     let encounter: Encounter = original
         .entry()
         .to_app_option()
         .map_err(|e| wasm_error!(WasmErrorInner::Guest(e.to_string())))?
-        .ok_or(wasm_error!(WasmErrorInner::Guest("Invalid encounter entry".to_string())))?;
+        .ok_or(wasm_error!(WasmErrorInner::Guest(
+            "Invalid encounter entry".to_string()
+        )))?;
 
     // Require Read authorization for Procedures category
     let auth = require_authorization(
@@ -1812,7 +1888,10 @@ pub fn get_encounter_history(input: GetEncounterHistoryInput) -> ExternResult<Ve
         input.is_emergency,
     )?;
 
-    let links = get_links(LinkQuery::try_new(input.encounter_hash, LinkTypes::EncounterUpdates)?, GetStrategy::default())?;
+    let links = get_links(
+        LinkQuery::try_new(input.encounter_hash, LinkTypes::EncounterUpdates)?,
+        GetStrategy::default(),
+    )?;
 
     // FIXED N+1: Batch fetch updates
     let mut history = Vec::new();
@@ -1875,8 +1954,9 @@ pub fn request_amendment(input: AmendmentRequestInput) -> ExternResult<ActionHas
         false,
     )?;
     // Verify the record exists
-    let _record = get(input.record_hash.clone(), GetOptions::default())?
-        .ok_or(wasm_error!(WasmErrorInner::Guest("Record not found".to_string())))?;
+    let _record = get(input.record_hash.clone(), GetOptions::default())?.ok_or(wasm_error!(
+        WasmErrorInner::Guest("Record not found".to_string())
+    ))?;
 
     let entry = AmendmentRequestEntry {
         record_hash: input.record_hash,
@@ -1920,14 +2000,17 @@ pub fn request_amendment(input: AmendmentRequestInput) -> ExternResult<ActionHas
 #[hdk_extern]
 pub fn process_amendment(input: AmendmentDecisionInput) -> ExternResult<ActionHash> {
     require_encrypted_phi("process_amendment")?;
-    let record = get(input.amendment_hash.clone(), GetOptions::default())?
-        .ok_or(wasm_error!(WasmErrorInner::Guest("Amendment request not found".to_string())))?;
+    let record = get(input.amendment_hash.clone(), GetOptions::default())?.ok_or(wasm_error!(
+        WasmErrorInner::Guest("Amendment request not found".to_string())
+    ))?;
 
     let mut amendment: AmendmentRequestEntry = record
         .entry()
         .to_app_option()
         .map_err(|e| wasm_error!(WasmErrorInner::Guest(format!("Invalid amendment: {}", e))))?
-        .ok_or(wasm_error!(WasmErrorInner::Guest("Not an AmendmentRequest".to_string())))?;
+        .ok_or(wasm_error!(WasmErrorInner::Guest(
+            "Not an AmendmentRequest".to_string()
+        )))?;
 
     let _auth = require_authorization(
         amendment.patient_hash.clone(),
@@ -1955,7 +2038,10 @@ pub fn process_amendment(input: AmendmentDecisionInput) -> ExternResult<ActionHa
         Permission::Amend,
         None,
         false,
-        Some(format!("Amendment {}", amendment.status == AmendmentStatus::Approved)),
+        Some(format!(
+            "Amendment {}",
+            amendment.status == AmendmentStatus::Approved
+        )),
     )?;
 
     Ok(updated_hash)
@@ -2054,10 +2140,9 @@ pub fn detect_access_anomalies(patient_hash: ActionHash) -> ExternResult<Vec<Acc
 
     // Analyze: count accesses in last hour
     let one_hour_us = 3_600_000_000i64;
-    let recent_count = records.iter()
-        .filter(|r| {
-            r.action().timestamp().as_micros() as i64 > (now - one_hour_us)
-        })
+    let recent_count = records
+        .iter()
+        .filter(|r| r.action().timestamp().as_micros() as i64 > (now - one_hour_us))
         .count();
 
     // Anomaly: more than 50 accesses in one hour for a single patient
@@ -2113,9 +2198,12 @@ pub fn request_crypto_erasure(patient_hash: ActionHash) -> ExternResult<ActionHa
     )?;
     let consents_revoked: u32 = match revoke_result {
         ZomeCallResponse::Ok(io) => io.decode().unwrap_or(0),
-        other => return Err(wasm_error!(WasmErrorInner::Guest(format!(
-            "Failed to revoke consents: {:?}", other
-        )))),
+        other => {
+            return Err(wasm_error!(WasmErrorInner::Guest(format!(
+                "Failed to revoke consents: {:?}",
+                other
+            ))))
+        }
     };
 
     // Step 2: Deactivate ALL key bundles via consent zome
@@ -2227,7 +2315,11 @@ pub fn record_sdoh_screening(input: SdohScreening) -> ExternResult<ActionHash> {
         patient_hash: input.patient_hash.clone(),
         instrument: format!("{:?}", input.instrument),
         responses_json: serde_json::to_string(&input.responses).unwrap_or_default(),
-        risk_domains: input.risk_domains.iter().map(|d| format!("{:?}", d)).collect(),
+        risk_domains: input
+            .risk_domains
+            .iter()
+            .map(|d| format!("{:?}", d))
+            .collect(),
         overall_risk: format!("{:?}", input.overall_risk),
         referrals_json: serde_json::to_string(&input.referrals).unwrap_or_default(),
         screener: input.screener,
@@ -2278,7 +2370,7 @@ pub fn get_sdoh_screenings(patient_hash: ActionHash) -> ExternResult<Vec<Record>
         ZomeCallResponse::Ok(io) => {
             let records: Vec<Record> = io.decode().unwrap_or_default();
             Ok(records)
-        },
+        }
         _ => Ok(vec![]),
     }
 }
@@ -2385,7 +2477,10 @@ mod tests {
             notes: None,
         };
         let points = vitals_to_twin_data_points(&vitals);
-        assert!(points.is_empty(), "No vitals set should produce no data points");
+        assert!(
+            points.is_empty(),
+            "No vitals set should produce no data points"
+        );
     }
 
     #[test]
@@ -2409,7 +2504,12 @@ mod tests {
         };
         let points = vitals_to_twin_data_points(&vitals);
         // Should produce: HR, BP, Temp, RR, SpO2, Weight, Height, BMI = 8 points
-        assert_eq!(points.len(), 8, "All vitals should produce 8 data points, got {}", points.len());
+        assert_eq!(
+            points.len(),
+            8,
+            "All vitals should produce 8 data points, got {}",
+            points.len()
+        );
     }
 
     #[test]
@@ -2433,7 +2533,10 @@ mod tests {
             notes: None,
         };
         let points = vitals_to_twin_data_points(&vitals);
-        assert!(points.is_empty(), "BP should require both systolic and diastolic");
+        assert!(
+            points.is_empty(),
+            "BP should require both systolic and diastolic"
+        );
     }
 
     // ==================== lab_result_to_twin_data_point tests ====================
@@ -2466,7 +2569,8 @@ mod tests {
         assert!(matches!(dp.source, TwinDataSourceType::Laboratory));
         assert!(matches!(dp.quality, TwinDataQuality::Clinical));
         // Value should be parseable JSON
-        let val: serde_json::Value = serde_json::from_str(&dp.value).expect("lab value should be JSON");
+        let val: serde_json::Value =
+            serde_json::from_str(&dp.value).expect("lab value should be JSON");
         assert_eq!(val["test_name"], "Glucose");
     }
 

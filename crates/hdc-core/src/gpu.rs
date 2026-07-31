@@ -202,17 +202,21 @@ impl GpuSimilarityEngine {
             .collect();
 
         // Create buffers
-        let query_buffer = self.device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-            label: Some("Query Buffer"),
-            contents: &query_data,
-            usage: wgpu::BufferUsages::STORAGE,
-        });
+        let query_buffer = self
+            .device
+            .create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                label: Some("Query Buffer"),
+                contents: &query_data,
+                usage: wgpu::BufferUsages::STORAGE,
+            });
 
-        let db_buffer = self.device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-            label: Some("Database Buffer"),
-            contents: &db_data,
-            usage: wgpu::BufferUsages::STORAGE,
-        });
+        let db_buffer = self
+            .device
+            .create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                label: Some("Database Buffer"),
+                contents: &db_data,
+                usage: wgpu::BufferUsages::STORAGE,
+            });
 
         let output_size = (output_count * std::mem::size_of::<f32>()) as u64;
         let output_buffer = self.device.create_buffer(&wgpu::BufferDescriptor {
@@ -231,11 +235,13 @@ impl GpuSimilarityEngine {
 
         // Params: [query_count, db_count, vector_bytes, _padding]
         let params: [u32; 4] = [query_count, db_count, HYPERVECTOR_BYTES as u32, 0];
-        let params_buffer = self.device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-            label: Some("Params Buffer"),
-            contents: bytemuck::cast_slice(&params),
-            usage: wgpu::BufferUsages::UNIFORM,
-        });
+        let params_buffer = self
+            .device
+            .create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                label: Some("Params Buffer"),
+                contents: bytemuck::cast_slice(&params),
+                usage: wgpu::BufferUsages::UNIFORM,
+            });
 
         // Create bind group
         let bind_group = self.device.create_bind_group(&wgpu::BindGroupDescriptor {
@@ -262,9 +268,11 @@ impl GpuSimilarityEngine {
         });
 
         // Submit compute pass
-        let mut encoder = self.device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
-            label: Some("HDC Encoder"),
-        });
+        let mut encoder = self
+            .device
+            .create_command_encoder(&wgpu::CommandEncoderDescriptor {
+                label: Some("HDC Encoder"),
+            });
 
         {
             let mut compute_pass = encoder.begin_compute_pass(&wgpu::ComputePassDescriptor {
@@ -294,7 +302,10 @@ impl GpuSimilarityEngine {
         });
 
         self.device.poll(wgpu::Maintain::Wait);
-        receiver.recv().unwrap().map_err(|e| GpuError::BufferError(e.to_string()))?;
+        receiver
+            .recv()
+            .unwrap()
+            .map_err(|e| GpuError::BufferError(e.to_string()))?;
 
         let data = buffer_slice.get_mapped_range();
         let result: Vec<f32> = bytemuck::cast_slice(&data).to_vec();
