@@ -29,9 +29,17 @@ jobs:
       - name: Check out sibling crates/ and mycelix-core/ from parent mycelix repo
         run: |
           git clone --depth 1 https://github.com/Luminous-Dynamics/mycelix.git /tmp/mycelix-parent
-          mkdir -p ../crates ../mycelix-core
+          mkdir -p ../crates ../mycelix-core ../mycelix-workspace/mycelix-core
           cp -r /tmp/mycelix-parent/crates/. ../crates/
           cp -r /tmp/mycelix-parent/mycelix-core/. ../mycelix-core/
+          # mycelix-core is needed at TWO locations: this repo's own deps resolve
+          # ../mycelix-core, but the parent's crates/mycelix-zkp-core (copied into
+          # ../crates above) declares proofs-config / proofs-commitment as
+          # `../../mycelix-workspace/mycelix-core/libs/...`. That path is correct
+          # inside the mycelix repo, which carries mycelix-core at both the root and
+          # under mycelix-workspace/ -- this checkout recreated only the first, so
+          # clippy failed reading .../mycelix-workspace/mycelix-core/libs/proofs-commitment.
+          cp -r /tmp/mycelix-parent/mycelix-core/. ../mycelix-workspace/mycelix-core/
           rm -rf /tmp/mycelix-parent
 
       - name: Install Rust
@@ -123,9 +131,17 @@ jobs:
       - name: Check out sibling crates/ and mycelix-core/ from parent mycelix repo
         run: |
           git clone --depth 1 https://github.com/Luminous-Dynamics/mycelix.git /tmp/mycelix-parent
-          mkdir -p ../crates ../mycelix-core
+          mkdir -p ../crates ../mycelix-core ../mycelix-workspace/mycelix-core
           cp -r /tmp/mycelix-parent/crates/. ../crates/
           cp -r /tmp/mycelix-parent/mycelix-core/. ../mycelix-core/
+          # mycelix-core is needed at TWO locations: this repo's own deps resolve
+          # ../mycelix-core, but the parent's crates/mycelix-zkp-core (copied into
+          # ../crates above) declares proofs-config / proofs-commitment as
+          # `../../mycelix-workspace/mycelix-core/libs/...`. That path is correct
+          # inside the mycelix repo, which carries mycelix-core at both the root and
+          # under mycelix-workspace/ -- this checkout recreated only the first, so
+          # clippy failed reading .../mycelix-workspace/mycelix-core/libs/proofs-commitment.
+          cp -r /tmp/mycelix-parent/mycelix-core/. ../mycelix-workspace/mycelix-core/
           rm -rf /tmp/mycelix-parent
 
       - uses: EmbarkStudios/cargo-deny-action@v2
