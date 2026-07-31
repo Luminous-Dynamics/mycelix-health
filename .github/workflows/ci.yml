@@ -64,7 +64,14 @@ jobs:
             ${{ runner.os }}-cargo-
 
       - name: Check formatting
-        run: cargo fmt --all -- --check
+        # NOT `--all`. This repo's four path dependencies deliberately reach
+        # outside its own root into the parent mycelix repo, and `cargo fmt --all`
+        # follows them -- so the gate was checking mycelix-fl, mycelix-zkp-core and
+        # sovereign-profile, i.e. code this repo does not own, cannot fix, and which
+        # is re-cloned fresh from mycelix's main on every run. Any formatting drift
+        # over there turned this repo red for reasons no change here could resolve.
+        # The scoped form still covers all 41 of this workspace's own members.
+        run: cargo fmt -- --check
 
       - name: Run clippy
         run: cargo clippy --workspace -- -D warnings
