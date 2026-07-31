@@ -35,9 +35,17 @@ jobs:
           rm -rf /tmp/mycelix-parent
 
       - name: Install Rust
-        uses: dtolnay/rust-action@stable
+        # Was `dtolnay/rust-action@stable` -- no such action exists (the action is
+        # `rust-toolchain`), so this step failed before any Rust work began.
+        # Pinned to the same version as rust-toolchain.toml so only one toolchain
+        # is provisioned, matching the convention used in the symthaea repo.
+        # `targets` is required: .cargo/config.toml sets
+        # `target = "wasm32-unknown-unknown"`, so every cargo invocation here is a
+        # wasm build and the target must be present.
+        uses: dtolnay/rust-toolchain@1.96.0
         with:
           components: rustfmt, clippy
+          targets: wasm32-unknown-unknown
 
       - name: Install Holochain dependencies
         run: |
