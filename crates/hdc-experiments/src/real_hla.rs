@@ -476,3 +476,37 @@ where
 
     correct as f64 / total as f64
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Moved here from `fasta.rs`, which carried the only coverage of IMGT/HLA
+    /// header parsing while testing a superseded copy of this function. This module
+    /// is the parser `main.rs` actually invokes, and it had no tests at all.
+    #[test]
+    fn parses_an_imgt_header() {
+        let header = "HLA:HLA00001 A*01:01:01:01 1098 bp";
+        // must clear the parser's 200-char minimum-sequence guard
+        let seq = "ATCGATCG".repeat(100);
+        let allele = parse_hla_header(header, &seq).expect("valid IMGT header should parse");
+
+        assert_eq!(allele.name, "A*01:01:01:01");
+        assert_eq!(allele.locus, "A");
+        assert_eq!(allele.two_field, "A*01:01");
+    }
+
+    /// The guard that makes the parser skip fragments rather than admit them.
+    #[test]
+    fn rejects_a_too_short_sequence() {
+        let header = "HLA:HLA00001 A*01:01:01:01 8 bp";
+        assert!(parse_hla_header(header, "ATCGATCG").is_none());
+    }
+
+    /// A header without an allele field must not panic or half-parse.
+    #[test]
+    fn rejects_a_malformed_header() {
+        let seq = "ATCGATCG".repeat(100);
+        assert!(parse_hla_header("HLA:HLA00001", &seq).is_none());
+    }
+}

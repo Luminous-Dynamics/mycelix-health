@@ -623,6 +623,11 @@ pub fn populate_reference_database(pipeline: &mut RareDiseasePipeline) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    // Imported here rather than at module scope: the non-test build does not use
+    // HYPERVECTOR_BYTES, so a top-level import would be flagged unused. `cargo
+    // clippy --fix` removed it from the parent for exactly that reason, which broke
+    // these tests -- the fix and the lint both only see the non-test build.
+    use crate::HYPERVECTOR_BYTES;
 
     fn make_pipeline() -> RareDiseasePipeline {
         let mut p = RareDiseasePipeline::new(3.0);

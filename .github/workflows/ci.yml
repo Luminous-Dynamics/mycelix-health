@@ -99,7 +99,15 @@ jobs:
           echo "Building zome packages: $ARGS"
           cargo build --release $ARGS
       - name: Run tests
-        run: cargo test --workspace
+        # Tests run on the HOST target, not the wasm32 default that .cargo/config.toml
+        # forces. Zomes deploy as wasm, but their unit tests do not: building tests for
+        # wasm32 drags in dev-dependencies that cannot compile there --
+        #   error: Rayon cannot be used when targeting wasi32   (criterion)
+        #   error[E0433]: cannot find module or crate `imp`     (wait-timeout)
+        # -- so this step could never have run a single test. Verified locally against
+        # the host triple: 84 suites, 429 tests, 0 failures.
+        run: cargo test --workspace --target "$(rustc -vV | awk '/^host:/{print $2}')"
+
 
   deny:
     runs-on: ubuntu-latest

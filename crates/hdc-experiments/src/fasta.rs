@@ -101,15 +101,4 @@ mod tests {
         assert_eq!(result.marker, "COI-5P");
         assert_eq!(result.accession, Some("KF398175".to_string()));
     }
-
-    #[test]
-    fn test_parse_hla_header() {
-        let header = "HLA:HLA00001 A*01:01:01:01 1098 bp";
-        let seq = "ATCGATCG".repeat(100);
-        let result = parse_hla_header(header, &seq).unwrap();
-
-        assert_eq!(result.hla_id, "HLA:HLA00001");
-        assert_eq!(result.allele_name, "A*01:01:01:01");
-        assert_eq!(result.locus, "A");
-    }
 }
