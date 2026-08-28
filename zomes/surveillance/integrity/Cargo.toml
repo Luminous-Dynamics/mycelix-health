@@ -13,4 +13,5 @@ name = "surveillance_integrity"
 hdi.workspace = true
 serde.workspace = true
 holochain_serialized_bytes.workspace = true
+sha2 = "0.10"
 health-surveillance-core = { path = "../../../crates/health-surveillance-core" }
