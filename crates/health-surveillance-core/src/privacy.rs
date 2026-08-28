@@ -10,11 +10,11 @@ use thiserror::Error;
 
 use crate::{GeographicPrecision, ObservationId, SurveillanceError, SurveillanceObservation};
 
-#[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Serialize, PartialEq, Eq)]
 pub struct AggregateReleasePolicy {
-    pub min_cohort_size: u64,
-    pub min_window_s: u64,
-    pub max_geographic_precision: GeographicPrecision,
+    min_cohort_size: u64,
+    min_window_s: u64,
+    max_geographic_precision: GeographicPrecision,
 }
 
 impl AggregateReleasePolicy {
@@ -34,6 +34,18 @@ impl AggregateReleasePolicy {
             min_window_s,
             max_geographic_precision,
         })
+    }
+
+    pub fn min_cohort_size(&self) -> u64 {
+        self.min_cohort_size
+    }
+
+    pub fn min_window_s(&self) -> u64 {
+        self.min_window_s
+    }
+
+    pub fn max_geographic_precision(&self) -> GeographicPrecision {
+        self.max_geographic_precision
     }
 
     pub fn assess(
@@ -70,6 +82,28 @@ impl AggregateReleasePolicy {
     }
 }
 
+impl<'de> Deserialize<'de> for AggregateReleasePolicy {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        #[derive(Deserialize)]
+        #[serde(deny_unknown_fields)]
+        struct Wire {
+            min_cohort_size: u64,
+            min_window_s: u64,
+            max_geographic_precision: GeographicPrecision,
+        }
+        let wire = Wire::deserialize(deserializer)?;
+        Self::new(
+            wire.min_cohort_size,
+            wire.min_window_s,
+            wire.max_geographic_precision,
+        )
+        .map_err(serde::de::Error::custom)
+    }
+}
+
 #[derive(Clone, Debug, Error, PartialEq, Eq)]
 pub enum ReleasePolicyError {
     #[error("minimum cohort size must be greater than zero")]
@@ -90,6 +124,7 @@ pub enum WithholdReason {
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
 pub struct ReleaseAssessment {
     pub observation_id: ObservationId,
     pub policy: AggregateReleasePolicy,
@@ -107,6 +142,7 @@ impl ReleaseAssessment {
 }
 
 #[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
 pub struct FreshnessPolicy {
     pub max_age_s: u64,
 }
@@ -154,7 +190,7 @@ pub enum FreshnessStatus {
 mod tests {
     use crate::{
         BoundedUncertainty, EvidenceProvenance, GeographicScope, IndependenceGroup, MetricKind,
-        ObservationWindow, ObservedMetric, SignalFamily, SourceKind,
+        ObservationWindow, ObservedMetric, SignalFamily, SourceKind, SourceRecordDigest,
     };
 
     use super::*;
@@ -181,7 +217,7 @@ mod tests {
                 "protocol-v1",
                 "rev-1",
                 Some("upstream-a"),
-                [1; 32],
+                SourceRecordDigest::sha256([1; 32]).unwrap(),
             )
             .unwrap(),
         )
@@ -196,6 +232,7 @@ mod tests {
             .unwrap();
         assert!(!assessment.eligible_for_release());
         assert_eq!(assessment.reasons().len(), 2);
+        assert_eq!(assessment.policy.min_cohort_size(), 50);
     }
 
     #[test]
@@ -205,6 +242,14 @@ mod tests {
             .assess(&observation(100, GeographicPrecision::District))
             .unwrap();
         assert!(assessment.eligible_for_release());
+    }
+
+    #[test]
+    fn zero_threshold_policy_cannot_be_constructed() {
+        assert_eq!(
+            AggregateReleasePolicy::new(0, 3_600, GeographicPrecision::District),
+            Err(ReleasePolicyError::ZeroMinimumCohort)
+        );
     }
 
     #[test]

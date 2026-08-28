@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
 use crate::types::{
-    CanonicalId, GeographicPrecision, MetricKind, SignalFamily, SourceKind,
+    CanonicalId, Digest32Algorithm, GeographicPrecision, MetricKind, SignalFamily, SourceKind,
     SurveillanceObservation,
 };
 
@@ -45,7 +45,11 @@ impl ObservationId {
             }
             None => h.update([0]),
         }
-        h.update(observation.provenance.source_record_digest);
+        put_digest_algorithm(
+            &mut h,
+            &observation.provenance.source_record_digest.algorithm,
+        );
+        h.update(observation.provenance.source_record_digest.bytes);
         Self(h.finalize().into())
     }
 
@@ -125,6 +129,17 @@ fn put_source_kind(h: &mut Sha256, kind: &SourceKind) {
     }
 }
 
+fn put_digest_algorithm(h: &mut Sha256, algorithm: &Digest32Algorithm) {
+    match algorithm {
+        Digest32Algorithm::Sha256 => h.update([0]),
+        Digest32Algorithm::Blake3 => h.update([1]),
+        Digest32Algorithm::Other(id) => {
+            h.update([255]);
+            put_id(h, id);
+        }
+    }
+}
+
 fn put_geo_precision(h: &mut Sha256, precision: GeographicPrecision) {
     h.update([match precision {
         GeographicPrecision::Country => 0,
@@ -153,10 +168,10 @@ mod tests {
     use super::*;
     use crate::{
         BoundedUncertainty, EvidenceProvenance, GeographicScope, IndependenceGroup,
-        ObservationWindow, ObservedMetric,
+        ObservationWindow, ObservedMetric, SourceRecordDigest,
     };
 
-    fn observation(producer: &str) -> SurveillanceObservation {
+    fn observation(producer: &str, digest_algorithm: Digest32Algorithm) -> SurveillanceObservation {
         SurveillanceObservation::new(
             SignalFamily::Respiratory,
             SourceKind::WastewaterAggregate,
@@ -179,7 +194,7 @@ mod tests {
                 "ww-protocol-v1",
                 "rev-1",
                 Some("sampler-aggregate-17"),
-                [3; 32],
+                SourceRecordDigest::new(digest_algorithm, [3; 32]).unwrap(),
             )
             .unwrap(),
         )
@@ -188,21 +203,30 @@ mod tests {
 
     #[test]
     fn identical_semantics_have_identical_identity() {
-        let a = observation("lab-a");
-        let b = observation("lab-a");
+        let a = observation("lab-a", Digest32Algorithm::Sha256);
+        let b = observation("lab-a", Digest32Algorithm::Sha256);
         assert_eq!(a.id().unwrap(), b.id().unwrap());
     }
 
     #[test]
     fn provenance_changes_identity() {
-        let a = observation("lab-a");
-        let b = observation("lab-b");
+        let a = observation("lab-a", Digest32Algorithm::Sha256);
+        let b = observation("lab-b", Digest32Algorithm::Sha256);
         assert_ne!(a.id().unwrap(), b.id().unwrap());
     }
 
     #[test]
+    fn source_digest_algorithm_changes_identity_even_when_digest_bytes_match() {
+        let sha = observation("lab-a", Digest32Algorithm::Sha256);
+        let blake3 = observation("lab-a", Digest32Algorithm::Blake3);
+        assert_ne!(sha.id().unwrap(), blake3.id().unwrap());
+    }
+
+    #[test]
     fn digest_has_stable_hex_shape() {
-        let id = observation("lab-a").id().unwrap();
+        let id = observation("lab-a", Digest32Algorithm::Sha256)
+            .id()
+            .unwrap();
         assert_eq!(id.to_hex().len(), 64);
         assert!(id.to_hex().bytes().all(|b| b.is_ascii_hexdigit()));
     }

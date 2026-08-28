@@ -194,8 +194,8 @@ impl EvidenceBundle {
             .collect();
         let independent_group_count = independent_groups.len();
         let source_kind_count = source_kinds.len();
-        let status = if independent_group_count >= policy.min_independent_groups
-            && source_kind_count >= policy.min_source_kinds
+        let status = if independent_group_count >= policy.min_independent_groups()
+            && source_kind_count >= policy.min_source_kinds()
         {
             LineageDiversityStatus::MeetsPolicy
         } else {
@@ -222,6 +222,7 @@ impl<'de> Deserialize<'de> for EvidenceBundle {
         D: serde::Deserializer<'de>,
     {
         #[derive(Deserialize)]
+        #[serde(deny_unknown_fields)]
         struct Wire {
             observations: Vec<SurveillanceObservation>,
         }
@@ -248,10 +249,10 @@ pub enum BundleError {
     NonCanonicalOrder,
 }
 
-#[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Serialize, PartialEq, Eq)]
 pub struct LineageDiversityPolicy {
-    pub min_independent_groups: usize,
-    pub min_source_kinds: usize,
+    min_independent_groups: usize,
+    min_source_kinds: usize,
 }
 
 impl LineageDiversityPolicy {
@@ -269,6 +270,31 @@ impl LineageDiversityPolicy {
             min_independent_groups,
             min_source_kinds,
         })
+    }
+
+    pub fn min_independent_groups(&self) -> usize {
+        self.min_independent_groups
+    }
+
+    pub fn min_source_kinds(&self) -> usize {
+        self.min_source_kinds
+    }
+}
+
+impl<'de> Deserialize<'de> for LineageDiversityPolicy {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        #[derive(Deserialize)]
+        #[serde(deny_unknown_fields)]
+        struct Wire {
+            min_independent_groups: usize,
+            min_source_kinds: usize,
+        }
+        let wire = Wire::deserialize(deserializer)?;
+        Self::new(wire.min_independent_groups, wire.min_source_kinds)
+            .map_err(serde::de::Error::custom)
     }
 }
 
@@ -288,6 +314,7 @@ pub enum LineageDiversityStatus {
 }
 
 #[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
 pub struct LineageDiversityAssessment {
     pub bundle_id: EvidenceBundleId,
     pub policy: LineageDiversityPolicy,
@@ -302,7 +329,7 @@ pub struct LineageDiversityAssessment {
 mod tests {
     use crate::{
         BoundedUncertainty, EvidenceProvenance, GeographicPrecision, GeographicScope,
-        IndependenceGroup, MetricKind, ObservedMetric,
+        IndependenceGroup, MetricKind, ObservedMetric, SourceRecordDigest,
     };
 
     use super::*;
@@ -335,7 +362,7 @@ mod tests {
                 "protocol-v1",
                 "rev-1",
                 Some(independence_group),
-                [digest_byte; 32],
+                SourceRecordDigest::sha256([digest_byte; 32]).unwrap(),
             )
             .unwrap(),
         )
@@ -413,6 +440,15 @@ mod tests {
         assert_eq!(assessment.independent_group_count, 2);
         assert_eq!(assessment.derivative_or_correlated_count, 1);
         assert_eq!(assessment.status, LineageDiversityStatus::MeetsPolicy);
+        assert_eq!(assessment.policy.min_independent_groups(), 2);
+    }
+
+    #[test]
+    fn zero_lineage_thresholds_cannot_be_constructed() {
+        assert_eq!(
+            LineageDiversityPolicy::new(0, 1),
+            Err(LineageDiversityPolicyError::ZeroIndependentGroups)
+        );
     }
 
     #[test]

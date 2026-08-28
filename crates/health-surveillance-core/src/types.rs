@@ -85,6 +85,7 @@ pub enum GeographicPrecision {
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq, Hash)]
+#[serde(deny_unknown_fields)]
 pub struct GeographicScope {
     /// Namespace/scheme for the geographic code, e.g. ISO-3166 or a health-district scheme.
     pub scheme: CanonicalId,
@@ -108,6 +109,7 @@ impl GeographicScope {
 }
 
 #[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq, Hash)]
+#[serde(deny_unknown_fields)]
 pub struct ObservationWindow {
     pub start_unix_s: i64,
     pub end_unix_s: i64,
@@ -126,6 +128,13 @@ impl ObservationWindow {
 
     pub fn duration_s(&self) -> u64 {
         self.end_unix_s.abs_diff(self.start_unix_s)
+    }
+
+    pub fn validate(&self) -> Result<(), SurveillanceError> {
+        if self.end_unix_s <= self.start_unix_s {
+            return Err(SurveillanceError::InvalidWindow);
+        }
+        Ok(())
     }
 }
 
@@ -167,6 +176,7 @@ impl IndependenceGroup {
 }
 
 #[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq)]
+#[serde(deny_unknown_fields)]
 pub struct BoundedUncertainty {
     pub lower: f64,
     pub upper: f64,
@@ -186,6 +196,16 @@ impl BoundedUncertainty {
     pub fn contains(&self, value: f64) -> bool {
         value >= self.lower && value <= self.upper
     }
+
+    pub fn validate(&self) -> Result<(), SurveillanceError> {
+        if !self.lower.is_finite() || !self.upper.is_finite() {
+            return Err(SurveillanceError::NonFiniteUncertainty);
+        }
+        if self.lower > self.upper {
+            return Err(SurveillanceError::ReversedUncertainty);
+        }
+        Ok(())
+    }
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq, Hash)]
@@ -200,6 +220,7 @@ pub enum MetricKind {
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+#[serde(deny_unknown_fields)]
 pub struct ObservedMetric {
     pub kind: MetricKind,
     pub estimate: f64,
@@ -215,49 +236,93 @@ impl ObservedMetric {
         uncertainty: BoundedUncertainty,
         unit: impl Into<String>,
     ) -> Result<Self, SurveillanceError> {
-        if !estimate.is_finite() {
+        let metric = Self {
+            kind,
+            estimate,
+            uncertainty,
+            unit: CanonicalId::new(unit)?,
+        };
+        metric.validate()?;
+        Ok(metric)
+    }
+
+    pub fn validate(&self) -> Result<(), SurveillanceError> {
+        if !self.estimate.is_finite() {
             return Err(SurveillanceError::NonFiniteEstimate);
         }
-        if !uncertainty.lower.is_finite() || !uncertainty.upper.is_finite() {
-            return Err(SurveillanceError::NonFiniteUncertainty);
-        }
-        if uncertainty.lower > uncertainty.upper {
-            return Err(SurveillanceError::ReversedUncertainty);
-        }
-        if !uncertainty.contains(estimate) {
+        self.uncertainty.validate()?;
+        if !self.uncertainty.contains(self.estimate) {
             return Err(SurveillanceError::EstimateOutsideUncertainty);
         }
-        match &kind {
+        match &self.kind {
             MetricKind::Count => {
-                if estimate < 0.0 || estimate.fract() != 0.0 || uncertainty.lower < 0.0 {
+                if self.estimate < 0.0
+                    || self.estimate.fract() != 0.0
+                    || self.uncertainty.lower < 0.0
+                {
                     return Err(SurveillanceError::InvalidCountEstimate);
                 }
             }
             MetricKind::RatePer100k | MetricKind::ConcentrationIndex => {
-                if estimate < 0.0 || uncertainty.lower < 0.0 {
+                if self.estimate < 0.0 || self.uncertainty.lower < 0.0 {
                     return Err(SurveillanceError::MetricOutOfRange);
                 }
             }
             MetricKind::FractionPositive | MetricKind::CapacityFraction => {
-                if !(0.0..=1.0).contains(&estimate)
-                    || uncertainty.lower < 0.0
-                    || uncertainty.upper > 1.0
+                if !(0.0..=1.0).contains(&self.estimate)
+                    || self.uncertainty.lower < 0.0
+                    || self.uncertainty.upper > 1.0
                 {
                     return Err(SurveillanceError::MetricOutOfRange);
                 }
             }
             MetricKind::Other(_) => {}
         }
-        Ok(Self {
-            kind,
-            estimate,
-            uncertainty,
-            unit: CanonicalId::new(unit)?,
-        })
+        Ok(())
     }
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq, Hash)]
+#[serde(rename_all = "snake_case")]
+pub enum Digest32Algorithm {
+    Sha256,
+    Blake3,
+    Other(CanonicalId),
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq, Hash)]
+#[serde(deny_unknown_fields)]
+pub struct SourceRecordDigest {
+    pub algorithm: Digest32Algorithm,
+    pub bytes: [u8; 32],
+}
+
+impl SourceRecordDigest {
+    pub fn new(algorithm: Digest32Algorithm, bytes: [u8; 32]) -> Result<Self, SurveillanceError> {
+        if bytes == [0; 32] {
+            return Err(SurveillanceError::ZeroSourceRecordDigest);
+        }
+        Ok(Self { algorithm, bytes })
+    }
+
+    pub fn sha256(bytes: [u8; 32]) -> Result<Self, SurveillanceError> {
+        Self::new(Digest32Algorithm::Sha256, bytes)
+    }
+
+    pub fn blake3(bytes: [u8; 32]) -> Result<Self, SurveillanceError> {
+        Self::new(Digest32Algorithm::Blake3, bytes)
+    }
+
+    pub fn validate(&self) -> Result<(), SurveillanceError> {
+        if self.bytes == [0; 32] {
+            return Err(SurveillanceError::ZeroSourceRecordDigest);
+        }
+        Ok(())
+    }
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq, Hash)]
+#[serde(deny_unknown_fields)]
 pub struct EvidenceProvenance {
     /// Pseudonymous or institutional producer identity; not an individual patient id.
     pub producer: CanonicalId,
@@ -267,8 +332,8 @@ pub struct EvidenceProvenance {
     pub source_revision: CanonicalId,
     /// Optional stable upstream dataset/feed identity for derivative-source tracing.
     pub upstream_set: Option<CanonicalId>,
-    /// Digest captured by the producer for the aggregate source record.
-    pub source_record_digest: [u8; 32],
+    /// Algorithm-tagged digest captured by the producer for the aggregate source record.
+    pub source_record_digest: SourceRecordDigest,
 }
 
 impl EvidenceProvenance {
@@ -277,11 +342,9 @@ impl EvidenceProvenance {
         acquisition_protocol: impl Into<String>,
         source_revision: impl Into<String>,
         upstream_set: Option<impl Into<String>>,
-        source_record_digest: [u8; 32],
+        source_record_digest: SourceRecordDigest,
     ) -> Result<Self, SurveillanceError> {
-        if source_record_digest == [0; 32] {
-            return Err(SurveillanceError::ZeroSourceRecordDigest);
-        }
+        source_record_digest.validate()?;
         Ok(Self {
             producer: CanonicalId::new(producer)?,
             acquisition_protocol: CanonicalId::new(acquisition_protocol)?,
@@ -295,14 +358,12 @@ impl EvidenceProvenance {
     }
 
     pub fn validate(&self) -> Result<(), SurveillanceError> {
-        if self.source_record_digest == [0; 32] {
-            return Err(SurveillanceError::ZeroSourceRecordDigest);
-        }
-        Ok(())
+        self.source_record_digest.validate()
     }
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+#[serde(deny_unknown_fields)]
 pub struct SurveillanceObservation {
     pub schema_version: u16,
     pub signal: SignalFamily,
@@ -337,6 +398,9 @@ impl SurveillanceObservation {
         if cohort_size == 0 {
             return Err(SurveillanceError::EmptyCohort);
         }
+        window.validate()?;
+        metric.validate()?;
+        provenance.validate()?;
         if reported_at_unix_s < window.end_unix_s {
             return Err(SurveillanceError::ReportedBeforeWindowEnd);
         }
@@ -362,19 +426,12 @@ impl SurveillanceObservation {
         if self.cohort_size == 0 {
             return Err(SurveillanceError::EmptyCohort);
         }
-        if self.window.end_unix_s <= self.window.start_unix_s {
-            return Err(SurveillanceError::InvalidWindow);
-        }
+        self.window.validate()?;
         if self.reported_at_unix_s < self.window.end_unix_s {
             return Err(SurveillanceError::ReportedBeforeWindowEnd);
         }
         self.provenance.validate()?;
-        ObservedMetric::new(
-            self.metric.kind.clone(),
-            self.metric.estimate,
-            self.metric.uncertainty,
-            self.metric.unit.as_str().to_string(),
-        )?;
+        self.metric.validate()?;
         Ok(())
     }
 
@@ -394,7 +451,7 @@ mod tests {
             "weekly-respiratory-v1",
             "rev-7",
             Some("ehr-feed-a"),
-            [7; 32],
+            SourceRecordDigest::sha256([7; 32]).unwrap(),
         )
         .unwrap()
     }
@@ -483,15 +540,7 @@ mod tests {
 
     #[test]
     fn zero_source_digest_cannot_be_used_as_provenance_placeholder() {
-        assert_eq!(
-            EvidenceProvenance::new(
-                "producer-a",
-                "protocol-v1",
-                "rev-1",
-                Some("upstream-a"),
-                [0; 32],
-            ),
-            Err(SurveillanceError::ZeroSourceRecordDigest)
-        );
+        let digest = SourceRecordDigest::new(Digest32Algorithm::Sha256, [0; 32]);
+        assert_eq!(digest, Err(SurveillanceError::ZeroSourceRecordDigest));
     }
 }

@@ -30,8 +30,8 @@ pub use privacy::{
     ReleasePolicyError, WithholdReason,
 };
 pub use types::{
-    BoundedUncertainty, CanonicalId, EvidenceProvenance, GeographicPrecision,
+    BoundedUncertainty, CanonicalId, Digest32Algorithm, EvidenceProvenance, GeographicPrecision,
     GeographicScope, IndependenceGroup, MetricKind, ObservationWindow, ObservedMetric,
-    SignalFamily, SourceKind, SurveillanceError, SurveillanceObservation,
+    SignalFamily, SourceKind, SourceRecordDigest, SurveillanceError, SurveillanceObservation,
     SURVEILLANCE_SCHEMA_V1,
 };
