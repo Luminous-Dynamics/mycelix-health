@@ -94,6 +94,7 @@ mycelix-bridge-common = { path = "../crates/mycelix-bridge-common" }
 # Utilities
 chrono = "0.4"
 thiserror = "1.0"
+
 derive_more = "0.99"
 
 # WASM compatibility
@@ -119,3 +120,4 @@ todo = "deny"
 unimplemented = "deny"
 eq_op = "deny"
 cast_ptr_alignment = "deny"
+
