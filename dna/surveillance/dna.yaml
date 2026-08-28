@@ -7,6 +7,11 @@ integrity:
     # Fail closed by default. A deployment must create a DNA with an explicit,
     # governance-approved non-zero aggregate release policy before publication.
     release_policy: ~
+    # Also fail closed until the deployment pins a finite grant-lifetime policy
+    # and exact trusted (security_domain, issuer_did, credential_schema_id) tuples.
+    # v1 producer proofs are detached Ed25519 signatures over the canonical
+    # health-surveillance-authority signing transcript.
+    producer_authority_policy: ~
   zomes:
     - name: surveillance_integrity
       path: ../../target/wasm32-unknown-unknown/release/surveillance_integrity.wasm
