@@ -27,9 +27,11 @@ The core distinctions are:
 - a bounded observation window and report time;
 - aggregate cohort/sample size;
 - typed metric kind, estimate, unit, and bounded uncertainty;
-- producer/protocol/revision/upstream provenance and a non-zero source-record digest.
+- producer/protocol/revision/upstream provenance and an algorithm-tagged, non-zero source-record digest.
 
 The schema intentionally has no patient identifier, name, date of birth, exact address, latitude/longitude, raw genome, pathogen sequence, treatment recommendation, or emergency authority field.
+
+Identity-significant structured wire types reject unknown fields where forward-compatible silent interpretation would be unsafe. Nested windows, metrics, uncertainty envelopes, and provenance are revalidated at the `SurveillanceObservation` boundary rather than trusted merely because they arrived inside a public struct.
 
 ## Content identity
 
@@ -37,7 +39,9 @@ Every validated observation receives a domain-separated SHA-256 semantic identit
 
 `mycelix-health-surveillance-observation-v1`
 
-The digest commits to all identity-significant v1 fields, including provenance and independence grouping. Floating-point values are hashed by validated IEEE-754 bit pattern with negative zero canonicalized to positive zero.
+The digest commits to all identity-significant v1 fields, including provenance, source-record digest **algorithm + bytes**, and independence grouping. Floating-point values are hashed by validated IEEE-754 bit pattern with negative zero canonicalized to positive zero.
+
+A SHA-256 source digest and BLAKE3 source digest with the same 32 bytes therefore remain different provenance claims and produce different observation identities.
 
 This is **content identity only**. It does not prove who produced the evidence, that the producer is trusted, or that the source record is authentic. Authentication/signature authority belongs to later Mycelix/Xenia integration.
 
@@ -50,6 +54,8 @@ This is **content identity only**. It does not prove who produced the evidence, 
 - a maximum geographic precision.
 
 The resulting `ReleaseAssessment` is bound to the exact `ObservationId` and exact policy values.
+
+Policy thresholds are private, constructor-validated, and revalidated during deserialization, so a zero-threshold policy cannot bypass the invariants through a struct literal or wire payload.
 
 Passing this policy is only a structural release gate. It does **not** claim formal k-anonymity, differential privacy, resistance to all linkage attacks, HIPAA/GDPR compliance, or universal safety. Source-specific pipelines may require differential privacy or stronger review before publication.
 
@@ -69,7 +75,7 @@ No universal policy thresholds are embedded in the crate. Thresholds must be sel
 4. one exact geographic scope;
 5. a positive-width overlapping time window across every observation.
 
-Bundles retain the complete observations rather than only their hashes and receive their own domain-separated identity under:
+Bundles retain the complete observations rather than only their hashes, reject unknown top-level wire fields, and receive their own domain-separated identity under:
 
 `mycelix-health-surveillance-bundle-v1`
 
@@ -77,7 +83,7 @@ Bundles retain the complete observations rather than only their hashes and recei
 
 Two dashboards can repeat the same laboratory feed while looking like two sources. `IndependenceGroup` prevents that presentation-layer duplication from automatically becoming two independent lineages.
 
-`LineageDiversityPolicy` evaluates the number of unique independence groups and unique source kinds. The assessment is bound to the exact bundle and policy.
+`LineageDiversityPolicy` evaluates the number of unique independence groups and unique source kinds. Its non-zero thresholds are constructor- and deserialization-validated. The resulting assessment is bound to the exact bundle and policy.
 
 A result of `MeetsPolicy` means only that the evidence set meets the declared structural diversity requirement. It does **not** establish:
 
