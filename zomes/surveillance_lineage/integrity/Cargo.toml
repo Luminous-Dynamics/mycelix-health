@@ -1,0 +1,19 @@
+[package]
+name = "surveillance_lineage_integrity"
+version = "0.1.0"
+edition = "2021"
+license.workspace = true
+description = "Integrity zome for signed dimension-specific surveillance lineage attestations"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+name = "surveillance_lineage_integrity"
+
+[dependencies]
+hdi.workspace = true
+serde.workspace = true
+holochain_serialized_bytes.workspace = true
+health-surveillance-core = { path = "../../../crates/health-surveillance-core" }
+health-surveillance-authority = { path = "../../../crates/health-surveillance-authority" }
+health-surveillance-endorsement = { path = "../../../crates/health-surveillance-endorsement" }
+health-surveillance-lineage = { path = "../../../crates/health-surveillance-lineage" }
