@@ -1,8 +1,9 @@
 name: Public Health Surveillance DNA
 
 on:
+  # Intentionally allow stacked PR bases. This tranche is expected to target the
+  # evidence-core feature branch until #10 lands, then be retargeted to main.
   pull_request:
-    branches: [main]
     paths:
       - "crates/health-surveillance-core/**"
       - "zomes/surveillance/**"
