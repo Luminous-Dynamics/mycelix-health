@@ -14,10 +14,21 @@
 //! The v1 wire contract contains no patient identifier, exact address, latitude,
 //! longitude, raw genome, pathogen sequence, or treatment recommendation field.
 
+mod bundle;
 mod identity;
+mod privacy;
 mod types;
 
+pub use bundle::{
+    BundleError, EvidenceBundle, EvidenceBundleId, LineageDiversityAssessment,
+    LineageDiversityPolicy, LineageDiversityPolicyError, LineageDiversityStatus,
+    BUNDLE_ID_DOMAIN_V1,
+};
 pub use identity::{ObservationId, OBSERVATION_ID_DOMAIN_V1};
+pub use privacy::{
+    AggregateReleasePolicy, FreshnessError, FreshnessPolicy, FreshnessStatus, ReleaseAssessment,
+    ReleasePolicyError, WithholdReason,
+};
 pub use types::{
     BoundedUncertainty, CanonicalId, EvidenceProvenance, GeographicPrecision,
     GeographicScope, IndependenceGroup, MetricKind, ObservationWindow, ObservedMetric,

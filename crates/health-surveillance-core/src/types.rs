@@ -32,6 +32,8 @@ pub enum SurveillanceError {
     InvalidCountEstimate,
     #[error("cohort_size must be greater than zero")]
     EmptyCohort,
+    #[error("source_record_digest must not be all zeroes")]
+    ZeroSourceRecordDigest,
     #[error("schema version {0} is unsupported")]
     UnsupportedSchema(u16),
 }
@@ -216,17 +218,23 @@ impl ObservedMetric {
         if !estimate.is_finite() {
             return Err(SurveillanceError::NonFiniteEstimate);
         }
+        if !uncertainty.lower.is_finite() || !uncertainty.upper.is_finite() {
+            return Err(SurveillanceError::NonFiniteUncertainty);
+        }
+        if uncertainty.lower > uncertainty.upper {
+            return Err(SurveillanceError::ReversedUncertainty);
+        }
         if !uncertainty.contains(estimate) {
             return Err(SurveillanceError::EstimateOutsideUncertainty);
         }
         match &kind {
             MetricKind::Count => {
-                if estimate < 0.0 || estimate.fract() != 0.0 {
+                if estimate < 0.0 || estimate.fract() != 0.0 || uncertainty.lower < 0.0 {
                     return Err(SurveillanceError::InvalidCountEstimate);
                 }
             }
             MetricKind::RatePer100k | MetricKind::ConcentrationIndex => {
-                if estimate < 0.0 {
+                if estimate < 0.0 || uncertainty.lower < 0.0 {
                     return Err(SurveillanceError::MetricOutOfRange);
                 }
             }
@@ -271,6 +279,9 @@ impl EvidenceProvenance {
         upstream_set: Option<impl Into<String>>,
         source_record_digest: [u8; 32],
     ) -> Result<Self, SurveillanceError> {
+        if source_record_digest == [0; 32] {
+            return Err(SurveillanceError::ZeroSourceRecordDigest);
+        }
         Ok(Self {
             producer: CanonicalId::new(producer)?,
             acquisition_protocol: CanonicalId::new(acquisition_protocol)?,
@@ -281,6 +292,13 @@ impl EvidenceProvenance {
             },
             source_record_digest,
         })
+    }
+
+    pub fn validate(&self) -> Result<(), SurveillanceError> {
+        if self.source_record_digest == [0; 32] {
+            return Err(SurveillanceError::ZeroSourceRecordDigest);
+        }
+        Ok(())
     }
 }
 
@@ -350,6 +368,7 @@ impl SurveillanceObservation {
         if self.reported_at_unix_s < self.window.end_unix_s {
             return Err(SurveillanceError::ReportedBeforeWindowEnd);
         }
+        self.provenance.validate()?;
         ObservedMetric::new(
             self.metric.kind.clone(),
             self.metric.estimate,
@@ -460,5 +479,19 @@ mod tests {
             provenance(),
         );
         assert_eq!(result, Err(SurveillanceError::ReportedBeforeWindowEnd));
+    }
+
+    #[test]
+    fn zero_source_digest_cannot_be_used_as_provenance_placeholder() {
+        assert_eq!(
+            EvidenceProvenance::new(
+                "producer-a",
+                "protocol-v1",
+                "rev-1",
+                Some("upstream-a"),
+                [0; 32],
+            ),
+            Err(SurveillanceError::ZeroSourceRecordDigest)
+        );
     }
 }
