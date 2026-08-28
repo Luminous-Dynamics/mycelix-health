@@ -13,11 +13,31 @@
 //! and conflicting valid attestations are not overwritten or collapsed here.
 
 use hdi::prelude::*;
+use health_surveillance_authority::ProducerAuthorityGrant;
+use health_surveillance_core::{CanonicalId, ReleaseAssessment, SurveillanceObservation};
+use health_surveillance_endorsement::AuthorizedObservationEndorsement;
 pub use health_surveillance_lineage::*;
-use surveillance_integrity::{ReleasedSurveillanceObservation, SurveillanceObservation};
 
 const MAX_TRUSTED_LINEAGE_ATTESTORS: usize = 64;
 const ED25519_SIGNATURE_BYTES: usize = 64;
+
+/// Read-only serialization mirror of `surveillance_integrity::ReleasedSurveillanceObservation`.
+///
+/// Keeping this mirror in shared semantic types avoids linking one integrity-zome
+/// implementation into another WASM. `policy_id` is represented by its transparent
+/// 32-byte wire value; lineage validation does not interpret release-policy authority.
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+pub struct ReleasedSurveillanceObservationMirror {
+    pub observation: SurveillanceObservation,
+    pub release_assessment: ReleaseAssessment,
+    pub policy_revision: CanonicalId,
+    pub policy_id: [u8; 32],
+    pub authority_grant: ProducerAuthorityGrant,
+    pub authority_signature: Vec<u8>,
+    pub status_endorsement: AuthorizedObservationEndorsement,
+    pub status_endorsement_signature: Vec<u8>,
+    pub publisher: AgentPubKey,
+}
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]
@@ -199,17 +219,14 @@ fn validate_released_lineage_attestation(
         ));
     }
 
-    // Integrity resolves a valid immutable surveillance record first. The pure
-    // verifier below then needs only that record's observation semantics, which
-    // avoids exposing release-policy constructors merely for lineage unit tests.
     let record = must_get_valid_record(entry.observation_action.clone())?;
-    let released: ReleasedSurveillanceObservation = record
+    let released: ReleasedSurveillanceObservationMirror = record
         .entry()
         .to_app_option()
         .map_err(|e| wasm_error!(WasmErrorInner::Guest(e.to_string())))?
         .ok_or_else(|| {
             wasm_error!(WasmErrorInner::Guest(
-                "lineage observation_action does not reference a released surveillance observation"
+                "lineage observation_action does not decode as a released surveillance observation"
                     .to_string()
             ))
         })?;
@@ -305,7 +322,7 @@ pub fn verify_lineage_signature(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use surveillance_integrity::{
+    use health_surveillance_core::{
         BoundedUncertainty, EvidenceProvenance, GeographicPrecision, GeographicScope,
         IndependenceGroup, MetricKind, ObservationWindow, ObservedMetric, SignalFamily, SourceKind,
         SourceRecordDigest,
@@ -429,15 +446,15 @@ mod tests {
     }
 
     #[test]
-    fn producer_issuer_does_not_inherit_lineage_trust() {
-        let lineage_attestor = agent(3);
-        let producer_issuer = agent(2);
+    fn unrelated_attestor_does_not_inherit_trust() {
+        let trusted_attestor = agent(3);
+        let other_attestor = agent(2);
         let observation = observation("rev-1");
-        let entry = entry(&observation, &producer_issuer);
+        let entry = entry(&observation, &other_attestor);
         assert!(validate_lineage_attestation_semantics(
             &entry,
             &observation,
-            &policy(&lineage_attestor),
+            &policy(&trusted_attestor),
         )
         .is_err());
     }
