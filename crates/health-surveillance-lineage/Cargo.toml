@@ -1,0 +1,16 @@
+[package]
+name = "health-surveillance-lineage"
+version = "0.1.0"
+edition = "2021"
+license.workspace = true
+description = "Canonical dimension-specific lineage attestations for aggregate public-health surveillance"
+
+[lib]
+name = "health_surveillance_lineage"
+path = "src/lib.rs"
+
+[dependencies]
+serde.workspace = true
+thiserror.workspace = true
+sha2 = "0.10"
+health-surveillance-core = { path = "../health-surveillance-core" }
