@@ -15,10 +15,49 @@
 
 use hdi::prelude::*;
 pub use health_surveillance_core::*;
+use sha2::{Digest, Sha256};
+
+pub const RELEASE_POLICY_ID_DOMAIN_V1: &[u8] =
+    b"mycelix-health-surveillance-release-policy-v1\0";
+
+/// Immutable semantic identity of the exact release-policy authority configured
+/// into one surveillance DNA. A human revision label alone is not an identity.
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq, Hash)]
+#[serde(transparent)]
+pub struct ReleasePolicyId([u8; 32]);
+
+impl ReleasePolicyId {
+    fn from_validated_properties(
+        policy_revision: &CanonicalId,
+        properties: &ReleasePolicyProperties,
+    ) -> Self {
+        let mut h = Sha256::new();
+        h.update(RELEASE_POLICY_ID_DOMAIN_V1);
+
+        let revision = policy_revision.as_str().as_bytes();
+        h.update((revision.len() as u32).to_be_bytes());
+        h.update(revision);
+        h.update(properties.min_cohort_size.to_be_bytes());
+        h.update(properties.min_window_s.to_be_bytes());
+        h.update([match properties.max_geographic_precision {
+            GeographicPrecision::Country => 0,
+            GeographicPrecision::Region => 1,
+            GeographicPrecision::District => 2,
+            GeographicPrecision::Facility => 3,
+        }]);
+
+        Self(h.finalize().into())
+    }
+
+    pub fn as_bytes(&self) -> &[u8; 32] {
+        &self.0
+    }
+}
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 pub struct ReleasePolicyProperties {
-    /// Human/audit identity for this exact deployment policy revision.
+    /// Human/audit label. The immutable policy identity is `ReleasePolicyId`,
+    /// which also commits to all exact threshold values below.
     pub policy_revision: String,
     pub min_cohort_size: u64,
     pub min_window_s: u64,
@@ -36,6 +75,7 @@ pub struct SurveillanceDnaProperties {
 #[derive(Clone, Debug, PartialEq)]
 pub struct ConfiguredReleasePolicy {
     pub policy_revision: CanonicalId,
+    pub policy_id: ReleasePolicyId,
     pub policy: AggregateReleasePolicy,
 }
 
@@ -66,9 +106,11 @@ pub fn configured_release_policy_from_properties(
         properties.max_geographic_precision,
     )
     .map_err(|e| e.to_string())?;
+    let policy_id = ReleasePolicyId::from_validated_properties(&policy_revision, properties);
 
     Ok(ConfiguredReleasePolicy {
         policy_revision,
+        policy_id,
         policy,
     })
 }
@@ -83,6 +125,8 @@ pub struct ReleasedSurveillanceObservation {
     pub release_assessment: ReleaseAssessment,
     /// Human/audit revision echoed from the DNA property contract.
     pub policy_revision: CanonicalId,
+    /// Immutable commitment to the exact revision + threshold contract.
+    pub policy_id: ReleasePolicyId,
     /// Agent that authored this DHT entry. This authenticates only the Holochain
     /// author key; it does not prove the institutional producer label in the
     /// observation's provenance.
@@ -154,6 +198,9 @@ pub fn validate_released_entry_against_policy(
     }
     if entry.policy_revision != configured.policy_revision {
         return Err("entry policy_revision does not match the DNA release policy".to_string());
+    }
+    if entry.policy_id != configured.policy_id {
+        return Err("entry policy_id does not match the exact DNA release policy".to_string());
     }
 
     entry
@@ -229,6 +276,21 @@ mod tests {
         AgentPubKey::from_raw_36(vec![byte; 36])
     }
 
+    fn released_entry(
+        configured: &ConfiguredReleasePolicy,
+        observation: SurveillanceObservation,
+        publisher: AgentPubKey,
+    ) -> ReleasedSurveillanceObservation {
+        let assessment = configured.policy.assess(&observation).unwrap();
+        ReleasedSurveillanceObservation {
+            observation,
+            release_assessment: assessment,
+            policy_revision: configured.policy_revision.clone(),
+            policy_id: configured.policy_id,
+            publisher,
+        }
+    }
+
     #[test]
     fn missing_or_zero_policy_is_not_constructible_as_configured_policy() {
         let result = configured_release_policy_from_properties(&ReleasePolicyProperties {
@@ -241,17 +303,31 @@ mod tests {
     }
 
     #[test]
-    fn exact_policy_assessment_and_author_are_required() {
+    fn same_revision_with_different_thresholds_has_different_policy_identity() {
+        let a = configured_release_policy_from_properties(&ReleasePolicyProperties {
+            policy_revision: "policy-v1".to_string(),
+            min_cohort_size: 50,
+            min_window_s: 3_600,
+            max_geographic_precision: GeographicPrecision::District,
+        })
+        .unwrap();
+        let b = configured_release_policy_from_properties(&ReleasePolicyProperties {
+            policy_revision: "policy-v1".to_string(),
+            min_cohort_size: 100,
+            min_window_s: 3_600,
+            max_geographic_precision: GeographicPrecision::District,
+        })
+        .unwrap();
+
+        assert_eq!(a.policy_revision, b.policy_revision);
+        assert_ne!(a.policy_id, b.policy_id);
+    }
+
+    #[test]
+    fn exact_policy_assessment_author_and_policy_identity_are_required() {
         let configured = policy();
-        let observation = observation(100);
-        let assessment = configured.policy.assess(&observation).unwrap();
         let publisher = agent(1);
-        let entry = ReleasedSurveillanceObservation {
-            observation,
-            release_assessment: assessment,
-            policy_revision: configured.policy_revision.clone(),
-            publisher: publisher.clone(),
-        };
+        let entry = released_entry(&configured, observation(100), publisher.clone());
 
         assert!(validate_released_entry_against_policy(&publisher, &entry, &configured).is_ok());
         assert!(validate_released_entry_against_policy(&agent(2), &entry, &configured).is_err());
@@ -267,6 +343,7 @@ mod tests {
             observation: observation(10),
             release_assessment: forged_assessment,
             policy_revision: configured.policy_revision.clone(),
+            policy_id: configured.policy_id,
             publisher: publisher.clone(),
         };
 
@@ -276,16 +353,28 @@ mod tests {
     #[test]
     fn policy_revision_substitution_is_rejected() {
         let configured = policy();
-        let observation = observation(100);
-        let assessment = configured.policy.assess(&observation).unwrap();
         let publisher = agent(1);
-        let entry = ReleasedSurveillanceObservation {
-            observation,
-            release_assessment: assessment,
-            policy_revision: CanonicalId::new("different-policy").unwrap(),
-            publisher: publisher.clone(),
-        };
+        let mut entry = released_entry(&configured, observation(100), publisher.clone());
+        entry.policy_revision = CanonicalId::new("different-policy").unwrap();
 
+        assert!(validate_released_entry_against_policy(&publisher, &entry, &configured).is_err());
+    }
+
+    #[test]
+    fn same_revision_different_policy_id_substitution_is_rejected() {
+        let configured = policy();
+        let other = configured_release_policy_from_properties(&ReleasePolicyProperties {
+            policy_revision: configured.policy_revision.as_str().to_string(),
+            min_cohort_size: 100,
+            min_window_s: 3_600,
+            max_geographic_precision: GeographicPrecision::District,
+        })
+        .unwrap();
+        let publisher = agent(1);
+        let mut entry = released_entry(&configured, observation(100), publisher.clone());
+        entry.policy_id = other.policy_id;
+
+        assert_ne!(configured.policy_id, other.policy_id);
         assert!(validate_released_entry_against_policy(&publisher, &entry, &configured).is_err());
     }
 }
