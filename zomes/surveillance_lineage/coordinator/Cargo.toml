@@ -1,0 +1,17 @@
+[package]
+name = "surveillance_lineage"
+version = "0.1.0"
+edition = "2021"
+license.workspace = true
+description = "Coordinator zome for signed aggregate surveillance lineage attestations"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+name = "surveillance_lineage"
+
+[dependencies]
+hdk.workspace = true
+serde.workspace = true
+holochain_serialized_bytes.workspace = true
+surveillance_lineage_integrity = { path = "../integrity" }
+surveillance_integrity = { path = "../../surveillance/integrity" }
