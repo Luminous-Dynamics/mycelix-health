@@ -13,5 +13,7 @@ name = "surveillance_lineage_integrity"
 hdi.workspace = true
 serde.workspace = true
 holochain_serialized_bytes.workspace = true
+health-surveillance-core = { path = "../../../crates/health-surveillance-core" }
+health-surveillance-authority = { path = "../../../crates/health-surveillance-authority" }
+health-surveillance-endorsement = { path = "../../../crates/health-surveillance-endorsement" }
 health-surveillance-lineage = { path = "../../../crates/health-surveillance-lineage" }
-surveillance_integrity = { path = "../../surveillance/integrity" }
