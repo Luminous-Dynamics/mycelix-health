@@ -9,7 +9,6 @@
 //! repeats target-observation binding, attestor-policy, and signature checks.
 
 use hdk::prelude::*;
-use surveillance_integrity::ReleasedSurveillanceObservation;
 use surveillance_lineage_integrity::*;
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -65,13 +64,13 @@ pub fn submit_lineage_attestation(
             "referenced released surveillance observation was not found".to_string()
         ))
     })?;
-    let released: ReleasedSurveillanceObservation = record
+    let released: ReleasedSurveillanceObservationMirror = record
         .entry()
         .to_app_option()
         .map_err(|e| wasm_error!(WasmErrorInner::Guest(e.to_string())))?
         .ok_or_else(|| {
             wasm_error!(WasmErrorInner::Guest(
-                "observation_action does not reference a released surveillance observation"
+                "observation_action does not decode as a released surveillance observation"
                     .to_string()
             ))
         })?;
