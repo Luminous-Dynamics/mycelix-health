@@ -9,6 +9,7 @@
 //! repeats target-observation binding, attestor-policy, and signature checks.
 
 use hdk::prelude::*;
+use health_surveillance_core::{CanonicalId, ObservationId};
 use surveillance_lineage_integrity::*;
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
