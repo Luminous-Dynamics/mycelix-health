@@ -2,11 +2,11 @@
 // Copyright (C) 2024-2026 Tristan Stoltz / Luminous Dynamics
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Commercial licensing: see COMMERCIAL_LICENSE.md at repository root
-//! Coordinator API for policy- and producer-authority-bound surveillance.
+//! Coordinator API for policy-, authority-, and status-bound surveillance.
 //!
 //! Coordinator preflight exists for fast caller feedback only. Every DHT peer
-//! independently repeats release-policy, issuer-trust, grant-scope, subject, and
-//! detached-signature verification in the integrity callback.
+//! independently repeats release-policy, producer-authority, exact-observation
+//! endorsement, and detached-signature verification in the integrity callback.
 
 use hdk::prelude::*;
 use surveillance_integrity::*;
@@ -15,9 +15,13 @@ use surveillance_integrity::*;
 pub struct SubmitSurveillanceObservationInput {
     pub observation: SurveillanceObservation,
     pub authority_grant: ProducerAuthorityGrant,
-    /// Detached Ed25519 signature by the grant issuer over the exact shared
-    /// `ProducerAuthorityGrant::signing_transcript()` bytes.
+    /// Detached Ed25519 signature by the grant issuer over the canonical grant.
     pub authority_signature: Vec<u8>,
+    /// Positive status assertion for this exact observation.
+    pub status_endorsement: AuthorizedObservationEndorsement,
+    /// Detached Ed25519 signature by the same trusted issuer over the exact
+    /// status-endorsement transcript.
+    pub status_endorsement_signature: Vec<u8>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -27,6 +31,7 @@ pub struct SubmitSurveillanceObservationOutput {
     pub policy_revision: CanonicalId,
     pub policy_id: ReleasePolicyId,
     pub authority_grant_id: ProducerAuthorityGrantId,
+    pub status_endorsement_id: ObservationEndorsementId,
     pub publisher: AgentPubKey,
 }
 
@@ -48,9 +53,9 @@ pub struct TrustedAuthorityIssuerView {
 pub struct ProducerAuthorityPolicyView {
     pub max_grant_lifetime_s: u64,
     pub trusted_issuers: Vec<TrustedAuthorityIssuerView>,
+    pub accepted_status_profiles: Vec<CanonicalId>,
 }
 
-/// Return the release policy frozen into this DNA's integrity properties.
 #[hdk_extern]
 pub fn get_release_policy(_: ()) -> ExternResult<ReleasePolicyView> {
     let configured = configured_release_policy()?;
@@ -61,7 +66,6 @@ pub fn get_release_policy(_: ()) -> ExternResult<ReleasePolicyView> {
     })
 }
 
-/// Return the producer-authority trust contract frozen into DNA properties.
 #[hdk_extern]
 pub fn get_producer_authority_policy(_: ()) -> ExternResult<ProducerAuthorityPolicyView> {
     let configured = configured_producer_authority_policy()?;
@@ -76,14 +80,15 @@ pub fn get_producer_authority_policy(_: ()) -> ExternResult<ProducerAuthorityPol
                 credential_schema_id: issuer.credential_schema_id,
             })
             .collect(),
+        accepted_status_profiles: configured.accepted_status_profiles,
     })
 }
 
-/// Submit one aggregate surveillance observation with a signed producer grant.
+/// Submit one aggregate observation with a broad signed producer grant and a
+/// positive signed status endorsement for this exact observation.
 ///
-/// The caller supplies the external issuer proof; the local coordinator does not
-/// mint institutional authority. It only verifies the proof against DNA-bound
-/// trusted issuers before attempting the DHT write.
+/// The coordinator never mints either authority object. It verifies both
+/// external proofs against DNA-bound policy before attempting the DHT write.
 #[hdk_extern]
 pub fn submit_surveillance_observation(
     input: SubmitSurveillanceObservationInput,
@@ -102,7 +107,6 @@ pub fn submit_surveillance_observation(
                 "Invalid surveillance observation: {e}"
             )))
         })?;
-
     let observation_id = input.observation.id().map_err(|e| {
         wasm_error!(WasmErrorInner::Guest(format!(
             "Could not derive observation identity: {e}"
@@ -113,6 +117,11 @@ pub fn submit_surveillance_observation(
             "Could not derive producer-authority identity: {e}"
         )))
     })?;
+    let status_endorsement_id = input.status_endorsement.id().map_err(|e| {
+        wasm_error!(WasmErrorInner::Guest(format!(
+            "Could not derive status endorsement identity: {e}"
+        )))
+    })?;
 
     let entry = ReleasedSurveillanceObservation {
         observation: input.observation,
@@ -121,6 +130,8 @@ pub fn submit_surveillance_observation(
         policy_id: release_policy.policy_id,
         authority_grant: input.authority_grant,
         authority_signature: input.authority_signature,
+        status_endorsement: input.status_endorsement,
+        status_endorsement_signature: input.status_endorsement_signature,
         publisher: publisher.clone(),
     };
 
@@ -138,6 +149,11 @@ pub fn submit_surveillance_observation(
             "producer-authority signature verification failed".to_string()
         )));
     }
+    if !verify_endorsement_signature(&plan, &entry.status_endorsement_signature)? {
+        return Err(wasm_error!(WasmErrorInner::Guest(
+            "exact-observation status endorsement signature verification failed".to_string()
+        )));
+    }
 
     let action_hash = create_entry(&EntryTypes::ReleasedSurveillanceObservation(entry))?;
 
@@ -147,11 +163,11 @@ pub fn submit_surveillance_observation(
         policy_revision: release_policy.policy_revision,
         policy_id: release_policy.policy_id,
         authority_grant_id,
+        status_endorsement_id,
         publisher,
     })
 }
 
-/// Fetch one released aggregate observation by its action hash.
 #[hdk_extern]
 pub fn get_surveillance_observation(
     action_hash: ActionHash,
@@ -160,7 +176,6 @@ pub fn get_surveillance_observation(
         Some(record) => record,
         None => return Ok(None),
     };
-
     record
         .entry()
         .to_app_option::<ReleasedSurveillanceObservation>()
