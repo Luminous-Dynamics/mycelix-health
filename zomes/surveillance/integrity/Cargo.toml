@@ -1,0 +1,16 @@
+[package]
+name = "surveillance_integrity"
+version = "0.1.0"
+edition = "2021"
+license.workspace = true
+description = "Integrity zome for policy-bound aggregate public-health surveillance releases"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+name = "surveillance_integrity"
+
+[dependencies]
+hdi.workspace = true
+serde.workspace = true
+holochain_serialized_bytes.workspace = true
+health-surveillance-core = { path = "../../../crates/health-surveillance-core" }
