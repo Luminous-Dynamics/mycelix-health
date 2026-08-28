@@ -35,17 +35,19 @@ The DNA also freezes:
 
 v1 issuer DIDs use `did:mycelix:<AgentPubKey>`. The issuer signs the exact domain-separated transcript defined by `health-surveillance-authority`; every validating peer verifies that detached Ed25519 signature locally with Holochain's raw signature-verification host function.
 
-The subject DID inside the signed grant must equal the DHT publisher's `did:mycelix` identity. The grant must also cover the observation's exact producer, source kind, signal family, source instance, acquisition protocol, geography, and observation/publication time.
+The subject DID inside the signed grant must equal the DHT publisher's `did:mycelix` identity. The grant must also cover the observation's exact producer, source kind, signal family, source instance, acquisition protocol, geography, and signed/declared time fields.
 
 This means a valid signature for one publisher/feed/protocol/district cannot be replayed as authority for another.
 
-## Why grants are finite
+## Time and revocation boundary
 
-The surveillance integrity callback must be deterministic across peers and should not depend on a live mutable lookup into another DNA's revocation registry.
+Grant validity is encoded as a finite signed interval and the DNA caps its duration. The current integrity path compares that interval against the observation's declared time and the Holochain action timestamp.
 
-v1 therefore requires a DNA-governed maximum grant lifetime. This bounds exposure if an issuer needs to withdraw authority while we build the stronger follow-up: signed, content-addressed credential-status snapshots suitable for deterministic consensus verification.
+Those timestamps are authenticated/chain-ordered claims, **not a globally trusted wall clock**. A finite grant therefore limits the semantic validity interval of the signed authority but must not be advertised as equivalent to real-time credential expiration or revocation.
 
-Finite lifetime is **not** claimed to be equivalent to real-time revocation.
+The stronger follow-up is an issuer-signed, exact-observation endorsement/status receipt that commits to the grant ID, observation ID, release-policy ID, and publisher after the issuer has checked current credential status. A revoked producer then cannot obtain authorization for a new observation, while DHT validation can remain deterministic and self-contained.
+
+A later trusted-time evidence profile can additionally support claim-bearing real-time freshness/expiry statements. Until then, v1's time fields are explicit evidence claims with bounded semantics, not global-time proof.
 
 ## Integrity model
 
@@ -55,7 +57,7 @@ For every `ReleasedSurveillanceObservation`, every validating peer independently
 2. release-policy revision and exact `ReleasePolicyId` match DNA properties;
 3. the aggregate observation revalidates and passes the release policy;
 4. the stored release assessment exactly matches recomputation;
-5. the producer grant is structurally valid and within the DNA maximum lifetime;
+5. the producer grant is structurally valid and within the DNA maximum declared lifetime;
 6. grant subject DID equals the publisher DID;
 7. grant issuer/security-domain/schema tuple is trusted by this DNA;
 8. the observation lies inside the exact claimed grant scope;
@@ -71,9 +73,10 @@ A trusted producer grant establishes permission for a subject to publish a defin
 - that `IndependenceGroup` is truthful;
 - that an observation's measurements are scientifically correct;
 - that an institution should be trusted for unrelated purposes;
+- real-time credential/revocation status;
 - any authority to issue medical/public-health orders.
 
-Lineage-independence attestation and scientific evidence quality remain separate evidence problems.
+Lineage-independence attestation, credential-status evidence, trusted-time evidence, and scientific evidence quality remain separate problems.
 
 ## Relationship to Mycelix Identity and Xenia
 
@@ -115,7 +118,8 @@ private source systems / Health DNA
  release + publisher + issuer proof
             |
             v
- lineage/status evidence upgrades
+ exact-observation status endorsement
+ + lineage/time evidence upgrades
             |
             v
  Symthaea health-resilience
