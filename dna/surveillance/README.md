@@ -17,16 +17,25 @@ That is deliberate. With no configured release policy, the integrity zome reject
 
 The project does **not** provide universal privacy thresholds. Appropriate cohort size, aggregation windows, geographic precision, differential-privacy requirements, and legal/governance review depend on the deployment and source pipeline.
 
+## Policy identity
+
+`policy_revision` is a human/audit label, not the immutable identity of a release policy.
+
+The integrity zome derives a domain-separated `ReleasePolicyId` over the exact revision label plus cohort threshold, aggregation-window threshold, and maximum geographic precision. Every released observation carries both the readable revision and this exact policy commitment.
+
+Reusing the same revision label with different thresholds therefore creates a different policy identity and cannot be silently substituted into an existing released entry.
+
 ## Integrity model
 
 For every `ReleasedSurveillanceObservation`, every validating peer independently checks:
 
 1. the publisher field equals the Holochain action author;
 2. the entry's `policy_revision` equals the revision frozen into DNA properties;
-3. the underlying `SurveillanceObservation` satisfies the evidence-core invariants;
-4. the DNA's release policy deterministically reassesses the observation;
-5. the observation passes that policy;
-6. the stored `ReleaseAssessment` exactly equals the recomputed assessment.
+3. the entry's `policy_id` equals the immutable commitment derived from those exact DNA properties;
+4. the underlying `SurveillanceObservation` satisfies the evidence-core invariants;
+5. the DNA's release policy deterministically reassesses the observation;
+6. the observation passes that policy;
+7. the stored `ReleaseAssessment` exactly equals the recomputed assessment.
 
 Released observations are append-only in v1. Updates and deletes are rejected.
 
