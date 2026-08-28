@@ -5,6 +5,8 @@ on:
     paths:
       - "crates/health-surveillance-core/**"
       - "crates/health-surveillance-lineage/**"
+      - "zomes/surveillance_lineage/**"
+      - "dna/surveillance/**"
       - "Cargo.toml"
       - "Cargo.lock"
       - ".github/workflows/surveillance-lineage.yml"
@@ -13,6 +15,8 @@ on:
     paths:
       - "crates/health-surveillance-core/**"
       - "crates/health-surveillance-lineage/**"
+      - "zomes/surveillance_lineage/**"
+      - "dna/surveillance/**"
       - "Cargo.toml"
       - "Cargo.lock"
       - ".github/workflows/surveillance-lineage.yml"
@@ -24,13 +28,12 @@ env:
 
 jobs:
   surveillance-lineage:
-    name: Dimension-specific lineage contract
+    name: Lineage contract + separate trust boundary
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
 
-      # Cargo resolves the complete workspace graph even for a focused package.
-      # Mirror the sibling dependency layout used by repository CI.
+      # Cargo resolves the complete workspace graph even for focused packages.
       - name: Check out parent workspace dependencies
         run: |
           git clone --depth 1 https://github.com/Luminous-Dynamics/mycelix.git /tmp/mycelix-parent
@@ -52,16 +55,28 @@ jobs:
         run: echo "triple=$(rustc -vV | awk '/^host:/{print $2}')" >> "$GITHUB_OUTPUT"
 
       - name: Check formatting
-        run: cargo fmt -p health-surveillance-lineage -- --check
+        run: cargo fmt -p health-surveillance-lineage -p surveillance_lineage_integrity -p surveillance_lineage -- --check
 
-      - name: Run host tests
+      - name: Run lineage contract host tests
         run: cargo test -p health-surveillance-lineage --target "${{ steps.host.outputs.triple }}"
 
+      - name: Run lineage integrity host tests
+        run: cargo test -p surveillance_lineage_integrity --target "${{ steps.host.outputs.triple }}"
+
+      - name: Run lineage coordinator host tests
+        run: cargo test -p surveillance_lineage --target "${{ steps.host.outputs.triple }}"
+
       - name: Run Clippy
-        run: cargo clippy -p health-surveillance-lineage --all-targets --target "${{ steps.host.outputs.triple }}" -- -D warnings
+        run: cargo clippy -p health-surveillance-lineage -p surveillance_lineage_integrity -p surveillance_lineage --all-targets --target "${{ steps.host.outputs.triple }}" -- -D warnings
 
       - name: Run documentation tests
         run: cargo test -p health-surveillance-lineage --doc --target "${{ steps.host.outputs.triple }}"
 
-      - name: Check WASM compatibility
+      - name: Check lineage contract WASM compatibility
         run: cargo check -p health-surveillance-lineage --target wasm32-unknown-unknown
+
+      - name: Check lineage integrity WASM compatibility
+        run: cargo check -p surveillance_lineage_integrity --target wasm32-unknown-unknown
+
+      - name: Check lineage coordinator WASM compatibility
+        run: cargo check -p surveillance_lineage --target wasm32-unknown-unknown

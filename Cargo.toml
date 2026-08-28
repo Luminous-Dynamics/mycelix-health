@@ -44,6 +44,8 @@ members = [
     # ── Public Health Surveillance (separate aggregate-only DNA) ──
     "zomes/surveillance/integrity",
     "zomes/surveillance/coordinator",
+    "zomes/surveillance_lineage/integrity",
+    "zomes/surveillance_lineage/coordinator",
 
     # ── Tier 3: Behavioral Health (restored 2026-03-26) ──
     "zomes/mental_health/integrity",
