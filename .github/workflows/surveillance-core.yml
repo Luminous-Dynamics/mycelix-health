@@ -1,0 +1,62 @@
+name: Public Health Surveillance Core
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "crates/health-surveillance-core/**"
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - ".github/workflows/surveillance-core.yml"
+  push:
+    branches: [main]
+    paths:
+      - "crates/health-surveillance-core/**"
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - ".github/workflows/surveillance-core.yml"
+  workflow_dispatch:
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: 1
+
+jobs:
+  surveillance-core:
+    name: Evidence contract qualification
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # Cargo resolves the complete workspace graph even for a focused package.
+      # Recreate the sibling paths expected when mycelix-health is consumed as
+      # the parent mycelix repository's submodule; this mirrors the full CI gate.
+      - name: Check out parent workspace dependencies
+        run: |
+          git clone --depth 1 https://github.com/Luminous-Dynamics/mycelix.git /tmp/mycelix-parent
+          mkdir -p ../crates ../mycelix-core ../mycelix-workspace/mycelix-core
+          cp -r /tmp/mycelix-parent/crates/. ../crates/
+          cp -r /tmp/mycelix-parent/mycelix-core/. ../mycelix-core/
+          cp -r /tmp/mycelix-parent/mycelix-core/. ../mycelix-workspace/mycelix-core/
+          rm -rf /tmp/mycelix-parent
+
+      - name: Install pinned Rust
+        uses: dtolnay/rust-toolchain@1.96.0
+        with:
+          components: rustfmt, clippy
+          targets: wasm32-unknown-unknown
+
+      - name: Check formatting
+        run: cargo fmt -p health-surveillance-core -- --check
+
+      - name: Run host tests
+        run: cargo test -p health-surveillance-core --target "$(rustc -vV | awk '/^host:/{print $2}')"
+
+      - name: Run Clippy
+        run: cargo clippy -p health-surveillance-core --all-targets -- -D warnings
+
+      - name: Run documentation tests
+        run: cargo test -p health-surveillance-core --doc --target "$(rustc -vV | awk '/^host:/{print $2}')"
+
+      - name: Check WASM compatibility
+        run: cargo check -p health-surveillance-core --target wasm32-unknown-unknown
