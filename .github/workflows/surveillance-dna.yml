@@ -1,11 +1,11 @@
 name: Public Health Surveillance DNA
 
 on:
-  # Intentionally allow stacked PR bases. This tranche is expected to target the
-  # evidence-core feature branch until #10 lands, then be retargeted to main.
+  # Intentionally allow stacked PR bases while the surveillance stack is staged.
   pull_request:
     paths:
       - "crates/health-surveillance-core/**"
+      - "crates/health-surveillance-authority/**"
       - "zomes/surveillance/**"
       - "dna/surveillance/**"
       - "Cargo.toml"
@@ -15,6 +15,7 @@ on:
     branches: [main]
     paths:
       - "crates/health-surveillance-core/**"
+      - "crates/health-surveillance-authority/**"
       - "zomes/surveillance/**"
       - "dna/surveillance/**"
       - "Cargo.toml"
@@ -28,7 +29,7 @@ env:
 
 jobs:
   surveillance-dna:
-    name: Policy-bound publication qualification
+    name: Policy + producer authority qualification
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
