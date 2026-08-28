@@ -1,0 +1,73 @@
+name: Public Health Surveillance DNA
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "crates/health-surveillance-core/**"
+      - "zomes/surveillance/**"
+      - "dna/surveillance/**"
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - ".github/workflows/surveillance-dna.yml"
+  push:
+    branches: [main]
+    paths:
+      - "crates/health-surveillance-core/**"
+      - "zomes/surveillance/**"
+      - "dna/surveillance/**"
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - ".github/workflows/surveillance-dna.yml"
+  workflow_dispatch:
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: 1
+
+jobs:
+  surveillance-dna:
+    name: Policy-bound publication qualification
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # Cargo resolves the whole workspace graph. Recreate the sibling paths
+      # expected when mycelix-health is checked out inside the parent mycelix repo.
+      - name: Check out parent workspace dependencies
+        run: |
+          git clone --depth 1 https://github.com/Luminous-Dynamics/mycelix.git /tmp/mycelix-parent
+          mkdir -p ../crates ../mycelix-core ../mycelix-workspace/mycelix-core
+          cp -r /tmp/mycelix-parent/crates/. ../crates/
+          cp -r /tmp/mycelix-parent/mycelix-core/. ../mycelix-core/
+          cp -r /tmp/mycelix-parent/mycelix-core/. ../mycelix-workspace/mycelix-core/
+          rm -rf /tmp/mycelix-parent
+
+      - name: Install pinned Rust
+        uses: dtolnay/rust-toolchain@1.96.0
+        with:
+          components: rustfmt, clippy
+          targets: wasm32-unknown-unknown
+
+      - name: Resolve host target
+        id: host
+        shell: bash
+        run: echo "triple=$(rustc -vV | awk '/^host:/{print $2}')" >> "$GITHUB_OUTPUT"
+
+      - name: Check formatting
+        run: cargo fmt -p surveillance_integrity -p surveillance -- --check
+
+      - name: Run integrity host tests
+        run: cargo test -p surveillance_integrity --target "${{ steps.host.outputs.triple }}"
+
+      - name: Run coordinator host tests
+        run: cargo test -p surveillance --target "${{ steps.host.outputs.triple }}"
+
+      - name: Run host Clippy
+        run: cargo clippy -p surveillance_integrity -p surveillance --all-targets --target "${{ steps.host.outputs.triple }}" -- -D warnings
+
+      - name: Check integrity WASM compatibility
+        run: cargo check -p surveillance_integrity --target wasm32-unknown-unknown
+
+      - name: Check coordinator WASM compatibility
+        run: cargo check -p surveillance --target wasm32-unknown-unknown
