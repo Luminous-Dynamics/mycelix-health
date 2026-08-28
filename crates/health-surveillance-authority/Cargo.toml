@@ -1,0 +1,15 @@
+[package]
+name = "health-surveillance-authority"
+version = "0.1.0"
+edition = "2021"
+license = "AGPL-3.0-or-later"
+description = "Crypto-free canonical producer-authority contracts for Mycelix public-health surveillance"
+
+[dependencies]
+health-surveillance-core = { path = "../health-surveillance-core" }
+serde = { version = "1.0", features = ["derive"] }
+sha2 = "0.10"
+thiserror = "1.0"
+
+[dev-dependencies]
+serde_json = "1.0"
