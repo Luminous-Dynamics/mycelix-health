@@ -14,7 +14,7 @@
 
 use hdi::prelude::*;
 pub use health_surveillance_lineage::*;
-use surveillance_integrity::ReleasedSurveillanceObservation;
+use surveillance_integrity::{ReleasedSurveillanceObservation, SurveillanceObservation};
 
 const MAX_TRUSTED_LINEAGE_ATTESTORS: usize = 64;
 const ED25519_SIGNATURE_BYTES: usize = 64;
@@ -199,6 +199,9 @@ fn validate_released_lineage_attestation(
         ));
     }
 
+    // Integrity resolves a valid immutable surveillance record first. The pure
+    // verifier below then needs only that record's observation semantics, which
+    // avoids exposing release-policy constructors merely for lineage unit tests.
     let record = must_get_valid_record(entry.observation_action.clone())?;
     let released: ReleasedSurveillanceObservation = record
         .entry()
@@ -212,7 +215,7 @@ fn validate_released_lineage_attestation(
         })?;
 
     let policy = configured_lineage_attestor_policy()?;
-    let plan = match validate_lineage_attestation_semantics(entry, &released, &policy) {
+    let plan = match validate_lineage_attestation_semantics(entry, &released.observation, &policy) {
         Ok(plan) => plan,
         Err(message) => return Ok(ValidateCallbackResult::Invalid(message)),
     };
@@ -225,11 +228,11 @@ fn validate_released_lineage_attestation(
     }
 }
 
-/// Pure semantic validation once the referenced released observation has been
-/// resolved. This preserves a clean substitution-test surface before host crypto.
+/// Pure semantic validation once integrity has resolved the referenced released
+/// observation. This is the substitution-test boundary before host crypto.
 pub fn validate_lineage_attestation_semantics(
     entry: &ReleasedLineageAttestation,
-    released: &ReleasedSurveillanceObservation,
+    observation: &SurveillanceObservation,
     policy: &ConfiguredLineageAttestorPolicy,
 ) -> Result<LineageVerificationPlan, String> {
     if entry.attestation_signature.len() != ED25519_SIGNATURE_BYTES {
@@ -244,12 +247,12 @@ pub fn validate_lineage_attestation_semantics(
 
     if !entry
         .attestation
-        .binds_observation(&released.observation)
+        .binds_observation(observation)
         .map_err(|e| format!("lineage observation binding failed: {e}"))?
     {
         return Err("lineage attestation does not bind the referenced observation".to_string());
     }
-    if entry.attestation.assessed_at_unix_s() < released.observation.reported_at_unix_s {
+    if entry.attestation.assessed_at_unix_s() < observation.reported_at_unix_s {
         return Err(
             "lineage attestation assessment time cannot claim to precede observation report time"
                 .to_string(),
@@ -302,14 +305,11 @@ pub fn verify_lineage_signature(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use health_surveillance_authority::{ProducerAuthorityGrant, ProducerAuthorityScope};
-    use health_surveillance_core::{
-        AggregateReleasePolicy, BoundedUncertainty, EvidenceProvenance, GeographicPrecision,
-        GeographicScope, IndependenceGroup, MetricKind, ObservationWindow, ObservedMetric,
-        SignalFamily, SourceKind, SourceRecordDigest,
+    use surveillance_integrity::{
+        BoundedUncertainty, EvidenceProvenance, GeographicPrecision, GeographicScope,
+        IndependenceGroup, MetricKind, ObservationWindow, ObservedMetric, SignalFamily, SourceKind,
+        SourceRecordDigest,
     };
-    use health_surveillance_endorsement::AuthorizedObservationEndorsement;
-    use surveillance_integrity::{ReleasePolicyId, ReleasedSurveillanceObservation};
 
     fn id(value: &str) -> CanonicalId {
         CanonicalId::new(value).unwrap()
@@ -353,68 +353,6 @@ mod tests {
         .unwrap()
     }
 
-    fn released(observation: SurveillanceObservation) -> ReleasedSurveillanceObservation {
-        let publisher = agent(1);
-        let issuer = agent(2);
-        let grant = ProducerAuthorityGrant::new(
-            id("identity-domain:public-health-v1"),
-            id("mycelix:schema:health:surveillance-publisher:v1"),
-            id(&did(&issuer)),
-            id(&did(&publisher)),
-            id("lab-a"),
-            ProducerAuthorityScope::new(
-                vec![SourceKind::LaboratoryAggregate],
-                vec![SignalFamily::Respiratory],
-                vec![id("lab-feed-a")],
-                vec![id("aggregate-protocol-v1")],
-                vec![GeographicScope::new(
-                    "health-district",
-                    "district-17",
-                    GeographicPrecision::District,
-                )
-                .unwrap()],
-            )
-            .unwrap(),
-            9_000,
-            20_000,
-            [5; 32],
-        )
-        .unwrap();
-        let policy_id = ReleasePolicyId::from_raw_for_tests([3; 32]);
-        let endorsement = AuthorizedObservationEndorsement::new(
-            id("mycelix-vc-active-status-v1"),
-            grant.issuer_did().clone(),
-            grant.id().unwrap(),
-            observation.id().unwrap(),
-            *policy_id.as_bytes(),
-            id(&did(&publisher)),
-            observation.provenance.producer.clone(),
-            13_701,
-            [9; 32],
-            [8; 32],
-        )
-        .unwrap();
-        let release_assessment = AggregateReleasePolicy::new(
-            50,
-            3_600,
-            GeographicPrecision::District,
-        )
-        .unwrap()
-        .assess(&observation)
-        .unwrap();
-        ReleasedSurveillanceObservation {
-            observation,
-            release_assessment,
-            policy_revision: id("district-release-v1"),
-            policy_id,
-            authority_grant: grant,
-            authority_signature: vec![1; 64],
-            status_endorsement: endorsement,
-            status_endorsement_signature: vec![2; 64],
-            publisher,
-        }
-    }
-
     fn policy(attestor: &AgentPubKey) -> ConfiguredLineageAttestorPolicy {
         configured_lineage_attestor_policy_from_properties(&LineageAttestorPolicyProperties {
             trusted_attestors: vec![TrustedLineageAttestorProperties {
@@ -426,7 +364,10 @@ mod tests {
         .unwrap()
     }
 
-    fn attestation(observation: &SurveillanceObservation, attestor: &AgentPubKey) -> EvidenceLineageAttestation {
+    fn attestation(
+        observation: &SurveillanceObservation,
+        attestor: &AgentPubKey,
+    ) -> EvidenceLineageAttestation {
         EvidenceLineageAttestation::new(
             id("lineage-domain:public-health-v1"),
             id("lineage-profile:multi-dimension-v1"),
@@ -448,8 +389,17 @@ mod tests {
         .unwrap()
     }
 
+    fn entry(observation: &SurveillanceObservation, attestor: &AgentPubKey) -> ReleasedLineageAttestation {
+        ReleasedLineageAttestation {
+            observation_action: ActionHash::from_raw_36(vec![7; 36]),
+            attestation: attestation(observation, attestor),
+            attestation_signature: vec![1; 64],
+            submitted_by: agent(9),
+        }
+    }
+
     #[test]
-    fn empty_or_duplicate_trust_policy_fails_closed() {
+    fn empty_trust_policy_fails_closed() {
         assert!(configured_lineage_attestor_policy_from_properties(
             &LineageAttestorPolicyProperties {
                 trusted_attestors: vec![],
@@ -462,14 +412,8 @@ mod tests {
     fn exact_lineage_semantics_produce_verification_plan() {
         let attestor = agent(3);
         let observation = observation("rev-1");
-        let released = released(observation.clone());
-        let entry = ReleasedLineageAttestation {
-            observation_action: ActionHash::from_raw_36(vec![7; 36]),
-            attestation: attestation(&observation, &attestor),
-            attestation_signature: vec![1; 64],
-            submitted_by: agent(4),
-        };
-        let plan = validate_lineage_attestation_semantics(&entry, &released, &policy(&attestor))
+        let entry = entry(&observation, &attestor);
+        let plan = validate_lineage_attestation_semantics(&entry, &observation, &policy(&attestor))
             .unwrap();
         assert_eq!(plan.attestor_pubkey, attestor);
         assert_eq!(plan.attestation_id, entry.attestation.id().unwrap());
@@ -480,18 +424,8 @@ mod tests {
         let attestor = agent(3);
         let original = observation("rev-1");
         let changed = observation("rev-2");
-        let entry = ReleasedLineageAttestation {
-            observation_action: ActionHash::from_raw_36(vec![7; 36]),
-            attestation: attestation(&original, &attestor),
-            attestation_signature: vec![1; 64],
-            submitted_by: agent(4),
-        };
-        assert!(validate_lineage_attestation_semantics(
-            &entry,
-            &released(changed),
-            &policy(&attestor),
-        )
-        .is_err());
+        let entry = entry(&original, &attestor);
+        assert!(validate_lineage_attestation_semantics(&entry, &changed, &policy(&attestor)).is_err());
     }
 
     #[test]
@@ -499,35 +433,40 @@ mod tests {
         let lineage_attestor = agent(3);
         let producer_issuer = agent(2);
         let observation = observation("rev-1");
-        let entry = ReleasedLineageAttestation {
-            observation_action: ActionHash::from_raw_36(vec![7; 36]),
-            attestation: attestation(&observation, &producer_issuer),
-            attestation_signature: vec![1; 64],
-            submitted_by: agent(4),
-        };
+        let entry = entry(&observation, &producer_issuer);
         assert!(validate_lineage_attestation_semantics(
             &entry,
-            &released(observation),
+            &observation,
             &policy(&lineage_attestor),
         )
         .is_err());
     }
 
     #[test]
-    fn relay_does_not_need_to_equal_attestor() {
+    fn relay_identity_is_not_lineage_authority() {
         let attestor = agent(3);
         let observation = observation("rev-1");
-        let entry = ReleasedLineageAttestation {
-            observation_action: ActionHash::from_raw_36(vec![7; 36]),
-            attestation: attestation(&observation, &attestor),
-            attestation_signature: vec![1; 64],
-            submitted_by: agent(9),
-        };
+        let mut entry = entry(&observation, &attestor);
+        entry.submitted_by = agent(42);
         assert!(validate_lineage_attestation_semantics(
             &entry,
-            &released(observation),
+            &observation,
             &policy(&attestor),
         )
         .is_ok());
+    }
+
+    #[test]
+    fn malformed_signature_length_fails_before_host_crypto() {
+        let attestor = agent(3);
+        let observation = observation("rev-1");
+        let mut entry = entry(&observation, &attestor);
+        entry.attestation_signature = vec![1; 63];
+        assert!(validate_lineage_attestation_semantics(
+            &entry,
+            &observation,
+            &policy(&attestor),
+        )
+        .is_err());
     }
 }
