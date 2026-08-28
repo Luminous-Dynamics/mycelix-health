@@ -22,12 +22,14 @@ pub struct SubmitSurveillanceObservationOutput {
     pub action_hash: ActionHash,
     pub observation_id: ObservationId,
     pub policy_revision: CanonicalId,
+    pub policy_id: ReleasePolicyId,
     pub publisher: AgentPubKey,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct ReleasePolicyView {
     pub policy_revision: CanonicalId,
+    pub policy_id: ReleasePolicyId,
     pub policy: AggregateReleasePolicy,
 }
 
@@ -38,6 +40,7 @@ pub fn get_release_policy(_: ()) -> ExternResult<ReleasePolicyView> {
     let configured = configured_release_policy()?;
     Ok(ReleasePolicyView {
         policy_revision: configured.policy_revision,
+        policy_id: configured.policy_id,
         policy: configured.policy,
     })
 }
@@ -76,6 +79,7 @@ pub fn submit_surveillance_observation(
         observation: input.observation,
         release_assessment: assessment,
         policy_revision: configured.policy_revision.clone(),
+        policy_id: configured.policy_id,
         publisher: publisher.clone(),
     };
 
@@ -85,6 +89,7 @@ pub fn submit_surveillance_observation(
         action_hash,
         observation_id,
         policy_revision: configured.policy_revision,
+        policy_id: configured.policy_id,
         publisher,
     })
 }
