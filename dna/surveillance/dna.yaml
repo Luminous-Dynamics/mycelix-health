@@ -4,20 +4,25 @@ name: health-surveillance
 integrity:
   network_seed: ~
   properties:
-    # Fail closed by default. A deployment must create a DNA with an explicit,
-    # governance-approved non-zero aggregate release policy before publication.
+    # Base observation publication is fail-closed by default.
     release_policy: ~
-    # Also fail closed until the deployment pins a finite grant-lifetime policy
-    # and exact trusted (security_domain, issuer_did, credential_schema_id) tuples.
-    # v1 producer proofs are detached Ed25519 signatures over the canonical
-    # health-surveillance-authority signing transcript.
+    # Pins broad producer authority + exact-observation positive status profiles.
     producer_authority_policy: ~
+    # Independently controls additive lineage evidence. Null disables only
+    # lineage-attestation publication; it does not disable base observations.
+    lineage_attestor_policy: ~
   zomes:
     - name: surveillance_integrity
       path: ../../target/wasm32-unknown-unknown/release/surveillance_integrity.wasm
+    - name: surveillance_lineage_integrity
+      path: ../../target/wasm32-unknown-unknown/release/surveillance_lineage_integrity.wasm
 coordinator:
   zomes:
     - name: surveillance
       path: ../../target/wasm32-unknown-unknown/release/surveillance.wasm
       dependencies:
         - name: surveillance_integrity
+    - name: surveillance_lineage
+      path: ../../target/wasm32-unknown-unknown/release/surveillance_lineage.wasm
+      dependencies:
+        - name: surveillance_lineage_integrity
