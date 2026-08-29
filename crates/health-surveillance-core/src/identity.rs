@@ -177,8 +177,12 @@ mod tests {
             SourceKind::WastewaterAggregate,
             "ww-feed-17",
             IndependenceGroup::new("ww-lab-lineage-17").unwrap(),
-            GeographicScope::new("health-district", "district-17", GeographicPrecision::District)
-                .unwrap(),
+            GeographicScope::new(
+                "health-district",
+                "district-17",
+                GeographicPrecision::District,
+            )
+            .unwrap(),
             ObservationWindow::new(10_000, 20_000).unwrap(),
             21_000,
             500,
