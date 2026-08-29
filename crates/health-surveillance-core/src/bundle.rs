@@ -12,8 +12,8 @@ use sha2::{Digest, Sha256};
 use thiserror::Error;
 
 use crate::{
-    GeographicScope, ObservationId, ObservationWindow, SignalFamily, SourceKind,
-    SurveillanceError, SurveillanceObservation,
+    GeographicScope, ObservationId, ObservationWindow, SignalFamily, SourceKind, SurveillanceError,
+    SurveillanceObservation,
 };
 
 pub const BUNDLE_ID_DOMAIN_V1: &[u8] = b"mycelix-health-surveillance-bundle-v1\0";
