@@ -36,6 +36,19 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          # pull_request defaults to refs/pull/<n>/merge. Qualification is for
+          # the immutable feature-head source, not GitHub's synthetic merge ref.
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+
+      - name: Verify exact source checkout
+        shell: bash
+        run: |
+          EXPECTED="${{ github.event.pull_request.head.sha || github.sha }}"
+          ACTUAL="$(git rev-parse HEAD)"
+          test "$ACTUAL" = "$EXPECTED"
+          echo "QUALIFIED_SOURCE_HEAD=$ACTUAL"
 
       # Cargo resolves the complete workspace graph even for a focused package.
       # Recreate the sibling paths expected when mycelix-health is consumed as
