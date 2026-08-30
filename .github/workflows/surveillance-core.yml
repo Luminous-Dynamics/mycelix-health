@@ -7,6 +7,7 @@ on:
       - "crates/health-surveillance-core/**"
       - "Cargo.toml"
       - "Cargo.lock"
+      - "rust-toolchain.toml"
       - ".github/workflows/surveillance-core.yml"
   push:
     branches: [main]
@@ -14,6 +15,7 @@ on:
       - "crates/health-surveillance-core/**"
       - "Cargo.toml"
       - "Cargo.lock"
+      - "rust-toolchain.toml"
       - ".github/workflows/surveillance-core.yml"
   workflow_dispatch:
 
@@ -31,9 +33,9 @@ env:
 jobs:
   surveillance-core:
     name: Evidence contract qualification
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
       # Cargo resolves the complete workspace graph even for a focused package.
       # Recreate the sibling paths expected when mycelix-health is consumed as
@@ -54,10 +56,21 @@ jobs:
           rm -rf /tmp/mycelix-parent
 
       - name: Install pinned Rust
-        uses: dtolnay/rust-toolchain@1.96.0
+        uses: dtolnay/rust-toolchain@01ba1edad32c6f80dbcce879d3e0fa5a00b2a84e
         with:
+          toolchain: 1.96.0
           components: rustfmt, clippy
           targets: wasm32-unknown-unknown
+
+      - name: Record qualification environment
+        shell: bash
+        run: |
+          echo "HEAD=$(git rev-parse HEAD)"
+          echo "PARENT_MYCELIX_REF=$PARENT_MYCELIX_REF"
+          rustc -vV
+          cargo -Vv
+          sha256sum Cargo.toml Cargo.lock crates/health-surveillance-core/Cargo.toml
+          if [[ -f rust-toolchain.toml ]]; then sha256sum rust-toolchain.toml; fi
 
       - name: Verify committed lock graph
         run: cargo metadata --locked --format-version 1 --no-deps > /dev/null
