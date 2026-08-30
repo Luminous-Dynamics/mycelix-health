@@ -17,9 +17,16 @@ on:
       - ".github/workflows/surveillance-core.yml"
   workflow_dispatch:
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 env:
   CARGO_TERM_COLOR: always
   RUST_BACKTRACE: 1
+  # Path dependencies are not content-pinned by Cargo.lock. Freeze the exact
+  # parent workspace source used to recreate mycelix-health's sibling layout.
+  PARENT_MYCELIX_REF: 7daefcbfa6c4427809e9d8dc24a039bb024da5e9
 
 jobs:
   surveillance-core:
@@ -30,10 +37,16 @@ jobs:
 
       # Cargo resolves the complete workspace graph even for a focused package.
       # Recreate the sibling paths expected when mycelix-health is consumed as
-      # the parent mycelix repository's submodule; this mirrors the full CI gate.
-      - name: Check out parent workspace dependencies
+      # the parent mycelix repository's submodule, but never from a moving branch.
+      - name: Check out pinned parent workspace dependencies
+        shell: bash
         run: |
-          git clone --depth 1 https://github.com/Luminous-Dynamics/mycelix.git /tmp/mycelix-parent
+          git init /tmp/mycelix-parent
+          git -C /tmp/mycelix-parent remote add origin https://github.com/Luminous-Dynamics/mycelix.git
+          git -C /tmp/mycelix-parent fetch --depth 1 origin "$PARENT_MYCELIX_REF"
+          git -C /tmp/mycelix-parent checkout --detach FETCH_HEAD
+          test "$(git -C /tmp/mycelix-parent rev-parse HEAD)" = "$PARENT_MYCELIX_REF"
+
           mkdir -p ../crates ../mycelix-core ../mycelix-workspace/mycelix-core
           cp -r /tmp/mycelix-parent/crates/. ../crates/
           cp -r /tmp/mycelix-parent/mycelix-core/. ../mycelix-core/
@@ -45,6 +58,9 @@ jobs:
         with:
           components: rustfmt, clippy
           targets: wasm32-unknown-unknown
+
+      - name: Verify committed lock graph
+        run: cargo metadata --locked --format-version 1 --no-deps > /dev/null
 
       - name: Check formatting
         run: cargo fmt -p health-surveillance-core -- --check
