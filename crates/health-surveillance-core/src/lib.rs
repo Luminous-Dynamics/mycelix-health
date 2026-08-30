@@ -18,6 +18,7 @@
 mod bundle;
 mod count_semantics;
 mod identity;
+mod identity_verification;
 mod privacy;
 mod types;
 
