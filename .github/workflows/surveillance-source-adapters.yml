@@ -35,7 +35,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5 / node24
         with:
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
           persist-credentials: false
@@ -86,8 +86,8 @@ jobs:
             crates/health-surveillance-source-adapters/Cargo.toml
           if [[ -f rust-toolchain.toml ]]; then sha256sum rust-toolchain.toml; fi
 
-      - name: Verify committed lock graph
-        run: cargo metadata --locked --format-version 1 --no-deps > /dev/null
+      - name: Verify complete committed lock graph
+        run: cargo metadata --locked --format-version 1 > /dev/null
 
       - name: Check formatting
         run: cargo fmt -p health-surveillance-source-adapters -- --check
