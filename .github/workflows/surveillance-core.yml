@@ -50,13 +50,13 @@ jobs:
         run: cargo fmt -p health-surveillance-core -- --check
 
       - name: Run host tests
-        run: cargo test -p health-surveillance-core --target "$(rustc -vV | awk '/^host:/{print $2}')"
+        run: cargo test --locked -p health-surveillance-core --target "$(rustc -vV | awk '/^host:/{print $2}')"
 
       - name: Run Clippy
-        run: cargo clippy -p health-surveillance-core --all-targets -- -D warnings
+        run: cargo clippy --locked -p health-surveillance-core --all-targets -- -D warnings
 
       - name: Run documentation tests
-        run: cargo test -p health-surveillance-core --doc --target "$(rustc -vV | awk '/^host:/{print $2}')"
+        run: cargo test --locked -p health-surveillance-core --doc --target "$(rustc -vV | awk '/^host:/{print $2}')"
 
       - name: Check WASM compatibility
-        run: cargo check -p health-surveillance-core --target wasm32-unknown-unknown
+        run: cargo check --locked -p health-surveillance-core --target wasm32-unknown-unknown
