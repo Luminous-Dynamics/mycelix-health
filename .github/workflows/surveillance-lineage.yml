@@ -7,6 +7,7 @@ on:
       - "crates/health-surveillance-lineage/**"
       - "Cargo.toml"
       - "Cargo.lock"
+      - "rust-toolchain.toml"
       - ".github/workflows/surveillance-lineage.yml"
   push:
     branches: [main]
@@ -15,25 +16,36 @@ on:
       - "crates/health-surveillance-lineage/**"
       - "Cargo.toml"
       - "Cargo.lock"
+      - "rust-toolchain.toml"
       - ".github/workflows/surveillance-lineage.yml"
   workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 env:
   CARGO_TERM_COLOR: always
   RUST_BACKTRACE: 1
+  PARENT_MYCELIX_REF: 7daefcbfa6c4427809e9d8dc24a039bb024da5e9
 
 jobs:
   surveillance-lineage:
     name: Dimension-specific lineage contract
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
-      # Cargo resolves the complete workspace graph even for a focused package.
-      # Mirror the sibling dependency layout used by repository CI.
-      - name: Check out parent workspace dependencies
+      - name: Check out pinned parent workspace dependencies
+        shell: bash
         run: |
-          git clone --depth 1 https://github.com/Luminous-Dynamics/mycelix.git /tmp/mycelix-parent
+          git init /tmp/mycelix-parent
+          git -C /tmp/mycelix-parent remote add origin https://github.com/Luminous-Dynamics/mycelix.git
+          git -C /tmp/mycelix-parent fetch --depth 1 origin "$PARENT_MYCELIX_REF"
+          git -C /tmp/mycelix-parent checkout --detach FETCH_HEAD
+          test "$(git -C /tmp/mycelix-parent rev-parse HEAD)" = "$PARENT_MYCELIX_REF"
+
           mkdir -p ../crates ../mycelix-core ../mycelix-workspace/mycelix-core
           cp -r /tmp/mycelix-parent/crates/. ../crates/
           cp -r /tmp/mycelix-parent/mycelix-core/. ../mycelix-core/
@@ -41,7 +53,7 @@ jobs:
           rm -rf /tmp/mycelix-parent
 
       - name: Install pinned Rust
-        uses: dtolnay/rust-toolchain@1.96.0
+        uses: dtolnay/rust-toolchain@01ba1edad32c6f80dbcce879d3e0fa5a00b2a84e
         with:
           components: rustfmt, clippy
           targets: wasm32-unknown-unknown
@@ -51,17 +63,32 @@ jobs:
         shell: bash
         run: echo "triple=$(rustc -vV | awk '/^host:/{print $2}')" >> "$GITHUB_OUTPUT"
 
+      - name: Record qualification environment
+        shell: bash
+        run: |
+          echo "HEAD=$(git rev-parse HEAD)"
+          echo "PARENT_MYCELIX_REF=$PARENT_MYCELIX_REF"
+          rustc -vV
+          cargo -Vv
+          sha256sum Cargo.toml Cargo.lock \
+            crates/health-surveillance-core/Cargo.toml \
+            crates/health-surveillance-lineage/Cargo.toml
+          if [[ -f rust-toolchain.toml ]]; then sha256sum rust-toolchain.toml; fi
+
+      - name: Verify committed lock graph
+        run: cargo metadata --locked --format-version 1 --no-deps > /dev/null
+
       - name: Check formatting
         run: cargo fmt -p health-surveillance-lineage -- --check
 
       - name: Run host tests
-        run: cargo test -p health-surveillance-lineage --target "${{ steps.host.outputs.triple }}"
+        run: cargo test --locked -p health-surveillance-lineage --target "${{ steps.host.outputs.triple }}"
 
       - name: Run Clippy
-        run: cargo clippy -p health-surveillance-lineage --all-targets --target "${{ steps.host.outputs.triple }}" -- -D warnings
+        run: cargo clippy --locked -p health-surveillance-lineage --all-targets --target "${{ steps.host.outputs.triple }}" -- -D warnings
 
       - name: Run documentation tests
-        run: cargo test -p health-surveillance-lineage --doc --target "${{ steps.host.outputs.triple }}"
+        run: cargo test --locked -p health-surveillance-lineage --doc --target "${{ steps.host.outputs.triple }}"
 
       - name: Check WASM compatibility
-        run: cargo check -p health-surveillance-lineage --target wasm32-unknown-unknown
+        run: cargo check --locked -p health-surveillance-lineage --target wasm32-unknown-unknown
