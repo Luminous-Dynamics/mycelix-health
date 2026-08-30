@@ -1237,6 +1237,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "health-surveillance-core"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "sha2",
+ "thiserror 1.0.69",
+]
+
+[[package]]
 name = "health-validation"
 version = "0.1.0"
 dependencies = [
@@ -2696,6 +2705,8 @@ checksum = "8ed6a63f02c8539c91a8685a86f4099661ba3da017932f6ebbea6de3f0fa7c90"
 [[package]]
 name = "sovereign-profile"
 version = "0.1.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "049f13004bc45a09549c4df44beeaca97def2fce17099de065c0051851ba2249"
 dependencies = [
  "serde",
 ]
