@@ -1,7 +1,8 @@
 use health_surveillance_core::{
-    BoundedUncertainty, Digest32Algorithm, EvidenceBundle, EvidenceProvenance,
-    GeographicPrecision, GeographicScope, IndependenceGroup, MetricKind, ObservationWindow,
-    ObservedMetric, SignalFamily, SourceKind, SourceRecordDigest, SurveillanceObservation,
+    AggregateReleasePolicy, BoundedUncertainty, Digest32Algorithm, EvidenceBundle,
+    EvidenceProvenance, GeographicPrecision, GeographicScope, IndependenceGroup, MetricKind,
+    ObservationWindow, ObservedMetric, SignalFamily, SourceKind, SourceRecordDigest,
+    SurveillanceObservation,
 };
 
 fn observation_vector_fixture() -> SurveillanceObservation {
@@ -87,6 +88,13 @@ fn observation_id_v1_golden_vector() {
         observation.id().unwrap().to_hex(),
         "4b9bde15d8c1466932a38c2eb50245e3d119656293dfbb15baaf4d0a3b8260ae"
     );
+}
+
+#[test]
+fn release_policy_neutral_count_accessor_matches_v1_policy_value() {
+    let policy = AggregateReleasePolicy::new(50, 3_600, GeographicPrecision::District).unwrap();
+    assert_eq!(policy.min_contributing_unit_count(), policy.min_cohort_size());
+    assert_eq!(policy.min_contributing_unit_count(), 50);
 }
 
 #[test]
