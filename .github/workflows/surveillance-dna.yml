@@ -59,16 +59,16 @@ jobs:
         run: cargo fmt -p surveillance_integrity -p surveillance -- --check
 
       - name: Run integrity host tests
-        run: cargo test -p surveillance_integrity --target "${{ steps.host.outputs.triple }}"
+        run: cargo test --locked -p surveillance_integrity --target "${{ steps.host.outputs.triple }}"
 
       - name: Run coordinator host tests
-        run: cargo test -p surveillance --target "${{ steps.host.outputs.triple }}"
+        run: cargo test --locked -p surveillance --target "${{ steps.host.outputs.triple }}"
 
       - name: Run host Clippy
-        run: cargo clippy -p surveillance_integrity -p surveillance --all-targets --target "${{ steps.host.outputs.triple }}" -- -D warnings
+        run: cargo clippy --locked -p surveillance_integrity -p surveillance --all-targets --target "${{ steps.host.outputs.triple }}" -- -D warnings
 
       - name: Check integrity WASM compatibility
-        run: cargo check -p surveillance_integrity --target wasm32-unknown-unknown
+        run: cargo check --locked -p surveillance_integrity --target wasm32-unknown-unknown
 
       - name: Check coordinator WASM compatibility
-        run: cargo check -p surveillance --target wasm32-unknown-unknown
+        run: cargo check --locked -p surveillance --target wasm32-unknown-unknown
