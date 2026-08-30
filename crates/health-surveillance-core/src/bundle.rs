@@ -1,9 +1,10 @@
 //! Evidence bundling and lineage-diversity accounting.
 //!
 //! A bundle can establish that multiple observations are distinct, temporally
-//! overlapping, and drawn from some number of independent source lineages. It
-//! does **not** establish that those observations agree, that a causal outbreak
-//! exists, or that any operational response is warranted.
+//! overlapping, and drawn from some number of claimed source-lineage groups. It
+//! does **not** establish that those groups are truly independent, that the
+//! observations agree, that a causal outbreak exists, or that any operational
+//! response is warranted.
 
 use std::{collections::HashSet, fmt};
 
@@ -147,7 +148,7 @@ impl EvidenceBundle {
         self.verify()?;
         let mut h = Sha256::new();
         h.update(BUNDLE_ID_DOMAIN_V1);
-        h.update((self.observations.len() as u64).to_be_bytes());
+        h.update(count_to_u64(self.observations.len())?.to_be_bytes());
         for observation in &self.observations {
             h.update(
                 observation
@@ -192,8 +193,9 @@ impl EvidenceBundle {
             .iter()
             .map(|observation| observation.source_kind.clone())
             .collect();
-        let independent_group_count = independent_groups.len();
-        let source_kind_count = source_kinds.len();
+        let observation_count = count_to_u64(self.observations.len())?;
+        let independent_group_count = count_to_u64(independent_groups.len())?;
+        let source_kind_count = count_to_u64(source_kinds.len())?;
         let status = if independent_group_count >= policy.min_independent_groups()
             && source_kind_count >= policy.min_source_kinds()
         {
@@ -204,16 +206,18 @@ impl EvidenceBundle {
         Ok(LineageDiversityAssessment {
             bundle_id: self.id()?,
             policy,
-            observation_count: self.observations.len(),
+            observation_count,
             independent_group_count,
             source_kind_count,
-            derivative_or_correlated_count: self
-                .observations
-                .len()
+            derivative_or_correlated_count: observation_count
                 .saturating_sub(independent_group_count),
             status,
         })
     }
+}
+
+fn count_to_u64(value: usize) -> Result<u64, BundleError> {
+    u64::try_from(value).map_err(|_| BundleError::CountOverflow)
 }
 
 impl<'de> Deserialize<'de> for EvidenceBundle {
@@ -247,18 +251,20 @@ pub enum BundleError {
     NonOverlappingWindows,
     #[error("bundle observation order is not canonical")]
     NonCanonicalOrder,
+    #[error("evidence count exceeds the fixed-width v1 wire domain")]
+    CountOverflow,
 }
 
 #[derive(Clone, Copy, Debug, Serialize, PartialEq, Eq)]
 pub struct LineageDiversityPolicy {
-    min_independent_groups: usize,
-    min_source_kinds: usize,
+    min_independent_groups: u64,
+    min_source_kinds: u64,
 }
 
 impl LineageDiversityPolicy {
     pub fn new(
-        min_independent_groups: usize,
-        min_source_kinds: usize,
+        min_independent_groups: u64,
+        min_source_kinds: u64,
     ) -> Result<Self, LineageDiversityPolicyError> {
         if min_independent_groups == 0 {
             return Err(LineageDiversityPolicyError::ZeroIndependentGroups);
@@ -272,11 +278,11 @@ impl LineageDiversityPolicy {
         })
     }
 
-    pub fn min_independent_groups(&self) -> usize {
+    pub fn min_independent_groups(&self) -> u64 {
         self.min_independent_groups
     }
 
-    pub fn min_source_kinds(&self) -> usize {
+    pub fn min_source_kinds(&self) -> u64 {
         self.min_source_kinds
     }
 }
@@ -289,8 +295,8 @@ impl<'de> Deserialize<'de> for LineageDiversityPolicy {
         #[derive(Deserialize)]
         #[serde(deny_unknown_fields)]
         struct Wire {
-            min_independent_groups: usize,
-            min_source_kinds: usize,
+            min_independent_groups: u64,
+            min_source_kinds: u64,
         }
         let wire = Wire::deserialize(deserializer)?;
         Self::new(wire.min_independent_groups, wire.min_source_kinds)
@@ -318,10 +324,10 @@ pub enum LineageDiversityStatus {
 pub struct LineageDiversityAssessment {
     pub bundle_id: EvidenceBundleId,
     pub policy: LineageDiversityPolicy,
-    pub observation_count: usize,
-    pub independent_group_count: usize,
-    pub source_kind_count: usize,
-    pub derivative_or_correlated_count: usize,
+    pub observation_count: u64,
+    pub independent_group_count: u64,
+    pub source_kind_count: u64,
+    pub derivative_or_correlated_count: u64,
     pub status: LineageDiversityStatus,
 }
 
