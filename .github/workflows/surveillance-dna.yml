@@ -61,9 +61,9 @@ jobs:
           rm -rf /tmp/mycelix-parent
 
       - name: Install pinned Rust
+        # This pinned rust-toolchain action revision itself selects Rust 1.96.0.
         uses: dtolnay/rust-toolchain@01ba1edad32c6f80dbcce879d3e0fa5a00b2a84e
         with:
-          toolchain: 1.96.0
           components: rustfmt, clippy
           targets: wasm32-unknown-unknown
 
