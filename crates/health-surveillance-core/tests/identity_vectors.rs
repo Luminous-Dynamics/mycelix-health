@@ -1,5 +1,5 @@
 use health_surveillance_core::{
-    AggregateReleasePolicy, BoundedUncertainty, Digest32Algorithm, EvidenceBundle,
+    AggregateReleasePolicy, BoundedUncertainty, CanonicalId, Digest32Algorithm, EvidenceBundle,
     EvidenceProvenance, GeographicPrecision, GeographicScope, IndependenceGroup, MetricKind,
     ObservationWindow, ObservedMetric, SignalFamily, SourceKind, SourceRecordDigest,
     SurveillanceObservation,
@@ -82,10 +82,17 @@ fn observation_id_v1_golden_vector() {
     assert_eq!(observation.contributing_unit_count(), observation.cohort_size);
     assert_eq!(observation.contributing_unit_count(), 500);
 
+    let id = observation.id().unwrap();
+    assert!(id.matches_observation(&observation).unwrap());
+
+    let mut substituted = observation.clone();
+    substituted.provenance.source_revision = CanonicalId::new("rev-2").unwrap();
+    assert!(!id.matches_observation(&substituted).unwrap());
+
     // Independently recomputed from the documented v1 domain-separated byte
     // encoding. A change to this value is an evidence-identity version change.
     assert_eq!(
-        observation.id().unwrap().to_hex(),
+        id.to_hex(),
         "4b9bde15d8c1466932a38c2eb50245e3d119656293dfbb15baaf4d0a3b8260ae"
     );
 }
@@ -115,8 +122,10 @@ fn evidence_bundle_id_v1_golden_vector() {
     );
 
     let bundle = EvidenceBundle::new(vec![laboratory, wastewater]).unwrap();
+    let id = bundle.id().unwrap();
+    assert!(id.matches_bundle(&bundle).unwrap());
     assert_eq!(
-        bundle.id().unwrap().to_hex(),
+        id.to_hex(),
         "71f3ae6ffcfc3e377765bd06d8cf44396c485ebb8e07ddb00ba01052e9e2769b"
     );
 }
