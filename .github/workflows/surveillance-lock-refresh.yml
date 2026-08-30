@@ -74,10 +74,14 @@ jobs:
             if [[ -f rust-toolchain.toml ]]; then sha256sum rust-toolchain.toml; fi
           } > lock-refresh-evidence/environment.txt
 
-      - name: Generate Cargo-produced lock candidate
+      - name: Generate minimal Cargo-produced lock candidate
         shell: bash
         run: |
-          cargo generate-lockfile
+          # Start from the committed lock and let Cargo update it only as needed
+          # to make the current workspace metadata resolvable. Do not use
+          # `cargo generate-lockfile`, which can unnecessarily re-resolve the
+          # complete dependency graph and obscure the workspace-package delta.
+          cargo metadata --format-version 1 --no-deps > /dev/null
           cargo metadata --locked --format-version 1 --no-deps > /dev/null
 
           cp Cargo.lock lock-refresh-evidence/Cargo.lock.generated
@@ -86,12 +90,12 @@ jobs:
 
           if cmp -s /tmp/Cargo.lock.committed Cargo.lock; then
             echo "LOCK_CHANGED=false" >> "$GITHUB_ENV"
-            echo "Committed Cargo.lock already matches Cargo 1.96.0 generation." \
+            echo "Committed Cargo.lock already matches the pinned Cargo 1.96.0 workspace graph." \
               > lock-refresh-evidence/result.txt
           else
             echo "LOCK_CHANGED=true" >> "$GITHUB_ENV"
             {
-              echo "Committed Cargo.lock is stale under the pinned qualification environment."
+              echo "Committed Cargo.lock needs a Cargo-produced minimal refresh under the pinned environment."
               echo "Review Cargo.lock.generated and Cargo.lock.diff before committing any change."
             } > lock-refresh-evidence/result.txt
           fi
@@ -109,7 +113,7 @@ jobs:
         shell: bash
         run: |
           if [[ "${LOCK_CHANGED:-true}" != "false" ]]; then
-            echo "Cargo.lock requires a reviewed Cargo-generated refresh; see uploaded evidence artifact."
+            echo "Cargo.lock requires a reviewed Cargo-produced refresh; see uploaded evidence artifact."
             exit 1
           fi
-          echo "Cargo.lock matches the pinned Cargo-generated graph."
+          echo "Cargo.lock matches the pinned Cargo-produced graph."
