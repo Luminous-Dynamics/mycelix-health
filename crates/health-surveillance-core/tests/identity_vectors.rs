@@ -1,0 +1,108 @@
+use health_surveillance_core::{
+    BoundedUncertainty, Digest32Algorithm, EvidenceBundle, EvidenceProvenance,
+    GeographicPrecision, GeographicScope, IndependenceGroup, MetricKind, ObservationWindow,
+    ObservedMetric, SignalFamily, SourceKind, SourceRecordDigest, SurveillanceObservation,
+};
+
+fn observation_vector_fixture() -> SurveillanceObservation {
+    SurveillanceObservation::new(
+        SignalFamily::Respiratory,
+        SourceKind::WastewaterAggregate,
+        "ww-feed-17",
+        IndependenceGroup::new("ww-lab-lineage-17").unwrap(),
+        GeographicScope::new(
+            "health-district",
+            "district-17",
+            GeographicPrecision::District,
+        )
+        .unwrap(),
+        ObservationWindow::new(10_000, 20_000).unwrap(),
+        21_000,
+        500,
+        ObservedMetric::new(
+            MetricKind::ConcentrationIndex,
+            1.25,
+            BoundedUncertainty::new(1.0, 1.5).unwrap(),
+            "normalized_concentration",
+        )
+        .unwrap(),
+        EvidenceProvenance::new(
+            "lab-a",
+            "ww-protocol-v1",
+            "rev-1",
+            Some("sampler-aggregate-17"),
+            SourceRecordDigest::new(Digest32Algorithm::Sha256, [3; 32]).unwrap(),
+        )
+        .unwrap(),
+    )
+    .unwrap()
+}
+
+fn bundle_observation(
+    source_kind: SourceKind,
+    source: &str,
+    independence_group: &str,
+    window: ObservationWindow,
+    digest_byte: u8,
+) -> SurveillanceObservation {
+    SurveillanceObservation::new(
+        SignalFamily::Respiratory,
+        source_kind,
+        source,
+        IndependenceGroup::new(independence_group).unwrap(),
+        GeographicScope::new("district", "d17", GeographicPrecision::District).unwrap(),
+        window,
+        window.end_unix_s + 60,
+        200,
+        ObservedMetric::new(
+            MetricKind::FractionPositive,
+            0.2,
+            BoundedUncertainty::new(0.1, 0.3).unwrap(),
+            "fraction",
+        )
+        .unwrap(),
+        EvidenceProvenance::new(
+            source,
+            "protocol-v1",
+            "rev-1",
+            Some(independence_group),
+            SourceRecordDigest::sha256([digest_byte; 32]).unwrap(),
+        )
+        .unwrap(),
+    )
+    .unwrap()
+}
+
+#[test]
+fn observation_id_v1_golden_vector() {
+    // Independently recomputed from the documented v1 domain-separated byte
+    // encoding. A change to this value is an evidence-identity version change.
+    assert_eq!(
+        observation_vector_fixture().id().unwrap().to_hex(),
+        "4b9bde15d8c1466932a38c2eb50245e3d119656293dfbb15baaf4d0a3b8260ae"
+    );
+}
+
+#[test]
+fn evidence_bundle_id_v1_golden_vector() {
+    let laboratory = bundle_observation(
+        SourceKind::LaboratoryAggregate,
+        "lab-a",
+        "lineage-a",
+        ObservationWindow::new(1_000, 2_000).unwrap(),
+        1,
+    );
+    let wastewater = bundle_observation(
+        SourceKind::WastewaterAggregate,
+        "ww-a",
+        "lineage-b",
+        ObservationWindow::new(1_500, 2_500).unwrap(),
+        2,
+    );
+
+    let bundle = EvidenceBundle::new(vec![laboratory, wastewater]).unwrap();
+    assert_eq!(
+        bundle.id().unwrap().to_hex(),
+        "71f3ae6ffcfc3e377765bd06d8cf44396c485ebb8e07ddb00ba01052e9e2769b"
+    );
+}
