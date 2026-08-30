@@ -1,5 +1,8 @@
 name: Public Health Surveillance Core
 
+permissions:
+  contents: read
+
 on:
   pull_request:
     branches: [main]
@@ -28,8 +31,6 @@ concurrency:
 env:
   CARGO_TERM_COLOR: always
   RUST_BACKTRACE: 1
-  # Path dependencies are not content-pinned by Cargo.lock. Freeze the exact
-  # parent workspace source used to recreate mycelix-health's sibling layout.
   PARENT_MYCELIX_REF: 7daefcbfa6c4427809e9d8dc24a039bb024da5e9
 
 jobs:
@@ -39,8 +40,6 @@ jobs:
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5 / node24
         with:
-          # pull_request defaults to refs/pull/<n>/merge. Qualification is for
-          # the immutable feature-head source, not GitHub's synthetic merge ref.
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
           persist-credentials: false
 
@@ -52,9 +51,6 @@ jobs:
           test "$ACTUAL" = "$EXPECTED"
           echo "QUALIFIED_SOURCE_HEAD=$ACTUAL"
 
-      # Cargo resolves the complete workspace graph even for a focused package.
-      # Recreate the sibling paths expected when mycelix-health is consumed as
-      # the parent mycelix repository's submodule, but never from a moving branch.
       - name: Check out pinned parent workspace dependencies
         shell: bash
         run: |
@@ -86,8 +82,6 @@ jobs:
           sha256sum Cargo.toml Cargo.lock crates/health-surveillance-core/Cargo.toml
           if [[ -f rust-toolchain.toml ]]; then sha256sum rust-toolchain.toml; fi
 
-      # Full resolution is required: `--no-deps` can succeed even when a later
-      # locked build needs to rewrite package dependency metadata.
       - name: Verify complete committed lock graph
         run: cargo metadata --locked --format-version 1 > /dev/null
 
