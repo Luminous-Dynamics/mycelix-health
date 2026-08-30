@@ -75,10 +75,16 @@ fn bundle_observation(
 
 #[test]
 fn observation_id_v1_golden_vector() {
+    let observation = observation_vector_fixture();
+    // The neutral accessor is exactly the legacy v1 wire value; it changes no
+    // serialization or identity bytes and makes no unique-human-cardinality claim.
+    assert_eq!(observation.contributing_unit_count(), observation.cohort_size);
+    assert_eq!(observation.contributing_unit_count(), 500);
+
     // Independently recomputed from the documented v1 domain-separated byte
     // encoding. A change to this value is an evidence-identity version change.
     assert_eq!(
-        observation_vector_fixture().id().unwrap().to_hex(),
+        observation.id().unwrap().to_hex(),
         "4b9bde15d8c1466932a38c2eb50245e3d119656293dfbb15baaf4d0a3b8260ae"
     );
 }
