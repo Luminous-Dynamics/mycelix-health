@@ -1,0 +1,73 @@
+name: Apply Reviewed Surveillance Cargo.lock
+
+on:
+  push:
+    branches: [feat/public-health-evidence-v1]
+    paths:
+      - ".github/workflows/surveillance-lock-apply-reviewed.yml"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: surveillance-lock-apply-reviewed
+  cancel-in-progress: false
+
+env:
+  PARENT_MYCELIX_REF: 7daefcbfa6c4427809e9d8dc24a039bb024da5e9
+  EXPECTED_COMMITTED_LOCK_SHA256: a4b40ef0e2c7c370b9f70e07445fbf198d6746fc0d238c2080d6a4f0888abf73
+  EXPECTED_GENERATED_LOCK_SHA256: ba94647455bb8e8c4c95a431dc525d5747e7baec2a0d320e6bb9f89d2e7702c4
+
+jobs:
+  apply-reviewed-lock:
+    name: Apply exact reviewed Cargo lock candidate
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5 / node24
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: true
+
+      - name: Verify source and committed lock precondition
+        shell: bash
+        run: |
+          test "$(git rev-parse HEAD)" = "${{ github.sha }}"
+          ACTUAL_LOCK_SHA="$(sha256sum Cargo.lock | awk '{print $1}')"
+          test "$ACTUAL_LOCK_SHA" = "$EXPECTED_COMMITTED_LOCK_SHA256"
+
+      - name: Recreate pinned parent path dependencies
+        shell: bash
+        run: |
+          git init /tmp/mycelix-parent
+          git -C /tmp/mycelix-parent remote add origin https://github.com/Luminous-Dynamics/mycelix.git
+          git -C /tmp/mycelix-parent fetch --depth 1 origin "$PARENT_MYCELIX_REF"
+          git -C /tmp/mycelix-parent checkout --detach FETCH_HEAD
+          test "$(git -C /tmp/mycelix-parent rev-parse HEAD)" = "$PARENT_MYCELIX_REF"
+          mkdir -p ../crates ../mycelix-core ../mycelix-workspace/mycelix-core
+          cp -r /tmp/mycelix-parent/crates/. ../crates/
+          cp -r /tmp/mycelix-parent/mycelix-core/. ../mycelix-core/
+          cp -r /tmp/mycelix-parent/mycelix-core/. ../mycelix-workspace/mycelix-core/
+          rm -rf /tmp/mycelix-parent
+
+      - name: Install pinned Rust
+        uses: dtolnay/rust-toolchain@01ba1edad32c6f80dbcce879d3e0fa5a00b2a84e
+
+      - name: Reproduce reviewed Cargo candidate
+        shell: bash
+        run: |
+          cargo metadata --format-version 1 > /dev/null
+          cargo metadata --locked --format-version 1 > /dev/null
+          GENERATED_SHA="$(sha256sum Cargo.lock | awk '{print $1}')"
+          test "$GENERATED_SHA" = "$EXPECTED_GENERATED_LOCK_SHA256"
+          test -n "$(git diff -- Cargo.lock)"
+          test -z "$(git diff --name-only | grep -v '^Cargo.lock$' || true)"
+
+      - name: Commit exact reviewed lock
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add Cargo.lock
+          git commit -m "chore(surveillance): refresh Cargo lock from reviewed evidence"
+          git push origin HEAD:feat/public-health-evidence-v1
