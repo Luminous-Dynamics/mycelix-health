@@ -1,0 +1,104 @@
+name: Public Health Surveillance Lock Refresh Evidence
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "crates/health-surveillance-core/**"
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - "rust-toolchain.toml"
+      - ".github/workflows/surveillance-lock-refresh.yml"
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: 1
+  PARENT_MYCELIX_REF: 7daefcbfa6c4427809e9d8dc24a039bb024da5e9
+
+jobs:
+  lock-refresh-evidence:
+    name: Generate exact Cargo.lock candidate
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - name: Check out pinned parent workspace dependencies
+        shell: bash
+        run: |
+          git init /tmp/mycelix-parent
+          git -C /tmp/mycelix-parent remote add origin https://github.com/Luminous-Dynamics/mycelix.git
+          git -C /tmp/mycelix-parent fetch --depth 1 origin "$PARENT_MYCELIX_REF"
+          git -C /tmp/mycelix-parent checkout --detach FETCH_HEAD
+          test "$(git -C /tmp/mycelix-parent rev-parse HEAD)" = "$PARENT_MYCELIX_REF"
+
+          mkdir -p ../crates ../mycelix-core ../mycelix-workspace/mycelix-core
+          cp -r /tmp/mycelix-parent/crates/. ../crates/
+          cp -r /tmp/mycelix-parent/mycelix-core/. ../mycelix-core/
+          cp -r /tmp/mycelix-parent/mycelix-core/. ../mycelix-workspace/mycelix-core/
+          rm -rf /tmp/mycelix-parent
+
+      - name: Install pinned Rust
+        uses: dtolnay/rust-toolchain@01ba1edad32c6f80dbcce879d3e0fa5a00b2a84e
+        with:
+          components: rustfmt, clippy
+          targets: wasm32-unknown-unknown
+
+      - name: Capture pre-refresh evidence
+        shell: bash
+        run: |
+          mkdir -p lock-refresh-evidence
+          cp Cargo.lock /tmp/Cargo.lock.committed
+          {
+            echo "HEAD=$(git rev-parse HEAD)"
+            echo "PARENT_MYCELIX_REF=$PARENT_MYCELIX_REF"
+            rustc -vV
+            cargo -Vv
+            echo "--- committed hashes ---"
+            sha256sum Cargo.toml Cargo.lock crates/health-surveillance-core/Cargo.toml
+            if [[ -f rust-toolchain.toml ]]; then sha256sum rust-toolchain.toml; fi
+          } > lock-refresh-evidence/environment.txt
+
+      - name: Generate Cargo-produced lock candidate
+        shell: bash
+        run: |
+          cargo generate-lockfile
+          cargo metadata --locked --format-version 1 --no-deps > /dev/null
+
+          cp Cargo.lock lock-refresh-evidence/Cargo.lock.generated
+          sha256sum Cargo.lock > lock-refresh-evidence/Cargo.lock.generated.sha256
+          git diff --no-ext-diff -- Cargo.lock > lock-refresh-evidence/Cargo.lock.diff || true
+
+          if cmp -s /tmp/Cargo.lock.committed Cargo.lock; then
+            echo "LOCK_CHANGED=false" >> "$GITHUB_ENV"
+            echo "Committed Cargo.lock already matches Cargo 1.96.0 generation." \
+              > lock-refresh-evidence/result.txt
+          else
+            echo "LOCK_CHANGED=true" >> "$GITHUB_ENV"
+            {
+              echo "Committed Cargo.lock is stale under the pinned qualification environment."
+              echo "Review Cargo.lock.generated and Cargo.lock.diff before committing any change."
+            } > lock-refresh-evidence/result.txt
+          fi
+
+      - name: Upload lock-refresh evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: surveillance-lock-refresh-${{ github.sha }}
+          path: lock-refresh-evidence/
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Require committed lock to match generated lock
+        shell: bash
+        run: |
+          if [[ "${LOCK_CHANGED:-true}" != "false" ]]; then
+            echo "Cargo.lock requires a reviewed Cargo-generated refresh; see uploaded evidence artifact."
+            exit 1
+          fi
+          echo "Cargo.lock matches the pinned Cargo-generated graph."
