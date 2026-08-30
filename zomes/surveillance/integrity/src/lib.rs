@@ -64,7 +64,7 @@ pub struct ReleasePolicyProperties {
 }
 
 #[dna_properties]
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, PartialEq)]
 pub struct SurveillanceDnaProperties {
     /// `None` intentionally disables publication. Deployments must choose and
     /// pin a non-zero release policy before accepting aggregate evidence.
