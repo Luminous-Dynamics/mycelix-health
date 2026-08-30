@@ -1,0 +1,14 @@
+[package]
+name = "health-surveillance-source-adapters"
+version = "0.1.0"
+edition = "2021"
+license.workspace = true
+description = "Pure aggregate-only source adapters for public-health surveillance evidence"
+
+[lib]
+path = "src/lib.rs"
+
+[dependencies]
+health-surveillance-core = { path = "../health-surveillance-core" }
+serde.workspace = true
+thiserror.workspace = true
