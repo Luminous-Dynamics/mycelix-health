@@ -92,7 +92,7 @@ pub struct ProducerAuthorityPolicyProperties {
 }
 
 #[dna_properties]
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, PartialEq)]
 pub struct SurveillanceDnaProperties {
     /// `None` intentionally disables aggregate publication.
     pub release_policy: Option<ReleasePolicyProperties>,
