@@ -20,6 +20,7 @@ mod count_semantics;
 mod identity;
 mod identity_verification;
 mod privacy;
+mod receipt_verification;
 mod types;
 
 pub use bundle::{
