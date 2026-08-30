@@ -56,7 +56,7 @@ pub struct LineageAttestorPolicyProperties {
 /// This view intentionally contains only the lineage property. Extra DNA
 /// properties owned by the base surveillance zome are ignored by serde.
 #[dna_properties]
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, PartialEq)]
 pub struct LineageDnaProperties {
     pub lineage_attestor_policy: Option<LineageAttestorPolicyProperties>,
 }
