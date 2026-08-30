@@ -1,8 +1,8 @@
 use health_surveillance_core::{
     AggregateReleasePolicy, BoundedUncertainty, CanonicalId, Digest32Algorithm, EvidenceBundle,
-    EvidenceProvenance, GeographicPrecision, GeographicScope, IndependenceGroup, MetricKind,
-    ObservationWindow, ObservedMetric, SignalFamily, SourceKind, SourceRecordDigest,
-    SurveillanceObservation,
+    EvidenceProvenance, GeographicPrecision, GeographicScope, IndependenceGroup,
+    LineageDiversityPolicy, LineageDiversityStatus, MetricKind, ObservationWindow, ObservedMetric,
+    SignalFamily, SourceKind, SourceRecordDigest, SurveillanceObservation,
 };
 
 fn observation_vector_fixture() -> SurveillanceObservation {
@@ -98,10 +98,18 @@ fn observation_id_v1_golden_vector() {
 }
 
 #[test]
-fn release_policy_neutral_count_accessor_matches_v1_policy_value() {
+fn release_policy_neutral_count_accessor_and_receipt_recompute_match_v1() {
+    let observation = observation_vector_fixture();
     let policy = AggregateReleasePolicy::new(50, 3_600, GeographicPrecision::District).unwrap();
     assert_eq!(policy.min_contributing_unit_count(), policy.min_cohort_size());
     assert_eq!(policy.min_contributing_unit_count(), 50);
+
+    let assessment = policy.assess(&observation).unwrap();
+    assert!(assessment.verifies_for_observation(&observation).unwrap());
+
+    let mut substituted = observation;
+    substituted.provenance.source_revision = CanonicalId::new("rev-2").unwrap();
+    assert!(!assessment.verifies_for_observation(&substituted).unwrap());
 }
 
 #[test]
@@ -128,4 +136,12 @@ fn evidence_bundle_id_v1_golden_vector() {
         id.to_hex(),
         "71f3ae6ffcfc3e377765bd06d8cf44396c485ebb8e07ddb00ba01052e9e2769b"
     );
+
+    let policy = LineageDiversityPolicy::new(2, 2).unwrap();
+    let assessment = bundle.assess_lineage_diversity(policy).unwrap();
+    assert!(assessment.verifies_for_bundle(&bundle).unwrap());
+
+    let mut forged = assessment;
+    forged.status = LineageDiversityStatus::Insufficient;
+    assert!(!forged.verifies_for_bundle(&bundle).unwrap());
 }
