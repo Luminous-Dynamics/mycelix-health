@@ -12,7 +12,7 @@ use sha2::{Digest, Sha256};
 use thiserror::Error;
 
 use crate::{
-    GeographicScope, ObservationId, ObservationWindow, SignalFamily, SourceKind, SurveillanceError,
+    GeographicScope, ObservationId, ObservationWindow, SignalFamily, SurveillanceError,
     SurveillanceObservation,
 };
 
@@ -329,7 +329,7 @@ pub struct LineageDiversityAssessment {
 mod tests {
     use crate::{
         BoundedUncertainty, EvidenceProvenance, GeographicPrecision, GeographicScope,
-        IndependenceGroup, MetricKind, ObservedMetric, SourceRecordDigest,
+        IndependenceGroup, MetricKind, ObservedMetric, SourceKind, SourceRecordDigest,
     };
 
     use super::*;
