@@ -74,7 +74,7 @@ fn grant() -> ProducerAuthorityGrant {
     .unwrap()
 }
 
-fn endorsement() -> AuthorizedObservationEndorsement {
+fn endorsement_at(checked_at_unix_s: i64) -> AuthorizedObservationEndorsement {
     let observation = observation();
     let grant = grant();
     AuthorizedObservationEndorsement::new(
@@ -85,11 +85,15 @@ fn endorsement() -> AuthorizedObservationEndorsement {
         [3; 32],
         id("did:mycelix:publisher-a"),
         id("lab-a"),
-        13_701,
+        checked_at_unix_s,
         [9; 32],
         [8; 32],
     )
     .unwrap()
+}
+
+fn endorsement() -> AuthorizedObservationEndorsement {
+    endorsement_at(13_701)
 }
 
 #[test]
@@ -109,5 +113,17 @@ fn observation_endorsement_signing_transcript_v1_golden_vector() {
     assert_eq!(
         format!("{:x}", Sha256::digest(&transcript)),
         "2b67e5583d6949f383dc88cf18f189df6203d708c97a43d7c39b21573299d64e"
+    );
+}
+
+#[test]
+fn signed_check_time_is_identity_and_signature_significant() {
+    let original = endorsement_at(13_701);
+    let changed_time = endorsement_at(13_702);
+
+    assert_ne!(original.id().unwrap(), changed_time.id().unwrap());
+    assert_ne!(
+        original.signing_transcript().unwrap(),
+        changed_time.signing_transcript().unwrap()
     );
 }
