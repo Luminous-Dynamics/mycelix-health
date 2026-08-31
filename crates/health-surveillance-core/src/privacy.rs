@@ -115,8 +115,14 @@ pub enum ReleasePolicyError {
 #[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
 pub enum WithholdReason {
-    CohortTooSmall { observed: u64, minimum: u64 },
-    WindowTooShort { observed_s: u64, minimum_s: u64 },
+    CohortTooSmall {
+        observed: u64,
+        minimum: u64,
+    },
+    WindowTooShort {
+        observed_s: u64,
+        minimum_s: u64,
+    },
     GeographyTooPrecise {
         observed: GeographicPrecision,
         maximum: GeographicPrecision,

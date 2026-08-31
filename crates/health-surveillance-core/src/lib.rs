@@ -7,6 +7,7 @@
 //! Mycelix/Symthaea components while keeping several distinctions explicit:
 //!
 //! - aggregate observation vs individual clinical record;
+//! - aggregate contributing-unit count vs unique-human cardinality;
 //! - measurement uncertainty vs source independence;
 //! - content identity vs authenticity/trust;
 //! - evidence vs hypothesis vs operational decision.
@@ -15,8 +16,11 @@
 //! longitude, raw genome, pathogen sequence, or treatment recommendation field.
 
 mod bundle;
+mod count_semantics;
 mod identity;
+mod identity_verification;
 mod privacy;
+mod receipt_verification;
 mod types;
 
 pub use bundle::{
