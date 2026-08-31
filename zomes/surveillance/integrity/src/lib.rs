@@ -17,8 +17,7 @@ use hdi::prelude::*;
 pub use health_surveillance_core::*;
 use sha2::{Digest, Sha256};
 
-pub const RELEASE_POLICY_ID_DOMAIN_V1: &[u8] =
-    b"mycelix-health-surveillance-release-policy-v1\0";
+pub const RELEASE_POLICY_ID_DOMAIN_V1: &[u8] = b"mycelix-health-surveillance-release-policy-v1\0";
 
 /// Immutable semantic identity of the exact release-policy authority configured
 /// into one surveillance DNA. A human revision label alone is not an identity.
@@ -65,7 +64,7 @@ pub struct ReleasePolicyProperties {
 }
 
 #[dna_properties]
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, PartialEq)]
 pub struct SurveillanceDnaProperties {
     /// `None` intentionally disables publication. Deployments must choose and
     /// pin a non-zero release policy before accepting aggregate evidence.
@@ -248,8 +247,12 @@ mod tests {
             SourceKind::LaboratoryAggregate,
             "lab-feed-a",
             IndependenceGroup::new("lab-lineage-a").unwrap(),
-            GeographicScope::new("health-district", "district-17", GeographicPrecision::District)
-                .unwrap(),
+            GeographicScope::new(
+                "health-district",
+                "district-17",
+                GeographicPrecision::District,
+            )
+            .unwrap(),
             ObservationWindow::new(10_000, 13_600).unwrap(),
             13_700,
             cohort_size,
