@@ -1,0 +1,17 @@
+[package]
+name = "health-surveillance-endorsement"
+version = "0.1.0"
+edition = "2021"
+license.workspace = true
+description = "Canonical exact-observation status endorsements for aggregate public-health surveillance"
+
+[lib]
+name = "health_surveillance_endorsement"
+path = "src/lib.rs"
+
+[dependencies]
+serde.workspace = true
+thiserror.workspace = true
+sha2 = "0.10"
+health-surveillance-core = { path = "../health-surveillance-core" }
+health-surveillance-authority = { path = "../health-surveillance-authority" }

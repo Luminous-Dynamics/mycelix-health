@@ -5,6 +5,7 @@ on:
     paths:
       - "crates/health-surveillance-core/**"
       - "crates/health-surveillance-authority/**"
+      - "crates/health-surveillance-endorsement/**"
       - "zomes/surveillance/**"
       - "dna/surveillance/**"
       - "Cargo.toml"
@@ -16,6 +17,7 @@ on:
     paths:
       - "crates/health-surveillance-core/**"
       - "crates/health-surveillance-authority/**"
+      - "crates/health-surveillance-endorsement/**"
       - "zomes/surveillance/**"
       - "dna/surveillance/**"
       - "Cargo.toml"
@@ -35,7 +37,7 @@ env:
 
 jobs:
   surveillance-dna:
-    name: Policy + producer authority qualification
+    name: Policy + producer + exact-status qualification
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     steps:
@@ -88,6 +90,7 @@ jobs:
           sha256sum Cargo.toml Cargo.lock \
             crates/health-surveillance-core/Cargo.toml \
             crates/health-surveillance-authority/Cargo.toml \
+            crates/health-surveillance-endorsement/Cargo.toml \
             zomes/surveillance/integrity/Cargo.toml \
             zomes/surveillance/coordinator/Cargo.toml
           if [[ -f rust-toolchain.toml ]]; then sha256sum rust-toolchain.toml; fi
@@ -96,7 +99,10 @@ jobs:
         run: cargo metadata --locked --format-version 1 > /dev/null
 
       - name: Check formatting
-        run: cargo fmt -p surveillance_integrity -p surveillance -- --check
+        run: cargo fmt -p health-surveillance-endorsement -p surveillance_integrity -p surveillance -- --check
+
+      - name: Run endorsement contract host tests
+        run: cargo test --locked -p health-surveillance-endorsement --target "${{ steps.host.outputs.triple }}"
 
       - name: Run integrity host tests
         run: cargo test --locked -p surveillance_integrity --target "${{ steps.host.outputs.triple }}"
@@ -105,7 +111,13 @@ jobs:
         run: cargo test --locked -p surveillance --target "${{ steps.host.outputs.triple }}"
 
       - name: Run host Clippy
-        run: cargo clippy --locked -p surveillance_integrity -p surveillance --all-targets --target "${{ steps.host.outputs.triple }}" -- -D warnings
+        run: cargo clippy --locked -p health-surveillance-endorsement -p surveillance_integrity -p surveillance --all-targets --target "${{ steps.host.outputs.triple }}" -- -D warnings
+
+      - name: Run endorsement documentation tests
+        run: cargo test --locked -p health-surveillance-endorsement --doc --target "${{ steps.host.outputs.triple }}"
+
+      - name: Check endorsement WASM compatibility
+        run: cargo check --locked -p health-surveillance-endorsement --target wasm32-unknown-unknown
 
       - name: Check integrity WASM compatibility
         run: cargo check --locked -p surveillance_integrity --target wasm32-unknown-unknown
