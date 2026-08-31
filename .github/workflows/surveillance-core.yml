@@ -1,5 +1,8 @@
 name: Public Health Surveillance Core
 
+permissions:
+  contents: read
+
 on:
   pull_request:
     branches: [main]
@@ -7,33 +10,56 @@ on:
       - "crates/health-surveillance-core/**"
       - "Cargo.toml"
       - "Cargo.lock"
+      - "rust-toolchain.toml"
       - ".github/workflows/surveillance-core.yml"
+      - ".github/workflows/surveillance-lock-refresh.yml"
   push:
     branches: [main]
     paths:
       - "crates/health-surveillance-core/**"
       - "Cargo.toml"
       - "Cargo.lock"
+      - "rust-toolchain.toml"
       - ".github/workflows/surveillance-core.yml"
+      - ".github/workflows/surveillance-lock-refresh.yml"
   workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 env:
   CARGO_TERM_COLOR: always
   RUST_BACKTRACE: 1
+  PARENT_MYCELIX_REF: 7daefcbfa6c4427809e9d8dc24a039bb024da5e9
 
 jobs:
   surveillance-core:
     name: Evidence contract qualification
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5 / node24
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
 
-      # Cargo resolves the complete workspace graph even for a focused package.
-      # Recreate the sibling paths expected when mycelix-health is consumed as
-      # the parent mycelix repository's submodule; this mirrors the full CI gate.
-      - name: Check out parent workspace dependencies
+      - name: Verify exact source checkout
+        shell: bash
         run: |
-          git clone --depth 1 https://github.com/Luminous-Dynamics/mycelix.git /tmp/mycelix-parent
+          EXPECTED="${{ github.event.pull_request.head.sha || github.sha }}"
+          ACTUAL="$(git rev-parse HEAD)"
+          test "$ACTUAL" = "$EXPECTED"
+          echo "QUALIFIED_SOURCE_HEAD=$ACTUAL"
+
+      - name: Check out pinned parent workspace dependencies
+        shell: bash
+        run: |
+          git init /tmp/mycelix-parent
+          git -C /tmp/mycelix-parent remote add origin https://github.com/Luminous-Dynamics/mycelix.git
+          git -C /tmp/mycelix-parent fetch --depth 1 origin "$PARENT_MYCELIX_REF"
+          git -C /tmp/mycelix-parent checkout --detach FETCH_HEAD
+          test "$(git -C /tmp/mycelix-parent rev-parse HEAD)" = "$PARENT_MYCELIX_REF"
+
           mkdir -p ../crates ../mycelix-core ../mycelix-workspace/mycelix-core
           cp -r /tmp/mycelix-parent/crates/. ../crates/
           cp -r /tmp/mycelix-parent/mycelix-core/. ../mycelix-core/
@@ -41,22 +67,35 @@ jobs:
           rm -rf /tmp/mycelix-parent
 
       - name: Install pinned Rust
-        uses: dtolnay/rust-toolchain@1.96.0
+        uses: dtolnay/rust-toolchain@01ba1edad32c6f80dbcce879d3e0fa5a00b2a84e
         with:
           components: rustfmt, clippy
           targets: wasm32-unknown-unknown
+
+      - name: Record qualification environment
+        shell: bash
+        run: |
+          echo "HEAD=$(git rev-parse HEAD)"
+          echo "PARENT_MYCELIX_REF=$PARENT_MYCELIX_REF"
+          rustc -vV
+          cargo -Vv
+          sha256sum Cargo.toml Cargo.lock crates/health-surveillance-core/Cargo.toml
+          if [[ -f rust-toolchain.toml ]]; then sha256sum rust-toolchain.toml; fi
+
+      - name: Verify complete committed lock graph
+        run: cargo metadata --locked --format-version 1 > /dev/null
 
       - name: Check formatting
         run: cargo fmt -p health-surveillance-core -- --check
 
       - name: Run host tests
-        run: cargo test -p health-surveillance-core --target "$(rustc -vV | awk '/^host:/{print $2}')"
+        run: cargo test --locked -p health-surveillance-core --target "$(rustc -vV | awk '/^host:/{print $2}')"
 
       - name: Run Clippy
-        run: cargo clippy -p health-surveillance-core --all-targets -- -D warnings
+        run: cargo clippy --locked -p health-surveillance-core --all-targets -- -D warnings
 
       - name: Run documentation tests
-        run: cargo test -p health-surveillance-core --doc --target "$(rustc -vV | awk '/^host:/{print $2}')"
+        run: cargo test --locked -p health-surveillance-core --doc --target "$(rustc -vV | awk '/^host:/{print $2}')"
 
       - name: Check WASM compatibility
-        run: cargo check -p health-surveillance-core --target wasm32-unknown-unknown
+        run: cargo check --locked -p health-surveillance-core --target wasm32-unknown-unknown
