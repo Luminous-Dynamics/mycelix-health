@@ -1,11 +1,10 @@
 name: Public Health Surveillance DNA
 
 on:
-  # Intentionally allow stacked PR bases. This tranche is expected to target the
-  # evidence-core feature branch until #10 lands, then be retargeted to main.
   pull_request:
     paths:
       - "crates/health-surveillance-core/**"
+      - "crates/health-surveillance-authority/**"
       - "zomes/surveillance/**"
       - "dna/surveillance/**"
       - "Cargo.toml"
@@ -16,6 +15,7 @@ on:
     branches: [main]
     paths:
       - "crates/health-surveillance-core/**"
+      - "crates/health-surveillance-authority/**"
       - "zomes/surveillance/**"
       - "dna/surveillance/**"
       - "Cargo.toml"
@@ -35,8 +35,9 @@ env:
 
 jobs:
   surveillance-dna:
-    name: Policy-bound publication qualification
+    name: Policy + producer authority qualification
     runs-on: ubuntu-24.04
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5 / node24
         with:
@@ -86,6 +87,7 @@ jobs:
           cargo -Vv
           sha256sum Cargo.toml Cargo.lock \
             crates/health-surveillance-core/Cargo.toml \
+            crates/health-surveillance-authority/Cargo.toml \
             zomes/surveillance/integrity/Cargo.toml \
             zomes/surveillance/coordinator/Cargo.toml
           if [[ -f rust-toolchain.toml ]]; then sha256sum rust-toolchain.toml; fi
