@@ -458,7 +458,10 @@ mod tests {
 
     #[test]
     fn canonical_ids_reject_whitespace_and_empty_values() {
-        assert_eq!(CanonicalId::new(""), Err(SurveillanceError::EmptyIdentifier));
+        assert_eq!(
+            CanonicalId::new(""),
+            Err(SurveillanceError::EmptyIdentifier)
+        );
         assert_eq!(
             CanonicalId::new("contains spaces"),
             Err(SurveillanceError::InvalidIdentifierCharacters)
@@ -494,8 +497,12 @@ mod tests {
             SourceKind::ClinicalSyndromicAggregate,
             "syndromic-feed-a",
             IndependenceGroup::new("ehr-lineage-a").unwrap(),
-            GeographicScope::new("health-district", "district-17", GeographicPrecision::District)
-                .unwrap(),
+            GeographicScope::new(
+                "health-district",
+                "district-17",
+                GeographicPrecision::District,
+            )
+            .unwrap(),
             ObservationWindow::new(1_000, 2_000).unwrap(),
             2_100,
             250,
@@ -521,8 +528,12 @@ mod tests {
             SourceKind::LaboratoryAggregate,
             "lab-feed-a",
             IndependenceGroup::new("lab-lineage-a").unwrap(),
-            GeographicScope::new("health-district", "district-17", GeographicPrecision::District)
-                .unwrap(),
+            GeographicScope::new(
+                "health-district",
+                "district-17",
+                GeographicPrecision::District,
+            )
+            .unwrap(),
             ObservationWindow::new(1_000, 2_000).unwrap(),
             1_999,
             100,
