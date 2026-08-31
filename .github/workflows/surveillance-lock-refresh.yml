@@ -2,15 +2,18 @@ name: Public Health Surveillance Lock Refresh Evidence
 
 on:
   pull_request:
-    branches: [main]
     paths:
-      - "crates/health-surveillance-core/**"
+      - "crates/health-surveillance-*/**"
+      - "zomes/surveillance/**"
+      - "dna/surveillance/**"
       - "Cargo.toml"
       - "Cargo.lock"
       - "rust-toolchain.toml"
-      - ".github/workflows/surveillance-lock-refresh.yml"
-      - ".github/workflows/surveillance-core.yml"
+      - ".github/workflows/surveillance-*.yml"
   workflow_dispatch:
+
+permissions:
+  contents: read
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -68,7 +71,12 @@ jobs:
             rustc -vV
             cargo -Vv
             echo "--- committed hashes ---"
-            sha256sum Cargo.toml Cargo.lock crates/health-surveillance-core/Cargo.toml
+            sha256sum Cargo.toml Cargo.lock
+            find crates zomes -type f -name Cargo.toml \
+              | grep -E '(^crates/health-surveillance-|^zomes/surveillance/)' \
+              | sort \
+              | xargs -r sha256sum
+            if [[ -f dna/surveillance/dna.yaml ]]; then sha256sum dna/surveillance/dna.yaml; fi
             if [[ -f rust-toolchain.toml ]]; then sha256sum rust-toolchain.toml; fi
           } > lock-refresh-evidence/environment.txt
 
