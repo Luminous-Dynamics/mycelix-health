@@ -79,7 +79,10 @@ fn observation_id_v1_golden_vector() {
     let observation = observation_vector_fixture();
     // The neutral accessor is exactly the legacy v1 wire value; it changes no
     // serialization or identity bytes and makes no unique-human-cardinality claim.
-    assert_eq!(observation.contributing_unit_count(), observation.cohort_size);
+    assert_eq!(
+        observation.contributing_unit_count(),
+        observation.cohort_size
+    );
     assert_eq!(observation.contributing_unit_count(), 500);
 
     let id = observation.id().unwrap();
@@ -101,7 +104,10 @@ fn observation_id_v1_golden_vector() {
 fn release_policy_neutral_count_accessor_and_receipt_recompute_match_v1() {
     let observation = observation_vector_fixture();
     let policy = AggregateReleasePolicy::new(50, 3_600, GeographicPrecision::District).unwrap();
-    assert_eq!(policy.min_contributing_unit_count(), policy.min_cohort_size());
+    assert_eq!(
+        policy.min_contributing_unit_count(),
+        policy.min_cohort_size()
+    );
     assert_eq!(policy.min_contributing_unit_count(), 50);
 
     let assessment = policy.assess(&observation).unwrap();
