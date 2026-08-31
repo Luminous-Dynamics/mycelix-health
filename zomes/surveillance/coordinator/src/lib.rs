@@ -96,8 +96,6 @@ pub fn submit_surveillance_observation(
     let release_policy = configured_release_policy()?;
     let authority_policy = configured_producer_authority_policy()?;
     let publisher = agent_info()?.agent_initial_pubkey;
-    let now = sys_time()?;
-    let now_unix_s = now.as_micros().div_euclid(1_000_000);
 
     let release_assessment = release_policy
         .policy
@@ -137,7 +135,6 @@ pub fn submit_surveillance_observation(
 
     let plan = validate_released_entry_semantics(
         &publisher,
-        now_unix_s,
         &entry,
         &release_policy,
         &authority_policy,
