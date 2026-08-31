@@ -90,7 +90,7 @@ pub struct ProducerAuthorityPolicyProperties {
 }
 
 #[dna_properties]
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, PartialEq)]
 pub struct SurveillanceDnaProperties {
     pub release_policy: Option<ReleasePolicyProperties>,
     pub producer_authority_policy: Option<ProducerAuthorityPolicyProperties>,
@@ -299,7 +299,7 @@ pub fn validate(op: Op) -> ExternResult<ValidateCallbackResult> {
         FlatOp::StoreEntry(store_entry) => match store_entry {
             OpEntry::CreateEntry { app_entry, action } => match app_entry {
                 EntryTypes::ReleasedSurveillanceObservation(entry) => {
-                    validate_released_entry(&action.author, action.timestamp, &entry)
+                    validate_released_entry(&action.author, &entry)
                 }
             },
             OpEntry::UpdateEntry { .. } => Ok(ValidateCallbackResult::Invalid(
@@ -325,15 +325,12 @@ pub fn validate(op: Op) -> ExternResult<ValidateCallbackResult> {
 
 fn validate_released_entry(
     action_author: &AgentPubKey,
-    action_timestamp: Timestamp,
     entry: &ReleasedSurveillanceObservation,
 ) -> ExternResult<ValidateCallbackResult> {
     let release_policy = configured_release_policy()?;
     let authority_policy = configured_producer_authority_policy()?;
-    let authored_at_unix_s = action_timestamp.as_micros().div_euclid(1_000_000);
     let plan = match validate_released_entry_semantics(
         action_author,
-        authored_at_unix_s,
         entry,
         &release_policy,
         &authority_policy,
@@ -358,7 +355,6 @@ fn validate_released_entry(
 /// Perform every deterministic semantic check except host cryptography.
 pub fn validate_released_entry_semantics(
     action_author: &AgentPubKey,
-    authored_at_unix_s: i64,
     entry: &ReleasedSurveillanceObservation,
     release_policy: &ConfiguredReleasePolicy,
     authority_policy: &ConfiguredProducerAuthorityPolicy,
@@ -446,11 +442,14 @@ pub fn validate_released_entry_semantics(
 
     let scope_assessment = entry
         .authority_grant
-        .assess_claimed_scope(&entry.observation, authored_at_unix_s)
+        .assess_claimed_scope(
+            &entry.observation,
+            entry.status_endorsement.checked_at_unix_s(),
+        )
         .map_err(|e| format!("producer-authority scope assessment failed: {e}"))?;
     if !scope_assessment.permitted_by_claimed_scope {
         return Err(format!(
-            "observation is outside producer-authority scope: {:?}",
+            "observation is outside producer-authority scope at signed status-check time: {:?}",
             scope_assessment.reasons
         ));
     }
@@ -700,7 +699,6 @@ mod tests {
         let entry = released_entry(&publisher, &issuer, observation(100));
         let plan = validate_released_entry_semantics(
             &publisher,
-            14_000,
             &entry,
             &release_policy(),
             &authority_policy(&issuer),
@@ -719,7 +717,6 @@ mod tests {
         let entry = released_entry(&publisher, &issuer, observation(100));
         assert!(validate_released_entry_semantics(
             &agent(2),
-            14_000,
             &entry,
             &release_policy(),
             &authority_policy(&issuer),
@@ -736,7 +733,6 @@ mod tests {
         entry.release_assessment = release_policy().policy.assess(&entry.observation).unwrap();
         assert!(validate_released_entry_semantics(
             &publisher,
-            14_000,
             &entry,
             &release_policy(),
             &authority_policy(&issuer),
@@ -753,7 +749,6 @@ mod tests {
         policy.accepted_status_profiles = vec![id("different-status-profile")];
         assert!(validate_released_entry_semantics(
             &publisher,
-            14_000,
             &entry,
             &release_policy(),
             &policy,
@@ -769,12 +764,41 @@ mod tests {
         entry.status_endorsement_signature = vec![2; 63];
         assert!(validate_released_entry_semantics(
             &publisher,
-            14_000,
             &entry,
             &release_policy(),
             &authority_policy(&issuer),
         )
         .is_err());
+    }
+
+    #[test]
+    fn signed_status_check_time_controls_grant_validity() {
+        let publisher = agent(1);
+        let issuer = agent(3);
+        let mut entry = released_entry(&publisher, &issuer, observation(100));
+        let release = release_policy();
+        entry.status_endorsement = AuthorizedObservationEndorsement::new(
+            id("mycelix-vc-active-status-v1"),
+            entry.authority_grant.issuer_did().clone(),
+            entry.authority_grant.id().unwrap(),
+            entry.observation.id().unwrap(),
+            *release.policy_id.as_bytes(),
+            id(&did(&publisher)),
+            entry.observation.provenance.producer.clone(),
+            20_001,
+            [9; 32],
+            [8; 32],
+        )
+        .unwrap();
+
+        let err = validate_released_entry_semantics(
+            &publisher,
+            &entry,
+            &release,
+            &authority_policy(&issuer),
+        )
+        .unwrap_err();
+        assert!(err.contains("GrantExpired"));
     }
 
     #[test]
@@ -791,7 +815,6 @@ mod tests {
         .unwrap();
         assert!(validate_released_entry_semantics(
             &publisher,
-            14_000,
             &entry,
             &other_release,
             &authority_policy(&issuer),
