@@ -38,6 +38,10 @@ members = [
     "crates/health-validation",
     "crates/health-surveillance-core",
 
+    # ── Public Health Surveillance (separate aggregate-only DNA) ──
+    "zomes/surveillance/integrity",
+    "zomes/surveillance/coordinator",
+
     # ── Tier 3: Behavioral Health (restored 2026-03-26) ──
     "zomes/mental_health/integrity",
     "zomes/mental_health/coordinator",
@@ -94,7 +98,6 @@ mycelix-bridge-common = { path = "../crates/mycelix-bridge-common" }
 # Utilities
 chrono = "0.4"
 thiserror = "1.0"
-
 derive_more = "0.99"
 
 # WASM compatibility
@@ -120,4 +123,3 @@ todo = "deny"
 unimplemented = "deny"
 eq_op = "deny"
 cast_ptr_alignment = "deny"
-

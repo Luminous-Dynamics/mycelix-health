@@ -1,0 +1,16 @@
+[package]
+name = "surveillance"
+version = "0.1.0"
+edition = "2021"
+license.workspace = true
+description = "Coordinator zome for policy-bound aggregate public-health surveillance releases"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+name = "surveillance"
+
+[dependencies]
+hdk.workspace = true
+serde.workspace = true
+holochain_serialized_bytes.workspace = true
+surveillance_integrity = { path = "../integrity" }

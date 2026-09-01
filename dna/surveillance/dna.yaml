@@ -1,0 +1,18 @@
+---
+manifest_version: "0"
+name: health-surveillance
+integrity:
+  network_seed: ~
+  properties:
+    # Fail closed by default. A deployment must create a DNA with an explicit,
+    # governance-approved non-zero aggregate release policy before publication.
+    release_policy: ~
+  zomes:
+    - name: surveillance_integrity
+      path: ../../target/wasm32-unknown-unknown/release/surveillance_integrity.wasm
+coordinator:
+  zomes:
+    - name: surveillance
+      path: ../../target/wasm32-unknown-unknown/release/surveillance.wasm
+      dependencies:
+        - name: surveillance_integrity
