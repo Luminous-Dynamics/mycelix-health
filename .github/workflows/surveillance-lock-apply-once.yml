@@ -1,0 +1,87 @@
+name: One-shot Surveillance Cargo.lock Applicator
+
+on:
+  push:
+    branches:
+      - feat/public-health-surveillance-dna-v1
+    paths:
+      - ".github/workflows/surveillance-lock-apply-once.yml"
+
+permissions:
+  contents: write
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: 1
+  PARENT_MYCELIX_REF: 7daefcbfa6c4427809e9d8dc24a039bb024da5e9
+  EXPECTED_PARENT_HEAD: ec3ab97113ac2f19877eadde5f099c14823d376c
+  EXPECTED_LOCK_SHA256: 6d0699c82c9d876fb386555893a8e293407245abc27c1154552ab1b71d137a04
+  SELF_PATH: .github/workflows/surveillance-lock-apply-once.yml
+
+jobs:
+  apply-reviewed-lock:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5 / node24
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 2
+          persist-credentials: true
+
+      - name: Prove one-shot source envelope
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD^)" = "$EXPECTED_PARENT_HEAD"
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          CHANGED="$(git diff --name-only HEAD^ HEAD)"
+          test "$CHANGED" = "$SELF_PATH"
+          test "$(git status --porcelain=v1 --untracked-files=all)" = ""
+
+      - name: Check out pinned parent workspace dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          git init /tmp/mycelix-parent
+          git -C /tmp/mycelix-parent remote add origin https://github.com/Luminous-Dynamics/mycelix.git
+          git -C /tmp/mycelix-parent fetch --depth 1 origin "$PARENT_MYCELIX_REF"
+          git -C /tmp/mycelix-parent checkout --detach FETCH_HEAD
+          test "$(git -C /tmp/mycelix-parent rev-parse HEAD)" = "$PARENT_MYCELIX_REF"
+
+          mkdir -p ../crates ../mycelix-core ../mycelix-workspace/mycelix-core
+          cp -r /tmp/mycelix-parent/crates/. ../crates/
+          cp -r /tmp/mycelix-parent/mycelix-core/. ../mycelix-core/
+          cp -r /tmp/mycelix-parent/mycelix-core/. ../mycelix-workspace/mycelix-core/
+          rm -rf /tmp/mycelix-parent
+
+      - name: Install pinned Rust
+        uses: dtolnay/rust-toolchain@01ba1edad32c6f80dbcce879d3e0fa5a00b2a84e
+
+      - name: Regenerate and prove reviewed Cargo.lock
+        shell: bash
+        run: |
+          set -euo pipefail
+          cargo metadata --format-version 1 > /dev/null
+          ACTUAL_LOCK_SHA256="$(sha256sum Cargo.lock | awk '{print $1}')"
+          test "$ACTUAL_LOCK_SHA256" = "$EXPECTED_LOCK_SHA256"
+          cargo metadata --locked --format-version 1 > /dev/null
+          git diff --check -- Cargo.lock
+          git diff --quiet -- Cargo.lock && {
+            echo "Expected Cargo.lock to change from the reviewed parent." >&2
+            exit 1
+          }
+
+      - name: Commit only reviewed lock and self-delete applicator
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm "$SELF_PATH"
+          git add Cargo.lock "$SELF_PATH"
+          test "$(git diff --cached --name-only | sort)" = $'.github/workflows/surveillance-lock-apply-once.yml\nCargo.lock'
+          test "$(sha256sum Cargo.lock | awk '{print $1}')" = "$EXPECTED_LOCK_SHA256"
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "chore(surveillance): apply Cargo-produced lock refresh"
+          git push origin HEAD:feat/public-health-surveillance-dna-v1
