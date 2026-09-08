@@ -39,6 +39,7 @@ members = [
     "crates/health-surveillance-core",
     "crates/health-surveillance-authority",
     "crates/health-surveillance-endorsement",
+    "crates/health-surveillance-lineage",
 
     # ── Public Health Surveillance (separate aggregate-only DNA) ──
     "zomes/surveillance/integrity",
