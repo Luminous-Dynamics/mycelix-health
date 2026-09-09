@@ -353,7 +353,11 @@ pub fn validate_transition(
     if previous.reasons != next.reasons {
         return Err(QuarantineError::ReasonsChanged);
     }
-    if next.sequence != previous.sequence + 1 {
+    let expected_sequence = previous
+        .sequence
+        .checked_add(1)
+        .ok_or(QuarantineError::SequenceOverflow)?;
+    if next.sequence != expected_sequence {
         return Err(QuarantineError::InvalidSequence);
     }
     if next.previous_event_digest != Some(previous_event_digest) {
@@ -679,6 +683,26 @@ mod tests {
         next.previous_event_digest = Some(artifact(99));
         let error = validate_transition(&previous, artifact(10), &next).unwrap_err();
         assert_eq!(error, QuarantineError::PredecessorDigestMismatch);
+    }
+
+    #[test]
+    fn transition_validation_rejects_sequence_overflow() {
+        let previous = QuarantineEvent {
+            case_nonce: [1u8; 16],
+            sequence: u32::MAX,
+            payload_commitment: commitment(2),
+            scope: QuarantineScope::Resource,
+            reasons: vec![QuarantineReasonCode::SubjectUnresolved],
+            state: QuarantineState::UnderReview,
+            recorded_at_micros: 100,
+            producer_artifact_digest: artifact(3),
+            previous_event_digest: Some(artifact(4)),
+            reviewer_authority_commitment: Some(commitment(5)),
+            resolution: None,
+        };
+        let next = previous.clone();
+        let error = validate_transition(&previous, artifact(6), &next).unwrap_err();
+        assert_eq!(error, QuarantineError::SequenceOverflow);
     }
 
     #[test]
