@@ -9,7 +9,7 @@ use mycelix_clinical_evidence::{
     AuthorityMode, ClinicalEvidenceCapsule, EvidenceCapsuleError, QualificationLevel,
     RequirementCriticality, ReviewStatus,
 };
-use mycelix_clinical_evidence::mycelix_clinical_semantics::EvaluationState;
+use mycelix_clinical_semantics::EvaluationState;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum GateDecision {
@@ -124,9 +124,7 @@ mod tests {
         ContentDigest, EvidenceRole, EvidenceSource, EvidenceSourceKind, ExecutionIdentity,
         FactEvidence, HumanReview, IntendedUse, MissingRequirement, RequirementCriticality,
     };
-    use mycelix_clinical_evidence::mycelix_clinical_semantics::{
-        CodeableConcept, Coding, EvaluationState, SubjectRef,
-    };
+    use mycelix_clinical_semantics::{CodeableConcept, Coding, EvaluationState, SubjectRef};
 
     fn digest(value: &str) -> ContentDigest {
         ContentDigest {
