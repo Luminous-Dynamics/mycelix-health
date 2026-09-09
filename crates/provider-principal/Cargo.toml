@@ -1,0 +1,12 @@
+[package]
+name = "mycelix-provider-principal"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Evidence-bearing FHIR practitioner to Mycelix principal resolution"
+
+[dependencies]
+serde = { workspace = true }
+thiserror = { workspace = true }
+mycelix-clinical-authority = { path = "../clinical-authority" }
+mycelix-clinical-integrity = { path = "../clinical-integrity" }
