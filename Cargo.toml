@@ -36,6 +36,7 @@ members = [
     "crates/hdc-core",
     "crates/hdc-experiments",
     "crates/health-validation",
+    "crates/clinical-semantics",
 
     # ── Tier 3: Behavioral Health (restored 2026-03-26) ──
     "zomes/mental_health/integrity",
@@ -119,4 +120,3 @@ todo = "deny"
 unimplemented = "deny"
 eq_op = "deny"
 cast_ptr_alignment = "deny"
-
