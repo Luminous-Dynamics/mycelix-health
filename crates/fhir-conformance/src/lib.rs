@@ -149,9 +149,11 @@ pub fn conform_and_project_observations(
         return report;
     }
 
+    // Own the ID rather than borrowing it from report: resource-level checks
+    // below mutate report while the expected subject remains needed later.
     let expected_patient_id = report
         .patient_id
-        .as_deref()
+        .clone()
         .expect("single-patient validation established a patient id");
 
     let mut safe_entries = Vec::new();
@@ -188,7 +190,7 @@ pub fn conform_and_project_observations(
     // The preflight patient and the projection patient must agree. The projection
     // crate derives this from the filtered bundle, so disagreement would indicate
     // an internal contract failure rather than external data ambiguity.
-    if projection.patient_id.as_deref() != Some(expected_patient_id) {
+    if projection.patient_id.as_deref() != Some(expected_patient_id.as_str()) {
         push_fatal(
             &mut report,
             ConformanceIssueKind::InvalidPatient,
@@ -216,7 +218,7 @@ pub fn conform_and_project_observations(
                 &mut report,
                 ConformanceIssueKind::DuplicateFactIdentity,
                 Some("Observation"),
-                Some(&fact.provenance.source_resource_id),
+                Some(fact.provenance.source_resource_id.as_str()),
                 "projection produced a duplicate ClinicalFact identity",
             );
         } else {
