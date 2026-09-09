@@ -40,6 +40,7 @@ members = [
     "crates/fhir-semantics",
     "crates/clinical-evidence",
     "crates/clinical-promotion",
+    "crates/fhir-conformance",
 
     # ── Tier 3: Behavioral Health (restored 2026-03-26) ──
     "zomes/mental_health/integrity",
