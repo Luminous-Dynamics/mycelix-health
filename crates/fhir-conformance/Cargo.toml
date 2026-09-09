@@ -1,0 +1,12 @@
+[package]
+name = "mycelix-fhir-conformance"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Strict FHIR R4 bundle preflight and semantic promotion gate for Mycelix-Health"
+
+[dependencies]
+serde = { workspace = true }
+serde_json = { workspace = true }
+mycelix-clinical-semantics = { path = "../clinical-semantics" }
+mycelix-fhir-semantics = { path = "../fhir-semantics" }
