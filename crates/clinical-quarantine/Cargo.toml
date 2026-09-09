@@ -8,6 +8,5 @@ description = "Privacy-preserving quarantine and reconciliation lineage for reje
 [dependencies]
 serde = { workspace = true }
 thiserror = { workspace = true }
-mycelix-clinical-evidence = { path = "../clinical-evidence" }
 mycelix-fhir-conformance = { path = "../fhir-conformance" }
 mycelix-fhir-semantics = { path = "../fhir-semantics" }
