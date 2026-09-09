@@ -7,3 +7,4 @@ description = "Structural qualification and human-authority gate for clinician-f
 
 [dependencies]
 mycelix-clinical-evidence = { path = "../clinical-evidence" }
+mycelix-clinical-semantics = { path = "../clinical-semantics" }
