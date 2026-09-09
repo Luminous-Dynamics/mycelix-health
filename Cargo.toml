@@ -44,6 +44,7 @@ members = [
     "crates/medication-semantics",
     "crates/clinical-quarantine",
     "crates/clinical-authority",
+    "crates/issuer-trust",
 
     # ── Tier 3: Behavioral Health (restored 2026-03-26) ──
     "zomes/mental_health/integrity",
