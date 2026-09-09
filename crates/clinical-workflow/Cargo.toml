@@ -1,0 +1,17 @@
+[package]
+name = "mycelix-clinical-workflow"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Exact-target capability composition for Mycelix-Health clinical workflows"
+
+[dependencies]
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+mycelix-clinical-integrity = { path = "../clinical-integrity" }
+mycelix-clinical-authority = { path = "../clinical-authority" }
+mycelix-clinical-evidence = { path = "../clinical-evidence" }
+mycelix-clinical-promotion = { path = "../clinical-promotion" }
+mycelix-medication-semantics = { path = "../medication-semantics" }
+mycelix-clinical-quarantine = { path = "../clinical-quarantine" }
