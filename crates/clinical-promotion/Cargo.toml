@@ -1,0 +1,9 @@
+[package]
+name = "mycelix-clinical-promotion"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Structural qualification and human-authority gate for clinician-facing Mycelix-Health outputs"
+
+[dependencies]
+mycelix-clinical-evidence = { path = "../clinical-evidence" }
