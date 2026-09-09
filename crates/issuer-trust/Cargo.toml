@@ -1,0 +1,10 @@
+[package]
+name = "mycelix-issuer-trust"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Bounded issuer trust-chain policy for Mycelix-Health credential authorities"
+
+[dependencies]
+thiserror = { workspace = true }
+mycelix-clinical-authority = { path = "../clinical-authority" }
