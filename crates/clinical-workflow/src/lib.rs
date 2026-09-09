@@ -75,13 +75,34 @@ pub struct ClinicalPresentationCapability {
 }
 
 impl ClinicalPresentationCapability {
-    pub fn capsule_id(&self) -> &str { &self.capsule_id }
-    pub fn capsule_digest(&self) -> StoredDigest { self.capsule_digest }
-    pub fn principal(&self) -> PrincipalBinding { self.principal }
-    pub fn jurisdiction(&self) -> &JurisdictionCode { &self.jurisdiction }
-    pub fn authority_policy_digest(&self) -> StoredDigest { self.authority_policy_digest }
-    pub fn workflow_policy_digest(&self) -> StoredDigest { self.workflow_policy_digest }
-    pub fn authorized_at_micros(&self) -> i64 { self.authorized_at_micros }
+    pub fn capsule_id(&self) -> &str {
+        &self.capsule_id
+    }
+
+    pub fn capsule_digest(&self) -> StoredDigest {
+        self.capsule_digest
+    }
+
+    pub fn principal(&self) -> PrincipalBinding {
+        self.principal
+    }
+
+    pub fn jurisdiction(&self) -> &JurisdictionCode {
+        &self.jurisdiction
+    }
+
+    pub fn authority_policy_digest(&self) -> StoredDigest {
+        self.authority_policy_digest
+    }
+
+    pub fn workflow_policy_digest(&self) -> StoredDigest {
+        self.workflow_policy_digest
+    }
+
+    pub fn authorized_at_micros(&self) -> i64 {
+        self.authorized_at_micros
+    }
+
     pub fn supporting_authority_evidence(&self) -> &[[u8; 32]] {
         &self.supporting_authority_evidence
     }
@@ -99,13 +120,34 @@ pub struct MedicationActivationCapability {
 }
 
 impl MedicationActivationCapability {
-    pub fn order_id(&self) -> &str { &self.order_id }
-    pub fn order_digest(&self) -> StoredDigest { self.order_digest }
-    pub fn principal(&self) -> PrincipalBinding { self.principal }
-    pub fn jurisdiction(&self) -> &JurisdictionCode { &self.jurisdiction }
-    pub fn authority_policy_digest(&self) -> StoredDigest { self.authority_policy_digest }
-    pub fn workflow_policy_digest(&self) -> StoredDigest { self.workflow_policy_digest }
-    pub fn authorized_at_micros(&self) -> i64 { self.authorized_at_micros }
+    pub fn order_id(&self) -> &str {
+        &self.order_id
+    }
+
+    pub fn order_digest(&self) -> StoredDigest {
+        self.order_digest
+    }
+
+    pub fn principal(&self) -> PrincipalBinding {
+        self.principal
+    }
+
+    pub fn jurisdiction(&self) -> &JurisdictionCode {
+        &self.jurisdiction
+    }
+
+    pub fn authority_policy_digest(&self) -> StoredDigest {
+        self.authority_policy_digest
+    }
+
+    pub fn workflow_policy_digest(&self) -> StoredDigest {
+        self.workflow_policy_digest
+    }
+
+    pub fn authorized_at_micros(&self) -> i64 {
+        self.authorized_at_micros
+    }
+
     pub fn supporting_authority_evidence(&self) -> &[[u8; 32]] {
         &self.supporting_authority_evidence
     }
@@ -123,14 +165,37 @@ pub struct QuarantineResolutionCapability {
 }
 
 impl QuarantineResolutionCapability {
-    pub fn case_nonce(&self) -> [u8; 16] { self.case_nonce }
-    pub fn sequence(&self) -> u32 { self.sequence }
-    pub fn event_digest(&self) -> StoredDigest { self.event_digest.stored() }
-    pub fn disposition(&self) -> ResolutionDisposition { self.disposition }
-    pub fn principal(&self) -> PrincipalBinding { self.principal }
-    pub fn authority_policy_digest(&self) -> StoredDigest { self.authority_policy_digest }
-    pub fn workflow_policy_digest(&self) -> StoredDigest { self.workflow_policy_digest }
-    pub fn authorized_at_micros(&self) -> i64 { self.authorized_at_micros }
+    pub fn case_nonce(&self) -> [u8; 16] {
+        self.case_nonce
+    }
+
+    pub fn sequence(&self) -> u32 {
+        self.sequence
+    }
+
+    pub fn event_digest(&self) -> StoredDigest {
+        self.event_digest.stored()
+    }
+
+    pub fn disposition(&self) -> ResolutionDisposition {
+        self.disposition
+    }
+
+    pub fn principal(&self) -> PrincipalBinding {
+        self.principal
+    }
+
+    pub fn authority_policy_digest(&self) -> StoredDigest {
+        self.authority_policy_digest
+    }
+
+    pub fn workflow_policy_digest(&self) -> StoredDigest {
+        self.workflow_policy_digest
+    }
+
+    pub fn authorized_at_micros(&self) -> i64 {
+        self.authorized_at_micros
+    }
 
     #[allow(clippy::too_many_arguments)]
     pub fn resolve(
