@@ -47,6 +47,7 @@ members = [
     "crates/issuer-trust",
     "crates/clinical-integrity",
     "crates/clinical-workflow",
+    "crates/provider-principal",
 
     # ── Tier 3: Behavioral Health (restored 2026-03-26) ──
     "zomes/mental_health/integrity",
