@@ -22,6 +22,7 @@ pub enum DigestDomain {
     ClinicalArtifact,
     EvidenceCapsule,
     MedicationOrder,
+    MedicationRequestArtifact,
     QuarantineEvent,
     QuarantineDecision,
     AuthorityPolicy,
@@ -38,6 +39,7 @@ impl DigestDomain {
             Self::ClinicalArtifact => b"clinical-artifact",
             Self::EvidenceCapsule => b"evidence-capsule",
             Self::MedicationOrder => b"medication-order",
+            Self::MedicationRequestArtifact => b"medication-request-artifact",
             Self::QuarantineEvent => b"quarantine-event",
             Self::QuarantineDecision => b"quarantine-decision",
             Self::AuthorityPolicy => b"authority-policy",
@@ -196,8 +198,11 @@ mod tests {
     fn identical_bytes_in_different_domains_do_not_collide_by_construction() {
         let payload = b"same-canonical-bytes";
         let order = hash_canonical_bytes(DigestDomain::MedicationOrder, payload).unwrap();
+        let request =
+            hash_canonical_bytes(DigestDomain::MedicationRequestArtifact, payload).unwrap();
         let policy = hash_canonical_bytes(DigestDomain::AuthorityPolicy, payload).unwrap();
-        assert_ne!(order.value(), policy.value());
+        assert_ne!(order.value(), request.value());
+        assert_ne!(request.value(), policy.value());
     }
 
     #[test]
