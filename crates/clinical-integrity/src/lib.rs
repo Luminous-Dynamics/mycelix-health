@@ -20,6 +20,11 @@ pub enum DigestAlgorithm {
 #[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq, Hash)]
 pub enum DigestDomain {
     ClinicalArtifact,
+    ClinicalObservedEvent,
+    ClinicalExposureAssociation,
+    ClinicalCausalAssessmentPolicy,
+    ClinicalCausalAssessment,
+    ClinicalRegulatoryInterpretation,
     EvidenceCapsule,
     MedicationOrder,
     MedicationRequestArtifact,
@@ -71,6 +76,11 @@ impl DigestDomain {
     fn label(self) -> &'static [u8] {
         match self {
             Self::ClinicalArtifact => b"clinical-artifact",
+            Self::ClinicalObservedEvent => b"clinical-observed-event",
+            Self::ClinicalExposureAssociation => b"clinical-exposure-association",
+            Self::ClinicalCausalAssessmentPolicy => b"clinical-causal-assessment-policy",
+            Self::ClinicalCausalAssessment => b"clinical-causal-assessment",
+            Self::ClinicalRegulatoryInterpretation => b"clinical-regulatory-interpretation",
             Self::EvidenceCapsule => b"evidence-capsule",
             Self::MedicationOrder => b"medication-order",
             Self::MedicationRequestArtifact => b"medication-request-artifact",
@@ -255,6 +265,11 @@ mod tests {
     fn identical_bytes_in_different_domains_do_not_collide_by_construction() {
         let payload = b"same-canonical-bytes";
         let domains = [
+            DigestDomain::ClinicalObservedEvent,
+            DigestDomain::ClinicalExposureAssociation,
+            DigestDomain::ClinicalCausalAssessmentPolicy,
+            DigestDomain::ClinicalCausalAssessment,
+            DigestDomain::ClinicalRegulatoryInterpretation,
             DigestDomain::MedicationOrder,
             DigestDomain::MedicationRequestArtifact,
             DigestDomain::MedicationSafetyContext,
