@@ -1,9 +1,10 @@
 #![deny(unsafe_code)]
 //! Exact-target capability composition for Mycelix-Health.
 //!
-//! A valid credential or qualification result is not sufficient on its own. This
-//! crate consumes a verifier-owned `AuthorityPermit` and rebinds it to one exact
-//! clinical artifact, purpose, policy, principal, jurisdiction, and execution time.
+//! A valid credential, requester identity, qualification result, or medication-safety
+//! result is not sufficient on its own. This crate composes verifier-owned evidence
+//! into exact-purpose, exact-target workflow capabilities.
+//!
 //! Resulting workflow capabilities intentionally implement no Clone/Copy/serde/Debug.
 
 use mycelix_clinical_authority::{
@@ -19,17 +20,23 @@ use mycelix_clinical_quarantine::{
     QuarantineState, ResolutionDisposition,
 };
 use mycelix_fhir_medication_semantics::MedicationRequestArtifact;
+use mycelix_medication_safety::MedicationSafetyClearance;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
-const MAX_AUTHORITY_AGE_MICROS: i64 = 86_400_000_000;
+const MAX_EVIDENCE_AGE_MICROS: i64 = 86_400_000_000;
 const MAX_FUTURE_SKEW_MICROS: i64 = 300_000_000;
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]
 pub struct WorkflowPolicyV1 {
     pub schema_version: u16,
+    /// Maximum age of the professional authority decision.
     pub max_authority_age_micros: i64,
+    /// Maximum age of the external-practitioner -> Mycelix-principal resolution.
+    pub max_requester_resolution_age_micros: i64,
+    /// Maximum time between medication safety clearance and activation.
+    pub max_safety_clearance_age_micros: i64,
     pub max_future_skew_micros: i64,
 }
 
@@ -40,11 +47,18 @@ impl WorkflowPolicyV1 {
                 self.schema_version,
             ));
         }
-        if self.max_authority_age_micros <= 0
-            || self.max_authority_age_micros > MAX_AUTHORITY_AGE_MICROS
-        {
-            return Err(WorkflowError::InvalidAuthorityAgePolicy);
-        }
+        validate_age_policy(
+            self.max_authority_age_micros,
+            WorkflowError::InvalidAuthorityAgePolicy,
+        )?;
+        validate_age_policy(
+            self.max_requester_resolution_age_micros,
+            WorkflowError::InvalidRequesterResolutionAgePolicy,
+        )?;
+        validate_age_policy(
+            self.max_safety_clearance_age_micros,
+            WorkflowError::InvalidSafetyClearanceAgePolicy,
+        )?;
         if self.max_future_skew_micros < 0
             || self.max_future_skew_micros > MAX_FUTURE_SKEW_MICROS
         {
@@ -61,6 +75,13 @@ impl WorkflowPolicyV1 {
             self,
         )
     }
+}
+
+fn validate_age_policy(age: i64, error: WorkflowError) -> Result<(), WorkflowError> {
+    if age <= 0 || age > MAX_EVIDENCE_AGE_MICROS {
+        return Err(error);
+    }
+    Ok(())
 }
 
 pub struct ClinicalPresentationCapability {
@@ -108,11 +129,12 @@ impl ClinicalPresentationCapability {
     }
 }
 
-/// Exact FHIR medication activation capability.
+/// Exact medication activation capability.
 ///
-/// It preserves two distinct proof lineages:
+/// It preserves three independent proof lineages:
 /// 1. requester -> authenticated principal resolution evidence;
-/// 2. professional authority evidence supporting the prescribing action.
+/// 2. professional authority evidence supporting the prescribing action;
+/// 3. patient-context/knowledge/evaluator evidence supporting medication safety.
 ///
 /// The capability is intentionally non-cloneable/non-serializable.
 pub struct MedicationActivationCapability {
@@ -121,6 +143,10 @@ pub struct MedicationActivationCapability {
     principal: PrincipalBinding,
     requester_resolution_evidence: [StoredDigest; 3],
     requester_resolved_at_micros: i64,
+    safety_context_digest: StoredDigest,
+    safety_policy_digest: StoredDigest,
+    safety_check_evaluation_digests: Vec<StoredDigest>,
+    safety_cleared_at_micros: i64,
     jurisdiction: JurisdictionCode,
     authority_policy_digest: StoredDigest,
     workflow_policy_digest: StoredDigest,
@@ -147,6 +173,22 @@ impl MedicationActivationCapability {
 
     pub fn requester_resolved_at_micros(&self) -> i64 {
         self.requester_resolved_at_micros
+    }
+
+    pub fn safety_context_digest(&self) -> StoredDigest {
+        self.safety_context_digest
+    }
+
+    pub fn safety_policy_digest(&self) -> StoredDigest {
+        self.safety_policy_digest
+    }
+
+    pub fn safety_check_evaluation_digests(&self) -> &[StoredDigest] {
+        &self.safety_check_evaluation_digests
+    }
+
+    pub fn safety_cleared_at_micros(&self) -> i64 {
+        self.safety_cleared_at_micros
     }
 
     pub fn jurisdiction(&self) -> &JurisdictionCode {
@@ -290,10 +332,13 @@ pub fn authorize_clinical_presentation(
 }
 
 /// Convert one strict FHIR MedicationRequest artifact into an exact activation
-/// capability. A bare `MedicationOrder` is intentionally insufficient because it
-/// does not prove who the external requester resolved to.
+/// capability. The safety clearance is consumed so the safe API cannot reuse one
+/// single-owner clearance across multiple activation calls.
+#[allow(clippy::too_many_arguments)]
 pub fn authorize_resolved_medication_activation(
     artifact: &MedicationRequestArtifact,
+    safety_clearance: MedicationSafetyClearance,
+    expected_safety_policy_digest: VerifiedDigest,
     authority: AuthorityPermit,
     authority_policy_digest: VerifiedDigest,
     workflow_policy: &WorkflowPolicyV1,
@@ -312,7 +357,8 @@ pub fn authorize_resolved_medication_activation(
     verify_freshness(
         artifact.requester_resolved_at_micros(),
         execution_at_micros,
-        workflow_policy,
+        workflow_policy.max_requester_resolution_age_micros,
+        workflow_policy.max_future_skew_micros,
         WorkflowError::RequesterResolutionFromFuture,
         WorkflowError::RequesterResolutionStale,
     )?;
@@ -321,6 +367,32 @@ pub fn authorize_resolved_medication_activation(
         .verified_digest()
         .map_err(|error| WorkflowError::MedicationArtifact(error.to_string()))?;
     artifact_digest.require_domain(DigestDomain::MedicationRequestArtifact)?;
+
+    expected_safety_policy_digest.require_domain(DigestDomain::MedicationSafetyPolicy)?;
+    if safety_clearance.medication_artifact_digest() != artifact_digest.stored() {
+        return Err(WorkflowError::SafetyClearanceMedicationMismatch);
+    }
+    if safety_clearance.policy_digest() != expected_safety_policy_digest.stored() {
+        return Err(WorkflowError::SafetyPolicyDigestMismatch);
+    }
+
+    let safety_context_digest = safety_clearance.context_digest();
+    validate_stored_domain(safety_context_digest, DigestDomain::MedicationSafetyContext)?;
+    let safety_check_evaluation_digests = safety_clearance.check_evaluation_digests().to_vec();
+    if safety_check_evaluation_digests.is_empty() {
+        return Err(WorkflowError::SafetyClearanceHasNoChecks);
+    }
+    for digest in &safety_check_evaluation_digests {
+        validate_stored_domain(*digest, DigestDomain::MedicationSafetyEvaluation)?;
+    }
+    verify_freshness(
+        safety_clearance.cleared_at_micros(),
+        execution_at_micros,
+        workflow_policy.max_safety_clearance_age_micros,
+        workflow_policy.max_future_skew_micros,
+        WorkflowError::SafetyClearanceFromFuture,
+        WorkflowError::SafetyClearanceStale,
+    )?;
 
     let workflow_policy_digest = workflow_policy.verified_digest()?;
     let evidence = verify_authority_binding(
@@ -344,6 +416,10 @@ pub fn authorize_resolved_medication_activation(
             artifact.requester_status_evidence_digest(),
         ],
         requester_resolved_at_micros: artifact.requester_resolved_at_micros(),
+        safety_context_digest,
+        safety_policy_digest: expected_safety_policy_digest.stored(),
+        safety_check_evaluation_digests,
+        safety_cleared_at_micros: safety_clearance.cleared_at_micros(),
         jurisdiction: jurisdiction.clone(),
         authority_policy_digest: authority_policy_digest.stored(),
         workflow_policy_digest: workflow_policy_digest.stored(),
@@ -422,6 +498,20 @@ fn hash_json<T: Serialize>(
     Ok(hash_canonical_bytes(domain, &framed)?)
 }
 
+fn validate_stored_domain(
+    digest: StoredDigest,
+    expected: DigestDomain,
+) -> Result<(), WorkflowError> {
+    digest.validate_shape()?;
+    if digest.domain != expected {
+        return Err(WorkflowError::StoredEvidenceDomainMismatch {
+            expected,
+            actual: digest.domain,
+        });
+    }
+    Ok(())
+}
+
 #[allow(clippy::too_many_arguments)]
 fn verify_authority_binding(
     authority: &AuthorityPermit,
@@ -458,7 +548,8 @@ fn verify_authority_binding(
     verify_freshness(
         authority.evaluated_at_micros(),
         execution_at_micros,
-        workflow_policy,
+        workflow_policy.max_authority_age_micros,
+        workflow_policy.max_future_skew_micros,
         WorkflowError::AuthorityEvaluationFromFuture,
         WorkflowError::AuthorityEvaluationStale,
     )?;
@@ -473,15 +564,16 @@ fn verify_authority_binding(
 fn verify_freshness(
     evidence_at_micros: i64,
     execution_at_micros: i64,
-    workflow_policy: &WorkflowPolicyV1,
+    max_age_micros: i64,
+    max_future_skew_micros: i64,
     future_error: WorkflowError,
     stale_error: WorkflowError,
 ) -> Result<(), WorkflowError> {
     let delta = execution_at_micros as i128 - evidence_at_micros as i128;
-    if delta < -(workflow_policy.max_future_skew_micros as i128) {
+    if delta < -(max_future_skew_micros as i128) {
         return Err(future_error);
     }
-    if delta > workflow_policy.max_authority_age_micros as i128 {
+    if delta > max_age_micros as i128 {
         return Err(stale_error);
     }
     Ok(())
@@ -493,12 +585,21 @@ pub enum WorkflowError {
     UnsupportedWorkflowPolicyVersion(u16),
     #[error("workflow authority age must be > 0 and <= 24 hours")]
     InvalidAuthorityAgePolicy,
+    #[error("workflow requester-resolution age must be > 0 and <= 24 hours")]
+    InvalidRequesterResolutionAgePolicy,
+    #[error("workflow safety-clearance age must be > 0 and <= 24 hours")]
+    InvalidSafetyClearanceAgePolicy,
     #[error("workflow future-skew allowance must be between 0 and 5 minutes")]
     InvalidFutureSkewPolicy,
     #[error("failed to serialize exact artifact under its v1 canonical JSON contract: {0}")]
     CanonicalSerialization(String),
     #[error(transparent)]
     Integrity(#[from] IntegrityError),
+    #[error("stored evidence digest domain mismatch: expected {expected:?}, got {actual:?}")]
+    StoredEvidenceDomainMismatch {
+        expected: DigestDomain,
+        actual: DigestDomain,
+    },
     #[error("authority target digest does not match exact workflow artifact")]
     TargetDigestMismatch,
     #[error("authority policy digest does not match the verified policy identity")]
@@ -522,6 +623,16 @@ pub enum WorkflowError {
     RequesterResolutionFromFuture,
     #[error("requester identity resolution is stale for workflow policy")]
     RequesterResolutionStale,
+    #[error("medication safety clearance targets a different medication artifact")]
+    SafetyClearanceMedicationMismatch,
+    #[error("medication safety clearance was produced under a different safety policy")]
+    SafetyPolicyDigestMismatch,
+    #[error("medication safety clearance contains no safety-check evidence")]
+    SafetyClearanceHasNoChecks,
+    #[error("medication safety clearance is too far in the future for workflow policy")]
+    SafetyClearanceFromFuture,
+    #[error("medication safety clearance is stale for workflow policy")]
+    SafetyClearanceStale,
     #[error("clinical qualification gate denied presentation: {0:?}")]
     ClinicalQualificationDenied(GateDecision),
     #[error("clinical qualification validation failed: {0}")]
