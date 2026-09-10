@@ -23,6 +23,10 @@ pub enum DigestDomain {
     EvidenceCapsule,
     MedicationOrder,
     MedicationRequestArtifact,
+    MedicationSafetyContext,
+    MedicationSafetyKnowledge,
+    MedicationSafetyPolicy,
+    MedicationSafetyEvaluation,
     QuarantineEvent,
     QuarantineDecision,
     AuthorityPolicy,
@@ -40,6 +44,10 @@ impl DigestDomain {
             Self::EvidenceCapsule => b"evidence-capsule",
             Self::MedicationOrder => b"medication-order",
             Self::MedicationRequestArtifact => b"medication-request-artifact",
+            Self::MedicationSafetyContext => b"medication-safety-context",
+            Self::MedicationSafetyKnowledge => b"medication-safety-knowledge",
+            Self::MedicationSafetyPolicy => b"medication-safety-policy",
+            Self::MedicationSafetyEvaluation => b"medication-safety-evaluation",
             Self::QuarantineEvent => b"quarantine-event",
             Self::QuarantineDecision => b"quarantine-decision",
             Self::AuthorityPolicy => b"authority-policy",
@@ -200,9 +208,12 @@ mod tests {
         let order = hash_canonical_bytes(DigestDomain::MedicationOrder, payload).unwrap();
         let request =
             hash_canonical_bytes(DigestDomain::MedicationRequestArtifact, payload).unwrap();
+        let safety =
+            hash_canonical_bytes(DigestDomain::MedicationSafetyEvaluation, payload).unwrap();
         let policy = hash_canonical_bytes(DigestDomain::AuthorityPolicy, payload).unwrap();
         assert_ne!(order.value(), request.value());
-        assert_ne!(request.value(), policy.value());
+        assert_ne!(request.value(), safety.value());
+        assert_ne!(safety.value(), policy.value());
     }
 
     #[test]
