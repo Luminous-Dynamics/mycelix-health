@@ -52,8 +52,10 @@ pub enum DigestDomain {
     MedicationAdministrationAttestation,
     MedicationAdministrationSupplyEvidence,
     MedicationAdministrationSchedulePlan,
+    MedicationAdministrationScheduleResolution,
     MedicationAdministrationPrnIntent,
     MedicationAdministrationOccurrence,
+    MedicationAdministrationOccurrenceBinding,
     QuarantineEvent,
     QuarantineDecision,
     AuthorityPolicy,
@@ -100,8 +102,10 @@ impl DigestDomain {
             Self::MedicationAdministrationAttestation => b"medication-administration-attestation",
             Self::MedicationAdministrationSupplyEvidence => b"medication-administration-supply-evidence",
             Self::MedicationAdministrationSchedulePlan => b"medication-administration-schedule-plan",
+            Self::MedicationAdministrationScheduleResolution => b"medication-administration-schedule-resolution",
             Self::MedicationAdministrationPrnIntent => b"medication-administration-prn-intent",
             Self::MedicationAdministrationOccurrence => b"medication-administration-occurrence",
+            Self::MedicationAdministrationOccurrenceBinding => b"medication-administration-occurrence-binding",
             Self::QuarantineEvent => b"quarantine-event",
             Self::QuarantineDecision => b"quarantine-decision",
             Self::AuthorityPolicy => b"authority-policy",
@@ -162,6 +166,7 @@ impl VerifiedDigest {
     }
 }
 
+/// Hash bytes that are already in the owning artifact's canonical serialization.
 pub fn hash_canonical_bytes(
     domain: DigestDomain,
     canonical_bytes: &[u8],
@@ -283,8 +288,10 @@ mod tests {
             DigestDomain::MedicationAdministrationAttestation,
             DigestDomain::MedicationAdministrationSupplyEvidence,
             DigestDomain::MedicationAdministrationSchedulePlan,
+            DigestDomain::MedicationAdministrationScheduleResolution,
             DigestDomain::MedicationAdministrationPrnIntent,
             DigestDomain::MedicationAdministrationOccurrence,
+            DigestDomain::MedicationAdministrationOccurrenceBinding,
             DigestDomain::AuthorityPolicy,
         ];
         let values: Vec<[u8; 32]> = domains
