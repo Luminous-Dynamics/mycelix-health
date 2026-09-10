@@ -1,0 +1,16 @@
+[package]
+name = "mycelix-medication-dispensing"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Exact-activation, authority-bound medication dispensing capabilities for Mycelix-Health"
+
+[dependencies]
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+mycelix-clinical-authority = { path = "../clinical-authority" }
+mycelix-clinical-integrity = { path = "../clinical-integrity" }
+mycelix-clinical-semantics = { path = "../clinical-semantics" }
+mycelix-fhir-medication-semantics = { path = "../fhir-medication-semantics" }
+mycelix-medication-activation-state = { path = "../medication-activation-state" }
