@@ -11,3 +11,6 @@ thiserror = { workspace = true }
 holo_hash = { workspace = true }
 mycelix-clinical-integrity = { path = "../clinical-integrity" }
 medication_dispense_integrity = { path = "../../zomes/medication_dispense/integrity" }
+
+[dev-dependencies]
+hdi = { workspace = true }
