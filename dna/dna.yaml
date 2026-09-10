@@ -31,6 +31,16 @@ integrity:
       # Exact refill-slot authorizations are short-lived and hard-capped by the
       # integrity zome at five minutes. Deployments may choose a shorter value.
       max_slot_authorization_duration_micros: 300000000
+    medication_administration:
+      schema_version: 1
+      # Clinician-administration attestation trust is intentionally independent of
+      # prescription, activation, emergency, and dispensing trust. Empty by default:
+      # no qualified performed-administration attestation can validate until a
+      # deployment deliberately repacks the DNA with trusted root AgentPubKeys.
+      root_authorities: []
+      # Exact receipt + attestation verifier authorizations are short-lived and
+      # hard-capped by the integrity zome at 15 minutes. Deployments may choose less.
+      max_verifier_authorization_duration_micros: 900000000
   zomes:
     # Tier 1: MVP Core
     - name: patient_integrity
@@ -47,6 +57,8 @@ integrity:
       path: ../target/wasm32-unknown-unknown/release/medication_emergency_integrity.wasm
     - name: medication_dispense_integrity
       path: ../target/wasm32-unknown-unknown/release/medication_dispense_integrity.wasm
+    - name: medication_administration_integrity
+      path: ../target/wasm32-unknown-unknown/release/medication_administration_integrity.wasm
     - name: consent_integrity
       path: ../target/wasm32-unknown-unknown/release/consent_integrity.wasm
     - name: bridge_integrity
@@ -85,6 +97,10 @@ coordinator:
       path: ../target/wasm32-unknown-unknown/release/medication_dispense.wasm
       dependencies:
         - name: medication_dispense_integrity
+    - name: medication_administration
+      path: ../target/wasm32-unknown-unknown/release/medication_administration.wasm
+      dependencies:
+        - name: medication_administration_integrity
     - name: consent
       path: ../target/wasm32-unknown-unknown/release/consent.wasm
       dependencies:
