@@ -1,14 +1,13 @@
 #![deny(unsafe_code)]
 //! Computable medication-administration occurrence identities.
 //!
-//! An administration record ID is display/audit metadata. It is not the identity of
-//! the intended clinical dose occurrence. This crate derives a separate occurrence
-//! digest from exact order intent without using activation, dispensing, recording
-//! timestamps, or caller-selected administration IDs.
+//! Human/admin record IDs are audit metadata, not clinical occurrence identity.
+//! Occurrence identity is derived from exact medication intent, patient-subject
+//! binding, dosage instruction, and explicit schedule/PRN occurrence material.
 //!
-//! V1 intentionally refuses to infer scheduled occurrences from wall-clock rounding.
-//! Scheduled doses require a bounded resolved schedule-plan segment. PRN doses require
-//! an explicit intent artifact with a nonzero nonce.
+//! Resolver provenance is deliberately separated from semantic schedule identity:
+//! recomputing the same resolved schedule windows with a different resolver run or
+//! timestamp does not manufacture a new clinical occurrence.
 
 use mycelix_clinical_integrity::{
     hash_canonical_bytes, DigestDomain, IntegrityError, StoredDigest, VerifiedDigest,
@@ -19,6 +18,7 @@ use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
 const SCHEDULE_PLAN_TAG: &[u8] = b"mycelix-health/administration-schedule-plan-v1";
+const SCHEDULE_RESOLUTION_TAG: &[u8] = b"mycelix-health/administration-schedule-resolution-v1";
 const PRN_INTENT_TAG: &[u8] = b"mycelix-health/administration-prn-intent-v1";
 const OCCURRENCE_TAG: &[u8] = b"mycelix-health/administration-occurrence-v1";
 const MAX_OCCURRENCES_PER_SEGMENT: usize = 1024;
@@ -46,22 +46,19 @@ impl ScheduledOccurrenceWindowV1 {
     }
 }
 
-/// Bounded exact schedule material produced by a schedule resolver.
+/// Semantic, bounded resolved schedule material.
 ///
-/// The segment contains canonical UTC occurrence windows, so downstream identity does
-/// not recompute timezone/DST rules. `source_schedule_evidence_digest` identifies the
-/// exact resolver/ruleset evidence used to produce those windows.
+/// This object intentionally excludes resolver identity, generation time, source
+/// evidence references, and display IDs. Its digest represents the resolved clinical
+/// schedule semantics only. Different resolver runs that produce exactly the same
+/// semantic segment therefore produce the same schedule-plan digest.
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]
 pub struct AdministrationSchedulePlanSegmentV1 {
     pub schema_version: u16,
-    pub plan_id: String,
     pub medication_artifact_digest: StoredDigest,
     pub patient_subject_binding_evidence_digest: StoredDigest,
     pub dosage_index: u32,
-    pub segment_index: u32,
-    pub source_schedule_evidence_digest: StoredDigest,
-    pub generated_at_micros: i64,
     pub occurrences: Vec<ScheduledOccurrenceWindowV1>,
 }
 
@@ -72,9 +69,6 @@ impl AdministrationSchedulePlanSegmentV1 {
                 self.schema_version,
             ));
         }
-        if self.plan_id.trim().is_empty() {
-            return Err(OccurrenceError::MissingPlanId);
-        }
         require_domain(
             self.medication_artifact_digest,
             DigestDomain::MedicationRequestArtifact,
@@ -82,10 +76,6 @@ impl AdministrationSchedulePlanSegmentV1 {
         require_domain(
             self.patient_subject_binding_evidence_digest,
             DigestDomain::PatientSubjectBindingEvidence,
-        )?;
-        require_domain(
-            self.source_schedule_evidence_digest,
-            DigestDomain::EvidenceCapsule,
         )?;
         if self.occurrences.is_empty() {
             return Err(OccurrenceError::EmptySchedulePlan);
@@ -120,8 +110,65 @@ impl AdministrationSchedulePlanSegmentV1 {
     }
 }
 
-/// Explicit PRN intent. A new clinical intent gets a new nonzero nonce; the wall clock
-/// alone is never used as PRN occurrence identity.
+/// Provenance for one schedule-resolution run.
+///
+/// This is evidence about *how* a semantic plan was produced, not part of the
+/// occurrence identity. A deployment may require trusted/fresh resolution provenance
+/// at a later admission boundary without making timestamps or resolver versions alter
+/// the clinical occurrence itself.
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct AdministrationScheduleResolutionProvenanceV1 {
+    pub schema_version: u16,
+    pub schedule_plan_digest: StoredDigest,
+    pub resolver_id: String,
+    pub resolver_version: String,
+    pub generated_at_micros: i64,
+    pub source_schedule_evidence_digest: StoredDigest,
+    pub timezone_rules_evidence_digest: Option<StoredDigest>,
+}
+
+impl AdministrationScheduleResolutionProvenanceV1 {
+    pub fn validate_shape(&self) -> Result<(), OccurrenceError> {
+        if self.schema_version != 1 {
+            return Err(OccurrenceError::UnsupportedScheduleResolutionVersion(
+                self.schema_version,
+            ));
+        }
+        require_domain(
+            self.schedule_plan_digest,
+            DigestDomain::MedicationAdministrationSchedulePlan,
+        )?;
+        if self.resolver_id.trim().is_empty() {
+            return Err(OccurrenceError::MissingResolverId);
+        }
+        if self.resolver_version.trim().is_empty() {
+            return Err(OccurrenceError::MissingResolverVersion);
+        }
+        require_domain(
+            self.source_schedule_evidence_digest,
+            DigestDomain::EvidenceCapsule,
+        )?;
+        if let Some(timezone) = self.timezone_rules_evidence_digest {
+            require_domain(timezone, DigestDomain::EvidenceCapsule)?;
+        }
+        Ok(())
+    }
+
+    pub fn verified_digest(&self) -> Result<VerifiedDigest, OccurrenceError> {
+        self.validate_shape()?;
+        hash_json(
+            DigestDomain::MedicationAdministrationScheduleResolution,
+            SCHEDULE_RESOLUTION_TAG,
+            self,
+        )
+    }
+}
+
+/// Explicit PRN intent evidence. A new intended PRN dose gets a new nonzero nonce.
+/// `intent_created_at_micros` and reason evidence remain provenance of that intent;
+/// occurrence identity uses the nonce with exact order/subject/dosage lineage rather
+/// than wall-clock rounding or the full provenance digest.
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]
 pub struct PrnAdministrationIntentV1 {
@@ -131,7 +178,6 @@ pub struct PrnAdministrationIntentV1 {
     pub dosage_index: u32,
     pub intent_nonce: [u8; 32],
     pub intent_created_at_micros: i64,
-    /// Optional evidence for the clinical reason/trigger that caused this PRN intent.
     pub reason_evidence_digest: Option<StoredDigest>,
 }
 
@@ -171,18 +217,14 @@ impl PrnAdministrationIntentV1 {
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 pub enum AdministrationOccurrenceKindV1 {
-    /// Exact MedicationRequest + dosage index + subject binding defines one occurrence.
     OneTime,
-    /// Exact bounded schedule plan + ordinal/window defines the occurrence.
     Scheduled {
-        schedule_plan_digest: StoredDigest,
         occurrence_ordinal: u64,
         intended_start_micros: i64,
         intended_end_micros: Option<i64>,
     },
-    /// Exact PRN intent artifact defines the occurrence.
     AsNeeded {
-        prn_intent_digest: StoredDigest,
+        intent_nonce: [u8; 32],
     },
 }
 
@@ -214,24 +256,18 @@ impl MedicationAdministrationOccurrenceV1 {
         match self.kind {
             AdministrationOccurrenceKindV1::OneTime => {}
             AdministrationOccurrenceKindV1::Scheduled {
-                schedule_plan_digest,
                 intended_start_micros,
                 intended_end_micros,
                 ..
             } => {
-                require_domain(
-                    schedule_plan_digest,
-                    DigestDomain::MedicationAdministrationSchedulePlan,
-                )?;
                 if intended_end_micros.is_some_and(|end| end < intended_start_micros) {
                     return Err(OccurrenceError::OccurrenceEndsBeforeStart);
                 }
             }
-            AdministrationOccurrenceKindV1::AsNeeded { prn_intent_digest } => {
-                require_domain(
-                    prn_intent_digest,
-                    DigestDomain::MedicationAdministrationPrnIntent,
-                )?;
+            AdministrationOccurrenceKindV1::AsNeeded { intent_nonce } => {
+                if intent_nonce == [0u8; 32] {
+                    return Err(OccurrenceError::ZeroPrnIntentNonce);
+                }
             }
         }
         Ok(())
@@ -247,7 +283,6 @@ impl MedicationAdministrationOccurrenceV1 {
     }
 }
 
-/// Derive the unique v1 occurrence for a one-time dosage instruction.
 pub fn derive_one_time_occurrence(
     medication: &MedicationRequestArtifact,
     patient_subject_binding_evidence_digest: VerifiedDigest,
@@ -257,7 +292,7 @@ pub fn derive_one_time_occurrence(
     patient_subject_binding_evidence_digest
         .require_domain(DigestDomain::PatientSubjectBindingEvidence)?;
     let dosage = dosage(medication, dosage_index)?;
-    if !matches!(dosage.timing, AdministrationTiming::OneTime) {
+    if !matches!(&dosage.timing, AdministrationTiming::OneTime) {
         return Err(OccurrenceError::TimingKindMismatch);
     }
     let occurrence = MedicationAdministrationOccurrenceV1 {
@@ -271,9 +306,6 @@ pub fn derive_one_time_occurrence(
     Ok(occurrence)
 }
 
-/// Validate a bounded schedule plan against the exact medication/dosage/subject and
-/// derive one occurrence by stable ordinal. The schedule plan itself, rather than a
-/// local clock calculation, commits to the intended UTC window.
 pub fn derive_scheduled_occurrence(
     medication: &MedicationRequestArtifact,
     patient_subject_binding_evidence_digest: VerifiedDigest,
@@ -285,7 +317,7 @@ pub fn derive_scheduled_occurrence(
     patient_subject_binding_evidence_digest
         .require_domain(DigestDomain::PatientSubjectBindingEvidence)?;
     let dosage = dosage(medication, dosage_index)?;
-    if !matches!(dosage.timing, AdministrationTiming::Scheduled { .. }) {
+    if !matches!(&dosage.timing, AdministrationTiming::Scheduled { .. }) {
         return Err(OccurrenceError::TimingKindMismatch);
     }
 
@@ -297,7 +329,6 @@ pub fn derive_scheduled_occurrence(
     {
         return Err(OccurrenceError::SchedulePlanLineageMismatch);
     }
-    let plan_digest = plan.verified_digest()?;
     let window = plan
         .occurrences
         .iter()
@@ -310,7 +341,6 @@ pub fn derive_scheduled_occurrence(
         patient_subject_binding_evidence_digest: patient_subject_binding_evidence_digest.stored(),
         dosage_index,
         kind: AdministrationOccurrenceKindV1::Scheduled {
-            schedule_plan_digest: plan_digest.stored(),
             occurrence_ordinal,
             intended_start_micros: window.intended_start_micros,
             intended_end_micros: window.intended_end_micros,
@@ -320,8 +350,6 @@ pub fn derive_scheduled_occurrence(
     Ok(occurrence)
 }
 
-/// Derive a PRN occurrence from an explicit intent artifact. `execution_at_micros` is
-/// used only for a bounded future-clock check; it is not part of occurrence identity.
 pub fn derive_prn_occurrence(
     medication: &MedicationRequestArtifact,
     patient_subject_binding_evidence_digest: VerifiedDigest,
@@ -333,7 +361,7 @@ pub fn derive_prn_occurrence(
     patient_subject_binding_evidence_digest
         .require_domain(DigestDomain::PatientSubjectBindingEvidence)?;
     let dosage = dosage(medication, dosage_index)?;
-    if !matches!(dosage.timing, AdministrationTiming::AsNeeded { .. }) {
+    if !matches!(&dosage.timing, AdministrationTiming::AsNeeded { .. }) {
         return Err(OccurrenceError::TimingKindMismatch);
     }
 
@@ -350,14 +378,14 @@ pub fn derive_prn_occurrence(
     {
         return Err(OccurrenceError::PrnIntentFromFuture);
     }
-    let intent_digest = intent.verified_digest()?;
+
     let occurrence = MedicationAdministrationOccurrenceV1 {
         schema_version: 1,
         medication_artifact_digest: medication_digest.stored(),
         patient_subject_binding_evidence_digest: patient_subject_binding_evidence_digest.stored(),
         dosage_index,
         kind: AdministrationOccurrenceKindV1::AsNeeded {
-            prn_intent_digest: intent_digest.stored(),
+            intent_nonce: intent.intent_nonce,
         },
     };
     occurrence.validate_shape()?;
@@ -415,15 +443,15 @@ fn hash_json<T: Serialize>(
 pub enum OccurrenceError {
     #[error("unsupported administration schedule-plan version {0}")]
     UnsupportedSchedulePlanVersion(u16),
+    #[error("unsupported administration schedule-resolution version {0}")]
+    UnsupportedScheduleResolutionVersion(u16),
     #[error("unsupported PRN administration intent version {0}")]
     UnsupportedPrnIntentVersion(u16),
     #[error("unsupported administration occurrence version {0}")]
     UnsupportedOccurrenceVersion(u16),
-    #[error("administration schedule plan ID is required")]
-    MissingPlanId,
     #[error("administration schedule plan cannot be empty")]
     EmptySchedulePlan,
-    #[error("administration schedule plan exceeds bounded segment size")]
+    #[error("administration schedule plan exceeds bounded v1 size")]
     SchedulePlanTooLarge,
     #[error("schedule occurrence ordinals must be strictly increasing")]
     ScheduleOrdinalsNotStrictlyIncreasing,
@@ -431,31 +459,35 @@ pub enum OccurrenceError {
     ScheduleStartsNotStrictlyIncreasing,
     #[error("administration occurrence ends before it starts")]
     OccurrenceEndsBeforeStart,
+    #[error("schedule resolver ID is required")]
+    MissingResolverId,
+    #[error("schedule resolver version is required")]
+    MissingResolverVersion,
     #[error("PRN administration intent nonce cannot be zero")]
     ZeroPrnIntentNonce,
-    #[error("PRN administration intent appears too far in the future")]
-    PrnIntentFromFuture,
-    #[error("medication dosage index overflow")]
-    DosageIndexOverflow,
-    #[error("medication dosage index is out of bounds")]
-    DosageIndexOutOfBounds,
-    #[error("requested occurrence kind does not match the exact dosage timing kind")]
+    #[error("dosage timing does not match requested occurrence kind")]
     TimingKindMismatch,
-    #[error("resolved schedule plan does not match medication/dosage/subject lineage")]
+    #[error("schedule plan does not match medication/dosage/patient lineage")]
     SchedulePlanLineageMismatch,
-    #[error("requested scheduled occurrence ordinal is absent from the exact plan segment")]
+    #[error("requested scheduled occurrence ordinal is absent from the plan")]
     ScheduledOccurrenceMissing,
-    #[error("PRN intent does not match medication/dosage/subject lineage")]
+    #[error("PRN intent does not match medication/dosage/patient lineage")]
     PrnIntentLineageMismatch,
-    #[error("medication artifact error: {0}")]
+    #[error("PRN intent timestamp is implausibly in the future")]
+    PrnIntentFromFuture,
+    #[error("dosage index cannot be represented on this platform")]
+    DosageIndexOverflow,
+    #[error("dosage index is outside the medication order")]
+    DosageIndexOutOfBounds,
+    #[error("medication artifact validation failed: {0}")]
     MedicationArtifact(String),
-    #[error("occurrence serialization failed: {0}")]
-    Serialization(String),
-    #[error("digest domain mismatch: expected {expected:?}, got {actual:?}")]
+    #[error("stored digest is in wrong domain: expected {expected:?}, got {actual:?}")]
     WrongDigestDomain {
         expected: DigestDomain,
         actual: DigestDomain,
     },
+    #[error("occurrence artifact serialization failed: {0}")]
+    Serialization(String),
     #[error(transparent)]
     Integrity(#[from] IntegrityError),
 }
@@ -473,103 +505,123 @@ mod tests {
         }
     }
 
-    #[test]
-    fn schedule_plan_rejects_duplicate_or_backwards_ordinals() {
-        let plan = AdministrationSchedulePlanSegmentV1 {
+    fn plan() -> AdministrationSchedulePlanSegmentV1 {
+        AdministrationSchedulePlanSegmentV1 {
             schema_version: 1,
-            plan_id: "plan-a".into(),
             medication_artifact_digest: stored(DigestDomain::MedicationRequestArtifact, 1),
             patient_subject_binding_evidence_digest: stored(
                 DigestDomain::PatientSubjectBindingEvidence,
                 2,
             ),
             dosage_index: 0,
-            segment_index: 0,
-            source_schedule_evidence_digest: stored(DigestDomain::EvidenceCapsule, 3),
-            generated_at_micros: 10,
             occurrences: vec![
                 ScheduledOccurrenceWindowV1 {
-                    occurrence_ordinal: 1,
-                    intended_start_micros: 100,
+                    occurrence_ordinal: 10,
+                    intended_start_micros: 1_000,
                     intended_end_micros: None,
                 },
                 ScheduledOccurrenceWindowV1 {
-                    occurrence_ordinal: 1,
-                    intended_start_micros: 200,
-                    intended_end_micros: None,
+                    occurrence_ordinal: 11,
+                    intended_start_micros: 2_000,
+                    intended_end_micros: Some(2_100),
                 },
             ],
-        };
-        assert_eq!(
-            plan.validate_shape(),
-            Err(OccurrenceError::ScheduleOrdinalsNotStrictlyIncreasing)
-        );
+        }
     }
 
     #[test]
-    fn occurrence_identity_does_not_include_administration_id_or_activation() {
-        let occurrence = MedicationAdministrationOccurrenceV1 {
+    fn semantic_schedule_digest_is_stable_across_resolution_provenance() {
+        let plan = plan();
+        let plan_digest = plan.verified_digest().unwrap();
+        let first = AdministrationScheduleResolutionProvenanceV1 {
             schema_version: 1,
-            medication_artifact_digest: stored(DigestDomain::MedicationRequestArtifact, 1),
-            patient_subject_binding_evidence_digest: stored(
-                DigestDomain::PatientSubjectBindingEvidence,
-                2,
-            ),
-            dosage_index: 0,
-            kind: AdministrationOccurrenceKindV1::OneTime,
-        };
-        let first = occurrence.verified_digest().unwrap();
-        let second = occurrence.verified_digest().unwrap();
-        assert_eq!(first, second);
-    }
-
-    #[test]
-    fn prn_nonce_changes_occurrence_identity() {
-        let first = PrnAdministrationIntentV1 {
-            schema_version: 1,
-            medication_artifact_digest: stored(DigestDomain::MedicationRequestArtifact, 1),
-            patient_subject_binding_evidence_digest: stored(
-                DigestDomain::PatientSubjectBindingEvidence,
-                2,
-            ),
-            dosage_index: 0,
-            intent_nonce: [3; 32],
-            intent_created_at_micros: 10,
-            reason_evidence_digest: None,
-        };
-        let mut second = first.clone();
-        second.intent_nonce = [4; 32];
-        assert_ne!(
-            first.verified_digest().unwrap(),
-            second.verified_digest().unwrap()
-        );
-    }
-
-    #[test]
-    fn schedule_plan_digest_commits_to_resolved_window() {
-        let first = AdministrationSchedulePlanSegmentV1 {
-            schema_version: 1,
-            plan_id: "plan-a".into(),
-            medication_artifact_digest: stored(DigestDomain::MedicationRequestArtifact, 1),
-            patient_subject_binding_evidence_digest: stored(
-                DigestDomain::PatientSubjectBindingEvidence,
-                2,
-            ),
-            dosage_index: 0,
-            segment_index: 0,
-            source_schedule_evidence_digest: stored(DigestDomain::EvidenceCapsule, 3),
+            schedule_plan_digest: plan_digest.stored(),
+            resolver_id: "resolver-a".into(),
+            resolver_version: "1.0".into(),
             generated_at_micros: 10,
-            occurrences: vec![ScheduledOccurrenceWindowV1 {
-                occurrence_ordinal: 0,
-                intended_start_micros: 100,
+            source_schedule_evidence_digest: stored(DigestDomain::EvidenceCapsule, 3),
+            timezone_rules_evidence_digest: None,
+        };
+        let second = AdministrationScheduleResolutionProvenanceV1 {
+            schema_version: 1,
+            schedule_plan_digest: plan_digest.stored(),
+            resolver_id: "resolver-b".into(),
+            resolver_version: "2.0".into(),
+            generated_at_micros: 20,
+            source_schedule_evidence_digest: stored(DigestDomain::EvidenceCapsule, 4),
+            timezone_rules_evidence_digest: Some(stored(DigestDomain::EvidenceCapsule, 5)),
+        };
+        assert_eq!(plan.verified_digest().unwrap(), plan_digest);
+        assert_ne!(first.verified_digest().unwrap(), second.verified_digest().unwrap());
+    }
+
+    #[test]
+    fn scheduled_window_change_changes_occurrence_identity() {
+        let first = MedicationAdministrationOccurrenceV1 {
+            schema_version: 1,
+            medication_artifact_digest: stored(DigestDomain::MedicationRequestArtifact, 1),
+            patient_subject_binding_evidence_digest: stored(
+                DigestDomain::PatientSubjectBindingEvidence,
+                2,
+            ),
+            dosage_index: 0,
+            kind: AdministrationOccurrenceKindV1::Scheduled {
+                occurrence_ordinal: 10,
+                intended_start_micros: 1_000,
                 intended_end_micros: None,
-            }],
+            },
         };
         let mut second = first.clone();
-        second.occurrences[0].intended_start_micros = 101;
-        assert_ne!(
-            first.verified_digest().unwrap(),
-            second.verified_digest().unwrap()
+        second.kind = AdministrationOccurrenceKindV1::Scheduled {
+            occurrence_ordinal: 10,
+            intended_start_micros: 1_001,
+            intended_end_micros: None,
+        };
+        assert_ne!(first.verified_digest().unwrap(), second.verified_digest().unwrap());
+    }
+
+    #[test]
+    fn same_prn_nonce_has_stable_occurrence_identity() {
+        let first = MedicationAdministrationOccurrenceV1 {
+            schema_version: 1,
+            medication_artifact_digest: stored(DigestDomain::MedicationRequestArtifact, 1),
+            patient_subject_binding_evidence_digest: stored(
+                DigestDomain::PatientSubjectBindingEvidence,
+                2,
+            ),
+            dosage_index: 0,
+            kind: AdministrationOccurrenceKindV1::AsNeeded {
+                intent_nonce: [9; 32],
+            },
+        };
+        let second = first.clone();
+        assert_eq!(first.verified_digest().unwrap(), second.verified_digest().unwrap());
+    }
+
+    #[test]
+    fn zero_prn_nonce_fails_closed() {
+        let value = MedicationAdministrationOccurrenceV1 {
+            schema_version: 1,
+            medication_artifact_digest: stored(DigestDomain::MedicationRequestArtifact, 1),
+            patient_subject_binding_evidence_digest: stored(
+                DigestDomain::PatientSubjectBindingEvidence,
+                2,
+            ),
+            dosage_index: 0,
+            kind: AdministrationOccurrenceKindV1::AsNeeded {
+                intent_nonce: [0; 32],
+            },
+        };
+        assert_eq!(value.validate_shape(), Err(OccurrenceError::ZeroPrnIntentNonce));
+    }
+
+    #[test]
+    fn schedule_ordinals_must_be_strictly_increasing() {
+        let mut value = plan();
+        value.occurrences[1].occurrence_ordinal = 10;
+        assert_eq!(
+            value.validate_shape(),
+            Err(OccurrenceError::ScheduleOrdinalsNotStrictlyIncreasing)
         );
     }
 }
