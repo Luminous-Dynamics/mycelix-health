@@ -10,4 +10,5 @@ serde = { workspace = true }
 thiserror = { workspace = true }
 holo_hash = { workspace = true }
 mycelix-clinical-integrity = { path = "../clinical-integrity" }
+mycelix-clinical-causality = { path = "../clinical-causality" }
 clinical_causality_integrity = { path = "../../zomes/clinical_causality/integrity" }
