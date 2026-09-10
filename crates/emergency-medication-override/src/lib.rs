@@ -12,7 +12,7 @@
 //! `Blocked` safety evidence is outside this v1 path.
 
 use mycelix_clinical_authority::{
-    AuthorityPermit, AuthorityPurpose, EvidenceDigest, JurisdictionCode, PrincipalBinding,
+    AuthorityPermit, AuthorityPurpose, JurisdictionCode, PrincipalBinding,
 };
 use mycelix_clinical_integrity::{
     hash_canonical_bytes, DigestDomain, IntegrityError, StoredDigest, VerifiedDigest,
@@ -215,8 +215,10 @@ impl EmergencyMedicationOverrideReceiptV1 {
             self.emergency_policy_digest,
             DigestDomain::EmergencyMedicationOverridePolicy,
         )?;
-        if matches!(self.safety_decision, AssessmentDecision::Cleared | AssessmentDecision::Blocked)
-        {
+        if matches!(
+            self.safety_decision,
+            AssessmentDecision::Cleared | AssessmentDecision::Blocked
+        ) {
             return Err(EmergencyOverrideError::AssessmentNotEligible(
                 self.safety_decision,
             ));
@@ -418,7 +420,10 @@ fn verify_freshness(
     Ok(())
 }
 
-fn require_domain(digest: StoredDigest, expected: DigestDomain) -> Result<(), EmergencyOverrideError> {
+fn require_domain(
+    digest: StoredDigest,
+    expected: DigestDomain,
+) -> Result<(), EmergencyOverrideError> {
     digest.validate_shape()?;
     if digest.domain != expected {
         return Err(EmergencyOverrideError::WrongDigestDomain {
@@ -514,6 +519,7 @@ pub enum EmergencyOverrideError {
 mod tests {
     use super::*;
     use mycelix_clinical_integrity::DigestAlgorithm;
+    use mycelix_medication_safety::SafetyContextKind;
 
     fn stored(domain: DigestDomain, seed: u8) -> StoredDigest {
         StoredDigest {
@@ -547,7 +553,7 @@ mod tests {
             safety_policy_digest: stored(DigestDomain::MedicationSafetyPolicy, 8),
             safety_decision: decision,
             safety_reasons: vec![AssessmentReason::MissingContext(
-                mycelix_medication_safety_assessment::SafetyContextKind::AllergiesIntolerances,
+                SafetyContextKind::AllergiesIntolerances,
             )],
             safety_assessed_at_micros: 20,
             authority_policy_digest: stored(DigestDomain::AuthorityPolicy, 9),
