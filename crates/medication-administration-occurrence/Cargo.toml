@@ -1,0 +1,14 @@
+[package]
+name = "mycelix-medication-administration-occurrence"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Computable medication administration occurrence identities for Mycelix-Health"
+
+[dependencies]
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+mycelix-clinical-integrity = { path = "../clinical-integrity" }
+mycelix-fhir-medication-semantics = { path = "../fhir-medication-semantics" }
+mycelix-medication-semantics = { path = "../medication-semantics" }
