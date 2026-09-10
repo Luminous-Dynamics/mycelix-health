@@ -30,6 +30,86 @@ pub struct MedicationActivationRootConfig {
     pub max_verifier_authorization_duration_micros: i64,
 }
 
+/// Privacy-minimized activation payload independently digestible before a root
+/// authorization exists. It carries no patient name, medication name, dosage text,
+/// or raw clinical evidence.
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+#[serde(deny_unknown_fields)]
+pub struct MedicationActivationAttestationV1 {
+    pub schema_version: u16,
+    pub activation_id: String,
+    pub medication_artifact_digest: StoredDigest,
+    pub activation_receipt_digest: StoredDigest,
+    pub safety_context_digest: StoredDigest,
+    pub safety_trust_receipt_digest: StoredDigest,
+    pub authority_policy_digest: StoredDigest,
+    pub safety_policy_digest: StoredDigest,
+    pub safety_trust_policy_digest: StoredDigest,
+    pub workflow_policy_digest: StoredDigest,
+}
+
+impl MedicationActivationAttestationV1 {
+    pub fn validate(&self) -> ExternResult<ValidateCallbackResult> {
+        if self.schema_version != 1 {
+            return invalid("Unsupported medication activation attestation version");
+        }
+        if self.activation_id.trim().is_empty() {
+            return invalid("Qualified medication activation ID is required");
+        }
+        require_digest_domain(
+            self.medication_artifact_digest,
+            DigestDomain::MedicationRequestArtifact,
+        )?;
+        require_digest_domain(
+            self.activation_receipt_digest,
+            DigestDomain::MedicationActivationReceipt,
+        )?;
+        require_digest_domain(
+            self.safety_context_digest,
+            DigestDomain::MedicationSafetyContext,
+        )?;
+        require_digest_domain(
+            self.safety_trust_receipt_digest,
+            DigestDomain::MedicationSafetyTrustReceipt,
+        )?;
+        require_digest_domain(self.authority_policy_digest, DigestDomain::AuthorityPolicy)?;
+        require_digest_domain(
+            self.safety_policy_digest,
+            DigestDomain::MedicationSafetyPolicy,
+        )?;
+        require_digest_domain(
+            self.safety_trust_policy_digest,
+            DigestDomain::MedicationSafetyTrustPolicy,
+        )?;
+        require_digest_domain(self.workflow_policy_digest, DigestDomain::WorkflowPolicy)?;
+        Ok(ValidateCallbackResult::Valid)
+    }
+
+    pub fn digest(&self) -> ExternResult<StoredDigest> {
+        let shape = self.validate()?;
+        if !matches!(shape, ValidateCallbackResult::Valid) {
+            return Err(wasm_error!(WasmErrorInner::Guest(
+                "Cannot hash invalid medication activation attestation".to_string()
+            )));
+        }
+        let encoded = serde_json::to_vec(self).map_err(|error| {
+            wasm_error!(WasmErrorInner::Guest(format!(
+                "Failed to serialize medication activation attestation: {error}"
+            )))
+        })?;
+        let mut framed = Vec::with_capacity(ATTESTATION_SCHEMA_TAG.len() + 1 + encoded.len());
+        framed.extend_from_slice(ATTESTATION_SCHEMA_TAG);
+        framed.push(0);
+        framed.extend_from_slice(&encoded);
+        Ok(hash_canonical_bytes(
+            DigestDomain::MedicationActivationAttestation,
+            &framed,
+        )
+        .map_err(|error| wasm_error!(WasmErrorInner::Guest(error.to_string())))?
+        .stored())
+    }
+}
+
 /// Root-issued authorization for one exact activation receipt and one exact public
 /// attestation projection. This is deliberately not a reusable role grant.
 #[hdk_entry_helper]
@@ -47,21 +127,11 @@ pub struct MedicationActivationVerifierAuthorization {
     pub valid_until: Timestamp,
 }
 
-/// Privacy-minimized public attestation. It contains cryptographic identities and
-/// policy/evidence lineage, not patient names, medication names, dosage text, or raw
-/// clinical evidence. The exact activation receipt may remain encrypted/local.
+/// Root-authorized publication of the exact attestation proposal.
 #[hdk_entry_helper]
 #[derive(Clone, PartialEq)]
 pub struct QualifiedMedicationActivation {
-    pub activation_id: String,
-    pub medication_artifact_digest: StoredDigest,
-    pub activation_receipt_digest: StoredDigest,
-    pub safety_context_digest: StoredDigest,
-    pub safety_trust_receipt_digest: StoredDigest,
-    pub authority_policy_digest: StoredDigest,
-    pub safety_policy_digest: StoredDigest,
-    pub safety_trust_policy_digest: StoredDigest,
-    pub workflow_policy_digest: StoredDigest,
+    pub attestation: MedicationActivationAttestationV1,
     pub verifier_authorization_hash: ActionHash,
 }
 
@@ -153,7 +223,7 @@ fn validate_create_entry(
             validate_authorization_window(action.timestamp(), &authorization, &config)
         }
         EntryTypes::QualifiedMedicationActivation(activation) => {
-            let shape = validate_activation_shape(&activation)?;
+            let shape = activation.attestation.validate()?;
             if !matches!(shape, ValidateCallbackResult::Valid) {
                 return Ok(shape);
             }
@@ -225,93 +295,6 @@ fn validate_authorization_window(
     Ok(ValidateCallbackResult::Valid)
 }
 
-fn validate_activation_shape(
-    activation: &QualifiedMedicationActivation,
-) -> ExternResult<ValidateCallbackResult> {
-    if activation.activation_id.trim().is_empty() {
-        return invalid("Qualified medication activation ID is required");
-    }
-    require_digest_domain(
-        activation.medication_artifact_digest,
-        DigestDomain::MedicationRequestArtifact,
-    )?;
-    require_digest_domain(
-        activation.activation_receipt_digest,
-        DigestDomain::MedicationActivationReceipt,
-    )?;
-    require_digest_domain(
-        activation.safety_context_digest,
-        DigestDomain::MedicationSafetyContext,
-    )?;
-    require_digest_domain(
-        activation.safety_trust_receipt_digest,
-        DigestDomain::MedicationSafetyTrustReceipt,
-    )?;
-    require_digest_domain(
-        activation.authority_policy_digest,
-        DigestDomain::AuthorityPolicy,
-    )?;
-    require_digest_domain(
-        activation.safety_policy_digest,
-        DigestDomain::MedicationSafetyPolicy,
-    )?;
-    require_digest_domain(
-        activation.safety_trust_policy_digest,
-        DigestDomain::MedicationSafetyTrustPolicy,
-    )?;
-    require_digest_domain(
-        activation.workflow_policy_digest,
-        DigestDomain::WorkflowPolicy,
-    )?;
-    Ok(ValidateCallbackResult::Valid)
-}
-
-/// Compute the exact privacy-minimized attestation identity approved by a root.
-/// `verifier_authorization_hash` is excluded to avoid a circular dependency.
-pub fn activation_attestation_digest(
-    activation: &QualifiedMedicationActivation,
-) -> ExternResult<StoredDigest> {
-    let material = ActivationAttestationMaterial {
-        activation_id: &activation.activation_id,
-        medication_artifact_digest: activation.medication_artifact_digest,
-        activation_receipt_digest: activation.activation_receipt_digest,
-        safety_context_digest: activation.safety_context_digest,
-        safety_trust_receipt_digest: activation.safety_trust_receipt_digest,
-        authority_policy_digest: activation.authority_policy_digest,
-        safety_policy_digest: activation.safety_policy_digest,
-        safety_trust_policy_digest: activation.safety_trust_policy_digest,
-        workflow_policy_digest: activation.workflow_policy_digest,
-    };
-    let encoded = serde_json::to_vec(&material).map_err(|error| {
-        wasm_error!(WasmErrorInner::Guest(format!(
-            "Failed to serialize medication activation attestation: {error}"
-        )))
-    })?;
-    let mut framed = Vec::with_capacity(ATTESTATION_SCHEMA_TAG.len() + 1 + encoded.len());
-    framed.extend_from_slice(ATTESTATION_SCHEMA_TAG);
-    framed.push(0);
-    framed.extend_from_slice(&encoded);
-    Ok(hash_canonical_bytes(
-        DigestDomain::MedicationActivationAttestation,
-        &framed,
-    )
-    .map_err(|error| wasm_error!(WasmErrorInner::Guest(error.to_string())))?
-    .stored())
-}
-
-#[derive(Serialize)]
-struct ActivationAttestationMaterial<'a> {
-    activation_id: &'a str,
-    medication_artifact_digest: StoredDigest,
-    activation_receipt_digest: StoredDigest,
-    safety_context_digest: StoredDigest,
-    safety_trust_receipt_digest: StoredDigest,
-    authority_policy_digest: StoredDigest,
-    safety_policy_digest: StoredDigest,
-    safety_trust_policy_digest: StoredDigest,
-    workflow_policy_digest: StoredDigest,
-}
-
 fn validate_revocation_shape(
     revocation: &MedicationActivationRevocation,
 ) -> ExternResult<ValidateCallbackResult> {
@@ -353,17 +336,18 @@ fn require_exact_verifier_authorization(
     {
         return invalid("Qualified activation action timestamp falls outside authorization validity");
     }
-    if activation.activation_receipt_digest != authorization.activation_receipt_digest {
+    if activation.attestation.activation_receipt_digest != authorization.activation_receipt_digest {
         return invalid("Qualified activation receipt does not match root authorization");
     }
-    let actual_attestation_digest = activation_attestation_digest(activation)?;
+    let actual_attestation_digest = activation.attestation.digest()?;
     if actual_attestation_digest != authorization.activation_attestation_digest {
         return invalid("Qualified activation payload does not match root-authorized attestation");
     }
-    if activation.authority_policy_digest != authorization.authority_policy_digest
-        || activation.safety_policy_digest != authorization.safety_policy_digest
-        || activation.safety_trust_policy_digest != authorization.safety_trust_policy_digest
-        || activation.workflow_policy_digest != authorization.workflow_policy_digest
+    if activation.attestation.authority_policy_digest != authorization.authority_policy_digest
+        || activation.attestation.safety_policy_digest != authorization.safety_policy_digest
+        || activation.attestation.safety_trust_policy_digest
+            != authorization.safety_trust_policy_digest
+        || activation.attestation.workflow_policy_digest != authorization.workflow_policy_digest
     {
         return invalid("Qualified activation policy set does not match root authorization");
     }
@@ -377,7 +361,7 @@ fn require_revocation_authority(
     let activation_record = must_get_valid_record(revocation.activation_hash.clone())?;
     let activation: QualifiedMedicationActivation =
         decode_entry(&activation_record, "qualified medication activation")?;
-    if activation.activation_receipt_digest != revocation.activation_receipt_digest {
+    if activation.attestation.activation_receipt_digest != revocation.activation_receipt_digest {
         return invalid("Activation revocation receipt digest does not match target activation");
     }
 
@@ -406,7 +390,8 @@ fn validate_create_link(
             let revocation: MedicationActivationRevocation =
                 decode_entry(&revocation_record, "medication activation revocation")?;
             if revocation.activation_hash != activation_hash
-                || revocation.activation_receipt_digest != activation.activation_receipt_digest
+                || revocation.activation_receipt_digest
+                    != activation.attestation.activation_receipt_digest
             {
                 return invalid(
                     "Activation-revocation link target references another activation lineage",
@@ -516,26 +501,9 @@ mod tests {
         hash_canonical_bytes(domain, &[seed]).unwrap().stored()
     }
 
-    fn authorization() -> MedicationActivationVerifierAuthorization {
-        MedicationActivationVerifierAuthorization {
-            authorization_id: "auth-a".into(),
-            grantee: AgentPubKey::from_raw_36(vec![1; 36]),
-            activation_receipt_digest: digest(DigestDomain::MedicationActivationReceipt, 1),
-            activation_attestation_digest: digest(
-                DigestDomain::MedicationActivationAttestation,
-                2,
-            ),
-            authority_policy_digest: digest(DigestDomain::AuthorityPolicy, 3),
-            safety_policy_digest: digest(DigestDomain::MedicationSafetyPolicy, 4),
-            safety_trust_policy_digest: digest(DigestDomain::MedicationSafetyTrustPolicy, 5),
-            workflow_policy_digest: digest(DigestDomain::WorkflowPolicy, 6),
-            valid_from: Timestamp::from_micros(10),
-            valid_until: Timestamp::from_micros(100),
-        }
-    }
-
-    fn activation() -> QualifiedMedicationActivation {
-        QualifiedMedicationActivation {
+    fn attestation() -> MedicationActivationAttestationV1 {
+        MedicationActivationAttestationV1 {
+            schema_version: 1,
             activation_id: "activation-a".into(),
             medication_artifact_digest: digest(DigestDomain::MedicationRequestArtifact, 7),
             activation_receipt_digest: digest(DigestDomain::MedicationActivationReceipt, 8),
@@ -545,7 +513,22 @@ mod tests {
             safety_policy_digest: digest(DigestDomain::MedicationSafetyPolicy, 12),
             safety_trust_policy_digest: digest(DigestDomain::MedicationSafetyTrustPolicy, 13),
             workflow_policy_digest: digest(DigestDomain::WorkflowPolicy, 14),
-            verifier_authorization_hash: ActionHash::from_raw_36(vec![15; 36]),
+        }
+    }
+
+    fn authorization() -> MedicationActivationVerifierAuthorization {
+        let attestation = attestation();
+        MedicationActivationVerifierAuthorization {
+            authorization_id: "auth-a".into(),
+            grantee: AgentPubKey::from_raw_36(vec![1; 36]),
+            activation_receipt_digest: attestation.activation_receipt_digest,
+            activation_attestation_digest: attestation.digest().unwrap(),
+            authority_policy_digest: attestation.authority_policy_digest,
+            safety_policy_digest: attestation.safety_policy_digest,
+            safety_trust_policy_digest: attestation.safety_trust_policy_digest,
+            workflow_policy_digest: attestation.workflow_policy_digest,
+            valid_from: Timestamp::from_micros(10),
+            valid_until: Timestamp::from_micros(100),
         }
     }
 
@@ -575,13 +558,10 @@ mod tests {
 
     #[test]
     fn attestation_digest_changes_when_safety_policy_changes() {
-        let a = activation();
-        let mut b = activation();
+        let a = attestation();
+        let mut b = attestation();
         b.safety_policy_digest = digest(DigestDomain::MedicationSafetyPolicy, 99);
-        assert_ne!(
-            activation_attestation_digest(&a).unwrap(),
-            activation_attestation_digest(&b).unwrap()
-        );
+        assert_ne!(a.digest().unwrap(), b.digest().unwrap());
     }
 
     #[test]
