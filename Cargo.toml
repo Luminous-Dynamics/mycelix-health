@@ -58,6 +58,7 @@ members = [
     "crates/medication-activation-receipt",
     "crates/medication-safety-assessment",
     "crates/emergency-medication-override",
+    "crates/medication-activation-state",
 
     # ── Tier 3: Behavioral Health (restored 2026-03-26) ──
     "zomes/mental_health/integrity",
