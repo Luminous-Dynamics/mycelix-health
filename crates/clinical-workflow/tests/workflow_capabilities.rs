@@ -7,15 +7,18 @@ use mycelix_clinical_quarantine::{
     ArtifactDigest, CommitmentScheme, DigestAlgorithm, OpaqueCommitment, QuarantineEvent,
     QuarantineReasonCode, QuarantineScope, ResolutionDisposition,
 };
-use mycelix_clinical_semantics::{CodeableConcept, Coding, Quantity, Ratio, SubjectRef, UCUM_SYSTEM};
 use mycelix_clinical_workflow::{
-    authorize_medication_activation, authorize_quarantine_resolution, hash_medication_order,
+    authorize_quarantine_resolution, authorize_resolved_medication_activation,
     hash_quarantine_event, WorkflowError, WorkflowPolicyV1,
 };
-use mycelix_medication_semantics::{
-    AdministrationTiming, DosageInstruction, DoseAmount, MedicationOrder, MedicationOrderProvenance,
-    MedicationRequestIntent, MedicationRequestStatus, RequesterAuthorityRef,
+use mycelix_fhir_medication_semantics::{
+    project_active_medication_request_strict, MedicationRequestArtifact,
 };
+use mycelix_provider_principal::{
+    ExternalIdentifier, ExternalReferenceBinding, ExternalResourceKey,
+    VerifiedProviderPrincipalBinding,
+};
+use serde_json::{json, Value};
 
 fn principal(byte: u8) -> PrincipalBinding {
     PrincipalBinding([byte; 32])
@@ -91,75 +94,89 @@ fn authority_for(
         .expect("authority should be granted")
 }
 
-fn concept(system: &str, code: &str) -> CodeableConcept {
-    CodeableConcept {
-        coding: vec![Coding {
-            system: system.into(),
-            code: code.into(),
-            display: None,
-            version: None,
-        }],
-        text: None,
-    }
+fn provider_digest(seed: u8) -> VerifiedDigest {
+    hash_canonical_bytes(DigestDomain::ClinicalArtifact, &[seed]).unwrap()
 }
 
-fn quantity(value: f64, code: &str) -> Quantity {
-    Quantity {
-        value,
-        display_unit: Some(code.into()),
-        system: UCUM_SYSTEM.into(),
-        code: code.into(),
-    }
-}
-
-fn medication_order(id: &str) -> MedicationOrder {
-    MedicationOrder {
-        order_id: id.into(),
-        subject: SubjectRef {
-            resource_type: "Patient".into(),
-            id: "patient-a".into(),
-        },
-        medication: concept("http://www.nlm.nih.gov/research/umls/rxnorm", "860975"),
-        product_strength: Some(Ratio {
-            numerator: quantity(500.0, "mg"),
-            denominator: quantity(1.0, "{tablet}"),
-        }),
-        status: MedicationRequestStatus::Active,
-        intent: MedicationRequestIntent::Order,
-        dosage: vec![DosageInstruction {
-            sequence: Some(1),
-            narrative_sig: Some("Take one tablet twice daily".into()),
-            patient_instruction: None,
-            timing: AdministrationTiming::Scheduled {
-                frequency: 2,
-                period: quantity(1.0, "d"),
-            },
-            route: concept("http://snomed.info/sct", "26643006"),
-            method: None,
-            site: None,
-            dose: DoseAmount::Quantity(quantity(1.0, "{tablet}")),
-            rate: None,
-            max_dose_per_period: Some(Ratio {
-                numerator: quantity(2.0, "{tablet}"),
-                denominator: quantity(1.0, "d"),
-            }),
-            max_dose_per_administration: Some(quantity(1.0, "{tablet}")),
-            max_dose_per_lifetime: None,
-        }],
-        dispense_quantity: Some(quantity(60.0, "{tablet}")),
-        refills_authorized: Some(1),
-        requester: Some(RequesterAuthorityRef {
-            requester_reference: "Practitioner/123".into(),
-            credential_reference: Some("mycelix:credential:abc".into()),
-        }),
-        authored_at_micros: Some(1),
-        provenance: MedicationOrderProvenance {
+fn provider_binding(p: PrincipalBinding) -> VerifiedProviderPrincipalBinding {
+    VerifiedProviderPrincipalBinding::from_verified_provider_record(
+        p,
+        vec![ExternalReferenceBinding {
             source_system: "https://ehr.example/fhir".into(),
-            source_resource_id: id.into(),
-            source_version: Some("1".into()),
-            recorded_at_micros: 1,
+            resource: ExternalResourceKey {
+                resource_type: "Practitioner".into(),
+                id: "prac-1".into(),
+            },
+        }],
+        vec![ExternalIdentifier {
+            system: "http://hl7.org/fhir/sid/us-npi".into(),
+            value: "1234567893".into(),
+        }],
+        0,
+        Some(10_000_000_000),
+        None,
+        provider_digest(21),
+        provider_digest(22),
+        provider_digest(23),
+    )
+    .unwrap()
+}
+
+fn medication_request(id: &str) -> Value {
+    json!({
+        "resourceType": "MedicationRequest",
+        "id": id,
+        "status": "active",
+        "intent": "order",
+        "medicationCodeableConcept": {
+            "coding": [{
+                "system": "http://www.nlm.nih.gov/research/umls/rxnorm",
+                "code": "860975"
+            }]
         },
-    }
+        "subject": { "reference": "Patient/patient-a" },
+        "requester": {
+            "reference": "Practitioner/prac-1",
+            "type": "Practitioner",
+            "identifier": {
+                "system": "http://hl7.org/fhir/sid/us-npi",
+                "value": "1234567893"
+            }
+        },
+        "dosageInstruction": [{
+            "sequence": 1,
+            "text": "Take one tablet twice daily",
+            "timing": {
+                "repeat": { "frequency": 2, "period": 1, "periodUnit": "d" }
+            },
+            "route": {
+                "coding": [{"system": "http://snomed.info/sct", "code": "26643006"}]
+            },
+            "doseAndRate": [{
+                "doseQuantity": {
+                    "value": 1,
+                    "system": "http://unitsofmeasure.org",
+                    "code": "{tablet}"
+                }
+            }]
+        }]
+    })
+}
+
+fn medication_artifact(
+    id: &str,
+    p: PrincipalBinding,
+    resolved_at: i64,
+) -> MedicationRequestArtifact {
+    let bindings = vec![provider_binding(p)];
+    project_active_medication_request_strict(
+        &medication_request(id),
+        "patient-a",
+        "https://ehr.example/fhir",
+        resolved_at,
+        &bindings,
+    )
+    .unwrap()
 }
 
 fn expect_workflow_error<T>(result: Result<T, WorkflowError>) -> WorkflowError {
@@ -170,13 +187,13 @@ fn expect_workflow_error<T>(result: Result<T, WorkflowError>) -> WorkflowError {
 }
 
 #[test]
-fn medication_authority_cannot_cross_order_boundary() {
+fn medication_authority_cannot_cross_artifact_boundary() {
     let p = principal(1);
     let policy = policy_digest(b"prescribing-policy-v1");
-    let order_a = medication_order("order-a");
-    let order_b = medication_order("order-b");
+    let artifact_a = medication_artifact("order-a", p, 100);
+    let artifact_b = medication_artifact("order-b", p, 100);
     let authority = authority_for(
-        hash_medication_order(&order_a).unwrap(),
+        artifact_a.verified_digest().unwrap(),
         policy,
         AuthorityPurpose::Prescribe,
         p,
@@ -184,8 +201,8 @@ fn medication_authority_cannot_cross_order_boundary() {
         100,
     );
 
-    let error = expect_workflow_error(authorize_medication_activation(
-        &order_b,
+    let error = expect_workflow_error(authorize_resolved_medication_activation(
+        &artifact_b,
         authority,
         policy,
         &workflow_policy(),
@@ -200,9 +217,9 @@ fn medication_authority_cannot_cross_order_boundary() {
 fn clinical_review_authority_cannot_be_replayed_as_prescribing() {
     let p = principal(2);
     let policy = policy_digest(b"review-policy-v1");
-    let order = medication_order("order-a");
+    let artifact = medication_artifact("order-a", p, 100);
     let authority = authority_for(
-        hash_medication_order(&order).unwrap(),
+        artifact.verified_digest().unwrap(),
         policy,
         AuthorityPurpose::ClinicalReview,
         p,
@@ -210,8 +227,8 @@ fn clinical_review_authority_cannot_be_replayed_as_prescribing() {
         100,
     );
 
-    let error = expect_workflow_error(authorize_medication_activation(
-        &order,
+    let error = expect_workflow_error(authorize_resolved_medication_activation(
+        &artifact,
         authority,
         policy,
         &workflow_policy(),
@@ -223,22 +240,22 @@ fn clinical_review_authority_cannot_be_replayed_as_prescribing() {
 }
 
 #[test]
-fn authenticated_principal_substitution_is_rejected() {
-    let authorized = principal(3);
+fn requester_principal_substitution_is_rejected_before_action() {
+    let requester = principal(3);
     let attacker = principal(4);
     let policy = policy_digest(b"prescribing-policy-v1");
-    let order = medication_order("order-a");
+    let artifact = medication_artifact("order-a", requester, 100);
     let authority = authority_for(
-        hash_medication_order(&order).unwrap(),
+        artifact.verified_digest().unwrap(),
         policy,
         AuthorityPurpose::Prescribe,
-        authorized,
+        requester,
         "prescribe",
         100,
     );
 
-    let error = expect_workflow_error(authorize_medication_activation(
-        &order,
+    let error = expect_workflow_error(authorize_resolved_medication_activation(
+        &artifact,
         authority,
         policy,
         &workflow_policy(),
@@ -246,16 +263,16 @@ fn authenticated_principal_substitution_is_rejected() {
         &jurisdiction(),
         200,
     ));
-    assert!(matches!(error, WorkflowError::PrincipalMismatch));
+    assert!(matches!(error, WorkflowError::RequesterPrincipalMismatch));
 }
 
 #[test]
 fn stale_authority_cannot_be_converted_to_fresh_workflow_capability() {
     let p = principal(5);
     let policy = policy_digest(b"prescribing-policy-v1");
-    let order = medication_order("order-a");
+    let artifact = medication_artifact("order-a", p, 10);
     let authority = authority_for(
-        hash_medication_order(&order).unwrap(),
+        artifact.verified_digest().unwrap(),
         policy,
         AuthorityPurpose::Prescribe,
         p,
@@ -268,8 +285,8 @@ fn stale_authority_cannot_be_converted_to_fresh_workflow_capability() {
         max_future_skew_micros: 0,
     };
 
-    let error = expect_workflow_error(authorize_medication_activation(
-        &order,
+    let error = expect_workflow_error(authorize_resolved_medication_activation(
+        &artifact,
         authority,
         policy,
         &strict,
@@ -281,11 +298,42 @@ fn stale_authority_cannot_be_converted_to_fresh_workflow_capability() {
 }
 
 #[test]
-fn successful_medication_capability_is_bound_to_exact_digest() {
+fn stale_requester_resolution_cannot_be_reused() {
     let p = principal(6);
     let policy = policy_digest(b"prescribing-policy-v1");
-    let order = medication_order("order-a");
-    let digest = hash_medication_order(&order).unwrap();
+    let artifact = medication_artifact("order-a", p, 0);
+    let authority = authority_for(
+        artifact.verified_digest().unwrap(),
+        policy,
+        AuthorityPurpose::Prescribe,
+        p,
+        "prescribe",
+        11,
+    );
+    let strict = WorkflowPolicyV1 {
+        schema_version: 1,
+        max_authority_age_micros: 10,
+        max_future_skew_micros: 0,
+    };
+
+    let error = expect_workflow_error(authorize_resolved_medication_activation(
+        &artifact,
+        authority,
+        policy,
+        &strict,
+        p,
+        &jurisdiction(),
+        11,
+    ));
+    assert!(matches!(error, WorkflowError::RequesterResolutionStale));
+}
+
+#[test]
+fn successful_medication_capability_binds_requester_and_artifact_evidence() {
+    let p = principal(7);
+    let policy = policy_digest(b"prescribing-policy-v1");
+    let artifact = medication_artifact("order-a", p, 100);
+    let digest = artifact.verified_digest().unwrap();
     let authority = authority_for(
         digest,
         policy,
@@ -295,8 +343,8 @@ fn successful_medication_capability_is_bound_to_exact_digest() {
         100,
     );
 
-    let capability = authorize_medication_activation(
-        &order,
+    let capability = authorize_resolved_medication_activation(
+        &artifact,
         authority,
         policy,
         &workflow_policy(),
@@ -305,8 +353,10 @@ fn successful_medication_capability_is_bound_to_exact_digest() {
         200,
     )
     .unwrap();
-    assert_eq!(capability.order_id(), "order-a");
-    assert_eq!(capability.order_digest().value, digest.value());
+    assert_eq!(capability.order_id(), "fhir:https://ehr.example/fhir:MedicationRequest:order-a");
+    assert_eq!(capability.medication_artifact_digest().value, digest.value());
+    assert_eq!(capability.principal(), p);
+    assert_eq!(capability.requester_resolution_evidence().len(), 3);
 }
 
 #[test]
@@ -344,7 +394,7 @@ fn quarantine_capability_rejects_changed_event() {
     )
     .unwrap();
 
-    let p = principal(7);
+    let p = principal(8);
     let policy = policy_digest(b"clinical-review-policy-v1");
     let authority = authority_for(
         hash_quarantine_event(&review).unwrap(),
