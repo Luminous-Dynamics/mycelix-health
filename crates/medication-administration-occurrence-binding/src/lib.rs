@@ -22,7 +22,7 @@ use thiserror::Error;
 
 const BINDING_TAG: &[u8] = b"mycelix-health/medication-administration-occurrence-binding-v1";
 
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq)]
 pub enum OccurrenceEvidenceV1 {
     OneTime,
     Scheduled {
@@ -34,7 +34,7 @@ pub enum OccurrenceEvidenceV1 {
     },
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]
 pub struct MedicationAdministrationOccurrenceBindingV1 {
     pub schema_version: u16,
@@ -104,20 +104,17 @@ impl MedicationAdministrationOccurrenceBindingV1 {
     }
 }
 
-/// Bind a one-time occurrence to an exact private event + qualified receipt.
 pub fn bind_one_time_occurrence(
     event: &MedicationAdministrationEventV1,
     receipt: &MedicationAdministrationReceiptV1,
     occurrence: &MedicationAdministrationOccurrenceV1,
 ) -> Result<MedicationAdministrationOccurrenceBindingV1, BindingError> {
-    if !matches!(&occurrence.kind, AdministrationOccurrenceKindV1::OneTime) {
+    if !matches!(occurrence.kind, AdministrationOccurrenceKindV1::OneTime) {
         return Err(BindingError::OccurrenceEvidenceKindMismatch);
     }
     bind_common(event, receipt, occurrence, OccurrenceEvidenceV1::OneTime)
 }
 
-/// Bind a scheduled occurrence and preserve exact schedule-resolution provenance
-/// without allowing resolver metadata to alter the clinical occurrence identity.
 pub fn bind_scheduled_occurrence(
     event: &MedicationAdministrationEventV1,
     receipt: &MedicationAdministrationReceiptV1,
@@ -125,12 +122,12 @@ pub fn bind_scheduled_occurrence(
     plan: &AdministrationSchedulePlanSegmentV1,
     provenance: &AdministrationScheduleResolutionProvenanceV1,
 ) -> Result<MedicationAdministrationOccurrenceBindingV1, BindingError> {
-    let (ordinal, intended_start_micros, intended_end_micros) = match &occurrence.kind {
+    let (ordinal, intended_start_micros, intended_end_micros) = match occurrence.kind {
         AdministrationOccurrenceKindV1::Scheduled {
             occurrence_ordinal,
             intended_start_micros,
             intended_end_micros,
-        } => (*occurrence_ordinal, *intended_start_micros, *intended_end_micros),
+        } => (occurrence_ordinal, intended_start_micros, intended_end_micros),
         _ => return Err(BindingError::OccurrenceEvidenceKindMismatch),
     };
 
@@ -171,15 +168,14 @@ pub fn bind_scheduled_occurrence(
     )
 }
 
-/// Bind a PRN occurrence to the exact intent evidence that introduced its nonce.
 pub fn bind_prn_occurrence(
     event: &MedicationAdministrationEventV1,
     receipt: &MedicationAdministrationReceiptV1,
     occurrence: &MedicationAdministrationOccurrenceV1,
     intent: &PrnAdministrationIntentV1,
 ) -> Result<MedicationAdministrationOccurrenceBindingV1, BindingError> {
-    let nonce = match &occurrence.kind {
-        AdministrationOccurrenceKindV1::AsNeeded { intent_nonce } => *intent_nonce,
+    let nonce = match occurrence.kind {
+        AdministrationOccurrenceKindV1::AsNeeded { intent_nonce } => intent_nonce,
         _ => return Err(BindingError::OccurrenceEvidenceKindMismatch),
     };
     intent.validate_shape()?;
@@ -209,13 +205,15 @@ fn bind_common(
     occurrence_evidence: OccurrenceEvidenceV1,
 ) -> Result<MedicationAdministrationOccurrenceBindingV1, BindingError> {
     occurrence.validate_shape()?;
-    event.validate_shape().map_err(|error| BindingError::AdministrationEvent(error.to_string()))?;
+    event
+        .validate_shape()
+        .map_err(|error| BindingError::AdministrationEvent(error.to_string()))?;
     receipt
         .validate_shape()
         .map_err(|error| BindingError::AdministrationReceipt(error.to_string()))?;
 
     if !matches!(
-        &event.status,
+        event.status,
         AdministrationStatusV1::Performed | AdministrationStatusV1::PartiallyPerformed
     ) {
         return Err(BindingError::NonPerformedAdministration);
