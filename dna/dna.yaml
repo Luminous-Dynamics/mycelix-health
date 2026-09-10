@@ -3,7 +3,16 @@ manifest_version: "0"
 name: health
 integrity:
   network_seed: ~
-  properties: ~
+  properties:
+    medication_activation:
+      schema_version: 1
+      # Fail closed by default. Production/test deployments must repack the DNA
+      # with explicit trusted AgentPubKeys before exact verifier authorizations validate.
+      root_authorities: []
+      # v1 exact-receipt verifier authorizations may live for at most 15 minutes.
+      # The integrity zome also hard-caps this value, so accidental packaging with a
+      # longer window fails validation rather than silently weakening the contract.
+      max_verifier_authorization_duration_micros: 900000000
   zomes:
     # Tier 1: MVP Core
     - name: patient_integrity
@@ -14,6 +23,8 @@ integrity:
       path: ../target/wasm32-unknown-unknown/release/records_integrity.wasm
     - name: prescriptions_integrity
       path: ../target/wasm32-unknown-unknown/release/prescriptions_integrity.wasm
+    - name: medication_activation_integrity
+      path: ../target/wasm32-unknown-unknown/release/medication_activation_integrity.wasm
     - name: consent_integrity
       path: ../target/wasm32-unknown-unknown/release/consent_integrity.wasm
     - name: bridge_integrity
@@ -40,6 +51,10 @@ coordinator:
         - name: prescriptions_integrity
         - name: patient_integrity
         - name: provider_integrity
+    - name: medication_activation
+      path: ../target/wasm32-unknown-unknown/release/medication_activation.wasm
+      dependencies:
+        - name: medication_activation_integrity
     - name: consent
       path: ../target/wasm32-unknown-unknown/release/consent.wasm
       dependencies:

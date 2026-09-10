@@ -11,6 +11,8 @@ members = [
     "zomes/records/coordinator",
     "zomes/prescriptions/integrity",
     "zomes/prescriptions/coordinator",
+    "zomes/medication_activation/integrity",
+    "zomes/medication_activation/coordinator",
     "zomes/consent/integrity",
     "zomes/consent/coordinator",
     "zomes/bridge/integrity",
@@ -51,6 +53,7 @@ members = [
     "crates/fhir-medication-semantics",
     "crates/medication-safety",
     "crates/medication-safety-trust",
+    "crates/medication-activation-receipt",
 
     # ── Tier 3: Behavioral Health (restored 2026-03-26) ──
     "zomes/mental_health/integrity",
