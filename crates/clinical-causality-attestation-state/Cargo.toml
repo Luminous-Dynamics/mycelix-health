@@ -1,0 +1,13 @@
+[package]
+name = "mycelix-clinical-causality-attestation-state"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Conflict-preserving read model for qualified causal assessment attestations"
+
+[dependencies]
+serde = { workspace = true }
+thiserror = { workspace = true }
+holo_hash = { workspace = true }
+mycelix-clinical-integrity = { path = "../clinical-integrity" }
+clinical_causality_integrity = { path = "../../zomes/clinical_causality/integrity" }
