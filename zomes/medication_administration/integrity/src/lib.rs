@@ -124,7 +124,7 @@ pub struct QualifiedMedicationAdministration {
     pub verifier_authorization_hash: ActionHash,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq)]
 pub enum AdministrationCorrectionReason {
     EnteredInError,
     WrongPatient,
