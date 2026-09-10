@@ -12,12 +12,12 @@ use thiserror::Error;
 const DERIVE_KEY_CONTEXT: &str = "mycelix.health.clinical-integrity.v1";
 const FRAME_VERSION: u8 = 1;
 
-#[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq, Hash)]
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub enum DigestAlgorithm {
     Blake3_256,
 }
 
-#[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq, Hash)]
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub enum DigestDomain {
     ClinicalArtifact,
     ClinicalObservedEvent,
@@ -138,7 +138,7 @@ impl DigestDomain {
     }
 }
 
-#[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq, Hash)]
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct StoredDigest {
     pub algorithm: DigestAlgorithm,
     pub domain: DigestDomain,
@@ -154,7 +154,7 @@ impl StoredDigest {
     }
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct VerifiedDigest {
     stored: StoredDigest,
 }
