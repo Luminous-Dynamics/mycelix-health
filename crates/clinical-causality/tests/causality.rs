@@ -75,11 +75,15 @@ fn exposure(start: i64, end: Option<i64>) -> MedicationAdministrationExposureV1 
     }
 }
 
-fn evidence(kind: CausalEvidenceKindV1, direction: EvidenceDirectionV1, seed: u8) -> CausalEvidenceItemV1 {
+fn evidence(
+    kind: CausalEvidenceKindV1,
+    direction: EvidenceDirectionV1,
+    seed: u8,
+) -> CausalEvidenceItemV1 {
     CausalEvidenceItemV1 {
         kind,
         direction,
-        evidence_digests: if matches!(direction, EvidenceDirectionV1::Unknown | EvidenceDirectionV1::NoFinding) {
+        evidence_digests: if direction == EvidenceDirectionV1::Unknown {
             Vec::new()
         } else {
             vec![digest(DigestDomain::EvidenceCapsule, seed)]
@@ -104,7 +108,8 @@ fn required_reviews() -> Vec<CausalEvidenceItemV1> {
 
 #[test]
 fn event_before_exposure_cannot_be_upgraded_to_positive_causality() {
-    let association = ExposureAssociationV1::derive(&observed(10, Some(20)), exposure(100, None)).unwrap();
+    let association =
+        ExposureAssociationV1::derive(&observed(10, Some(20)), exposure(100, None)).unwrap();
     let policy = CausalAssessmentPolicyV1::strict_default("policy-v1");
     let mut items = required_reviews();
     items.push(evidence(
@@ -131,8 +136,42 @@ fn event_before_exposure_cannot_be_upgraded_to_positive_causality() {
 }
 
 #[test]
+fn open_ended_pre_exposure_event_has_indeterminate_temporality() {
+    let association =
+        ExposureAssociationV1::derive(&observed(10, None), exposure(100, None)).unwrap();
+    assert_eq!(
+        association.temporal_relationship,
+        TemporalRelationshipV1::Indeterminate
+    );
+    let policy = CausalAssessmentPolicyV1::strict_default("policy-v1");
+    let mut items = required_reviews();
+    items.push(evidence(
+        CausalEvidenceKindV1::KnownMechanism,
+        EvidenceDirectionV1::SupportsRelationship,
+        30,
+    ));
+    let result = CausalAssessmentV1::create(
+        &association,
+        &policy,
+        CausalConclusionV1::EvidenceSuggestsRelationship,
+        items,
+        Vec::new(),
+        "expert-review",
+        "1",
+        None,
+        None,
+        200,
+    );
+    assert!(matches!(
+        result,
+        Err(CausalityError::PositiveConclusionWithIndeterminateTemporality)
+    ));
+}
+
+#[test]
 fn duplicate_support_kind_does_not_fake_independent_evidence() {
-    let association = ExposureAssociationV1::derive(&observed(200, Some(210)), exposure(100, None)).unwrap();
+    let association =
+        ExposureAssociationV1::derive(&observed(200, Some(210)), exposure(100, None)).unwrap();
     let policy = CausalAssessmentPolicyV1::strict_default("policy-v1");
     let mut items = required_reviews();
     items.push(evidence(
@@ -164,8 +203,49 @@ fn duplicate_support_kind_does_not_fake_independent_evidence() {
 }
 
 #[test]
+fn no_finding_still_requires_evidence_that_review_occurred() {
+    let association =
+        ExposureAssociationV1::derive(&observed(200, Some(210)), exposure(100, None)).unwrap();
+    let policy = CausalAssessmentPolicyV1::strict_default("policy-v1");
+    let items = vec![
+        CausalEvidenceItemV1 {
+            kind: CausalEvidenceKindV1::AlternativeEtiologyReview,
+            direction: EvidenceDirectionV1::NoFinding,
+            evidence_digests: Vec::new(),
+        },
+        evidence(
+            CausalEvidenceKindV1::ConcomitantExposureReview,
+            EvidenceDirectionV1::NoFinding,
+            21,
+        ),
+        evidence(
+            CausalEvidenceKindV1::KnownMechanism,
+            EvidenceDirectionV1::SupportsRelationship,
+            30,
+        ),
+    ];
+    let result = CausalAssessmentV1::create(
+        &association,
+        &policy,
+        CausalConclusionV1::EvidenceSuggestsRelationship,
+        items,
+        Vec::new(),
+        "expert-review",
+        "1",
+        None,
+        None,
+        220,
+    );
+    assert!(matches!(
+        result,
+        Err(CausalityError::EvidenceClaimWithoutArtifact)
+    ));
+}
+
+#[test]
 fn missing_required_review_forces_positive_assessment_to_fail_closed() {
-    let association = ExposureAssociationV1::derive(&observed(200, Some(210)), exposure(100, None)).unwrap();
+    let association =
+        ExposureAssociationV1::derive(&observed(200, Some(210)), exposure(100, None)).unwrap();
     let policy = CausalAssessmentPolicyV1::strict_default("policy-v1");
     let items = vec![evidence(
         CausalEvidenceKindV1::KnownMechanism,
@@ -195,7 +275,8 @@ fn missing_required_review_forces_positive_assessment_to_fail_closed() {
 
 #[test]
 fn external_scale_label_does_not_auto_upgrade_internal_conclusion() {
-    let association = ExposureAssociationV1::derive(&observed(200, Some(210)), exposure(100, None)).unwrap();
+    let association =
+        ExposureAssociationV1::derive(&observed(200, Some(210)), exposure(100, None)).unwrap();
     let policy = CausalAssessmentPolicyV1::strict_default("policy-v1");
     let assessment = CausalAssessmentV1::create(
         &association,
@@ -219,7 +300,8 @@ fn external_scale_label_does_not_auto_upgrade_internal_conclusion() {
 
 #[test]
 fn mixed_support_and_challenge_are_preserved() {
-    let association = ExposureAssociationV1::derive(&observed(200, Some(210)), exposure(100, None)).unwrap();
+    let association =
+        ExposureAssociationV1::derive(&observed(200, Some(210)), exposure(100, None)).unwrap();
     let policy = CausalAssessmentPolicyV1::strict_default("policy-v1");
     let mut items = required_reviews();
     items.push(evidence(
@@ -250,7 +332,8 @@ fn mixed_support_and_challenge_are_preserved() {
 
 #[test]
 fn directional_claim_without_evidence_artifact_is_rejected() {
-    let association = ExposureAssociationV1::derive(&observed(200, Some(210)), exposure(100, None)).unwrap();
+    let association =
+        ExposureAssociationV1::derive(&observed(200, Some(210)), exposure(100, None)).unwrap();
     let policy = CausalAssessmentPolicyV1::strict_default("policy-v1");
     let mut items = required_reviews();
     items.push(CausalEvidenceItemV1 {
@@ -272,6 +355,6 @@ fn directional_claim_without_evidence_artifact_is_rejected() {
     );
     assert!(matches!(
         result,
-        Err(CausalityError::DirectionalEvidenceWithoutArtifact)
+        Err(CausalityError::EvidenceClaimWithoutArtifact)
     ));
 }
