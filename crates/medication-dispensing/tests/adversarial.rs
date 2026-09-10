@@ -4,8 +4,8 @@ use mycelix_clinical_integrity::{
     hash_canonical_bytes, DigestAlgorithm, DigestDomain, StoredDigest,
 };
 use mycelix_medication_activation_state::{
-    CurrentActivation, CurrentActivationState, LegacyPrescriptionRecord, LegacyPrescriptionStatus,
-    MedicationActivationView, QualifiedActivationLineage, ActivationLifecycle,
+    ActivationLifecycle, CurrentActivation, CurrentActivationState, LegacyPrescriptionRecord,
+    LegacyPrescriptionStatus, MedicationActivationView, QualifiedActivationLineage,
 };
 use mycelix_medication_dispensing::{
     resolve_current_activation_for_dispense, DispenseError, DispenseLedgerSnapshotV1,
@@ -126,21 +126,18 @@ fn pharmacy_context_requires_domain_specific_evidence() {
         10,
     );
 
-    assert!(matches!(
-        result,
-        Err(DispenseError::Integrity(_))
-    ));
+    assert!(matches!(result, Err(DispenseError::Integrity(_))));
 }
 
 #[test]
-fn duplicate_prior_receipt_cannot_fill_two_slots() {
+fn duplicate_prior_final_receipt_cannot_fill_two_slots() {
     let medication = verified(DigestDomain::MedicationRequestArtifact, 1);
     let activation = stored(DigestDomain::MedicationActivationReceipt, 2);
     let receipt = verified(DigestDomain::MedicationDispenseReceipt, 3);
-    let first = PriorDispenseEvidence::from_verified_receipt(0, receipt).unwrap();
-    let replay = PriorDispenseEvidence::from_verified_receipt(1, receipt).unwrap();
+    let first = PriorDispenseEvidence::from_verified_final_receipt(0, receipt).unwrap();
+    let replay = PriorDispenseEvidence::from_verified_final_receipt(1, receipt).unwrap();
 
-    let result = DispenseLedgerSnapshotV1::from_verified_receipts(
+    let result = DispenseLedgerSnapshotV1::from_verified_final_receipts(
         medication,
         activation,
         vec![first, replay],
