@@ -18,7 +18,7 @@ use mycelix_clinical_quarantine::{
     ArtifactDigest, DigestAlgorithm as QuarantineDigestAlgorithm, OpaqueCommitment, QuarantineEvent,
     QuarantineState, ResolutionDisposition,
 };
-use mycelix_medication_semantics::MedicationOrder;
+use mycelix_fhir_medication_semantics::MedicationRequestArtifact;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
@@ -108,10 +108,19 @@ impl ClinicalPresentationCapability {
     }
 }
 
+/// Exact FHIR medication activation capability.
+///
+/// It preserves two distinct proof lineages:
+/// 1. requester -> authenticated principal resolution evidence;
+/// 2. professional authority evidence supporting the prescribing action.
+///
+/// The capability is intentionally non-cloneable/non-serializable.
 pub struct MedicationActivationCapability {
     order_id: String,
-    order_digest: StoredDigest,
+    medication_artifact_digest: StoredDigest,
     principal: PrincipalBinding,
+    requester_resolution_evidence: [StoredDigest; 3],
+    requester_resolved_at_micros: i64,
     jurisdiction: JurisdictionCode,
     authority_policy_digest: StoredDigest,
     workflow_policy_digest: StoredDigest,
@@ -124,12 +133,20 @@ impl MedicationActivationCapability {
         &self.order_id
     }
 
-    pub fn order_digest(&self) -> StoredDigest {
-        self.order_digest
+    pub fn medication_artifact_digest(&self) -> StoredDigest {
+        self.medication_artifact_digest
     }
 
     pub fn principal(&self) -> PrincipalBinding {
         self.principal
+    }
+
+    pub fn requester_resolution_evidence(&self) -> &[StoredDigest; 3] {
+        &self.requester_resolution_evidence
+    }
+
+    pub fn requester_resolved_at_micros(&self) -> i64 {
+        self.requester_resolved_at_micros
     }
 
     pub fn jurisdiction(&self) -> &JurisdictionCode {
@@ -272,8 +289,11 @@ pub fn authorize_clinical_presentation(
     })
 }
 
-pub fn authorize_medication_activation(
-    order: &MedicationOrder,
+/// Convert one strict FHIR MedicationRequest artifact into an exact activation
+/// capability. A bare `MedicationOrder` is intentionally insufficient because it
+/// does not prove who the external requester resolved to.
+pub fn authorize_resolved_medication_activation(
+    artifact: &MedicationRequestArtifact,
     authority: AuthorityPermit,
     authority_policy_digest: VerifiedDigest,
     workflow_policy: &WorkflowPolicyV1,
@@ -281,15 +301,31 @@ pub fn authorize_medication_activation(
     jurisdiction: &JurisdictionCode,
     execution_at_micros: i64,
 ) -> Result<MedicationActivationCapability, WorkflowError> {
-    order
-        .validate_active_order_candidate()
-        .map_err(|error| WorkflowError::Medication(error.to_string()))?;
+    workflow_policy.validate()?;
+    artifact
+        .validate_for_activation(execution_at_micros)
+        .map_err(|error| WorkflowError::MedicationArtifact(error.to_string()))?;
 
-    let order_digest = hash_medication_order(order)?;
+    if artifact.requester_principal() != authenticated_principal {
+        return Err(WorkflowError::RequesterPrincipalMismatch);
+    }
+    verify_freshness(
+        artifact.requester_resolved_at_micros(),
+        execution_at_micros,
+        workflow_policy,
+        WorkflowError::RequesterResolutionFromFuture,
+        WorkflowError::RequesterResolutionStale,
+    )?;
+
+    let artifact_digest = artifact
+        .verified_digest()
+        .map_err(|error| WorkflowError::MedicationArtifact(error.to_string()))?;
+    artifact_digest.require_domain(DigestDomain::MedicationRequestArtifact)?;
+
     let workflow_policy_digest = workflow_policy.verified_digest()?;
     let evidence = verify_authority_binding(
         &authority,
-        order_digest,
+        artifact_digest,
         authority_policy_digest,
         AuthorityPurpose::Prescribe,
         authenticated_principal,
@@ -299,9 +335,15 @@ pub fn authorize_medication_activation(
     )?;
 
     Ok(MedicationActivationCapability {
-        order_id: order.order_id.clone(),
-        order_digest: order_digest.stored(),
+        order_id: artifact.order().order_id.clone(),
+        medication_artifact_digest: artifact_digest.stored(),
         principal: authenticated_principal,
+        requester_resolution_evidence: [
+            artifact.requester_provider_record_digest(),
+            artifact.requester_author_binding_evidence_digest(),
+            artifact.requester_status_evidence_digest(),
+        ],
+        requester_resolved_at_micros: artifact.requester_resolved_at_micros(),
         jurisdiction: jurisdiction.clone(),
         authority_policy_digest: authority_policy_digest.stored(),
         workflow_policy_digest: workflow_policy_digest.stored(),
@@ -355,14 +397,6 @@ pub fn hash_evidence_capsule(
         DigestDomain::EvidenceCapsule,
         b"mycelix-health/clinical-evidence-capsule-v1",
         capsule,
-    )
-}
-
-pub fn hash_medication_order(order: &MedicationOrder) -> Result<VerifiedDigest, WorkflowError> {
-    hash_json(
-        DigestDomain::MedicationOrder,
-        b"mycelix-health/medication-order-v1",
-        order,
     )
 }
 
@@ -421,19 +455,36 @@ fn verify_authority_binding(
         return Err(WorkflowError::JurisdictionMismatch);
     }
 
-    let delta = execution_at_micros as i128 - authority.evaluated_at_micros() as i128;
-    if delta < -(workflow_policy.max_future_skew_micros as i128) {
-        return Err(WorkflowError::AuthorityEvaluationFromFuture);
-    }
-    if delta > workflow_policy.max_authority_age_micros as i128 {
-        return Err(WorkflowError::AuthorityEvaluationStale);
-    }
+    verify_freshness(
+        authority.evaluated_at_micros(),
+        execution_at_micros,
+        workflow_policy,
+        WorkflowError::AuthorityEvaluationFromFuture,
+        WorkflowError::AuthorityEvaluationStale,
+    )?;
 
     Ok(authority
         .supporting_evidence_digests()
         .iter()
         .map(|digest: &EvidenceDigest| digest.0)
         .collect())
+}
+
+fn verify_freshness(
+    evidence_at_micros: i64,
+    execution_at_micros: i64,
+    workflow_policy: &WorkflowPolicyV1,
+    future_error: WorkflowError,
+    stale_error: WorkflowError,
+) -> Result<(), WorkflowError> {
+    let delta = execution_at_micros as i128 - evidence_at_micros as i128;
+    if delta < -(workflow_policy.max_future_skew_micros as i128) {
+        return Err(future_error);
+    }
+    if delta > workflow_policy.max_authority_age_micros as i128 {
+        return Err(stale_error);
+    }
+    Ok(())
 }
 
 #[derive(Debug, Error)]
@@ -459,18 +510,24 @@ pub enum WorkflowError {
     },
     #[error("authority principal does not match authenticated workflow principal")]
     PrincipalMismatch,
+    #[error("resolved MedicationRequest requester does not match authenticated principal")]
+    RequesterPrincipalMismatch,
     #[error("authority jurisdiction does not match workflow jurisdiction")]
     JurisdictionMismatch,
     #[error("authority evaluation is too far in the future for workflow policy")]
     AuthorityEvaluationFromFuture,
     #[error("authority evaluation is stale for workflow policy")]
     AuthorityEvaluationStale,
+    #[error("requester identity resolution is too far in the future for workflow policy")]
+    RequesterResolutionFromFuture,
+    #[error("requester identity resolution is stale for workflow policy")]
+    RequesterResolutionStale,
     #[error("clinical qualification gate denied presentation: {0:?}")]
     ClinicalQualificationDenied(GateDecision),
     #[error("clinical qualification validation failed: {0}")]
     Qualification(String),
-    #[error("medication semantics rejected activation: {0}")]
-    Medication(String),
+    #[error("resolved medication artifact rejected activation: {0}")]
+    MedicationArtifact(String),
     #[error("quarantine item must be under review before terminal resolution")]
     QuarantineNotUnderReview,
     #[error("quarantine target changed after capability issuance")]
