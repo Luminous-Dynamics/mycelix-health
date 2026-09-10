@@ -3,7 +3,14 @@ manifest_version: "0"
 name: health
 integrity:
   network_seed: ~
-  properties: ~
+  properties:
+    medication_activation:
+      schema_version: 1
+      # Fail closed by default. Production/test deployments must repack the DNA
+      # with explicit trusted AgentPubKeys before verifier grants can validate.
+      root_authorities: []
+      # Verifier grants are intentionally short-lived even after roots are pinned.
+      max_verifier_grant_duration_micros: 86400000000
   zomes:
     # Tier 1: MVP Core
     - name: patient_integrity
@@ -14,6 +21,8 @@ integrity:
       path: ../target/wasm32-unknown-unknown/release/records_integrity.wasm
     - name: prescriptions_integrity
       path: ../target/wasm32-unknown-unknown/release/prescriptions_integrity.wasm
+    - name: medication_activation_integrity
+      path: ../target/wasm32-unknown-unknown/release/medication_activation_integrity.wasm
     - name: consent_integrity
       path: ../target/wasm32-unknown-unknown/release/consent_integrity.wasm
     - name: bridge_integrity
@@ -40,6 +49,10 @@ coordinator:
         - name: prescriptions_integrity
         - name: patient_integrity
         - name: provider_integrity
+    - name: medication_activation
+      path: ../target/wasm32-unknown-unknown/release/medication_activation.wasm
+      dependencies:
+        - name: medication_activation_integrity
     - name: consent
       path: ../target/wasm32-unknown-unknown/release/consent.wasm
       dependencies:
