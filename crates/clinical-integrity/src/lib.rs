@@ -27,6 +27,8 @@ pub enum DigestDomain {
     MedicationSafetyKnowledge,
     MedicationSafetyPolicy,
     MedicationSafetyEvaluation,
+    MedicationSafetyTrustPolicy,
+    MedicationSafetyTrustReceipt,
     QuarantineEvent,
     QuarantineDecision,
     AuthorityPolicy,
@@ -48,6 +50,8 @@ impl DigestDomain {
             Self::MedicationSafetyKnowledge => b"medication-safety-knowledge",
             Self::MedicationSafetyPolicy => b"medication-safety-policy",
             Self::MedicationSafetyEvaluation => b"medication-safety-evaluation",
+            Self::MedicationSafetyTrustPolicy => b"medication-safety-trust-policy",
+            Self::MedicationSafetyTrustReceipt => b"medication-safety-trust-receipt",
             Self::QuarantineEvent => b"quarantine-event",
             Self::QuarantineDecision => b"quarantine-decision",
             Self::AuthorityPolicy => b"authority-policy",
@@ -109,10 +113,6 @@ impl VerifiedDigest {
 }
 
 /// Hash bytes that are already in the owning artifact's canonical serialization.
-///
-/// This crate intentionally does not invent canonical JSON. Each artifact owner
-/// must define its canonical byte representation separately; this function freezes
-/// how those bytes are framed and hashed once canonicalization has occurred.
 pub fn hash_canonical_bytes(
     domain: DigestDomain,
     canonical_bytes: &[u8],
@@ -143,7 +143,6 @@ pub fn hash_canonical_bytes(
     })
 }
 
-/// Re-verify a stored/wire digest claim against the exact canonical bytes.
 pub fn verify_stored_digest(
     claimed: StoredDigest,
     canonical_bytes: &[u8],
@@ -159,8 +158,6 @@ pub fn verify_stored_digest(
     Ok(computed)
 }
 
-/// Verify that two already-verified identities are equal and belong to the exact
-/// expected semantic domain.
 pub fn require_same_digest(
     left: VerifiedDigest,
     right: VerifiedDigest,
@@ -205,15 +202,26 @@ mod tests {
     #[test]
     fn identical_bytes_in_different_domains_do_not_collide_by_construction() {
         let payload = b"same-canonical-bytes";
-        let order = hash_canonical_bytes(DigestDomain::MedicationOrder, payload).unwrap();
-        let request =
-            hash_canonical_bytes(DigestDomain::MedicationRequestArtifact, payload).unwrap();
-        let safety =
-            hash_canonical_bytes(DigestDomain::MedicationSafetyEvaluation, payload).unwrap();
-        let policy = hash_canonical_bytes(DigestDomain::AuthorityPolicy, payload).unwrap();
-        assert_ne!(order.value(), request.value());
-        assert_ne!(request.value(), safety.value());
-        assert_ne!(safety.value(), policy.value());
+        let domains = [
+            DigestDomain::MedicationOrder,
+            DigestDomain::MedicationRequestArtifact,
+            DigestDomain::MedicationSafetyContext,
+            DigestDomain::MedicationSafetyPolicy,
+            DigestDomain::MedicationSafetyKnowledge,
+            DigestDomain::MedicationSafetyEvaluation,
+            DigestDomain::MedicationSafetyTrustPolicy,
+            DigestDomain::MedicationSafetyTrustReceipt,
+            DigestDomain::AuthorityPolicy,
+        ];
+        let values: Vec<[u8; 32]> = domains
+            .iter()
+            .map(|domain| hash_canonical_bytes(*domain, payload).unwrap().value())
+            .collect();
+        for (index, left) in values.iter().enumerate() {
+            for right in values.iter().skip(index + 1) {
+                assert_ne!(left, right);
+            }
+        }
     }
 
     #[test]

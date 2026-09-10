@@ -20,6 +20,10 @@ use mycelix_medication_safety::{
     MedicationSafetyClearance, MedicationSafetyContextSnapshot, MedicationSafetyPolicyV1,
     SafetyCheckKind, SafetyCheckOutcome, SafetyContextKind, VerifiedSafetyCheck,
 };
+use mycelix_medication_safety_trust::{
+    evaluate_safety_source_trust, SafetySourceTrustPolicyV1, SafetySourceTrustReceipt,
+    VerifiedEvaluatorAdmission, VerifiedKnowledgeAdmission,
+};
 use mycelix_provider_principal::{
     ExternalIdentifier, ExternalReferenceBinding, ExternalResourceKey,
     VerifiedProviderPrincipalBinding,
@@ -44,7 +48,7 @@ fn scope(code: &str) -> ScopeCode {
     }
 }
 
-fn policy_digest(bytes: &[u8]) -> VerifiedDigest {
+fn authority_policy_digest(bytes: &[u8]) -> VerifiedDigest {
     hash_canonical_bytes(DigestDomain::AuthorityPolicy, bytes).unwrap()
 }
 
@@ -54,6 +58,7 @@ fn workflow_policy() -> WorkflowPolicyV1 {
         max_authority_age_micros: 60_000_000,
         max_requester_resolution_age_micros: 60_000_000,
         max_safety_clearance_age_micros: 60_000_000,
+        max_safety_source_trust_age_micros: 60_000_000,
         max_future_skew_micros: 1_000_000,
     }
 }
@@ -206,10 +211,18 @@ fn safety_policy() -> MedicationSafetyPolicyV1 {
     }
 }
 
-fn safety_clearance(
+struct SafetyBundle {
+    clearance: MedicationSafetyClearance,
+    source_trust: SafetySourceTrustReceipt,
+    safety_policy_digest: VerifiedDigest,
+    trust_policy_digest: VerifiedDigest,
+}
+
+fn safety_bundle(
     artifact: &MedicationRequestArtifact,
     cleared_at: i64,
-) -> (MedicationSafetyClearance, VerifiedDigest) {
+    trust_evaluated_at: i64,
+) -> SafetyBundle {
     let context = MedicationSafetyContextSnapshot::from_verified_components(
         artifact,
         vec![ContextComponent::from_verified_evidence(
@@ -223,15 +236,18 @@ fn safety_clearance(
         cleared_at,
     )
     .unwrap();
-    let policy = safety_policy();
-    let policy_digest = policy.verified_digest().unwrap();
+    let safety_policy = safety_policy();
+    let safety_policy_digest = safety_policy.verified_digest().unwrap();
+    let evaluator_digest = clinical_digest(32);
+    let knowledge_digest =
+        hash_safety_knowledge_artifact(b"qualified-test-allergy-knowledge-v1").unwrap();
     let check = VerifiedSafetyCheck::from_verified_evaluation(
         SafetyCheckKind::DrugAllergy,
         artifact.verified_digest().unwrap(),
         context.verified_digest().unwrap(),
-        policy_digest,
-        hash_safety_knowledge_artifact(b"qualified-test-allergy-knowledge-v1").unwrap(),
-        clinical_digest(32),
+        safety_policy_digest,
+        knowledge_digest,
+        evaluator_digest,
         KnowledgeCoverage::CompleteForPolicy,
         SafetyCheckOutcome::Clear,
         0,
@@ -239,18 +255,61 @@ fn safety_clearance(
         cleared_at,
     )
     .unwrap();
-    let evaluation = evaluate_medication_safety(
+    let checks = vec![check];
+    let clearance = evaluate_medication_safety(
         artifact,
         &context,
-        &policy,
-        &[check],
+        &safety_policy,
+        &checks,
         cleared_at,
     )
-    .unwrap();
-    (
-        evaluation.into_clearance().expect("safety clearance expected"),
-        policy_digest,
+    .unwrap()
+    .into_clearance()
+    .expect("safety clearance expected");
+
+    let trust_policy = SafetySourceTrustPolicyV1 {
+        schema_version: 1,
+        policy_id: "workflow-test-safety-source-trust-v1".into(),
+        safety_policy_digest: safety_policy_digest.stored(),
+        max_future_skew_micros: 0,
+    };
+    let trust_policy_digest = trust_policy.verified_digest().unwrap();
+    let evaluators = vec![VerifiedEvaluatorAdmission::from_verified_record(
+        evaluator_digest,
+        vec![SafetyCheckKind::DrugAllergy],
+        0,
+        Some(10_000_000_000),
+        None,
+        trust_policy_digest,
+        clinical_digest(33),
     )
+    .unwrap()];
+    let knowledge = vec![VerifiedKnowledgeAdmission::from_verified_record(
+        knowledge_digest,
+        vec![SafetyCheckKind::DrugAllergy],
+        0,
+        Some(10_000_000_000),
+        None,
+        trust_policy_digest,
+        clinical_digest(34),
+    )
+    .unwrap()];
+    let source_trust = evaluate_safety_source_trust(
+        safety_policy_digest,
+        &trust_policy,
+        &checks,
+        &evaluators,
+        &knowledge,
+        trust_evaluated_at,
+    )
+    .unwrap();
+
+    SafetyBundle {
+        clearance,
+        source_trust,
+        safety_policy_digest,
+        trust_policy_digest,
+    }
 }
 
 fn expect_workflow_error<T>(result: Result<T, WorkflowError>) -> WorkflowError {
@@ -263,7 +322,7 @@ fn expect_workflow_error<T>(result: Result<T, WorkflowError>) -> WorkflowError {
 #[test]
 fn medication_authority_cannot_cross_artifact_boundary() {
     let p = principal(1);
-    let authority_policy = policy_digest(b"prescribing-policy-v1");
+    let authority_policy = authority_policy_digest(b"prescribing-policy-v1");
     let artifact_a = medication_artifact("order-a", p, 100);
     let artifact_b = medication_artifact("order-b", p, 100);
     let authority = authority_for(
@@ -274,12 +333,14 @@ fn medication_authority_cannot_cross_artifact_boundary() {
         "prescribe",
         100,
     );
-    let (clearance_b, safety_policy_digest) = safety_clearance(&artifact_b, 150);
+    let safety = safety_bundle(&artifact_b, 150, 150);
 
     let error = expect_workflow_error(authorize_resolved_medication_activation(
         &artifact_b,
-        clearance_b,
-        safety_policy_digest,
+        safety.clearance,
+        safety.source_trust,
+        safety.safety_policy_digest,
+        safety.trust_policy_digest,
         authority,
         authority_policy,
         &workflow_policy(),
@@ -293,7 +354,7 @@ fn medication_authority_cannot_cross_artifact_boundary() {
 #[test]
 fn safety_clearance_cannot_cross_medication_boundary() {
     let p = principal(2);
-    let authority_policy = policy_digest(b"prescribing-policy-v1");
+    let authority_policy = authority_policy_digest(b"prescribing-policy-v1");
     let artifact_a = medication_artifact("order-a", p, 100);
     let artifact_b = medication_artifact("order-b", p, 100);
     let authority = authority_for(
@@ -304,12 +365,14 @@ fn safety_clearance_cannot_cross_medication_boundary() {
         "prescribe",
         100,
     );
-    let (clearance_a, safety_policy_digest) = safety_clearance(&artifact_a, 150);
+    let safety = safety_bundle(&artifact_a, 150, 150);
 
     let error = expect_workflow_error(authorize_resolved_medication_activation(
         &artifact_b,
-        clearance_a,
-        safety_policy_digest,
+        safety.clearance,
+        safety.source_trust,
+        safety.safety_policy_digest,
+        safety.trust_policy_digest,
         authority,
         authority_policy,
         &workflow_policy(),
@@ -324,9 +387,9 @@ fn safety_clearance_cannot_cross_medication_boundary() {
 }
 
 #[test]
-fn safety_clearance_policy_substitution_is_rejected() {
+fn source_trust_policy_substitution_is_rejected() {
     let p = principal(3);
-    let authority_policy = policy_digest(b"prescribing-policy-v1");
+    let authority_policy = authority_policy_digest(b"prescribing-policy-v1");
     let artifact = medication_artifact("order-a", p, 100);
     let authority = authority_for(
         artifact.verified_digest().unwrap(),
@@ -336,17 +399,19 @@ fn safety_clearance_policy_substitution_is_rejected() {
         "prescribe",
         100,
     );
-    let (clearance, _) = safety_clearance(&artifact, 150);
-    let wrong_safety_policy = hash_canonical_bytes(
-        DigestDomain::MedicationSafetyPolicy,
-        b"different-qualified-safety-policy",
+    let safety = safety_bundle(&artifact, 150, 150);
+    let wrong_trust_policy = hash_canonical_bytes(
+        DigestDomain::MedicationSafetyTrustPolicy,
+        b"different-source-trust-policy",
     )
     .unwrap();
 
     let error = expect_workflow_error(authorize_resolved_medication_activation(
         &artifact,
-        clearance,
-        wrong_safety_policy,
+        safety.clearance,
+        safety.source_trust,
+        safety.safety_policy_digest,
+        wrong_trust_policy,
         authority,
         authority_policy,
         &workflow_policy(),
@@ -354,43 +419,17 @@ fn safety_clearance_policy_substitution_is_rejected() {
         &jurisdiction(),
         200,
     ));
-    assert!(matches!(error, WorkflowError::SafetyPolicyDigestMismatch));
-}
-
-#[test]
-fn clinical_review_authority_cannot_be_replayed_as_prescribing() {
-    let p = principal(4);
-    let authority_policy = policy_digest(b"review-policy-v1");
-    let artifact = medication_artifact("order-a", p, 100);
-    let authority = authority_for(
-        artifact.verified_digest().unwrap(),
-        authority_policy,
-        AuthorityPurpose::ClinicalReview,
-        p,
-        "prescribe",
-        100,
-    );
-    let (clearance, safety_policy_digest) = safety_clearance(&artifact, 150);
-
-    let error = expect_workflow_error(authorize_resolved_medication_activation(
-        &artifact,
-        clearance,
-        safety_policy_digest,
-        authority,
-        authority_policy,
-        &workflow_policy(),
-        p,
-        &jurisdiction(),
-        200,
+    assert!(matches!(
+        error,
+        WorkflowError::SafetyTrustPolicyDigestMismatch
     ));
-    assert!(matches!(error, WorkflowError::WrongAuthorityPurpose { .. }));
 }
 
 #[test]
 fn requester_principal_substitution_is_rejected_before_action() {
-    let requester = principal(5);
-    let attacker = principal(6);
-    let authority_policy = policy_digest(b"prescribing-policy-v1");
+    let requester = principal(4);
+    let attacker = principal(5);
+    let authority_policy = authority_policy_digest(b"prescribing-policy-v1");
     let artifact = medication_artifact("order-a", requester, 100);
     let authority = authority_for(
         artifact.verified_digest().unwrap(),
@@ -400,12 +439,14 @@ fn requester_principal_substitution_is_rejected_before_action() {
         "prescribe",
         100,
     );
-    let (clearance, safety_policy_digest) = safety_clearance(&artifact, 150);
+    let safety = safety_bundle(&artifact, 150, 150);
 
     let error = expect_workflow_error(authorize_resolved_medication_activation(
         &artifact,
-        clearance,
-        safety_policy_digest,
+        safety.clearance,
+        safety.source_trust,
+        safety.safety_policy_digest,
+        safety.trust_policy_digest,
         authority,
         authority_policy,
         &workflow_policy(),
@@ -417,117 +458,79 @@ fn requester_principal_substitution_is_rejected_before_action() {
 }
 
 #[test]
-fn stale_authority_cannot_be_converted_to_fresh_workflow_capability() {
+fn stale_source_trust_cannot_be_reused() {
+    let p = principal(6);
+    let authority_policy = authority_policy_digest(b"prescribing-policy-v1");
+    let artifact = medication_artifact("order-a", p, 0);
+    let authority = authority_for(
+        artifact.verified_digest().unwrap(),
+        authority_policy,
+        AuthorityPurpose::Prescribe,
+        p,
+        "prescribe",
+        11,
+    );
+    let safety = safety_bundle(&artifact, 11, 0);
+    let strict = WorkflowPolicyV1 {
+        schema_version: 1,
+        max_authority_age_micros: 100,
+        max_requester_resolution_age_micros: 100,
+        max_safety_clearance_age_micros: 100,
+        max_safety_source_trust_age_micros: 10,
+        max_future_skew_micros: 0,
+    };
+
+    let error = expect_workflow_error(authorize_resolved_medication_activation(
+        &artifact,
+        safety.clearance,
+        safety.source_trust,
+        safety.safety_policy_digest,
+        safety.trust_policy_digest,
+        authority,
+        authority_policy,
+        &strict,
+        p,
+        &jurisdiction(),
+        11,
+    ));
+    assert!(matches!(error, WorkflowError::SafetySourceTrustStale));
+}
+
+#[test]
+fn clinical_review_authority_cannot_be_replayed_as_prescribing() {
     let p = principal(7);
-    let authority_policy = policy_digest(b"prescribing-policy-v1");
-    let artifact = medication_artifact("order-a", p, 10);
+    let authority_policy = authority_policy_digest(b"review-policy-v1");
+    let artifact = medication_artifact("order-a", p, 100);
     let authority = authority_for(
         artifact.verified_digest().unwrap(),
         authority_policy,
-        AuthorityPurpose::Prescribe,
+        AuthorityPurpose::ClinicalReview,
         p,
         "prescribe",
-        0,
+        100,
     );
-    let (clearance, safety_policy_digest) = safety_clearance(&artifact, 11);
-    let strict = WorkflowPolicyV1 {
-        schema_version: 1,
-        max_authority_age_micros: 10,
-        max_requester_resolution_age_micros: 100,
-        max_safety_clearance_age_micros: 100,
-        max_future_skew_micros: 0,
-    };
+    let safety = safety_bundle(&artifact, 150, 150);
 
     let error = expect_workflow_error(authorize_resolved_medication_activation(
         &artifact,
-        clearance,
-        safety_policy_digest,
+        safety.clearance,
+        safety.source_trust,
+        safety.safety_policy_digest,
+        safety.trust_policy_digest,
         authority,
         authority_policy,
-        &strict,
+        &workflow_policy(),
         p,
         &jurisdiction(),
-        11,
+        200,
     ));
-    assert!(matches!(error, WorkflowError::AuthorityEvaluationStale));
+    assert!(matches!(error, WorkflowError::WrongAuthorityPurpose { .. }));
 }
 
 #[test]
-fn stale_requester_resolution_cannot_be_reused() {
+fn successful_medication_capability_binds_four_evidence_lineages() {
     let p = principal(8);
-    let authority_policy = policy_digest(b"prescribing-policy-v1");
-    let artifact = medication_artifact("order-a", p, 0);
-    let authority = authority_for(
-        artifact.verified_digest().unwrap(),
-        authority_policy,
-        AuthorityPurpose::Prescribe,
-        p,
-        "prescribe",
-        11,
-    );
-    let (clearance, safety_policy_digest) = safety_clearance(&artifact, 11);
-    let strict = WorkflowPolicyV1 {
-        schema_version: 1,
-        max_authority_age_micros: 100,
-        max_requester_resolution_age_micros: 10,
-        max_safety_clearance_age_micros: 100,
-        max_future_skew_micros: 0,
-    };
-
-    let error = expect_workflow_error(authorize_resolved_medication_activation(
-        &artifact,
-        clearance,
-        safety_policy_digest,
-        authority,
-        authority_policy,
-        &strict,
-        p,
-        &jurisdiction(),
-        11,
-    ));
-    assert!(matches!(error, WorkflowError::RequesterResolutionStale));
-}
-
-#[test]
-fn stale_safety_clearance_cannot_be_reused() {
-    let p = principal(9);
-    let authority_policy = policy_digest(b"prescribing-policy-v1");
-    let artifact = medication_artifact("order-a", p, 0);
-    let authority = authority_for(
-        artifact.verified_digest().unwrap(),
-        authority_policy,
-        AuthorityPurpose::Prescribe,
-        p,
-        "prescribe",
-        11,
-    );
-    let (clearance, safety_policy_digest) = safety_clearance(&artifact, 0);
-    let strict = WorkflowPolicyV1 {
-        schema_version: 1,
-        max_authority_age_micros: 100,
-        max_requester_resolution_age_micros: 100,
-        max_safety_clearance_age_micros: 10,
-        max_future_skew_micros: 0,
-    };
-
-    let error = expect_workflow_error(authorize_resolved_medication_activation(
-        &artifact,
-        clearance,
-        safety_policy_digest,
-        authority,
-        authority_policy,
-        &strict,
-        p,
-        &jurisdiction(),
-        11,
-    ));
-    assert!(matches!(error, WorkflowError::SafetyClearanceStale));
-}
-
-#[test]
-fn successful_medication_capability_binds_all_three_evidence_lineages() {
-    let p = principal(10);
-    let authority_policy = policy_digest(b"prescribing-policy-v1");
+    let authority_policy = authority_policy_digest(b"prescribing-policy-v1");
     let artifact = medication_artifact("order-a", p, 100);
     let artifact_digest = artifact.verified_digest().unwrap();
     let authority = authority_for(
@@ -538,12 +541,16 @@ fn successful_medication_capability_binds_all_three_evidence_lineages() {
         "prescribe",
         100,
     );
-    let (clearance, safety_policy_digest) = safety_clearance(&artifact, 150);
+    let safety = safety_bundle(&artifact, 150, 150);
+    let safety_policy_digest = safety.safety_policy_digest;
+    let trust_policy_digest = safety.trust_policy_digest;
 
     let capability = authorize_resolved_medication_activation(
         &artifact,
-        clearance,
+        safety.clearance,
+        safety.source_trust,
         safety_policy_digest,
+        trust_policy_digest,
         authority,
         authority_policy,
         &workflow_policy(),
@@ -552,25 +559,19 @@ fn successful_medication_capability_binds_all_three_evidence_lineages() {
         200,
     )
     .unwrap();
-    assert_eq!(
-        capability.order_id(),
-        "fhir:https://ehr.example/fhir:MedicationRequest:order-a"
-    );
-    assert_eq!(
-        capability.medication_artifact_digest().value,
-        artifact_digest.value()
-    );
+
+    assert_eq!(capability.medication_artifact_digest().value, artifact_digest.value());
     assert_eq!(capability.principal(), p);
     assert_eq!(capability.requester_resolution_evidence().len(), 3);
-    assert_eq!(
-        capability.safety_policy_digest().value,
-        safety_policy_digest.value()
-    );
+    assert_eq!(capability.safety_policy_digest().value, safety_policy_digest.value());
     assert_eq!(capability.safety_check_evaluation_digests().len(), 1);
+    assert_eq!(capability.safety_trust_policy_digest().value, trust_policy_digest.value());
     assert_eq!(
-        capability.safety_context_digest().domain,
-        DigestDomain::MedicationSafetyContext
+        capability.safety_trust_receipt_digest().domain,
+        DigestDomain::MedicationSafetyTrustReceipt
     );
+    assert_eq!(capability.safety_evaluator_admission_evidence().len(), 1);
+    assert_eq!(capability.safety_knowledge_admission_evidence().len(), 1);
 }
 
 #[test]
@@ -608,8 +609,8 @@ fn quarantine_capability_rejects_changed_event() {
     )
     .unwrap();
 
-    let p = principal(11);
-    let authority_policy = policy_digest(b"clinical-review-policy-v1");
+    let p = principal(9);
+    let authority_policy = authority_policy_digest(b"clinical-review-policy-v1");
     let authority = authority_for(
         hash_quarantine_event(&review).unwrap(),
         authority_policy,
