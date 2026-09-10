@@ -1,0 +1,18 @@
+[package]
+name = "medication_emergency"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Thin coordinator for emergency medication override activation attestations"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+hdk = { workspace = true }
+holochain_serialized_bytes = { workspace = true }
+serde = { workspace = true }
+medication_emergency_integrity = { path = "../integrity" }
+
+[features]
+default = []
