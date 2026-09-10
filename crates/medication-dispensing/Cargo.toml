@@ -14,3 +14,6 @@ mycelix-clinical-integrity = { path = "../clinical-integrity" }
 mycelix-clinical-semantics = { path = "../clinical-semantics" }
 mycelix-fhir-medication-semantics = { path = "../fhir-medication-semantics" }
 mycelix-medication-activation-state = { path = "../medication-activation-state" }
+
+[dev-dependencies]
+holo_hash = { workspace = true }
