@@ -67,6 +67,8 @@ members = [
     "crates/medication-dispense-state",
     "crates/medication-administration",
     "crates/medication-administration-state",
+    "crates/medication-administration-occurrence",
+    "crates/medication-administration-occurrence-binding",
 
     # ── Tier 3: Behavioral Health (restored 2026-03-26) ──
     "zomes/mental_health/integrity",
