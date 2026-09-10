@@ -73,6 +73,7 @@ members = [
     "crates/medication-administration-occurrence-binding",
     "crates/medication-administration-occurrence-state",
     "crates/clinical-causality",
+    "crates/clinical-causality-trial-adapter",
 
     # ── Tier 3: Behavioral Health (restored 2026-03-26) ──
     "zomes/mental_health/integrity",
