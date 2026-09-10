@@ -5,6 +5,6 @@
 //! canonical reducer preserves qualified, emergency-override, terminated, conflict,
 //! and legacy-unqualified provenance without flattening them to a boolean.
 
-mod model;
+mod reducer;
 
-pub use model::*;
+pub use reducer::*;
