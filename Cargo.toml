@@ -50,6 +50,7 @@ members = [
     "crates/provider-principal",
     "crates/fhir-medication-semantics",
     "crates/medication-safety",
+    "crates/medication-safety-trust",
 
     # ── Tier 3: Behavioral Health (restored 2026-03-26) ──
     "zomes/mental_health/integrity",
