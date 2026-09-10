@@ -2,49 +2,54 @@
 #![allow(clippy::collapsible_match)]
 //! DNA-rooted medication activation attestation integrity zome.
 //!
-//! This zome does not repeat the clinical reasoning performed by the pure safety
-//! stack. Instead it creates a narrow DHT trust boundary: only an agent holding a
-//! verifier grant issued by a DNA-pinned root authority may publish a qualified
-//! medication activation attestation, and the grant pins the exact policy digests
-//! that the attestation is allowed to represent.
+//! This zome intentionally does not re-run clinical reasoning. It creates a narrow
+//! DHT trust boundary around the result of the pure clinical workflow stack:
 //!
-//! The attestation is privacy-minimized. It carries cryptographic identities and
-//! policy/evidence lineage, not patient names, medication names, dosage text, or raw
-//! clinical evidence.
+//! 1. a DNA-pinned root authority issues a short-lived authorization for one exact
+//!    activation receipt and one exact privacy-minimized attestation payload;
+//! 2. only the named verifier agent may publish that attestation;
+//! 3. the activation action timestamp must fall inside the authorization window;
+//! 4. activation/revocation evidence is append-only.
+//!
+//! Holochain `must_get_*` ignores later delete/update metadata, so authorization
+//! revocation is NOT modeled as deleting an authorization. Authorizations are exact
+//! target + short-lived. This bounds exposure and avoids a false delete-as-revoke
+//! assumption.
 
 use hdi::prelude::*;
-use mycelix_clinical_integrity::{DigestDomain, StoredDigest};
+use mycelix_clinical_integrity::{hash_canonical_bytes, DigestDomain, StoredDigest};
 
 const ROOT_CONFIG_VERSION: u16 = 1;
+const ABSOLUTE_MAX_AUTHORIZATION_DURATION_MICROS: i64 = 900_000_000; // 15 minutes
+const ATTESTATION_SCHEMA_TAG: &[u8] = b"mycelix-health/qualified-medication-activation-v1";
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct MedicationActivationRootConfig {
     pub schema_version: u16,
     pub root_authorities: Vec<AgentPubKey>,
-    pub max_verifier_grant_duration_micros: i64,
+    pub max_verifier_authorization_duration_micros: i64,
 }
 
-/// Root-authorized delegation to a small verifier agent/cell. The verifier is
-/// allowed to attest only activations produced under these exact policy identities.
+/// Root-issued authorization for one exact activation receipt and one exact public
+/// attestation projection. This is deliberately not a reusable role grant.
 #[hdk_entry_helper]
 #[derive(Clone, PartialEq)]
-pub struct MedicationActivationVerifierGrant {
-    pub grant_id: String,
+pub struct MedicationActivationVerifierAuthorization {
+    pub authorization_id: String,
     pub grantee: AgentPubKey,
+    pub activation_receipt_digest: StoredDigest,
+    pub activation_attestation_digest: StoredDigest,
     pub authority_policy_digest: StoredDigest,
     pub safety_policy_digest: StoredDigest,
     pub safety_trust_policy_digest: StoredDigest,
     pub workflow_policy_digest: StoredDigest,
-    pub issued_at: Timestamp,
     pub valid_from: Timestamp,
     pub valid_until: Timestamp,
 }
 
-/// Public, privacy-minimized attestation that an authorized verifier consumed a
-/// complete activation receipt under the policy set pinned in its verifier grant.
-///
-/// This is an attestation, not the underlying clinical record. The exact receipt and
-/// sensitive evidence may remain in an encrypted/local store.
+/// Privacy-minimized public attestation. It contains cryptographic identities and
+/// policy/evidence lineage, not patient names, medication names, dosage text, or raw
+/// clinical evidence. The exact activation receipt may remain encrypted/local.
 #[hdk_entry_helper]
 #[derive(Clone, PartialEq)]
 pub struct QualifiedMedicationActivation {
@@ -57,8 +62,7 @@ pub struct QualifiedMedicationActivation {
     pub safety_policy_digest: StoredDigest,
     pub safety_trust_policy_digest: StoredDigest,
     pub workflow_policy_digest: StoredDigest,
-    pub verifier_grant_hash: ActionHash,
-    pub activated_at: Timestamp,
+    pub verifier_authorization_hash: ActionHash,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
@@ -72,25 +76,24 @@ pub enum ActivationRevocationReason {
     Other,
 }
 
-/// Append-only terminal/corrective event. Revocation does not delete the original
-/// clinical history; high-assurance read models derive current state from activation
-/// plus revocation lineage.
+/// Append-only corrective event. The receipt digest gives revocation a semantic
+/// identity even if equivalent activation attestations were committed more than once.
 #[hdk_entry_helper]
 #[derive(Clone, PartialEq)]
 pub struct MedicationActivationRevocation {
     pub revocation_id: String,
     pub activation_hash: ActionHash,
+    pub activation_receipt_digest: StoredDigest,
     pub reason: ActivationRevocationReason,
     /// Optional keyed/content commitment to sensitive human-readable rationale.
     /// Raw rationale/PHI should remain local or encrypted.
     pub reason_commitment: Option<[u8; 32]>,
-    pub revoked_at: Timestamp,
 }
 
 #[hdk_entry_types]
 #[unit_enum(UnitEntryTypes)]
 pub enum EntryTypes {
-    MedicationActivationVerifierGrant(MedicationActivationVerifierGrant),
+    MedicationActivationVerifierAuthorization(MedicationActivationVerifierAuthorization),
     QualifiedMedicationActivation(QualifiedMedicationActivation),
     MedicationActivationRevocation(MedicationActivationRevocation),
 }
@@ -115,7 +118,9 @@ pub fn validate(op: Op) -> ExternResult<ValidateCallbackResult> {
         FlatOp::RegisterUpdate(_) => invalid(
             "Medication activation trust/evidence entries are append-only and cannot be updated",
         ),
-        FlatOp::RegisterDelete(OpDelete { action }) => validate_delete_entry(action),
+        FlatOp::RegisterDelete(_) => invalid(
+            "Medication activation trust/evidence entries cannot be deleted; use expiry or append a revocation",
+        ),
         FlatOp::RegisterCreateLink {
             link_type,
             base_address,
@@ -135,8 +140,8 @@ fn validate_create_entry(
     entry: EntryTypes,
 ) -> ExternResult<ValidateCallbackResult> {
     match entry {
-        EntryTypes::MedicationActivationVerifierGrant(grant) => {
-            let shape = validate_grant_shape(&grant)?;
+        EntryTypes::MedicationActivationVerifierAuthorization(authorization) => {
+            let shape = validate_authorization_shape(&authorization)?;
             if !matches!(shape, ValidateCallbackResult::Valid) {
                 return Ok(shape);
             }
@@ -145,14 +150,14 @@ fn validate_create_entry(
             if !matches!(root, ValidateCallbackResult::Valid) {
                 return Ok(root);
             }
-            validate_grant_duration(&grant, &config)
+            validate_authorization_window(action.timestamp(), &authorization, &config)
         }
         EntryTypes::QualifiedMedicationActivation(activation) => {
             let shape = validate_activation_shape(&activation)?;
             if !matches!(shape, ValidateCallbackResult::Valid) {
                 return Ok(shape);
             }
-            require_active_verifier_grant(action.author(), &activation)
+            require_exact_verifier_authorization(action.author(), action.timestamp(), &activation)
         }
         EntryTypes::MedicationActivationRevocation(revocation) => {
             let shape = validate_revocation_shape(&revocation)?;
@@ -164,59 +169,58 @@ fn validate_create_entry(
     }
 }
 
-fn validate_delete_entry(action: Delete) -> ExternResult<ValidateCallbackResult> {
-    let record = must_get_valid_record(action.deletes_address.clone())?;
-    let maybe_grant = record
-        .entry()
-        .to_app_option::<MedicationActivationVerifierGrant>()
-        .map_err(|error| wasm_error!(WasmErrorInner::Guest(error.to_string())))?;
-
-    if maybe_grant.is_none() {
-        return invalid(
-            "Qualified activation and revocation evidence cannot be deleted; append a revocation/correction instead",
-        );
-    }
-
-    let config = activation_root_config()?;
-    require_root_authority(&action.author, &config)
-}
-
-fn validate_grant_shape(
-    grant: &MedicationActivationVerifierGrant,
+fn validate_authorization_shape(
+    authorization: &MedicationActivationVerifierAuthorization,
 ) -> ExternResult<ValidateCallbackResult> {
-    if grant.grant_id.trim().is_empty() {
-        return invalid("Medication activation verifier grant ID is required");
+    if authorization.authorization_id.trim().is_empty() {
+        return invalid("Medication activation verifier authorization ID is required");
     }
-    require_digest_domain(grant.authority_policy_digest, DigestDomain::AuthorityPolicy)?;
     require_digest_domain(
-        grant.safety_policy_digest,
+        authorization.activation_receipt_digest,
+        DigestDomain::MedicationActivationReceipt,
+    )?;
+    require_digest_domain(
+        authorization.activation_attestation_digest,
+        DigestDomain::MedicationActivationAttestation,
+    )?;
+    require_digest_domain(
+        authorization.authority_policy_digest,
+        DigestDomain::AuthorityPolicy,
+    )?;
+    require_digest_domain(
+        authorization.safety_policy_digest,
         DigestDomain::MedicationSafetyPolicy,
     )?;
     require_digest_domain(
-        grant.safety_trust_policy_digest,
+        authorization.safety_trust_policy_digest,
         DigestDomain::MedicationSafetyTrustPolicy,
     )?;
-    require_digest_domain(grant.workflow_policy_digest, DigestDomain::WorkflowPolicy)?;
-
-    if grant.valid_from < grant.issued_at {
-        return invalid("Verifier grant validity cannot begin before issuance");
-    }
-    if grant.valid_until <= grant.valid_from {
-        return invalid("Verifier grant valid_until must follow valid_from");
+    require_digest_domain(
+        authorization.workflow_policy_digest,
+        DigestDomain::WorkflowPolicy,
+    )?;
+    if authorization.valid_until <= authorization.valid_from {
+        return invalid("Verifier authorization valid_until must follow valid_from");
     }
     Ok(ValidateCallbackResult::Valid)
 }
 
-fn validate_grant_duration(
-    grant: &MedicationActivationVerifierGrant,
+fn validate_authorization_window(
+    issued_at: Timestamp,
+    authorization: &MedicationActivationVerifierAuthorization,
     config: &MedicationActivationRootConfig,
 ) -> ExternResult<ValidateCallbackResult> {
-    if config.max_verifier_grant_duration_micros <= 0 {
-        return invalid("DNA medication activation root config has invalid grant-duration policy");
+    let configured_max = config.max_verifier_authorization_duration_micros;
+    if configured_max <= 0 || configured_max > ABSOLUTE_MAX_AUTHORIZATION_DURATION_MICROS {
+        return invalid("DNA medication activation authorization-duration policy is invalid");
     }
-    let duration = grant.valid_until.as_micros() as i128 - grant.valid_from.as_micros() as i128;
-    if duration <= 0 || duration > config.max_verifier_grant_duration_micros as i128 {
-        return invalid("Verifier grant exceeds DNA-pinned maximum duration");
+    if issued_at < authorization.valid_from || issued_at >= authorization.valid_until {
+        return invalid("Root authorization action timestamp must fall inside its validity window");
+    }
+    let duration = authorization.valid_until.as_micros() as i128
+        - authorization.valid_from.as_micros() as i128;
+    if duration <= 0 || duration > configured_max as i128 {
+        return invalid("Verifier authorization exceeds DNA-pinned maximum duration");
     }
     Ok(ValidateCallbackResult::Valid)
 }
@@ -255,8 +259,57 @@ fn validate_activation_shape(
         activation.safety_trust_policy_digest,
         DigestDomain::MedicationSafetyTrustPolicy,
     )?;
-    require_digest_domain(activation.workflow_policy_digest, DigestDomain::WorkflowPolicy)?;
+    require_digest_domain(
+        activation.workflow_policy_digest,
+        DigestDomain::WorkflowPolicy,
+    )?;
     Ok(ValidateCallbackResult::Valid)
+}
+
+/// Compute the exact privacy-minimized attestation identity approved by a root.
+/// `verifier_authorization_hash` is excluded to avoid a circular dependency.
+pub fn activation_attestation_digest(
+    activation: &QualifiedMedicationActivation,
+) -> ExternResult<StoredDigest> {
+    let material = ActivationAttestationMaterial {
+        activation_id: &activation.activation_id,
+        medication_artifact_digest: activation.medication_artifact_digest,
+        activation_receipt_digest: activation.activation_receipt_digest,
+        safety_context_digest: activation.safety_context_digest,
+        safety_trust_receipt_digest: activation.safety_trust_receipt_digest,
+        authority_policy_digest: activation.authority_policy_digest,
+        safety_policy_digest: activation.safety_policy_digest,
+        safety_trust_policy_digest: activation.safety_trust_policy_digest,
+        workflow_policy_digest: activation.workflow_policy_digest,
+    };
+    let encoded = serde_json::to_vec(&material).map_err(|error| {
+        wasm_error!(WasmErrorInner::Guest(format!(
+            "Failed to serialize medication activation attestation: {error}"
+        )))
+    })?;
+    let mut framed = Vec::with_capacity(ATTESTATION_SCHEMA_TAG.len() + 1 + encoded.len());
+    framed.extend_from_slice(ATTESTATION_SCHEMA_TAG);
+    framed.push(0);
+    framed.extend_from_slice(&encoded);
+    Ok(hash_canonical_bytes(
+        DigestDomain::MedicationActivationAttestation,
+        &framed,
+    )
+    .map_err(|error| wasm_error!(WasmErrorInner::Guest(error.to_string())))?
+    .stored())
+}
+
+#[derive(Serialize)]
+struct ActivationAttestationMaterial<'a> {
+    activation_id: &'a str,
+    medication_artifact_digest: StoredDigest,
+    activation_receipt_digest: StoredDigest,
+    safety_context_digest: StoredDigest,
+    safety_trust_receipt_digest: StoredDigest,
+    authority_policy_digest: StoredDigest,
+    safety_policy_digest: StoredDigest,
+    safety_trust_policy_digest: StoredDigest,
+    workflow_policy_digest: StoredDigest,
 }
 
 fn validate_revocation_shape(
@@ -265,6 +318,10 @@ fn validate_revocation_shape(
     if revocation.revocation_id.trim().is_empty() {
         return invalid("Medication activation revocation ID is required");
     }
+    require_digest_domain(
+        revocation.activation_receipt_digest,
+        DigestDomain::MedicationActivationReceipt,
+    )?;
     if revocation
         .reason_commitment
         .is_some_and(|commitment| commitment == [0u8; 32])
@@ -279,25 +336,36 @@ fn validate_revocation_shape(
     Ok(ValidateCallbackResult::Valid)
 }
 
-fn require_active_verifier_grant(
+fn require_exact_verifier_authorization(
     author: &AgentPubKey,
+    activation_timestamp: Timestamp,
     activation: &QualifiedMedicationActivation,
 ) -> ExternResult<ValidateCallbackResult> {
-    let record = must_get_valid_record(activation.verifier_grant_hash.clone())?;
-    let grant: MedicationActivationVerifierGrant = decode_entry(&record, "verifier grant")?;
+    let record = must_get_valid_record(activation.verifier_authorization_hash.clone())?;
+    let authorization: MedicationActivationVerifierAuthorization =
+        decode_entry(&record, "verifier authorization")?;
 
-    if &grant.grantee != author {
-        return invalid("Qualified activation author is not the verifier grant grantee");
+    if &authorization.grantee != author {
+        return invalid("Qualified activation author is not the verifier authorization grantee");
     }
-    if activation.activated_at < grant.valid_from || activation.activated_at >= grant.valid_until {
-        return invalid("Qualified activation falls outside verifier grant validity");
-    }
-    if activation.authority_policy_digest != grant.authority_policy_digest
-        || activation.safety_policy_digest != grant.safety_policy_digest
-        || activation.safety_trust_policy_digest != grant.safety_trust_policy_digest
-        || activation.workflow_policy_digest != grant.workflow_policy_digest
+    if activation_timestamp < authorization.valid_from
+        || activation_timestamp >= authorization.valid_until
     {
-        return invalid("Qualified activation policy set does not match verifier grant");
+        return invalid("Qualified activation action timestamp falls outside authorization validity");
+    }
+    if activation.activation_receipt_digest != authorization.activation_receipt_digest {
+        return invalid("Qualified activation receipt does not match root authorization");
+    }
+    let actual_attestation_digest = activation_attestation_digest(activation)?;
+    if actual_attestation_digest != authorization.activation_attestation_digest {
+        return invalid("Qualified activation payload does not match root-authorized attestation");
+    }
+    if activation.authority_policy_digest != authorization.authority_policy_digest
+        || activation.safety_policy_digest != authorization.safety_policy_digest
+        || activation.safety_trust_policy_digest != authorization.safety_trust_policy_digest
+        || activation.workflow_policy_digest != authorization.workflow_policy_digest
+    {
+        return invalid("Qualified activation policy set does not match root authorization");
     }
     Ok(ValidateCallbackResult::Valid)
 }
@@ -309,8 +377,8 @@ fn require_revocation_authority(
     let activation_record = must_get_valid_record(revocation.activation_hash.clone())?;
     let activation: QualifiedMedicationActivation =
         decode_entry(&activation_record, "qualified medication activation")?;
-    if revocation.revoked_at < activation.activated_at {
-        return invalid("Activation revocation cannot predate activation");
+    if activation.activation_receipt_digest != revocation.activation_receipt_digest {
+        return invalid("Activation revocation receipt digest does not match target activation");
     }
 
     if activation_record.action().author() == author {
@@ -332,13 +400,17 @@ fn validate_create_link(
             let activation_hash = require_action_hash(base_address, "activation link base")?;
             let revocation_hash = require_action_hash(target_address, "revocation link target")?;
             let activation_record = must_get_valid_record(activation_hash.clone())?;
-            let _: QualifiedMedicationActivation =
+            let activation: QualifiedMedicationActivation =
                 decode_entry(&activation_record, "qualified medication activation")?;
             let revocation_record = must_get_valid_record(revocation_hash)?;
             let revocation: MedicationActivationRevocation =
                 decode_entry(&revocation_record, "medication activation revocation")?;
-            if revocation.activation_hash != activation_hash {
-                return invalid("Activation-revocation link target references another activation");
+            if revocation.activation_hash != activation_hash
+                || revocation.activation_receipt_digest != activation.activation_receipt_digest
+            {
+                return invalid(
+                    "Activation-revocation link target references another activation lineage",
+                );
             }
             if revocation_record.action().author() != &action.author {
                 return invalid("Activation-revocation link must be authored by revocation author");
@@ -376,9 +448,13 @@ fn parse_activation_root_config(bytes: &[u8]) -> ExternResult<MedicationActivati
             config.schema_version
         ))));
     }
-    if config.max_verifier_grant_duration_micros <= 0 {
+    if config.max_verifier_authorization_duration_micros <= 0
+        || config.max_verifier_authorization_duration_micros
+            > ABSOLUTE_MAX_AUTHORIZATION_DURATION_MICROS
+    {
         return Err(wasm_error!(WasmErrorInner::Guest(
-            "Medication activation root config maximum grant duration must be positive".to_string()
+            "Medication activation root config authorization duration must be > 0 and <= 15 minutes"
+                .to_string()
         )));
     }
     Ok(config)
@@ -389,15 +465,14 @@ fn require_root_authority(
     config: &MedicationActivationRootConfig,
 ) -> ExternResult<ValidateCallbackResult> {
     if !config.root_authorities.contains(author) {
-        return invalid("Medication activation verifier grant/revocation requires a DNA-pinned root authority");
+        return invalid(
+            "Medication activation verifier authorization requires a DNA-pinned root authority",
+        );
     }
     Ok(ValidateCallbackResult::Valid)
 }
 
-fn require_digest_domain(
-    digest: StoredDigest,
-    expected: DigestDomain,
-) -> ExternResult<()> {
+fn require_digest_domain(digest: StoredDigest, expected: DigestDomain) -> ExternResult<()> {
     digest
         .validate_shape()
         .map_err(|error| wasm_error!(WasmErrorInner::Guest(error.to_string())))?;
@@ -410,10 +485,7 @@ fn require_digest_domain(
     Ok(())
 }
 
-fn require_action_hash(
-    hash: AnyLinkableHash,
-    field: &'static str,
-) -> ExternResult<ActionHash> {
+fn require_action_hash(hash: AnyLinkableHash, field: &'static str) -> ExternResult<ActionHash> {
     hash.into_action_hash().ok_or(wasm_error!(WasmErrorInner::Guest(
         format!("{field} must be an ActionHash")
     )))
@@ -439,46 +511,77 @@ fn invalid(message: impl Into<String>) -> ExternResult<ValidateCallbackResult> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use mycelix_clinical_integrity::{hash_canonical_bytes, DigestDomain};
 
     fn digest(domain: DigestDomain, seed: u8) -> StoredDigest {
         hash_canonical_bytes(domain, &[seed]).unwrap().stored()
     }
 
-    fn grant() -> MedicationActivationVerifierGrant {
-        MedicationActivationVerifierGrant {
-            grant_id: "grant-a".into(),
+    fn authorization() -> MedicationActivationVerifierAuthorization {
+        MedicationActivationVerifierAuthorization {
+            authorization_id: "auth-a".into(),
             grantee: AgentPubKey::from_raw_36(vec![1; 36]),
-            authority_policy_digest: digest(DigestDomain::AuthorityPolicy, 1),
-            safety_policy_digest: digest(DigestDomain::MedicationSafetyPolicy, 2),
-            safety_trust_policy_digest: digest(DigestDomain::MedicationSafetyTrustPolicy, 3),
-            workflow_policy_digest: digest(DigestDomain::WorkflowPolicy, 4),
-            issued_at: Timestamp::from_micros(10),
+            activation_receipt_digest: digest(DigestDomain::MedicationActivationReceipt, 1),
+            activation_attestation_digest: digest(
+                DigestDomain::MedicationActivationAttestation,
+                2,
+            ),
+            authority_policy_digest: digest(DigestDomain::AuthorityPolicy, 3),
+            safety_policy_digest: digest(DigestDomain::MedicationSafetyPolicy, 4),
+            safety_trust_policy_digest: digest(DigestDomain::MedicationSafetyTrustPolicy, 5),
+            workflow_policy_digest: digest(DigestDomain::WorkflowPolicy, 6),
             valid_from: Timestamp::from_micros(10),
             valid_until: Timestamp::from_micros(100),
         }
     }
 
-    #[test]
-    fn grant_shape_requires_exact_policy_domains() {
-        let mut grant = grant();
-        grant.safety_policy_digest = digest(DigestDomain::AuthorityPolicy, 9);
-        assert!(matches!(
-            validate_grant_shape(&grant),
-            Err(WasmError { .. })
-        ));
+    fn activation() -> QualifiedMedicationActivation {
+        QualifiedMedicationActivation {
+            activation_id: "activation-a".into(),
+            medication_artifact_digest: digest(DigestDomain::MedicationRequestArtifact, 7),
+            activation_receipt_digest: digest(DigestDomain::MedicationActivationReceipt, 8),
+            safety_context_digest: digest(DigestDomain::MedicationSafetyContext, 9),
+            safety_trust_receipt_digest: digest(DigestDomain::MedicationSafetyTrustReceipt, 10),
+            authority_policy_digest: digest(DigestDomain::AuthorityPolicy, 11),
+            safety_policy_digest: digest(DigestDomain::MedicationSafetyPolicy, 12),
+            safety_trust_policy_digest: digest(DigestDomain::MedicationSafetyTrustPolicy, 13),
+            workflow_policy_digest: digest(DigestDomain::WorkflowPolicy, 14),
+            verifier_authorization_hash: ActionHash::from_raw_36(vec![15; 36]),
+        }
     }
 
     #[test]
-    fn grant_duration_is_bounded_by_dna_policy() {
-        let grant = grant();
+    fn authorization_shape_requires_exact_policy_domains() {
+        let mut authorization = authorization();
+        authorization.safety_policy_digest = digest(DigestDomain::AuthorityPolicy, 9);
+        assert!(validate_authorization_shape(&authorization).is_err());
+    }
+
+    #[test]
+    fn authorization_duration_is_hard_bounded() {
+        let authorization = authorization();
         let config = MedicationActivationRootConfig {
             schema_version: 1,
             root_authorities: vec![],
-            max_verifier_grant_duration_micros: 50,
+            max_verifier_authorization_duration_micros: 50,
         };
-        let result = validate_grant_duration(&grant, &config).unwrap();
+        let result = validate_authorization_window(
+            Timestamp::from_micros(10),
+            &authorization,
+            &config,
+        )
+        .unwrap();
         assert!(matches!(result, ValidateCallbackResult::Invalid(_)));
+    }
+
+    #[test]
+    fn attestation_digest_changes_when_safety_policy_changes() {
+        let a = activation();
+        let mut b = activation();
+        b.safety_policy_digest = digest(DigestDomain::MedicationSafetyPolicy, 99);
+        assert_ne!(
+            activation_attestation_digest(&a).unwrap(),
+            activation_attestation_digest(&b).unwrap()
+        );
     }
 
     #[test]
@@ -486,9 +589,9 @@ mod tests {
         let revocation = MedicationActivationRevocation {
             revocation_id: "rev-a".into(),
             activation_hash: ActionHash::from_raw_36(vec![2; 36]),
+            activation_receipt_digest: digest(DigestDomain::MedicationActivationReceipt, 3),
             reason: ActivationRevocationReason::Other,
             reason_commitment: None,
-            revoked_at: Timestamp::from_micros(100),
         };
         let result = validate_revocation_shape(&revocation).unwrap();
         assert!(matches!(result, ValidateCallbackResult::Invalid(_)));
