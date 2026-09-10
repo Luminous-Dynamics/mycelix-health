@@ -42,6 +42,8 @@ pub enum DigestDomain {
     MedicationDispensePolicy,
     MedicationDispenseRequest,
     MedicationDispenseLedgerSnapshot,
+    MedicationDispensePreflightReceipt,
+    MedicationDispenseSlotAuthorization,
     MedicationDispenseReceipt,
     QuarantineEvent,
     QuarantineDecision,
@@ -72,15 +74,15 @@ impl DigestDomain {
             Self::MedicationActivationState => b"medication-activation-state",
             Self::EmergencyMedicationOverridePolicy => b"emergency-medication-override-policy",
             Self::EmergencyMedicationOverrideReceipt => b"emergency-medication-override-receipt",
-            Self::EmergencyMedicationOverrideAttestation => {
-                b"emergency-medication-override-attestation"
-            }
+            Self::EmergencyMedicationOverrideAttestation => b"emergency-medication-override-attestation",
             Self::PharmacyRecord => b"pharmacy-record",
             Self::PharmacyAffiliationEvidence => b"pharmacy-affiliation-evidence",
             Self::PharmacyStatusEvidence => b"pharmacy-status-evidence",
             Self::MedicationDispensePolicy => b"medication-dispense-policy",
             Self::MedicationDispenseRequest => b"medication-dispense-request",
             Self::MedicationDispenseLedgerSnapshot => b"medication-dispense-ledger-snapshot",
+            Self::MedicationDispensePreflightReceipt => b"medication-dispense-preflight-receipt",
+            Self::MedicationDispenseSlotAuthorization => b"medication-dispense-slot-authorization",
             Self::MedicationDispenseReceipt => b"medication-dispense-receipt",
             Self::QuarantineEvent => b"quarantine-event",
             Self::QuarantineDecision => b"quarantine-decision",
@@ -254,6 +256,8 @@ mod tests {
             DigestDomain::MedicationDispensePolicy,
             DigestDomain::MedicationDispenseRequest,
             DigestDomain::MedicationDispenseLedgerSnapshot,
+            DigestDomain::MedicationDispensePreflightReceipt,
+            DigestDomain::MedicationDispenseSlotAuthorization,
             DigestDomain::MedicationDispenseReceipt,
             DigestDomain::AuthorityPolicy,
         ];
