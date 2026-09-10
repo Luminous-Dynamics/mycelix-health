@@ -15,7 +15,7 @@
 //! affiliation/status evidence, and an exact prior-dispense ledger snapshot.
 
 use mycelix_clinical_authority::{
-    AuthorityPermit, AuthorityPurpose, EvidenceDigest, JurisdictionCode, PrincipalBinding,
+    AuthorityPermit, AuthorityPurpose, JurisdictionCode, PrincipalBinding,
 };
 use mycelix_clinical_integrity::{
     hash_canonical_bytes, DigestDomain, IntegrityError, StoredDigest, VerifiedDigest,
@@ -97,7 +97,7 @@ impl DispensePolicyV1 {
 }
 
 /// Provenance class preserved into every qualified dispense receipt.
-#[derive(Clone, Debug, Serialize, PartialEq, Eq)]
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 pub enum DispenseActivationProvenance {
     Qualified {
         activation_receipt_digest: StoredDigest,
@@ -384,8 +384,8 @@ impl PriorDispenseEvidence {
     }
 }
 
-/// Exact local prior-dispense view. It deliberately has no Deserialize implementation;
-/// callers must reconstruct it from locally reverified dispense receipts.
+/// Exact local prior-dispense view. It deliberately has no Deserialize/Debug
+/// implementation; callers must reconstruct it from locally reverified receipts.
 #[derive(Serialize)]
 pub struct DispenseLedgerSnapshotV1 {
     medication_artifact_digest: StoredDigest,
@@ -576,7 +576,9 @@ pub fn authorize_medication_dispense(
     if activation.medication_artifact_digest != medication_digest.stored() {
         return Err(DispenseError::ActivationMedicationMismatch);
     }
-    if activation.provenance.is_emergency() && !dispense_policy.allow_emergency_override_activation {
+    if activation.provenance.is_emergency()
+        && !dispense_policy.allow_emergency_override_activation
+    {
         return Err(DispenseError::EmergencyActivationNotAllowed);
     }
     verify_freshness(
@@ -979,16 +981,16 @@ mod tests {
             verified(DigestDomain::MedicationDispenseReceipt, 4),
         )
         .unwrap();
-        assert_eq!(
-            DispenseLedgerSnapshotV1::from_verified_receipts(
-                medication,
-                activation,
-                vec![receipt0, receipt2],
-                100,
-            )
-            .unwrap_err(),
-            DispenseError::NonContiguousDispenseLedger
+        let result = DispenseLedgerSnapshotV1::from_verified_receipts(
+            medication,
+            activation,
+            vec![receipt0, receipt2],
+            100,
         );
+        assert!(matches!(
+            result,
+            Err(DispenseError::NonContiguousDispenseLedger)
+        ));
     }
 
     #[test]
