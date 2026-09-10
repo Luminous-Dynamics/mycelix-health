@@ -50,6 +50,14 @@ integrity:
       # Exact occurrence-binding authorizations are short-lived and hard-capped by
       # the integrity zome at 15 minutes. Deployments may choose a shorter window.
       max_verifier_authorization_duration_micros: 900000000
+    clinical_causality:
+      schema_version: 1
+      # Causal-assessment publication trust is independent of observation,
+      # medication, administration, and research authority. Fail closed by default.
+      root_authorities: []
+      # Root authorizations approve one exact qualified receipt + one exact public
+      # projection and are hard-capped at 15 minutes by the integrity zome.
+      max_verifier_authorization_duration_micros: 900000000
   zomes:
     # Tier 1: MVP Core
     - name: patient_integrity
@@ -70,6 +78,8 @@ integrity:
       path: ../target/wasm32-unknown-unknown/release/medication_administration_integrity.wasm
     - name: medication_administration_occurrence_integrity
       path: ../target/wasm32-unknown-unknown/release/medication_administration_occurrence_integrity.wasm
+    - name: clinical_causality_integrity
+      path: ../target/wasm32-unknown-unknown/release/clinical_causality_integrity.wasm
     - name: consent_integrity
       path: ../target/wasm32-unknown-unknown/release/consent_integrity.wasm
     - name: bridge_integrity
@@ -116,6 +126,10 @@ coordinator:
       path: ../target/wasm32-unknown-unknown/release/medication_administration_occurrence.wasm
       dependencies:
         - name: medication_administration_occurrence_integrity
+    - name: clinical_causality
+      path: ../target/wasm32-unknown-unknown/release/clinical_causality.wasm
+      dependencies:
+        - name: clinical_causality_integrity
     - name: consent
       path: ../target/wasm32-unknown-unknown/release/consent.wasm
       dependencies:
