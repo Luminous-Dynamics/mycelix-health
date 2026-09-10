@@ -13,3 +13,6 @@ mycelix-clinical-authority = { path = "../clinical-authority" }
 mycelix-clinical-integrity = { path = "../clinical-integrity" }
 mycelix-fhir-medication-semantics = { path = "../fhir-medication-semantics" }
 mycelix-medication-safety-assessment = { path = "../medication-safety-assessment" }
+
+[dev-dependencies]
+mycelix-medication-safety = { path = "../medication-safety" }
