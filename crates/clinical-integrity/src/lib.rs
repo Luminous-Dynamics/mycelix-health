@@ -12,18 +12,22 @@ use thiserror::Error;
 const DERIVE_KEY_CONTEXT: &str = "mycelix.health.clinical-integrity.v1";
 const FRAME_VERSION: u8 = 1;
 
-#[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq, Hash)]
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub enum DigestAlgorithm {
     Blake3_256,
 }
 
-#[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq, Hash)]
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub enum DigestDomain {
     ClinicalArtifact,
     ClinicalObservedEvent,
     ClinicalExposureAssociation,
     ClinicalCausalAssessmentPolicy,
     ClinicalCausalAssessment,
+    ClinicalCausalEvidenceTrustPolicy,
+    ClinicalCausalEvidenceTrustReceipt,
+    ClinicalCausalQualificationPolicy,
+    ClinicalCausalQualifiedReceipt,
     ClinicalRegulatoryInterpretation,
     EvidenceCapsule,
     MedicationOrder,
@@ -80,6 +84,10 @@ impl DigestDomain {
             Self::ClinicalExposureAssociation => b"clinical-exposure-association",
             Self::ClinicalCausalAssessmentPolicy => b"clinical-causal-assessment-policy",
             Self::ClinicalCausalAssessment => b"clinical-causal-assessment",
+            Self::ClinicalCausalEvidenceTrustPolicy => b"clinical-causal-evidence-trust-policy",
+            Self::ClinicalCausalEvidenceTrustReceipt => b"clinical-causal-evidence-trust-receipt",
+            Self::ClinicalCausalQualificationPolicy => b"clinical-causal-qualification-policy",
+            Self::ClinicalCausalQualifiedReceipt => b"clinical-causal-qualified-receipt",
             Self::ClinicalRegulatoryInterpretation => b"clinical-regulatory-interpretation",
             Self::EvidenceCapsule => b"evidence-capsule",
             Self::MedicationOrder => b"medication-order",
@@ -130,7 +138,7 @@ impl DigestDomain {
     }
 }
 
-#[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq, Hash)]
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct StoredDigest {
     pub algorithm: DigestAlgorithm,
     pub domain: DigestDomain,
@@ -146,7 +154,7 @@ impl StoredDigest {
     }
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct VerifiedDigest {
     stored: StoredDigest,
 }
@@ -269,6 +277,10 @@ mod tests {
             DigestDomain::ClinicalExposureAssociation,
             DigestDomain::ClinicalCausalAssessmentPolicy,
             DigestDomain::ClinicalCausalAssessment,
+            DigestDomain::ClinicalCausalEvidenceTrustPolicy,
+            DigestDomain::ClinicalCausalEvidenceTrustReceipt,
+            DigestDomain::ClinicalCausalQualificationPolicy,
+            DigestDomain::ClinicalCausalQualifiedReceipt,
             DigestDomain::ClinicalRegulatoryInterpretation,
             DigestDomain::MedicationOrder,
             DigestDomain::MedicationRequestArtifact,
