@@ -7,10 +7,12 @@ integrity:
     medication_activation:
       schema_version: 1
       # Fail closed by default. Production/test deployments must repack the DNA
-      # with explicit trusted AgentPubKeys before verifier grants can validate.
+      # with explicit trusted AgentPubKeys before exact verifier authorizations validate.
       root_authorities: []
-      # Verifier grants are intentionally short-lived even after roots are pinned.
-      max_verifier_grant_duration_micros: 86400000000
+      # v1 exact-receipt verifier authorizations may live for at most 15 minutes.
+      # The integrity zome also hard-caps this value, so accidental packaging with a
+      # longer window fails validation rather than silently weakening the contract.
+      max_verifier_authorization_duration_micros: 900000000
   zomes:
     # Tier 1: MVP Core
     - name: patient_integrity
