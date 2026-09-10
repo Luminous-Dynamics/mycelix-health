@@ -2,9 +2,9 @@
 #![allow(clippy::collapsible_match)]
 //! DNA-rooted qualified clinical causal-assessment attestations.
 //!
-//! Detailed causal evidence and the qualification receipt remain protected off-DHT.
-//! The public DHT stores only a keyed commitment to the private receipt plus the
-//! qualification-policy identity and conservative conclusion, after a DNA-pinned
+//! Detailed causal evidence and qualification receipts remain protected off-DHT.
+//! The public DHT stores only a secret-keyed commitment to the private receipt,
+//! qualification-policy identity, and conservative conclusion after a DNA-pinned
 //! root authorizes one exact verifier to publish one exact projection in a short window.
 //! Corrections are append-only; updates/deletes never represent clinical correction.
 
@@ -13,6 +13,8 @@ use mycelix_clinical_causality::CausalConclusionV1;
 use mycelix_clinical_integrity::{hash_canonical_bytes, DigestDomain, StoredDigest};
 
 const CONFIG_VERSION: u16 = 1;
+const MAX_ID_LEN: usize = 128;
+const MAX_ROOT_AUTHORITIES: usize = 64;
 const ABSOLUTE_MAX_AUTHORIZATION_DURATION_MICROS: i64 = 900_000_000; // 15 minutes
 const ATTESTATION_SCHEMA_TAG: &[u8] = b"mycelix-health/clinical-causal-qualified-attestation-v1";
 
@@ -23,28 +25,29 @@ pub struct ClinicalCausalityRootConfig {
     pub max_verifier_authorization_duration_micros: i64,
 }
 
-/// Secret-keyed commitment scheme used outside the DHT validator.
-///
-/// Validators can establish only shape and exact authorization binding. The DNA root
-/// is responsible for recomputing the commitment from the exact private qualified
-/// receipt before issuing an authorization.
+/// Secret-keyed commitment scheme. The secret key never appears on the DHT.
 #[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq)]
-pub enum CausalReceiptCommitmentSchemeV1 {
+pub enum CausalCommitmentSchemeV1 {
     HmacSha256,
     Blake3Keyed,
 }
 
+/// Opaque commitment to protected material.
+///
+/// Validators establish shape and exact authorization/lineage binding only. The
+/// DNA-rooted institutional verifier is responsible for recomputing the commitment
+/// from the exact protected artifact before authorization/publication.
 #[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]
-pub struct OpaqueCausalReceiptCommitmentV1 {
-    pub scheme: CausalReceiptCommitmentSchemeV1,
+pub struct OpaqueCausalCommitmentV1 {
+    pub scheme: CausalCommitmentSchemeV1,
     pub value: [u8; 32],
 }
 
-impl OpaqueCausalReceiptCommitmentV1 {
-    fn validate(&self) -> ExternResult<ValidateCallbackResult> {
+impl OpaqueCausalCommitmentV1 {
+    fn validate(&self, label: &'static str) -> ExternResult<ValidateCallbackResult> {
         if self.value == [0u8; 32] {
-            return invalid("Qualified causal receipt commitment cannot be zero");
+            return invalid(format!("{label} commitment cannot be zero"));
         }
         Ok(ValidateCallbackResult::Valid)
     }
@@ -56,7 +59,7 @@ impl OpaqueCausalReceiptCommitmentV1 {
 pub struct QualifiedCausalAssessmentAttestationV1 {
     pub schema_version: u16,
     pub attestation_id: String,
-    pub qualified_receipt_commitment: OpaqueCausalReceiptCommitmentV1,
+    pub qualified_receipt_commitment: OpaqueCausalCommitmentV1,
     pub qualification_policy_digest: StoredDigest,
     pub conclusion: CausalConclusionV1,
 }
@@ -66,10 +69,13 @@ impl QualifiedCausalAssessmentAttestationV1 {
         if self.schema_version != 1 {
             return invalid("Unsupported qualified causal attestation version");
         }
-        if self.attestation_id.trim().is_empty() {
-            return invalid("Causal attestation ID is required");
+        let id = validate_id("Causal attestation ID", &self.attestation_id)?;
+        if !matches!(id, ValidateCallbackResult::Valid) {
+            return Ok(id);
         }
-        let commitment = self.qualified_receipt_commitment.validate()?;
+        let commitment = self
+            .qualified_receipt_commitment
+            .validate("Qualified causal receipt")?;
         if !matches!(commitment, ValidateCallbackResult::Valid) {
             return Ok(commitment);
         }
@@ -112,7 +118,7 @@ impl QualifiedCausalAssessmentAttestationV1 {
 pub struct CausalAssessmentVerifierAuthorization {
     pub authorization_id: String,
     pub grantee: AgentPubKey,
-    pub qualified_receipt_commitment: OpaqueCausalReceiptCommitmentV1,
+    pub qualified_receipt_commitment: OpaqueCausalCommitmentV1,
     pub public_attestation_digest: StoredDigest,
     pub qualification_policy_digest: StoredDigest,
     pub conclusion: CausalConclusionV1,
@@ -143,10 +149,10 @@ pub enum CausalAttestationCorrectionReason {
 pub struct CausalAttestationCorrection {
     pub correction_id: String,
     pub attestation_hash: ActionHash,
-    pub qualified_receipt_commitment: OpaqueCausalReceiptCommitmentV1,
+    pub qualified_receipt_commitment: OpaqueCausalCommitmentV1,
     pub reason: CausalAttestationCorrectionReason,
-    /// Secret-keyed commitment to protected human-readable rationale.
-    pub rationale_commitment: Option<[u8; 32]>,
+    /// Commitment to protected human-readable rationale. Raw text stays private.
+    pub rationale_commitment: Option<OpaqueCausalCommitmentV1>,
 }
 
 #[hdk_entry_types]
@@ -224,7 +230,11 @@ fn validate_create_entry(
                 return Ok(shape);
             }
             let config = clinical_causality_root_config()?;
-            require_root_authority(action.author(), &config)
+            let root = require_root_authority(action.author(), &config)?;
+            if !matches!(root, ValidateCallbackResult::Valid) {
+                return Ok(root);
+            }
+            require_correction_target(&correction)
         }
     }
 }
@@ -232,10 +242,13 @@ fn validate_create_entry(
 fn validate_authorization_shape(
     authorization: &CausalAssessmentVerifierAuthorization,
 ) -> ExternResult<ValidateCallbackResult> {
-    if authorization.authorization_id.trim().is_empty() {
-        return invalid("Causal verifier authorization ID is required");
+    let id = validate_id("Causal verifier authorization ID", &authorization.authorization_id)?;
+    if !matches!(id, ValidateCallbackResult::Valid) {
+        return Ok(id);
     }
-    let commitment = authorization.qualified_receipt_commitment.validate()?;
+    let commitment = authorization
+        .qualified_receipt_commitment
+        .validate("Qualified causal receipt")?;
     if !matches!(commitment, ValidateCallbackResult::Valid) {
         return Ok(commitment);
     }
@@ -281,10 +294,9 @@ fn require_exact_verifier_authorization(
     let authorization: CausalAssessmentVerifierAuthorization =
         decode_entry(&record, "causal verifier authorization")?;
 
-    // Containment for the cross-zome structural-decoding issue tracked in P0 #72:
-    // regardless of structurally compatible bytes, the dependency must be authored
-    // by a current DNA-pinned causal root. Exact source-entry-definition proof remains
-    // a promotion requirement.
+    // Containment for P0 #72: even before exact source-entry-definition proof,
+    // a structurally compatible dependency must still be authored by a current
+    // DNA-pinned causal root and satisfy the causal authorization shape.
     let config = clinical_causality_root_config()?;
     let root = require_root_authority(record.action().author(), &config)?;
     if !matches!(root, ValidateCallbackResult::Valid) {
@@ -316,23 +328,40 @@ fn require_exact_verifier_authorization(
 fn validate_correction_shape(
     correction: &CausalAttestationCorrection,
 ) -> ExternResult<ValidateCallbackResult> {
-    if correction.correction_id.trim().is_empty() {
-        return invalid("Causal attestation correction ID is required");
+    let id = validate_id("Causal correction ID", &correction.correction_id)?;
+    if !matches!(id, ValidateCallbackResult::Valid) {
+        return Ok(id);
     }
-    let commitment = correction.qualified_receipt_commitment.validate()?;
-    if !matches!(commitment, ValidateCallbackResult::Valid) {
-        return Ok(commitment);
+    let receipt = correction
+        .qualified_receipt_commitment
+        .validate("Qualified causal receipt")?;
+    if !matches!(receipt, ValidateCallbackResult::Valid) {
+        return Ok(receipt);
     }
-    if correction
-        .rationale_commitment
-        .is_some_and(|commitment| commitment == [0u8; 32])
-    {
-        return invalid("Causal correction rationale commitment cannot be zero");
+    if let Some(rationale) = &correction.rationale_commitment {
+        let shape = rationale.validate("Causal correction rationale")?;
+        if !matches!(shape, ValidateCallbackResult::Valid) {
+            return Ok(shape);
+        }
     }
     if matches!(correction.reason, CausalAttestationCorrectionReason::Other)
         && correction.rationale_commitment.is_none()
     {
         return invalid("Other causal correction requires a rationale commitment");
+    }
+    Ok(ValidateCallbackResult::Valid)
+}
+
+fn require_correction_target(
+    correction: &CausalAttestationCorrection,
+) -> ExternResult<ValidateCallbackResult> {
+    let record = must_get_valid_record(correction.attestation_hash.clone())?;
+    let attestation: QualifiedCausalAssessmentAttestation =
+        decode_entry(&record, "qualified causal attestation")?;
+    if attestation.attestation.qualified_receipt_commitment
+        != correction.qualified_receipt_commitment
+    {
+        return invalid("Causal correction receipt commitment does not match target attestation");
     }
     Ok(ValidateCallbackResult::Valid)
 }
@@ -392,6 +421,11 @@ fn clinical_causality_root_config() -> ExternResult<ClinicalCausalityRootConfig>
             config.schema_version
         ))));
     }
+    if config.root_authorities.len() > MAX_ROOT_AUTHORITIES {
+        return Err(wasm_error!(WasmErrorInner::Guest(format!(
+            "Clinical causality root list exceeds maximum of {MAX_ROOT_AUTHORITIES}"
+        ))));
+    }
     if config.max_verifier_authorization_duration_micros <= 0
         || config.max_verifier_authorization_duration_micros
             > ABSOLUTE_MAX_AUTHORIZATION_DURATION_MICROS
@@ -418,6 +452,16 @@ fn require_root_authority(
         return invalid(
             "Causal verifier authorization/correction requires a DNA-pinned root authority",
         );
+    }
+    Ok(ValidateCallbackResult::Valid)
+}
+
+fn validate_id(label: &'static str, value: &str) -> ExternResult<ValidateCallbackResult> {
+    if value.trim().is_empty() {
+        return invalid(format!("{label} is required"));
+    }
+    if value.len() > MAX_ID_LEN {
+        return invalid(format!("{label} exceeds {MAX_ID_LEN} bytes"));
     }
     Ok(ValidateCallbackResult::Valid)
 }
@@ -475,9 +519,9 @@ mod tests {
         }
     }
 
-    fn commitment(seed: u8) -> OpaqueCausalReceiptCommitmentV1 {
-        OpaqueCausalReceiptCommitmentV1 {
-            scheme: CausalReceiptCommitmentSchemeV1::Blake3Keyed,
+    fn commitment(seed: u8) -> OpaqueCausalCommitmentV1 {
+        OpaqueCausalCommitmentV1 {
+            scheme: CausalCommitmentSchemeV1::Blake3Keyed,
             value: [seed; 32],
         }
     }
@@ -537,6 +581,14 @@ mod tests {
         let mut changed = original.clone();
         changed.conclusion = CausalConclusionV1::EvidenceAgainstRelationship;
         assert_ne!(original_digest, changed.digest().unwrap());
+    }
+
+    #[test]
+    fn oversized_public_id_is_rejected() {
+        let mut value = attestation();
+        value.attestation_id = "x".repeat(MAX_ID_LEN + 1);
+        let result = value.validate().unwrap();
+        assert!(matches!(result, ValidateCallbackResult::Invalid(_)));
     }
 
     #[test]
