@@ -22,6 +22,15 @@ integrity:
       # Exact-receipt emergency verifier authorizations are also capped at 15 minutes.
       # Deployments may choose a shorter value when repacking the DNA.
       max_verifier_authorization_duration_micros: 900000000
+    medication_dispense:
+      schema_version: 1
+      # Fail closed by default. Deployments must explicitly pin allocator AgentPubKeys.
+      # The ordered list is part of the DNA hash; each MedicationRequest artifact maps
+      # deterministically to exactly one allocator by digest prefix modulo list length.
+      slot_allocators: []
+      # Exact refill-slot authorizations are short-lived and hard-capped by the
+      # integrity zome at five minutes. Deployments may choose a shorter value.
+      max_slot_authorization_duration_micros: 300000000
   zomes:
     # Tier 1: MVP Core
     - name: patient_integrity
@@ -36,6 +45,8 @@ integrity:
       path: ../target/wasm32-unknown-unknown/release/medication_activation_integrity.wasm
     - name: medication_emergency_integrity
       path: ../target/wasm32-unknown-unknown/release/medication_emergency_integrity.wasm
+    - name: medication_dispense_integrity
+      path: ../target/wasm32-unknown-unknown/release/medication_dispense_integrity.wasm
     - name: consent_integrity
       path: ../target/wasm32-unknown-unknown/release/consent_integrity.wasm
     - name: bridge_integrity
@@ -70,6 +81,10 @@ coordinator:
       path: ../target/wasm32-unknown-unknown/release/medication_emergency.wasm
       dependencies:
         - name: medication_emergency_integrity
+    - name: medication_dispense
+      path: ../target/wasm32-unknown-unknown/release/medication_dispense.wasm
+      dependencies:
+        - name: medication_dispense_integrity
     - name: consent
       path: ../target/wasm32-unknown-unknown/release/consent.wasm
       dependencies:
