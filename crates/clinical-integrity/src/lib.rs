@@ -49,6 +49,7 @@ pub enum DigestDomain {
     MedicationAdministrationPolicy,
     MedicationAdministrationEvent,
     MedicationAdministrationReceipt,
+    MedicationAdministrationAttestation,
     MedicationAdministrationSupplyEvidence,
     QuarantineEvent,
     QuarantineDecision,
@@ -93,6 +94,7 @@ impl DigestDomain {
             Self::MedicationAdministrationPolicy => b"medication-administration-policy",
             Self::MedicationAdministrationEvent => b"medication-administration-event",
             Self::MedicationAdministrationReceipt => b"medication-administration-receipt",
+            Self::MedicationAdministrationAttestation => b"medication-administration-attestation",
             Self::MedicationAdministrationSupplyEvidence => b"medication-administration-supply-evidence",
             Self::QuarantineEvent => b"quarantine-event",
             Self::QuarantineDecision => b"quarantine-decision",
@@ -273,6 +275,7 @@ mod tests {
             DigestDomain::MedicationAdministrationPolicy,
             DigestDomain::MedicationAdministrationEvent,
             DigestDomain::MedicationAdministrationReceipt,
+            DigestDomain::MedicationAdministrationAttestation,
             DigestDomain::MedicationAdministrationSupplyEvidence,
             DigestDomain::AuthorityPolicy,
         ];
