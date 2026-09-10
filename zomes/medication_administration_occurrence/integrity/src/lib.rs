@@ -10,7 +10,7 @@ use medication_administration_integrity::QualifiedMedicationAdministration;
 use mycelix_clinical_integrity::{hash_canonical_bytes, DigestDomain, StoredDigest};
 
 const CONFIG_VERSION: u16 = 1;
-const ABSOLUTE_MAX_AUTHORIZATION_DURATION_MICROS: i64 = 900_000_000; // 15 min
+const ABSOLUTE_MAX_AUTHORIZATION_DURATION_MICROS: i64 = 900_000_000;
 const ATTESTATION_TAG: &[u8] =
     b"mycelix-health/medication-administration-occurrence-attestation-v1";
 
@@ -76,7 +76,7 @@ impl MedicationAdministrationOccurrenceAttestationV1 {
         framed.push(0);
         framed.extend_from_slice(&encoded);
         Ok(hash_canonical_bytes(
-            DigestDomain::MedicationAdministrationOccurrenceBinding,
+            DigestDomain::MedicationAdministrationOccurrenceAttestation,
             &framed,
         )
         .map_err(|error| wasm_error!(WasmErrorInner::Guest(error.to_string())))?
@@ -225,7 +225,7 @@ fn validate_authorization_shape(
     }
     require_digest_domain(
         authorization.occurrence_attestation_digest,
-        DigestDomain::MedicationAdministrationOccurrenceBinding,
+        DigestDomain::MedicationAdministrationOccurrenceAttestation,
     )?;
     require_digest_domain(
         authorization.occurrence_binding_digest,
@@ -383,7 +383,8 @@ fn validate_create_link(
     match link_type {
         LinkTypes::BindingToCorrections => {
             let binding_hash = require_action_hash(base_address, "occurrence binding link base")?;
-            let correction_hash = require_action_hash(target_address, "occurrence correction target")?;
+            let correction_hash =
+                require_action_hash(target_address, "occurrence correction target")?;
             let binding_record = must_get_valid_record(binding_hash.clone())?;
             let binding: QualifiedMedicationAdministrationOccurrenceBinding =
                 decode_entry(&binding_record, "qualified administration occurrence binding")?;
@@ -398,7 +399,9 @@ fn validate_create_link(
                 return invalid("Occurrence-binding correction link crosses lineage");
             }
             if correction_record.action().author() != &action.author {
-                return invalid("Occurrence-binding correction link must be authored by correction author");
+                return invalid(
+                    "Occurrence-binding correction link must be authored by correction author",
+                );
             }
             Ok(ValidateCallbackResult::Valid)
         }
@@ -528,6 +531,15 @@ mod tests {
             medication_artifact_digest: stored(DigestDomain::MedicationRequestArtifact, 6),
             dosage_index: 0,
         }
+    }
+
+    #[test]
+    fn attestation_digest_is_separate_from_private_binding_domain() {
+        let value = attestation().digest().unwrap();
+        assert_eq!(
+            value.domain,
+            DigestDomain::MedicationAdministrationOccurrenceAttestation
+        );
     }
 
     #[test]
