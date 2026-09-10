@@ -41,6 +41,15 @@ integrity:
       # Exact receipt + attestation verifier authorizations are short-lived and
       # hard-capped by the integrity zome at 15 minutes. Deployments may choose less.
       max_verifier_authorization_duration_micros: 900000000
+    medication_administration_occurrence:
+      schema_version: 1
+      # Occurrence-classification trust is separate from administration publication
+      # trust. Empty by default: no administration->occurrence binding can validate
+      # until a deployment explicitly pins root AgentPubKeys and repacks the DNA.
+      root_authorities: []
+      # Exact occurrence-binding authorizations are short-lived and hard-capped by
+      # the integrity zome at 15 minutes. Deployments may choose a shorter window.
+      max_verifier_authorization_duration_micros: 900000000
   zomes:
     # Tier 1: MVP Core
     - name: patient_integrity
@@ -59,6 +68,8 @@ integrity:
       path: ../target/wasm32-unknown-unknown/release/medication_dispense_integrity.wasm
     - name: medication_administration_integrity
       path: ../target/wasm32-unknown-unknown/release/medication_administration_integrity.wasm
+    - name: medication_administration_occurrence_integrity
+      path: ../target/wasm32-unknown-unknown/release/medication_administration_occurrence_integrity.wasm
     - name: consent_integrity
       path: ../target/wasm32-unknown-unknown/release/consent_integrity.wasm
     - name: bridge_integrity
@@ -101,6 +112,10 @@ coordinator:
       path: ../target/wasm32-unknown-unknown/release/medication_administration.wasm
       dependencies:
         - name: medication_administration_integrity
+    - name: medication_administration_occurrence
+      path: ../target/wasm32-unknown-unknown/release/medication_administration_occurrence.wasm
+      dependencies:
+        - name: medication_administration_occurrence_integrity
     - name: consent
       path: ../target/wasm32-unknown-unknown/release/consent.wasm
       dependencies:
