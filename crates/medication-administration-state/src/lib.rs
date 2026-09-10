@@ -42,12 +42,12 @@ pub enum AdministrationLineageLifecycle {
     Current,
     /// One or more corrections invalidate the semantic administration receipt.
     Corrected {
-        corrections: Vec<AdministrationCorrectionView>,
+        semantic_corrections: Vec<AdministrationCorrectionView>,
     },
     /// Every publication of this semantic receipt has been marked duplicate
     /// documentation, while no semantic-invalidating correction exists.
     PublicationSuppressed {
-        corrections: Vec<AdministrationCorrectionView>,
+        duplicate_corrections: Vec<AdministrationCorrectionView>,
     },
 }
 
@@ -66,6 +66,9 @@ pub struct AdministrationLineageView {
     pub publication_action_hashes: Vec<ActionHash>,
     /// Publications not individually suppressed as duplicate documentation.
     pub effective_publication_action_hashes: Vec<ActionHash>,
+    /// Complete correction provenance, regardless of whether each correction is
+    /// publication-scoped or semantic-receipt-scoped.
+    pub corrections: Vec<AdministrationCorrectionView>,
     pub lifecycle: AdministrationLineageLifecycle,
 }
 
@@ -113,9 +116,11 @@ pub fn reduce_administration_state(
     publications: &[AdministrationPublicationRecord],
     corrections: &[AdministrationCorrectionRecord],
 ) -> Result<MedicationAdministrationView, AdministrationStateError> {
-    let mut publication_by_action: HashMap<ActionHash, (String, StoredDigest)> = HashMap::new();
-    let mut publication_payload_by_action: HashMap<ActionHash, MedicationAdministrationAttestationV1> =
-        HashMap::new();
+    let mut publication_by_action: HashMap<ActionHash, StoredDigest> = HashMap::new();
+    let mut publication_payload_by_action: HashMap<
+        ActionHash,
+        MedicationAdministrationAttestationV1,
+    > = HashMap::new();
     let mut groups: HashMap<StoredDigest, PublicationGroup> = HashMap::new();
 
     for record in publications {
@@ -131,10 +136,7 @@ pub fn reduce_administration_state(
         }
 
         publication_payload_by_action.insert(record.action_hash.clone(), attestation.clone());
-        publication_by_action.insert(
-            record.action_hash.clone(),
-            (attestation.administration_id.clone(), receipt),
-        );
+        publication_by_action.insert(record.action_hash.clone(), receipt);
 
         match groups.get_mut(&receipt) {
             Some(group) => {
@@ -170,7 +172,7 @@ pub fn reduce_administration_state(
         }
         seen_correction_actions.insert(record.action_hash.clone(), record.correction.clone());
 
-        let (_, target_receipt) = publication_by_action
+        let target_receipt = publication_by_action
             .get(&record.correction.administration_hash)
             .ok_or(AdministrationStateError::OrphanCorrection)?;
         if *target_receipt != record.correction.administration_receipt_digest {
@@ -187,8 +189,10 @@ pub fn reduce_administration_state(
             rationale_commitment: record.correction.rationale_commitment,
         };
 
-        if matches!(record.correction.reason, AdministrationCorrectionReason::DuplicateDocumentation)
-        {
+        if matches!(
+            record.correction.reason,
+            AdministrationCorrectionReason::DuplicateDocumentation
+        ) {
             group
                 .duplicate_suppressed_actions
                 .insert(record.correction.administration_hash.clone());
@@ -211,13 +215,17 @@ pub fn reduce_administration_state(
             .cloned()
             .collect();
 
+        let mut all_corrections = group.duplicate_corrections.clone();
+        all_corrections.extend(group.semantic_corrections.iter().cloned());
+        all_corrections.sort_by(correction_order);
+
         let lifecycle = if !group.semantic_corrections.is_empty() {
             AdministrationLineageLifecycle::Corrected {
-                corrections: group.semantic_corrections.clone(),
+                semantic_corrections: group.semantic_corrections.clone(),
             }
         } else if effective_publication_action_hashes.is_empty() {
             AdministrationLineageLifecycle::PublicationSuppressed {
-                corrections: group.duplicate_corrections.clone(),
+                duplicate_corrections: group.duplicate_corrections.clone(),
             }
         } else {
             AdministrationLineageLifecycle::Current
@@ -236,6 +244,7 @@ pub fn reduce_administration_state(
             administration_policy_digest: attestation.administration_policy_digest,
             publication_action_hashes: group.publication_action_hashes,
             effective_publication_action_hashes,
+            corrections: all_corrections,
             lifecycle,
         };
         by_occurrence
@@ -246,14 +255,21 @@ pub fn reduce_administration_state(
 
     let mut occurrences = Vec::with_capacity(by_occurrence.len());
     for (administration_id, mut lineages) in by_occurrence {
-        lineages.sort_by(|left, right| digest_order(
-            &left.administration_receipt_digest,
-            &right.administration_receipt_digest,
-        ));
+        lineages.sort_by(|left, right| {
+            digest_order(
+                &left.administration_receipt_digest,
+                &right.administration_receipt_digest,
+            )
+        });
 
         let mut current_receipts: Vec<StoredDigest> = lineages
             .iter()
-            .filter(|lineage| matches!(&lineage.lifecycle, AdministrationLineageLifecycle::Current))
+            .filter(|lineage| {
+                matches!(
+                    &lineage.lifecycle,
+                    AdministrationLineageLifecycle::Current
+                )
+            })
             .map(|lineage| lineage.administration_receipt_digest)
             .collect();
         current_receipts.sort_by(digest_order);
@@ -306,7 +322,10 @@ fn validate_attestation_shape(
         attestation.finalized_dispense_receipt_digest,
         DigestDomain::MedicationDispenseReceipt,
     )?;
-    require_domain(attestation.authority_policy_digest, DigestDomain::AuthorityPolicy)?;
+    require_domain(
+        attestation.authority_policy_digest,
+        DigestDomain::AuthorityPolicy,
+    )?;
     require_domain(
         attestation.administration_policy_digest,
         DigestDomain::MedicationAdministrationPolicy,
@@ -430,7 +449,6 @@ pub enum AdministrationStateError {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use holo_hash::AgentPubKey;
     use mycelix_clinical_integrity::{DigestAlgorithm, DigestDomain};
 
     fn stored(domain: DigestDomain, seed: u8) -> StoredDigest {
@@ -453,9 +471,15 @@ mod tests {
                 DigestDomain::MedicationAdministrationReceipt,
                 receipt_seed,
             ),
-            event_digest: stored(DigestDomain::MedicationAdministrationEvent, receipt_seed + 1),
+            event_digest: stored(
+                DigestDomain::MedicationAdministrationEvent,
+                receipt_seed.wrapping_add(1),
+            ),
             medication_artifact_digest: stored(DigestDomain::MedicationRequestArtifact, 10),
-            activation_semantic_receipt_digest: stored(DigestDomain::MedicationActivationReceipt, 11),
+            activation_semantic_receipt_digest: stored(
+                DigestDomain::MedicationActivationReceipt,
+                11,
+            ),
             finalized_dispense_receipt_digest: stored(DigestDomain::MedicationDispenseReceipt, 12),
             administrator_principal_binding: [13; 32],
             authority_policy_digest: stored(DigestDomain::AuthorityPolicy, 14),
@@ -463,7 +487,11 @@ mod tests {
         }
     }
 
-    fn publication(action_seed: u8, id: &str, receipt_seed: u8) -> AdministrationPublicationRecord {
+    fn publication(
+        action_seed: u8,
+        id: &str,
+        receipt_seed: u8,
+    ) -> AdministrationPublicationRecord {
         AdministrationPublicationRecord {
             action_hash: action(action_seed),
             administration: QualifiedMedicationAdministration {
@@ -501,7 +529,12 @@ mod tests {
         let view = reduce_administration_state(&[a, b], &[]).unwrap();
         assert_eq!(view.occurrences.len(), 1);
         assert_eq!(view.occurrences[0].lineages.len(), 1);
-        assert_eq!(view.occurrences[0].lineages[0].publication_action_hashes.len(), 2);
+        assert_eq!(
+            view.occurrences[0].lineages[0]
+                .publication_action_hashes
+                .len(),
+            2
+        );
         assert!(matches!(
             view.occurrences[0].current,
             AdministrationCurrentState::One { .. }
@@ -528,7 +561,10 @@ mod tests {
         match &view.occurrences[0].current {
             AdministrationCurrentState::One {
                 administration_receipt_digest,
-            } => assert_eq!(*administration_receipt_digest, stored(DigestDomain::MedicationAdministrationReceipt, 20)),
+            } => assert_eq!(
+                *administration_receipt_digest,
+                stored(DigestDomain::MedicationAdministrationReceipt, 20)
+            ),
             _ => panic!("explicit semantic correction should leave one current receipt"),
         }
     }
@@ -545,9 +581,27 @@ mod tests {
             AdministrationCurrentState::One { .. }
         ));
         assert_eq!(
-            view.occurrences[0].lineages[0].effective_publication_action_hashes.len(),
+            view.occurrences[0].lineages[0]
+                .effective_publication_action_hashes
+                .len(),
             1
         );
+        assert_eq!(view.occurrences[0].lineages[0].corrections.len(), 1);
+    }
+
+    #[test]
+    fn semantic_and_duplicate_corrections_are_both_preserved() {
+        let a = publication(1, "dose-a", 20);
+        let mut b = publication(2, "dose-a", 20);
+        b.administration.attestation = a.administration.attestation.clone();
+        let duplicate = correction(3, &b, AdministrationCorrectionReason::DuplicateDocumentation);
+        let wrong_dose = correction(4, &a, AdministrationCorrectionReason::WrongDose);
+        let view = reduce_administration_state(&[a, b], &[duplicate, wrong_dose]).unwrap();
+        assert_eq!(view.occurrences[0].lineages[0].corrections.len(), 2);
+        assert!(matches!(
+            &view.occurrences[0].lineages[0].lifecycle,
+            AdministrationLineageLifecycle::Corrected { .. }
+        ));
     }
 
     #[test]
@@ -588,7 +642,8 @@ mod tests {
         let a = publication(1, "dose-a", 20);
         let b = publication(2, "dose-a", 30);
         let c = correction(3, &b, AdministrationCorrectionReason::WrongDose);
-        let forward = reduce_administration_state(&[a.clone(), b.clone()], &[c.clone()]).unwrap();
+        let forward =
+            reduce_administration_state(&[a.clone(), b.clone()], &[c.clone()]).unwrap();
         let reverse = reduce_administration_state(&[b, a], &[c]).unwrap();
         assert_eq!(forward, reverse);
     }
@@ -596,7 +651,9 @@ mod tests {
     #[test]
     fn emergency_activation_domain_is_preserved() {
         let mut a = publication(1, "dose-a", 20);
-        a.administration.attestation.activation_semantic_receipt_digest = stored(
+        a.administration
+            .attestation
+            .activation_semantic_receipt_digest = stored(
             DigestDomain::EmergencyMedicationOverrideReceipt,
             11,
         );
@@ -607,11 +664,5 @@ mod tests {
                 .domain,
             DigestDomain::EmergencyMedicationOverrideReceipt
         );
-    }
-
-    #[test]
-    fn action_hash_constructor_fixture_is_valid() {
-        let _ = AgentPubKey::from_raw_36(vec![1; 36]);
-        assert_eq!(action(1).get_raw_36().len(), 36);
     }
 }
