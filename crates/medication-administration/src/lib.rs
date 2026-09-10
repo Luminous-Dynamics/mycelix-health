@@ -1,10 +1,10 @@
 #![deny(unsafe_code)]
 //! Evidence-bound clinician medication administration for Mycelix-Health.
 //!
-//! V1 is intentionally narrow: it represents clinician-performed administration
-//! against an exact active MedicationRequest and an exact finalized patient-specific
-//! dispense. Patient self-report, caregiver report, device adherence, facility-stock
-//! administration, and emergency-stock administration remain distinct future paths.
+//! V1 is intentionally narrow: clinician-performed administration against one
+//! exact active MedicationRequest and one exact finalized patient-specific dispense.
+//! Self-report, caregiver report, device adherence, facility stock, and emergency
+//! stock remain separate future evidence classes.
 //!
 //! `dispensed != administered` and `Prescribe/Dispense != Administer` are structural
 //! invariants of this crate.
@@ -28,12 +28,12 @@ use serde::{Deserialize, Serialize};
 use std::collections::BTreeSet;
 use thiserror::Error;
 
-const POLICY_SCHEMA_TAG: &[u8] = b"mycelix-health/medication-administration-policy-v1";
-const EVENT_SCHEMA_TAG: &[u8] = b"mycelix-health/medication-administration-event-v1";
-const RECEIPT_SCHEMA_TAG: &[u8] = b"mycelix-health/medication-administration-receipt-v1";
-const ACTIVATION_STATE_SCHEMA_TAG: &[u8] = b"mycelix-health/medication-activation-state-v1";
-const SUPPLY_SCHEMA_TAG: &[u8] = b"mycelix-health/medication-administration-supply-v1";
-const MAX_POLICY_AGE_MICROS: i64 = 86_400_000_000;
+const POLICY_TAG: &[u8] = b"mycelix-health/medication-administration-policy-v1";
+const EVENT_TAG: &[u8] = b"mycelix-health/medication-administration-event-v1";
+const RECEIPT_TAG: &[u8] = b"mycelix-health/medication-administration-receipt-v1";
+const ACTIVATION_STATE_TAG: &[u8] = b"mycelix-health/medication-activation-state-v1";
+const SUPPLY_TAG: &[u8] = b"mycelix-health/medication-administration-supply-v1";
+const MAX_AGE_MICROS: i64 = 86_400_000_000;
 const MAX_FUTURE_SKEW_MICROS: i64 = 300_000_000;
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
@@ -47,7 +47,6 @@ pub struct AdministrationPolicyV1 {
     pub max_activation_state_age_micros: i64,
     pub max_patient_binding_age_micros: i64,
     pub max_dispense_state_age_micros: i64,
-    /// Maximum time between clinical administration and workflow authorization.
     pub max_recording_delay_micros: i64,
     pub max_future_skew_micros: i64,
 }
@@ -55,33 +54,19 @@ pub struct AdministrationPolicyV1 {
 impl AdministrationPolicyV1 {
     pub fn validate(&self) -> Result<(), AdministrationError> {
         if self.schema_version != 1 {
-            return Err(AdministrationError::UnsupportedPolicyVersion(
-                self.schema_version,
-            ));
+            return Err(AdministrationError::UnsupportedPolicyVersion(self.schema_version));
         }
         if self.policy_id.trim().is_empty() {
             return Err(AdministrationError::MissingPolicyId);
         }
         for (value, field) in [
             (self.max_authority_age_micros, "max_authority_age_micros"),
-            (
-                self.max_activation_state_age_micros,
-                "max_activation_state_age_micros",
-            ),
-            (
-                self.max_patient_binding_age_micros,
-                "max_patient_binding_age_micros",
-            ),
-            (
-                self.max_dispense_state_age_micros,
-                "max_dispense_state_age_micros",
-            ),
-            (
-                self.max_recording_delay_micros,
-                "max_recording_delay_micros",
-            ),
+            (self.max_activation_state_age_micros, "max_activation_state_age_micros"),
+            (self.max_patient_binding_age_micros, "max_patient_binding_age_micros"),
+            (self.max_dispense_state_age_micros, "max_dispense_state_age_micros"),
+            (self.max_recording_delay_micros, "max_recording_delay_micros"),
         ] {
-            if value <= 0 || value > MAX_POLICY_AGE_MICROS {
+            if value <= 0 || value > MAX_AGE_MICROS {
                 return Err(AdministrationError::InvalidAgePolicy(field));
             }
         }
@@ -95,15 +80,11 @@ impl AdministrationPolicyV1 {
 
     pub fn verified_digest(&self) -> Result<VerifiedDigest, AdministrationError> {
         self.validate()?;
-        hash_json(
-            DigestDomain::MedicationAdministrationPolicy,
-            POLICY_SCHEMA_TAG,
-            self,
-        )
+        hash_json(DigestDomain::MedicationAdministrationPolicy, POLICY_TAG, self)
     }
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq)]
 pub enum AdministrationStatusV1 {
     Performed,
     PartiallyPerformed,
@@ -111,7 +92,7 @@ pub enum AdministrationStatusV1 {
     Indeterminate,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq)]
 pub enum AdministrationNonPerformanceReasonV1 {
     PatientRefused,
     HeldByClinician,
@@ -122,7 +103,7 @@ pub enum AdministrationNonPerformanceReasonV1 {
     Other,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq)]
 pub enum PartialAdministrationReasonV1 {
     PatientRequestedStop,
     AdverseReactionDuringAdministration,
@@ -141,10 +122,8 @@ pub struct AdministrationTimeV1 {
 
 impl AdministrationTimeV1 {
     fn validate(&self) -> Result<(), AdministrationError> {
-        if let Some(end) = self.end_micros {
-            if end < self.start_micros {
-                return Err(AdministrationError::AdministrationEndsBeforeStart);
-            }
+        if self.end_micros.is_some_and(|end| end < self.start_micros) {
+            return Err(AdministrationError::AdministrationEndsBeforeStart);
         }
         Ok(())
     }
@@ -157,7 +136,7 @@ impl AdministrationTimeV1 {
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 #[serde(deny_unknown_fields)]
 pub struct PerformedAdministrationV1 {
-    /// Index into the exact `MedicationOrder.dosage` array.
+    /// Index into the exact MedicationOrder dosage array.
     pub dosage_index: u32,
     pub product: CodeableConcept,
     pub dose: Quantity,
@@ -165,7 +144,7 @@ pub struct PerformedAdministrationV1 {
     pub method: Option<CodeableConcept>,
     pub site: Option<CodeableConcept>,
     pub effective: AdministrationTimeV1,
-    /// Optional exact evidence about lot/device/supply details that remain private.
+    /// Optional protected supply/lot/device evidence identity.
     pub supply_detail_evidence_digest: Option<StoredDigest>,
 }
 
@@ -185,17 +164,14 @@ impl PerformedAdministrationV1 {
         }
         self.effective.validate()?;
         if let Some(digest) = self.supply_detail_evidence_digest {
-            require_domain(
-                digest,
-                DigestDomain::MedicationAdministrationSupplyEvidence,
-            )?;
+            require_domain(digest, DigestDomain::MedicationAdministrationSupplyEvidence)?;
         }
         Ok(())
     }
 }
 
-/// Private/high-detail administration event. A later DHT attestation should carry
-/// only its digest and necessary provenance identities, not these clinical details.
+/// High-detail/private clinical event. A future DHT attestation should reference its
+/// digest rather than replicate these details.
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 #[serde(deny_unknown_fields)]
 pub struct MedicationAdministrationEventV1 {
@@ -211,24 +187,18 @@ pub struct MedicationAdministrationEventV1 {
     pub performed: Option<PerformedAdministrationV1>,
     pub nonperformance_reason: Option<AdministrationNonPerformanceReasonV1>,
     pub partial_reason: Option<PartialAdministrationReasonV1>,
-    /// Commitment to protected narrative rationale where a typed reason is not enough.
     pub rationale_commitment: Option<[u8; 32]>,
 }
 
 impl MedicationAdministrationEventV1 {
     pub fn validate_shape(&self) -> Result<(), AdministrationError> {
         if self.schema_version != 1 {
-            return Err(AdministrationError::UnsupportedEventVersion(
-                self.schema_version,
-            ));
+            return Err(AdministrationError::UnsupportedEventVersion(self.schema_version));
         }
         if self.administration_id.trim().is_empty() {
             return Err(AdministrationError::MissingAdministrationId);
         }
-        require_domain(
-            self.medication_artifact_digest,
-            DigestDomain::MedicationRequestArtifact,
-        )?;
+        require_domain(self.medication_artifact_digest, DigestDomain::MedicationRequestArtifact)?;
         require_activation_receipt_domain(self.activation_semantic_receipt_digest)?;
         require_domain(
             self.finalized_dispense_receipt_digest,
@@ -244,30 +214,25 @@ impl MedicationAdministrationEventV1 {
         if self.administrator_principal_binding == [0u8; 32] {
             return Err(AdministrationError::ZeroAdministratorPrincipal);
         }
-        if self
-            .rationale_commitment
-            .is_some_and(|commitment| commitment == [0u8; 32])
-        {
+        if self.rationale_commitment.is_some_and(|value| value == [0u8; 32]) {
             return Err(AdministrationError::ZeroRationaleCommitment);
         }
 
         match self.status {
             AdministrationStatusV1::Performed => {
-                let performed = self
-                    .performed
+                self.performed
                     .as_ref()
-                    .ok_or(AdministrationError::PerformedDetailsRequired)?;
-                performed.validate_shape()?;
+                    .ok_or(AdministrationError::PerformedDetailsRequired)?
+                    .validate_shape()?;
                 if self.nonperformance_reason.is_some() || self.partial_reason.is_some() {
                     return Err(AdministrationError::InvalidStatusDetailCombination);
                 }
             }
             AdministrationStatusV1::PartiallyPerformed => {
-                let performed = self
-                    .performed
+                self.performed
                     .as_ref()
-                    .ok_or(AdministrationError::PerformedDetailsRequired)?;
-                performed.validate_shape()?;
+                    .ok_or(AdministrationError::PerformedDetailsRequired)?
+                    .validate_shape()?;
                 if self.nonperformance_reason.is_some() || self.partial_reason.is_none() {
                     return Err(AdministrationError::InvalidStatusDetailCombination);
                 }
@@ -307,17 +272,12 @@ impl MedicationAdministrationEventV1 {
 
     pub fn verified_digest(&self) -> Result<VerifiedDigest, AdministrationError> {
         self.validate_shape()?;
-        hash_json(
-            DigestDomain::MedicationAdministrationEvent,
-            EVENT_SCHEMA_TAG,
-            self,
-        )
+        hash_json(DigestDomain::MedicationAdministrationEvent, EVENT_TAG, self)
     }
 }
 
-/// Evidence produced by a trusted patient-identity adapter. It proves that the
-/// clinical subject reference used by this event was bound to one exact patient
-/// record at one point in time. It does not claim that the patient authored the event.
+/// Adapter-produced subject binding. It establishes which patient record the
+/// clinical subject resolved to, not that the patient authored the administration.
 pub struct VerifiedPatientSubjectBinding {
     subject: SubjectRef,
     patient_record_digest: StoredDigest,
@@ -394,14 +354,12 @@ pub fn resolve_current_activation_for_administration(
     medication_artifact_digest.require_domain(DigestDomain::MedicationRequestArtifact)?;
     let state_digest = hash_json(
         DigestDomain::MedicationActivationState,
-        ACTIVATION_STATE_SCHEMA_TAG,
+        ACTIVATION_STATE_TAG,
         view,
     )?;
     let provenance = match &view.current {
         CurrentActivationState::None => return Err(AdministrationError::NoCurrentActivation),
-        CurrentActivationState::Conflict { .. } => {
-            return Err(AdministrationError::ActivationConflict)
-        }
+        CurrentActivationState::Conflict { .. } => return Err(AdministrationError::ActivationConflict),
         CurrentActivationState::One(CurrentActivation::Qualified(lineage)) => {
             if !matches!(&lineage.lifecycle, ActivationLifecycle::Current) {
                 return Err(AdministrationError::ActivationNotCurrent);
@@ -446,8 +404,8 @@ pub fn resolve_current_activation_for_administration(
     })
 }
 
-#[derive(Clone, Debug, Serialize)]
-struct AdministrationSupplyMaterialV1 {
+#[derive(Serialize)]
+struct SupplyMaterialV1 {
     medication_artifact_digest: StoredDigest,
     activation_semantic_receipt_digest: StoredDigest,
     finalized_dispense_receipt_digest: StoredDigest,
@@ -455,8 +413,6 @@ struct AdministrationSupplyMaterialV1 {
     observed_at_micros: i64,
 }
 
-/// Evidence that one exact finalized dispense exists in a conflict-free canonical
-/// dispense lineage for this medication activation.
 pub struct VerifiedAdministrationSupply {
     medication_artifact_digest: StoredDigest,
     activation_semantic_receipt_digest: StoredDigest,
@@ -485,8 +441,7 @@ pub fn resolve_finalized_dispense_for_administration(
         .iter()
         .filter(|lineage| {
             lineage.medication_artifact_digest == medication_artifact_digest.stored()
-                && lineage.activation_semantic_receipt_digest
-                    == activation_semantic_receipt_digest
+                && lineage.activation_semantic_receipt_digest == activation_semantic_receipt_digest
         })
         .collect();
     if matching.len() != 1 {
@@ -497,53 +452,48 @@ pub fn resolve_finalized_dispense_for_administration(
         });
     }
     let lineage = matching[0];
-    if !matches!(lineage.health, DispenseLineageHealth::Consistent) {
+    if !matches!(&lineage.health, DispenseLineageHealth::Consistent) {
         return Err(AdministrationError::DispenseLineageConflict);
     }
 
-    let mut slot_index = None;
+    let mut found_slot = None;
     for slot in &lineage.slots {
         if let DispenseSlotState::Finalized(finalized) = &slot.state {
             if finalized.receipt_digest == finalized_dispense_receipt_digest {
-                if slot_index.replace(slot.slot_index).is_some() {
+                if found_slot.replace(slot.slot_index).is_some() {
                     return Err(AdministrationError::AmbiguousFinalizedDispense);
                 }
             }
         }
     }
-    let slot_index = slot_index.ok_or(AdministrationError::FinalizedDispenseMissing)?;
-    if lineage
-        .contiguous_finalized_through
-        .is_none_or(|through| through < slot_index)
-    {
-        return Err(AdministrationError::DispenseHistoryNotContiguous);
+    let slot_index = found_slot.ok_or(AdministrationError::FinalizedDispenseMissing)?;
+    match lineage.contiguous_finalized_through {
+        Some(through) if through >= slot_index => {}
+        _ => return Err(AdministrationError::DispenseHistoryNotContiguous),
     }
 
-    let material = AdministrationSupplyMaterialV1 {
+    let material = SupplyMaterialV1 {
         medication_artifact_digest: medication_artifact_digest.stored(),
         activation_semantic_receipt_digest,
         finalized_dispense_receipt_digest,
         slot_index,
         observed_at_micros,
     };
-    let supply_digest = hash_json(
+    let digest = hash_json(
         DigestDomain::MedicationAdministrationSupplyEvidence,
-        SUPPLY_SCHEMA_TAG,
+        SUPPLY_TAG,
         &material,
     )?;
-
     Ok(VerifiedAdministrationSupply {
         medication_artifact_digest: medication_artifact_digest.stored(),
         activation_semantic_receipt_digest,
         finalized_dispense_receipt_digest,
         slot_index,
-        supply_evidence_digest: supply_digest.stored(),
+        supply_evidence_digest: digest.stored(),
         observed_at_micros,
     })
 }
 
-/// Single-owner permission for one exact clinician-performed administration event.
-/// No Clone/Serialize/Deserialize implementation is provided.
 pub struct MedicationAdministrationCapability {
     administration_id: String,
     event_digest: StoredDigest,
@@ -592,9 +542,7 @@ pub struct MedicationAdministrationReceiptV1 {
 impl MedicationAdministrationReceiptV1 {
     pub fn validate_shape(&self) -> Result<(), AdministrationError> {
         if self.schema_version != 1 {
-            return Err(AdministrationError::UnsupportedReceiptVersion(
-                self.schema_version,
-            ));
+            return Err(AdministrationError::UnsupportedReceiptVersion(self.schema_version));
         }
         if self.administration_id.trim().is_empty() {
             return Err(AdministrationError::MissingAdministrationId);
@@ -602,18 +550,9 @@ impl MedicationAdministrationReceiptV1 {
         if self.administrator_principal == [0u8; 32] {
             return Err(AdministrationError::ZeroAdministratorPrincipal);
         }
-        require_domain(
-            self.event_digest,
-            DigestDomain::MedicationAdministrationEvent,
-        )?;
-        require_domain(
-            self.medication_artifact_digest,
-            DigestDomain::MedicationRequestArtifact,
-        )?;
-        require_domain(
-            self.activation_state_digest,
-            DigestDomain::MedicationActivationState,
-        )?;
+        require_domain(self.event_digest, DigestDomain::MedicationAdministrationEvent)?;
+        require_domain(self.medication_artifact_digest, DigestDomain::MedicationRequestArtifact)?;
+        require_domain(self.activation_state_digest, DigestDomain::MedicationActivationState)?;
         validate_activation_provenance(&self.activation_provenance)?;
         require_domain(
             self.finalized_dispense_receipt_digest,
@@ -637,7 +576,7 @@ impl MedicationAdministrationReceiptV1 {
             || self
                 .supporting_authority_evidence
                 .iter()
-                .any(|digest| *digest == [0u8; 32])
+                .any(|value| *value == [0u8; 32])
         {
             return Err(AdministrationError::InvalidAuthorityEvidence);
         }
@@ -648,7 +587,7 @@ impl MedicationAdministrationReceiptV1 {
         self.validate_shape()?;
         hash_json(
             DigestDomain::MedicationAdministrationReceipt,
-            RECEIPT_SCHEMA_TAG,
+            RECEIPT_TAG,
             self,
         )
     }
@@ -685,7 +624,7 @@ pub fn authorize_clinician_administration(
     ) {
         return Err(AdministrationError::NonPerformedEventCannotAuthorize);
     }
-    if matches!(event.status, AdministrationStatusV1::PartiallyPerformed)
+    if event.status == AdministrationStatusV1::PartiallyPerformed
         && !policy.allow_partial_administration
     {
         return Err(AdministrationError::PartialAdministrationNotAllowed);
@@ -715,7 +654,7 @@ pub fn authorize_clinician_administration(
         AdministrationError::ActivationStateStale,
     )?;
 
-    if patient.subject != medication.order().subject || event.subject != patient.subject {
+    if &patient.subject != &medication.order().subject || &event.subject != &patient.subject {
         return Err(AdministrationError::PatientSubjectMismatch);
     }
     if event.patient_subject_binding_evidence_digest != patient.binding_evidence_digest {
@@ -752,7 +691,7 @@ pub fn authorize_clinician_administration(
         .performed
         .as_ref()
         .ok_or(AdministrationError::PerformedDetailsRequired)?;
-    validate_performed_against_order(performed, event.status.clone(), medication, policy)?;
+    validate_performed_against_order(performed, event.status, medication, policy)?;
     verify_event_time(
         &performed.effective,
         execution_at_micros,
@@ -863,33 +802,35 @@ fn validate_performed_against_order(
     if !same_coded_concept(&performed.route, &ordered.route) {
         return Err(AdministrationError::RouteMismatch);
     }
-    if let Some(required_method) = &ordered.method {
+    if let Some(required) = &ordered.method {
         let actual = performed
             .method
             .as_ref()
             .ok_or(AdministrationError::RequiredMethodMissing)?;
-        if !same_coded_concept(actual, required_method) {
+        if !same_coded_concept(actual, required) {
             return Err(AdministrationError::MethodMismatch);
         }
     }
-    if let Some(required_site) = &ordered.site {
+    if let Some(required) = &ordered.site {
         let actual = performed
             .site
             .as_ref()
             .ok_or(AdministrationError::RequiredSiteMissing)?;
-        if !same_coded_concept(actual, required_site) {
+        if !same_coded_concept(actual, required) {
             return Err(AdministrationError::SiteMismatch);
         }
     }
 
     let ordered_dose = match &ordered.dose {
-        DoseAmount::Quantity(quantity) => quantity,
+        DoseAmount::Quantity(value) => value,
         DoseAmount::Range(_) => return Err(AdministrationError::OrderedDoseRangeUnsupportedV1),
     };
+    if ordered_dose.value <= 0.0 {
+        return Err(AdministrationError::InvalidOrderedDose);
+    }
     if performed.dose.system != ordered_dose.system || performed.dose.code != ordered_dose.code {
         return Err(AdministrationError::DoseUnitMismatch);
     }
-
     match status {
         AdministrationStatusV1::Performed => {
             if performed.dose.value.to_bits() != ordered_dose.value.to_bits() {
@@ -918,8 +859,7 @@ fn verify_event_time(
     max_future_skew_micros: i64,
 ) -> Result<(), AdministrationError> {
     effective.validate()?;
-    let clinical_time = effective.latest_micros();
-    let delta = execution_at_micros as i128 - clinical_time as i128;
+    let delta = execution_at_micros as i128 - effective.latest_micros() as i128;
     if delta < -(max_future_skew_micros as i128) {
         return Err(AdministrationError::AdministrationTimeFromFuture);
     }
@@ -935,10 +875,7 @@ fn validate_activation_provenance(
     match provenance {
         AdministrationActivationProvenance::Qualified {
             activation_receipt_digest,
-        } => require_domain(
-            *activation_receipt_digest,
-            DigestDomain::MedicationActivationReceipt,
-        ),
+        } => require_domain(*activation_receipt_digest, DigestDomain::MedicationActivationReceipt),
         AdministrationActivationProvenance::EmergencyOverride {
             override_receipt_digest,
             safety_assessment_digest,
@@ -979,17 +916,12 @@ fn require_activation_receipt_domain(digest: StoredDigest) -> Result<(), Adminis
         DigestDomain::MedicationActivationReceipt
             | DigestDomain::EmergencyMedicationOverrideReceipt
     ) {
-        return Err(AdministrationError::WrongActivationReceiptDomain(
-            digest.domain,
-        ));
+        return Err(AdministrationError::WrongActivationReceiptDomain(digest.domain));
     }
     Ok(())
 }
 
-fn require_domain(
-    digest: StoredDigest,
-    expected: DigestDomain,
-) -> Result<(), AdministrationError> {
+fn require_domain(digest: StoredDigest, expected: DigestDomain) -> Result<(), AdministrationError> {
     digest.validate_shape()?;
     if digest.domain != expected {
         return Err(AdministrationError::DigestDomainMismatch {
@@ -1020,13 +952,13 @@ fn verify_freshness(
 
 fn hash_json<T: Serialize>(
     domain: DigestDomain,
-    schema_tag: &[u8],
+    tag: &[u8],
     value: &T,
 ) -> Result<VerifiedDigest, AdministrationError> {
     let encoded = serde_json::to_vec(value)
         .map_err(|error| AdministrationError::Serialization(error.to_string()))?;
-    let mut framed = Vec::with_capacity(schema_tag.len() + 1 + encoded.len());
-    framed.extend_from_slice(schema_tag);
+    let mut framed = Vec::with_capacity(tag.len() + 1 + encoded.len());
+    framed.extend_from_slice(tag);
     framed.push(0);
     framed.extend_from_slice(&encoded);
     Ok(hash_canonical_bytes(domain, &framed)?)
@@ -1084,7 +1016,7 @@ pub enum AdministrationError {
     ActivationStateFromFuture,
     #[error("activation-state observation is stale")]
     ActivationStateStale,
-    #[error("patient subject does not match the medication/event subject")]
+    #[error("patient subject does not match medication/event subject")]
     PatientSubjectMismatch,
     #[error("patient binding evidence does not match event")]
     PatientBindingEvidenceMismatch,
@@ -1100,7 +1032,7 @@ pub enum AdministrationError {
     DispenseLineageConflict,
     #[error("finalized dispense receipt is missing")]
     FinalizedDispenseMissing,
-    #[error("finalized dispense receipt appears more than once in lineage")]
+    #[error("finalized dispense receipt appears more than once")]
     AmbiguousFinalizedDispense,
     #[error("finalized dispense history is not contiguous through selected slot")]
     DispenseHistoryNotContiguous,
@@ -1112,7 +1044,7 @@ pub enum AdministrationError {
     DispenseStateFromFuture,
     #[error("dispense-state observation is stale")]
     DispenseStateStale,
-    #[error("non-performed/indeterminate administration cannot create an Administer capability")]
+    #[error("non-performed/indeterminate event cannot create Administer capability")]
     NonPerformedEventCannotAuthorize,
     #[error("partial administration is not permitted by policy")]
     PartialAdministrationNotAllowed,
@@ -1120,8 +1052,10 @@ pub enum AdministrationError {
     DosageIndexOverflow,
     #[error("dosage index does not exist on exact medication order")]
     DosageIndexOutOfBounds,
-    #[error("v1 clinician administration does not infer a concrete dose from an ordered range")]
+    #[error("v1 does not infer concrete administration dose from ordered range")]
     OrderedDoseRangeUnsupportedV1,
+    #[error("ordered dose must be positive")]
+    InvalidOrderedDose,
     #[error("administered product does not exactly match ordered coded medication")]
     MedicationProductMismatch,
     #[error("administered route does not match ordered route")]
@@ -1138,11 +1072,11 @@ pub enum AdministrationError {
     DoseUnitMismatch,
     #[error("performed dose does not exactly match ordered dose")]
     PerformedDoseMismatch,
-    #[error("partial administered dose must be positive and less than ordered dose")]
+    #[error("partial dose must be positive and less than ordered dose")]
     InvalidPartialDose,
     #[error("administration clinical time is too far in the future")]
     AdministrationTimeFromFuture,
-    #[error("administration was recorded after the policy recording-delay limit")]
+    #[error("administration was recorded after policy delay limit")]
     AdministrationRecordedTooLate,
     #[error("authority permit is not for administration")]
     WrongAuthorityPurpose,
@@ -1190,37 +1124,12 @@ mod tests {
         }
     }
 
-    fn quantity(value: f64, code: &str) -> Quantity {
-        Quantity {
-            value,
-            display_unit: Some(code.into()),
-            system: "http://unitsofmeasure.org".into(),
-            code: code.into(),
-        }
-    }
-
-    fn concept(code: &str) -> CodeableConcept {
-        CodeableConcept {
-            coding: vec![mycelix_clinical_semantics::Coding {
-                system: "http://snomed.info/sct".into(),
-                code: code.into(),
-                display: None,
-                version: None,
-            }],
-            text: None,
-        }
-    }
-
-    #[test]
-    fn status_shape_does_not_allow_boolean_style_ambiguity() {
-        let event = MedicationAdministrationEventV1 {
+    fn event(status: AdministrationStatusV1) -> MedicationAdministrationEventV1 {
+        MedicationAdministrationEventV1 {
             schema_version: 1,
             administration_id: "admin-a".into(),
             medication_artifact_digest: stored(DigestDomain::MedicationRequestArtifact, 1),
-            activation_semantic_receipt_digest: stored(
-                DigestDomain::MedicationActivationReceipt,
-                2,
-            ),
+            activation_semantic_receipt_digest: stored(DigestDomain::MedicationActivationReceipt, 2),
             finalized_dispense_receipt_digest: stored(DigestDomain::MedicationDispenseReceipt, 3),
             subject: SubjectRef {
                 resource_type: "Patient".into(),
@@ -1231,80 +1140,49 @@ mod tests {
                 4,
             ),
             administrator_principal_binding: [5; 32],
-            status: AdministrationStatusV1::NotDone,
-            performed: Some(PerformedAdministrationV1 {
-                dosage_index: 0,
-                product: concept("medication"),
-                dose: quantity(5.0, "mg"),
-                route: concept("route"),
-                method: None,
-                site: None,
-                effective: AdministrationTimeV1 {
-                    start_micros: 10,
-                    end_micros: None,
-                },
-                supply_detail_evidence_digest: None,
-            }),
-            nonperformance_reason: Some(AdministrationNonPerformanceReasonV1::PatientRefused),
+            status,
+            performed: None,
+            nonperformance_reason: None,
             partial_reason: None,
             rationale_commitment: None,
-        };
+        }
+    }
+
+    #[test]
+    fn not_done_cannot_also_claim_performed_details() {
+        let mut value = event(AdministrationStatusV1::NotDone);
+        value.nonperformance_reason = Some(AdministrationNonPerformanceReasonV1::PatientRefused);
+        value.performed = Some(PerformedAdministrationV1 {
+            dosage_index: 0,
+            product: CodeableConcept { coding: vec![], text: None },
+            dose: Quantity::ucum(5.0, "mg"),
+            route: CodeableConcept { coding: vec![], text: None },
+            method: None,
+            site: None,
+            effective: AdministrationTimeV1 { start_micros: 10, end_micros: None },
+            supply_detail_evidence_digest: None,
+        });
         assert_eq!(
-            event.validate_shape(),
+            value.validate_shape(),
             Err(AdministrationError::InvalidStatusDetailCombination)
         );
     }
 
     #[test]
-    fn indeterminate_requires_evidence_commitment() {
-        let event = MedicationAdministrationEventV1 {
-            schema_version: 1,
-            administration_id: "admin-a".into(),
-            medication_artifact_digest: stored(DigestDomain::MedicationRequestArtifact, 1),
-            activation_semantic_receipt_digest: stored(
-                DigestDomain::MedicationActivationReceipt,
-                2,
-            ),
-            finalized_dispense_receipt_digest: stored(DigestDomain::MedicationDispenseReceipt, 3),
-            subject: SubjectRef {
-                resource_type: "Patient".into(),
-                id: "patient-a".into(),
-            },
-            patient_subject_binding_evidence_digest: stored(
-                DigestDomain::PatientSubjectBindingEvidence,
-                4,
-            ),
-            administrator_principal_binding: [5; 32],
-            status: AdministrationStatusV1::Indeterminate,
-            performed: None,
-            nonperformance_reason: None,
-            partial_reason: None,
-            rationale_commitment: None,
-        };
+    fn indeterminate_requires_rationale_commitment() {
+        let value = event(AdministrationStatusV1::Indeterminate);
         assert_eq!(
-            event.validate_shape(),
+            value.validate_shape(),
             Err(AdministrationError::InvalidStatusDetailCombination)
         );
     }
 
     #[test]
     fn administration_time_cannot_end_before_start() {
-        let time = AdministrationTimeV1 {
-            start_micros: 100,
-            end_micros: Some(99),
-        };
+        let value = AdministrationTimeV1 { start_micros: 100, end_micros: Some(99) };
         assert_eq!(
-            time.validate(),
+            value.validate(),
             Err(AdministrationError::AdministrationEndsBeforeStart)
         );
-    }
-
-    #[test]
-    fn performed_and_partial_doses_are_distinct() {
-        let ordered = quantity(10.0, "mg");
-        let performed = quantity(10.0, "mg");
-        let partial = quantity(5.0, "mg");
-        assert_eq!(performed.value.to_bits(), ordered.value.to_bits());
-        assert!(partial.value < ordered.value);
     }
 }
