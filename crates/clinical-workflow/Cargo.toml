@@ -16,4 +16,5 @@ mycelix-clinical-promotion = { path = "../clinical-promotion" }
 mycelix-medication-semantics = { path = "../medication-semantics" }
 mycelix-fhir-medication-semantics = { path = "../fhir-medication-semantics" }
 mycelix-medication-safety = { path = "../medication-safety" }
+mycelix-medication-safety-trust = { path = "../medication-safety-trust" }
 mycelix-clinical-quarantine = { path = "../clinical-quarantine" }
