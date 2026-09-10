@@ -2,18 +2,20 @@
 //! Thin coordinator for qualified medication activation attestations.
 //!
 //! Deliberately contains no clinical authorization logic. The coordinator only
-//! commits/query entries; the integrity zome independently enforces DNA-rooted
-//! verifier authority, exact policy binding, append-only evidence, and revocation
-//! lineage. A modified coordinator therefore cannot bypass those rules.
+//! commits/query entries; the integrity zome independently enforces DNA-rooted,
+//! exact-target verifier authorization and append-only revocation lineage. A
+//! modified coordinator therefore cannot bypass those rules.
 
 use hdk::prelude::*;
 use medication_activation_integrity::*;
 
 #[hdk_extern]
-pub fn issue_verifier_grant(
-    grant: MedicationActivationVerifierGrant,
+pub fn issue_verifier_authorization(
+    authorization: MedicationActivationVerifierAuthorization,
 ) -> ExternResult<Record> {
-    let hash = create_entry(&EntryTypes::MedicationActivationVerifierGrant(grant))?;
+    let hash = create_entry(&EntryTypes::MedicationActivationVerifierAuthorization(
+        authorization,
+    ))?;
     get_required_record(hash)
 }
 
