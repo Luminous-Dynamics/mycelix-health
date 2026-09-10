@@ -34,6 +34,7 @@ pub enum DigestDomain {
     MedicationActivationAttestation,
     EmergencyMedicationOverridePolicy,
     EmergencyMedicationOverrideReceipt,
+    EmergencyMedicationOverrideAttestation,
     QuarantineEvent,
     QuarantineDecision,
     AuthorityPolicy,
@@ -62,6 +63,9 @@ impl DigestDomain {
             Self::MedicationActivationAttestation => b"medication-activation-attestation",
             Self::EmergencyMedicationOverridePolicy => b"emergency-medication-override-policy",
             Self::EmergencyMedicationOverrideReceipt => b"emergency-medication-override-receipt",
+            Self::EmergencyMedicationOverrideAttestation => {
+                b"emergency-medication-override-attestation"
+            }
             Self::QuarantineEvent => b"quarantine-event",
             Self::QuarantineDecision => b"quarantine-decision",
             Self::AuthorityPolicy => b"authority-policy",
@@ -226,6 +230,7 @@ mod tests {
             DigestDomain::MedicationActivationAttestation,
             DigestDomain::EmergencyMedicationOverridePolicy,
             DigestDomain::EmergencyMedicationOverrideReceipt,
+            DigestDomain::EmergencyMedicationOverrideAttestation,
             DigestDomain::AuthorityPolicy,
         ];
         let values: Vec<[u8; 32]> = domains
