@@ -51,6 +51,9 @@ pub enum DigestDomain {
     MedicationAdministrationReceipt,
     MedicationAdministrationAttestation,
     MedicationAdministrationSupplyEvidence,
+    MedicationAdministrationSchedulePlan,
+    MedicationAdministrationPrnIntent,
+    MedicationAdministrationOccurrence,
     QuarantineEvent,
     QuarantineDecision,
     AuthorityPolicy,
@@ -96,6 +99,9 @@ impl DigestDomain {
             Self::MedicationAdministrationReceipt => b"medication-administration-receipt",
             Self::MedicationAdministrationAttestation => b"medication-administration-attestation",
             Self::MedicationAdministrationSupplyEvidence => b"medication-administration-supply-evidence",
+            Self::MedicationAdministrationSchedulePlan => b"medication-administration-schedule-plan",
+            Self::MedicationAdministrationPrnIntent => b"medication-administration-prn-intent",
+            Self::MedicationAdministrationOccurrence => b"medication-administration-occurrence",
             Self::QuarantineEvent => b"quarantine-event",
             Self::QuarantineDecision => b"quarantine-decision",
             Self::AuthorityPolicy => b"authority-policy",
@@ -156,7 +162,6 @@ impl VerifiedDigest {
     }
 }
 
-/// Hash bytes that are already in the owning artifact's canonical serialization.
 pub fn hash_canonical_bytes(
     domain: DigestDomain,
     canonical_bytes: &[u8],
@@ -277,6 +282,9 @@ mod tests {
             DigestDomain::MedicationAdministrationReceipt,
             DigestDomain::MedicationAdministrationAttestation,
             DigestDomain::MedicationAdministrationSupplyEvidence,
+            DigestDomain::MedicationAdministrationSchedulePlan,
+            DigestDomain::MedicationAdministrationPrnIntent,
+            DigestDomain::MedicationAdministrationOccurrence,
             DigestDomain::AuthorityPolicy,
         ];
         let values: Vec<[u8; 32]> = domains
