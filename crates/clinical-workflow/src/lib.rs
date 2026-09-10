@@ -1,9 +1,9 @@
 #![deny(unsafe_code)]
 //! Exact-target capability composition for Mycelix-Health.
 //!
-//! A valid credential, requester identity, qualification result, or medication-safety
-//! result is not sufficient on its own. This crate composes verifier-owned evidence
-//! into exact-purpose, exact-target workflow capabilities.
+//! A valid credential, requester identity, qualification result, medication-safety
+//! result, or source-trust result is not sufficient on its own. This crate composes
+//! verifier-owned evidence into exact-purpose, exact-target workflow capabilities.
 //!
 //! Resulting workflow capabilities intentionally implement no Clone/Copy/serde/Debug.
 
@@ -21,7 +21,9 @@ use mycelix_clinical_quarantine::{
 };
 use mycelix_fhir_medication_semantics::MedicationRequestArtifact;
 use mycelix_medication_safety::MedicationSafetyClearance;
+use mycelix_medication_safety_trust::SafetySourceTrustReceipt;
 use serde::{Deserialize, Serialize};
+use std::collections::HashSet;
 use thiserror::Error;
 
 const MAX_EVIDENCE_AGE_MICROS: i64 = 86_400_000_000;
@@ -37,6 +39,8 @@ pub struct WorkflowPolicyV1 {
     pub max_requester_resolution_age_micros: i64,
     /// Maximum time between medication safety clearance and activation.
     pub max_safety_clearance_age_micros: i64,
+    /// Maximum time between safety-source trust admission and activation.
+    pub max_safety_source_trust_age_micros: i64,
     pub max_future_skew_micros: i64,
 }
 
@@ -58,6 +62,10 @@ impl WorkflowPolicyV1 {
         validate_age_policy(
             self.max_safety_clearance_age_micros,
             WorkflowError::InvalidSafetyClearanceAgePolicy,
+        )?;
+        validate_age_policy(
+            self.max_safety_source_trust_age_micros,
+            WorkflowError::InvalidSafetySourceTrustAgePolicy,
         )?;
         if self.max_future_skew_micros < 0
             || self.max_future_skew_micros > MAX_FUTURE_SKEW_MICROS
@@ -131,10 +139,11 @@ impl ClinicalPresentationCapability {
 
 /// Exact medication activation capability.
 ///
-/// It preserves three independent proof lineages:
+/// It preserves four independent proof lineages:
 /// 1. requester -> authenticated principal resolution evidence;
 /// 2. professional authority evidence supporting the prescribing action;
-/// 3. patient-context/knowledge/evaluator evidence supporting medication safety.
+/// 3. patient-context/check evidence supporting medication safety;
+/// 4. deployment trust evidence admitting the exact evaluator/knowledge sources.
 ///
 /// The capability is intentionally non-cloneable/non-serializable.
 pub struct MedicationActivationCapability {
@@ -147,6 +156,11 @@ pub struct MedicationActivationCapability {
     safety_policy_digest: StoredDigest,
     safety_check_evaluation_digests: Vec<StoredDigest>,
     safety_cleared_at_micros: i64,
+    safety_trust_policy_digest: StoredDigest,
+    safety_trust_receipt_digest: StoredDigest,
+    safety_evaluator_admission_evidence: Vec<StoredDigest>,
+    safety_knowledge_admission_evidence: Vec<StoredDigest>,
+    safety_trust_evaluated_at_micros: i64,
     jurisdiction: JurisdictionCode,
     authority_policy_digest: StoredDigest,
     workflow_policy_digest: StoredDigest,
@@ -189,6 +203,26 @@ impl MedicationActivationCapability {
 
     pub fn safety_cleared_at_micros(&self) -> i64 {
         self.safety_cleared_at_micros
+    }
+
+    pub fn safety_trust_policy_digest(&self) -> StoredDigest {
+        self.safety_trust_policy_digest
+    }
+
+    pub fn safety_trust_receipt_digest(&self) -> StoredDigest {
+        self.safety_trust_receipt_digest
+    }
+
+    pub fn safety_evaluator_admission_evidence(&self) -> &[StoredDigest] {
+        &self.safety_evaluator_admission_evidence
+    }
+
+    pub fn safety_knowledge_admission_evidence(&self) -> &[StoredDigest] {
+        &self.safety_knowledge_admission_evidence
+    }
+
+    pub fn safety_trust_evaluated_at_micros(&self) -> i64 {
+        self.safety_trust_evaluated_at_micros
     }
 
     pub fn jurisdiction(&self) -> &JurisdictionCode {
@@ -332,13 +366,14 @@ pub fn authorize_clinical_presentation(
 }
 
 /// Convert one strict FHIR MedicationRequest artifact into an exact activation
-/// capability. The safety clearance is consumed so the safe API cannot reuse one
-/// single-owner clearance across multiple activation calls.
+/// capability. Both the safety clearance and source-trust receipt are consumed.
 #[allow(clippy::too_many_arguments)]
 pub fn authorize_resolved_medication_activation(
     artifact: &MedicationRequestArtifact,
     safety_clearance: MedicationSafetyClearance,
+    safety_source_trust: SafetySourceTrustReceipt,
     expected_safety_policy_digest: VerifiedDigest,
+    expected_safety_trust_policy_digest: VerifiedDigest,
     authority: AuthorityPermit,
     authority_policy_digest: VerifiedDigest,
     workflow_policy: &WorkflowPolicyV1,
@@ -394,6 +429,52 @@ pub fn authorize_resolved_medication_activation(
         WorkflowError::SafetyClearanceStale,
     )?;
 
+    expected_safety_trust_policy_digest
+        .require_domain(DigestDomain::MedicationSafetyTrustPolicy)?;
+    if safety_source_trust.safety_policy_digest() != expected_safety_policy_digest.stored() {
+        return Err(WorkflowError::SafetyTrustSafetyPolicyMismatch);
+    }
+    if safety_source_trust.trust_policy_digest()
+        != expected_safety_trust_policy_digest.stored()
+    {
+        return Err(WorkflowError::SafetyTrustPolicyDigestMismatch);
+    }
+    if !same_digest_set(
+        &safety_check_evaluation_digests,
+        safety_source_trust.check_evaluation_digests(),
+    ) {
+        return Err(WorkflowError::SafetyTrustEvaluationSetMismatch);
+    }
+
+    let safety_trust_receipt_digest = safety_source_trust.receipt_digest();
+    validate_stored_domain(
+        safety_trust_receipt_digest,
+        DigestDomain::MedicationSafetyTrustReceipt,
+    )?;
+    let safety_evaluator_admission_evidence =
+        safety_source_trust.evaluator_admission_evidence_digests().to_vec();
+    let safety_knowledge_admission_evidence =
+        safety_source_trust.knowledge_admission_evidence_digests().to_vec();
+    if safety_evaluator_admission_evidence.is_empty()
+        || safety_knowledge_admission_evidence.is_empty()
+    {
+        return Err(WorkflowError::SafetyTrustHasNoAdmissionEvidence);
+    }
+    for digest in safety_evaluator_admission_evidence
+        .iter()
+        .chain(safety_knowledge_admission_evidence.iter())
+    {
+        validate_stored_domain(*digest, DigestDomain::ClinicalArtifact)?;
+    }
+    verify_freshness(
+        safety_source_trust.evaluated_at_micros(),
+        execution_at_micros,
+        workflow_policy.max_safety_source_trust_age_micros,
+        workflow_policy.max_future_skew_micros,
+        WorkflowError::SafetySourceTrustFromFuture,
+        WorkflowError::SafetySourceTrustStale,
+    )?;
+
     let workflow_policy_digest = workflow_policy.verified_digest()?;
     let evidence = verify_authority_binding(
         &authority,
@@ -420,6 +501,11 @@ pub fn authorize_resolved_medication_activation(
         safety_policy_digest: expected_safety_policy_digest.stored(),
         safety_check_evaluation_digests,
         safety_cleared_at_micros: safety_clearance.cleared_at_micros(),
+        safety_trust_policy_digest: expected_safety_trust_policy_digest.stored(),
+        safety_trust_receipt_digest,
+        safety_evaluator_admission_evidence,
+        safety_knowledge_admission_evidence,
+        safety_trust_evaluated_at_micros: safety_source_trust.evaluated_at_micros(),
         jurisdiction: jurisdiction.clone(),
         authority_policy_digest: authority_policy_digest.stored(),
         workflow_policy_digest: workflow_policy_digest.stored(),
@@ -512,6 +598,15 @@ fn validate_stored_domain(
     Ok(())
 }
 
+fn same_digest_set(left: &[StoredDigest], right: &[StoredDigest]) -> bool {
+    if left.len() != right.len() {
+        return false;
+    }
+    let left: HashSet<StoredDigest> = left.iter().copied().collect();
+    let right: HashSet<StoredDigest> = right.iter().copied().collect();
+    left.len() == right.len() && left == right
+}
+
 #[allow(clippy::too_many_arguments)]
 fn verify_authority_binding(
     authority: &AuthorityPermit,
@@ -589,6 +684,8 @@ pub enum WorkflowError {
     InvalidRequesterResolutionAgePolicy,
     #[error("workflow safety-clearance age must be > 0 and <= 24 hours")]
     InvalidSafetyClearanceAgePolicy,
+    #[error("workflow safety-source-trust age must be > 0 and <= 24 hours")]
+    InvalidSafetySourceTrustAgePolicy,
     #[error("workflow future-skew allowance must be between 0 and 5 minutes")]
     InvalidFutureSkewPolicy,
     #[error("failed to serialize exact artifact under its v1 canonical JSON contract: {0}")]
@@ -633,6 +730,18 @@ pub enum WorkflowError {
     SafetyClearanceFromFuture,
     #[error("medication safety clearance is stale for workflow policy")]
     SafetyClearanceStale,
+    #[error("safety-source trust receipt qualifies a different medication safety policy")]
+    SafetyTrustSafetyPolicyMismatch,
+    #[error("safety-source trust receipt was produced under a different trust policy")]
+    SafetyTrustPolicyDigestMismatch,
+    #[error("safety-source trust receipt does not cover the exact safety evaluation set")]
+    SafetyTrustEvaluationSetMismatch,
+    #[error("safety-source trust receipt contains no evaluator/knowledge admission evidence")]
+    SafetyTrustHasNoAdmissionEvidence,
+    #[error("safety-source trust receipt is too far in the future for workflow policy")]
+    SafetySourceTrustFromFuture,
+    #[error("safety-source trust receipt is stale for workflow policy")]
+    SafetySourceTrustStale,
     #[error("clinical qualification gate denied presentation: {0:?}")]
     ClinicalQualificationDenied(GateDecision),
     #[error("clinical qualification validation failed: {0}")]
