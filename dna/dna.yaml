@@ -13,6 +13,15 @@ integrity:
       # The integrity zome also hard-caps this value, so accidental packaging with a
       # longer window fails validation rather than silently weakening the contract.
       max_verifier_authorization_duration_micros: 900000000
+    medication_emergency:
+      schema_version: 1
+      # Emergency override trust is intentionally distinct from ordinary qualified
+      # activation trust. Empty by default: no emergency activation can validate
+      # until a deployment deliberately repacks the DNA with trusted root keys.
+      root_authorities: []
+      # Exact-receipt emergency verifier authorizations are also capped at 15 minutes.
+      # Deployments may choose a shorter value when repacking the DNA.
+      max_verifier_authorization_duration_micros: 900000000
   zomes:
     # Tier 1: MVP Core
     - name: patient_integrity
@@ -25,6 +34,8 @@ integrity:
       path: ../target/wasm32-unknown-unknown/release/prescriptions_integrity.wasm
     - name: medication_activation_integrity
       path: ../target/wasm32-unknown-unknown/release/medication_activation_integrity.wasm
+    - name: medication_emergency_integrity
+      path: ../target/wasm32-unknown-unknown/release/medication_emergency_integrity.wasm
     - name: consent_integrity
       path: ../target/wasm32-unknown-unknown/release/consent_integrity.wasm
     - name: bridge_integrity
@@ -55,6 +66,10 @@ coordinator:
       path: ../target/wasm32-unknown-unknown/release/medication_activation.wasm
       dependencies:
         - name: medication_activation_integrity
+    - name: medication_emergency
+      path: ../target/wasm32-unknown-unknown/release/medication_emergency.wasm
+      dependencies:
+        - name: medication_emergency_integrity
     - name: consent
       path: ../target/wasm32-unknown-unknown/release/consent.wasm
       dependencies:

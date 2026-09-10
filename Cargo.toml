@@ -13,6 +13,8 @@ members = [
     "zomes/prescriptions/coordinator",
     "zomes/medication_activation/integrity",
     "zomes/medication_activation/coordinator",
+    "zomes/medication_emergency/integrity",
+    "zomes/medication_emergency/coordinator",
     "zomes/consent/integrity",
     "zomes/consent/coordinator",
     "zomes/bridge/integrity",
