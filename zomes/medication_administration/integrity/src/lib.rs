@@ -4,14 +4,15 @@
 //!
 //! The detailed administration event and receipt remain protected off-DHT. The DHT
 //! stores only a privacy-minimized projection after a DNA-pinned root has authorized
-//! one exact verifier to publish one exact receipt lineage inside a short window.
+//! one exact verifier to publish one exact receipt + attestation inside a short window.
 //! Corrections are append-only; update/delete are never used as clinical revocation.
 
 use hdi::prelude::*;
-use mycelix_clinical_integrity::{DigestDomain, StoredDigest};
+use mycelix_clinical_integrity::{hash_canonical_bytes, DigestDomain, StoredDigest};
 
 const CONFIG_VERSION: u16 = 1;
 const ABSOLUTE_MAX_AUTHORIZATION_DURATION_MICROS: i64 = 900_000_000; // 15 min
+const ATTESTATION_SCHEMA_TAG: &[u8] = b"mycelix-health/medication-administration-attestation-v1";
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct MedicationAdministrationRootConfig {
@@ -20,6 +21,7 @@ pub struct MedicationAdministrationRootConfig {
     pub max_verifier_authorization_duration_micros: i64,
 }
 
+/// Privacy-minimized public projection of one protected administration receipt.
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 #[serde(deny_unknown_fields)]
 pub struct MedicationAdministrationAttestationV1 {
@@ -70,6 +72,30 @@ impl MedicationAdministrationAttestationV1 {
         )?;
         Ok(ValidateCallbackResult::Valid)
     }
+
+    pub fn digest(&self) -> ExternResult<StoredDigest> {
+        let shape = self.validate()?;
+        if !matches!(shape, ValidateCallbackResult::Valid) {
+            return Err(wasm_error!(WasmErrorInner::Guest(
+                "Cannot hash invalid medication administration attestation".to_string()
+            )));
+        }
+        let encoded = serde_json::to_vec(self).map_err(|error| {
+            wasm_error!(WasmErrorInner::Guest(format!(
+                "Failed to serialize medication administration attestation: {error}"
+            )))
+        })?;
+        let mut framed = Vec::with_capacity(ATTESTATION_SCHEMA_TAG.len() + 1 + encoded.len());
+        framed.extend_from_slice(ATTESTATION_SCHEMA_TAG);
+        framed.push(0);
+        framed.extend_from_slice(&encoded);
+        Ok(hash_canonical_bytes(
+            DigestDomain::MedicationAdministrationAttestation,
+            &framed,
+        )
+        .map_err(|error| wasm_error!(WasmErrorInner::Guest(error.to_string())))?
+        .stored())
+    }
 }
 
 /// Exact, short-lived root authorization. This is not a reusable verifier role.
@@ -79,6 +105,7 @@ pub struct MedicationAdministrationVerifierAuthorization {
     pub authorization_id: String,
     pub grantee: AgentPubKey,
     pub administration_receipt_digest: StoredDigest,
+    pub administration_attestation_digest: StoredDigest,
     pub event_digest: StoredDigest,
     pub medication_artifact_digest: StoredDigest,
     pub activation_semantic_receipt_digest: StoredDigest,
@@ -217,6 +244,10 @@ fn validate_authorization_shape(
         DigestDomain::MedicationAdministrationReceipt,
     )?;
     require_digest_domain(
+        authorization.administration_attestation_digest,
+        DigestDomain::MedicationAdministrationAttestation,
+    )?;
+    require_digest_domain(
         authorization.event_digest,
         DigestDomain::MedicationAdministrationEvent,
     )?;
@@ -273,8 +304,11 @@ fn require_exact_verifier_authorization(
     if action_timestamp < authorization.valid_from || action_timestamp >= authorization.valid_until {
         return invalid("Administration action timestamp is outside authorization validity");
     }
+
     let attestation = &administration.attestation;
-    if attestation.administration_receipt_digest != authorization.administration_receipt_digest
+    let attestation_digest = attestation.digest()?;
+    if attestation_digest != authorization.administration_attestation_digest
+        || attestation.administration_receipt_digest != authorization.administration_receipt_digest
         || attestation.event_digest != authorization.event_digest
         || attestation.medication_artifact_digest != authorization.medication_artifact_digest
         || attestation.activation_semantic_receipt_digest
@@ -490,10 +524,10 @@ mod tests {
         }
     }
 
-    fn authorization() -> MedicationAdministrationVerifierAuthorization {
-        MedicationAdministrationVerifierAuthorization {
-            authorization_id: "admin-auth-a".into(),
-            grantee: AgentPubKey::from_raw_36(vec![1; 36]),
+    fn attestation() -> MedicationAdministrationAttestationV1 {
+        MedicationAdministrationAttestationV1 {
+            schema_version: 1,
+            administration_id: "admin-a".into(),
             administration_receipt_digest: digest(DigestDomain::MedicationAdministrationReceipt, 2),
             event_digest: digest(DigestDomain::MedicationAdministrationEvent, 3),
             medication_artifact_digest: digest(DigestDomain::MedicationRequestArtifact, 4),
@@ -502,6 +536,23 @@ mod tests {
             administrator_principal_binding: [7; 32],
             authority_policy_digest: digest(DigestDomain::AuthorityPolicy, 8),
             administration_policy_digest: digest(DigestDomain::MedicationAdministrationPolicy, 9),
+        }
+    }
+
+    fn authorization() -> MedicationAdministrationVerifierAuthorization {
+        let attestation = attestation();
+        MedicationAdministrationVerifierAuthorization {
+            authorization_id: "admin-auth-a".into(),
+            grantee: AgentPubKey::from_raw_36(vec![1; 36]),
+            administration_receipt_digest: attestation.administration_receipt_digest,
+            administration_attestation_digest: attestation.digest().unwrap(),
+            event_digest: attestation.event_digest,
+            medication_artifact_digest: attestation.medication_artifact_digest,
+            activation_semantic_receipt_digest: attestation.activation_semantic_receipt_digest,
+            finalized_dispense_receipt_digest: attestation.finalized_dispense_receipt_digest,
+            administrator_principal_binding: attestation.administrator_principal_binding,
+            authority_policy_digest: attestation.authority_policy_digest,
+            administration_policy_digest: attestation.administration_policy_digest,
             valid_from: Timestamp::from_micros(10),
             valid_until: Timestamp::from_micros(100),
         }
@@ -512,6 +563,15 @@ mod tests {
         let mut value = authorization();
         value.administration_receipt_digest = stored(DigestDomain::MedicationDispenseReceipt, 2);
         assert!(validate_authorization_shape(&value).is_err());
+    }
+
+    #[test]
+    fn attestation_id_changes_authorized_identity() {
+        let original = attestation();
+        let original_digest = original.digest().unwrap();
+        let mut changed = original.clone();
+        changed.administration_id = "admin-b".into();
+        assert_ne!(original_digest, changed.digest().unwrap());
     }
 
     #[test]
