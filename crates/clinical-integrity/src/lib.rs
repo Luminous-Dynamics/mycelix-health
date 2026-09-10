@@ -56,6 +56,7 @@ pub enum DigestDomain {
     MedicationAdministrationPrnIntent,
     MedicationAdministrationOccurrence,
     MedicationAdministrationOccurrenceBinding,
+    MedicationAdministrationOccurrenceAttestation,
     QuarantineEvent,
     QuarantineDecision,
     AuthorityPolicy,
@@ -106,6 +107,7 @@ impl DigestDomain {
             Self::MedicationAdministrationPrnIntent => b"medication-administration-prn-intent",
             Self::MedicationAdministrationOccurrence => b"medication-administration-occurrence",
             Self::MedicationAdministrationOccurrenceBinding => b"medication-administration-occurrence-binding",
+            Self::MedicationAdministrationOccurrenceAttestation => b"medication-administration-occurrence-attestation",
             Self::QuarantineEvent => b"quarantine-event",
             Self::QuarantineDecision => b"quarantine-decision",
             Self::AuthorityPolicy => b"authority-policy",
@@ -118,7 +120,6 @@ impl DigestDomain {
     }
 }
 
-/// Serializable digest claim. Deserialization does not confer verification.
 #[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq, Hash)]
 pub struct StoredDigest {
     pub algorithm: DigestAlgorithm,
@@ -135,8 +136,6 @@ impl StoredDigest {
     }
 }
 
-/// In-process proof that exact canonical bytes were hashed under the stated v1
-/// algorithm/domain contract. Intentionally not serializable/deserializable.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct VerifiedDigest {
     stored: StoredDigest,
@@ -166,7 +165,6 @@ impl VerifiedDigest {
     }
 }
 
-/// Hash bytes that are already in the owning artifact's canonical serialization.
 pub fn hash_canonical_bytes(
     domain: DigestDomain,
     canonical_bytes: &[u8],
@@ -292,6 +290,7 @@ mod tests {
             DigestDomain::MedicationAdministrationPrnIntent,
             DigestDomain::MedicationAdministrationOccurrence,
             DigestDomain::MedicationAdministrationOccurrenceBinding,
+            DigestDomain::MedicationAdministrationOccurrenceAttestation,
             DigestDomain::AuthorityPolicy,
         ];
         let values: Vec<[u8; 32]> = domains
