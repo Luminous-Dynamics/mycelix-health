@@ -27,6 +27,8 @@ members = [
     "zomes/clinical_causality_index/coordinator",
     "zomes/population_accountant/integrity",
     "zomes/population_accountant/coordinator",
+    "zomes/population_accountant_index/integrity",
+    "zomes/population_accountant_index/coordinator",
     "zomes/consent/integrity",
     "zomes/consent/coordinator",
     "zomes/bridge/integrity",
