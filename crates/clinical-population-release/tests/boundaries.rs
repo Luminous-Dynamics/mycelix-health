@@ -165,7 +165,7 @@ fn qualified_static_request_mints_consumable_release_receipt() {
         }),
         requested_at_micros: 100,
     };
-    let receipt = authorize_population_release(&request)
+    let receipt = authorize_static_population_release(&request)
         .unwrap()
         .into_receipt(101)
         .unwrap();
@@ -177,9 +177,23 @@ fn qualified_static_request_mints_consumable_release_receipt() {
 }
 
 #[test]
-fn interactive_release_binds_exact_accountant_query_mechanism_and_output() {
+fn valid_interactive_preflight_cannot_mint_base_release_capability() {
     let request = interactive_request();
-    authorize_population_release(&request).unwrap();
+    request.validate().unwrap();
+    assert!(matches!(
+        authorize_static_population_release(&request),
+        Err(PopulationReleaseError::InteractiveReleaseRequiresTrustedGate)
+    ));
+    assert!(matches!(
+        authorize_population_release(&request),
+        Err(PopulationReleaseError::InteractiveReleaseRequiresTrustedGate)
+    ));
+}
+
+#[test]
+fn interactive_preflight_binds_exact_accountant_query_mechanism_and_output() {
+    let request = interactive_request();
+    request.validate().unwrap();
 
     let mut substituted = request.clone();
     let PopulationReleaseModeV1::InteractiveDifferentialPrivacy(ref mut dp) = substituted.mode
@@ -188,13 +202,13 @@ fn interactive_release_binds_exact_accountant_query_mechanism_and_output() {
     };
     dp.public_output_digest = digest(DigestDomain::ClinicalArtifact, 99);
     assert!(matches!(
-        authorize_population_release(&substituted),
+        substituted.validate(),
         Err(PopulationReleaseError::AccountantTransitionDoesNotBindRelease)
     ));
 }
 
 #[test]
-fn accountant_predecessor_substitution_fails_closed() {
+fn accountant_predecessor_substitution_fails_closed_in_preflight() {
     let mut request = interactive_request();
     let PopulationReleaseModeV1::InteractiveDifferentialPrivacy(ref mut dp) = request.mode else {
         unreachable!()
@@ -204,20 +218,20 @@ fn accountant_predecessor_substitution_fails_closed() {
         value: [77; 32],
     });
     assert!(matches!(
-        authorize_population_release(&request),
+        request.validate(),
         Err(PopulationReleaseError::AccountantPredecessorMismatch)
     ));
 }
 
 #[test]
-fn wrong_source_finding_domain_fails_closed() {
+fn wrong_source_finding_domain_fails_closed_in_preflight() {
     let mut request = interactive_request();
     let PopulationReleaseModeV1::InteractiveDifferentialPrivacy(ref mut dp) = request.mode else {
         unreachable!()
     };
     dp.source_finding_digest = digest(DigestDomain::ClinicalSafetySignalCandidate, 55);
     assert!(matches!(
-        authorize_population_release(&request),
+        request.validate(),
         Err(PopulationReleaseError::WrongSourceFindingDomain { .. })
     ));
 }
@@ -235,14 +249,14 @@ fn noncanonical_fraction_is_rejected() {
 }
 
 #[test]
-fn cumulative_budget_cannot_exceed_bound_policy() {
+fn cumulative_budget_cannot_exceed_bound_policy_in_preflight() {
     let mut request = interactive_request();
     let PopulationReleaseModeV1::InteractiveDifferentialPrivacy(ref mut dp) = request.mode else {
         unreachable!()
     };
     dp.accountant_after.cumulative_privacy_loss = loss(3, 1, 1, 1_000_000);
     assert!(matches!(
-        authorize_population_release(&request),
+        request.validate(),
         Err(PopulationReleaseError::CumulativePrivacyBudgetExceeded)
     ));
 }
