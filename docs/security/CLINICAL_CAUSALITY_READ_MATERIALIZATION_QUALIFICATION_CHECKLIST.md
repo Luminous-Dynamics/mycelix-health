@@ -28,6 +28,7 @@ This checklist is test design and review guidance, not runtime evidence.
 - [ ] returned snapshot always carries `NetworkBackedStableDoubleRead`
 - [ ] no API field claims `Complete`, `Global`, or `Authoritative`
 - [ ] tests/documentation prove a stable double-read cannot establish absence of an unpropagated correction
+- [ ] tests/documentation cover network race/freshness limitations
 - [ ] downstream adapters preserve the read-boundary class rather than stripping it
 - [ ] downstream APIs do not rename bounded-read state to generic/global `Current`
 - [ ] callers cannot silently upgrade the snapshot into global-current truth
