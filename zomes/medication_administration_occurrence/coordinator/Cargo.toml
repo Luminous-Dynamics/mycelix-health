@@ -1,0 +1,16 @@
+[package]
+name = "medication_administration_occurrence"
+version = "0.1.0"
+edition = "2021"
+license.workspace = true
+description = "Coordinator for DNA-rooted medication administration occurrence bindings"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+hdk = { workspace = true }
+medication_administration_occurrence_integrity = { path = "../integrity" }
+
+[features]
+default = []

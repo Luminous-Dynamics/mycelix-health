@@ -1,0 +1,11 @@
+[package]
+name = "mycelix-clinical-authority"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Typed practitioner authority policy and single-use verifier permits for Mycelix-Health"
+
+[dependencies]
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }

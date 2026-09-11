@@ -1,0 +1,19 @@
+[package]
+name = "medication_emergency_integrity"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "DNA-rooted emergency medication override activation integrity zome"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+hdi = { workspace = true }
+holochain_serialized_bytes = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+mycelix-clinical-integrity = { path = "../../../crates/clinical-integrity" }
+
+[features]
+default = []

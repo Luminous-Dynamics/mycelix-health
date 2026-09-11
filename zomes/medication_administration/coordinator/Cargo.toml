@@ -1,0 +1,16 @@
+[package]
+name = "medication_administration"
+version = "0.1.0"
+edition = "2021"
+license.workspace = true
+description = "Coordinator for DNA-rooted qualified medication administration attestations"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+hdk = { workspace = true }
+medication_administration_integrity = { path = "../integrity" }
+
+[features]
+default = []

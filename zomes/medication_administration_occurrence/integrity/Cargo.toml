@@ -1,0 +1,20 @@
+[package]
+name = "medication_administration_occurrence_integrity"
+version = "0.1.0"
+edition = "2021"
+license.workspace = true
+description = "DNA-rooted medication administration occurrence-binding attestation integrity zome"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+hdi = { workspace = true }
+holochain_serialized_bytes = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+mycelix-clinical-integrity = { path = "../../../crates/clinical-integrity" }
+medication_administration_integrity = { path = "../../medication_administration/integrity" }
+
+[features]
+default = []

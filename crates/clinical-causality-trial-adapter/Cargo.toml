@@ -1,0 +1,13 @@
+[package]
+name = "mycelix-clinical-causality-trial-adapter"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Lossless legacy trial adverse-event causality migration adapter"
+
+[dependencies]
+serde = { workspace = true }
+thiserror = { workspace = true }
+holo_hash = { workspace = true }
+mycelix-clinical-causality = { path = "../clinical-causality" }
+trials_integrity = { path = "../../zomes/trials/integrity" }

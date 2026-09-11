@@ -1,0 +1,17 @@
+[package]
+name = "mycelix-medication-administration-occurrence-state"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Occurrence-aware conflict-preserving medication administration read model"
+
+[dependencies]
+serde = { workspace = true }
+thiserror = { workspace = true }
+holo_hash = { workspace = true }
+mycelix-clinical-integrity = { path = "../clinical-integrity" }
+mycelix-medication-administration-state = { path = "../medication-administration-state" }
+medication_administration_occurrence_integrity = { path = "../../zomes/medication_administration_occurrence/integrity" }
+
+[dev-dependencies]
+medication_administration_integrity = { path = "../../zomes/medication_administration/integrity" }

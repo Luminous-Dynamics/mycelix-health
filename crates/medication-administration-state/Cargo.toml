@@ -1,0 +1,13 @@
+[package]
+name = "mycelix-medication-administration-state"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Conflict-preserving qualified medication administration read model for Mycelix-Health"
+
+[dependencies]
+serde = { workspace = true }
+thiserror = { workspace = true }
+holo_hash = { workspace = true }
+mycelix-clinical-integrity = { path = "../clinical-integrity" }
+medication_administration_integrity = { path = "../../zomes/medication_administration/integrity" }
