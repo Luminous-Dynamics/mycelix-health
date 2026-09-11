@@ -54,3 +54,5 @@ Do not promote this lane beyond experimental until:
 7. qualification evidence is tied to the exact frozen branch head, not an ancestor.
 
 Semantic expansion of the read-boundary claim requires a new contract version rather than editing this v1 meaning in place.
+
+The exact commit selected for qualification must be recorded in the evidence receipt produced by the CI lane.
