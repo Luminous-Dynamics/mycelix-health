@@ -14,6 +14,7 @@ serde_json = { workspace = true }
 thiserror = { workspace = true }
 holo_hash = { workspace = true }
 holochain_zome_types = { workspace = true }
+mycelix-clinical-integrity = { path = "../clinical-integrity" }
 mycelix-clinical-population-release = { path = "../clinical-population-release" }
 mycelix-clinical-population-accountant-canonical-state = { path = "../clinical-population-accountant-canonical-state" }
 population_accountant_index = { path = "../../zomes/population_accountant_index/coordinator" }
