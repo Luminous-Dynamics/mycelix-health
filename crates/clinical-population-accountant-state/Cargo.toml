@@ -10,3 +10,7 @@ holo_hash = { workspace = true }
 population_accountant_integrity = { path = "../../zomes/population_accountant/integrity" }
 serde = { workspace = true }
 thiserror = { workspace = true }
+
+[dev-dependencies]
+mycelix-clinical-integrity = { path = "../clinical-integrity" }
+mycelix-clinical-population-release = { path = "../clinical-population-release" }
