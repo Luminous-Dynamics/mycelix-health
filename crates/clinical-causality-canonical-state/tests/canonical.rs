@@ -2,12 +2,14 @@ use clinical_causality_index::{
     CanonicalCausalCommitmentReadBoundaryV1, CanonicalCausalCommitmentSnapshotV1,
     CanonicalCausalPublicationSnapshotV1, CanonicalCorrectionReadBoundaryV1,
 };
-use clinical_causality_index_integrity::OpaqueCausalCommitmentV1;
+use clinical_causality_index_integrity::{
+    commitment_index_anchor_hash, OpaqueCausalCommitmentV1,
+};
 use clinical_causality_integrity::{
     CausalCommitmentSchemeV1, QualifiedCausalAssessmentAttestation,
     QualifiedCausalAssessmentAttestationV1,
 };
-use holo_hash::{ActionHash, EntryHash};
+use holo_hash::ActionHash;
 use holochain_zome_types::prelude::Timestamp;
 use mycelix_clinical_causality::CausalConclusionV1;
 use mycelix_clinical_causality_canonical_state::{
@@ -18,10 +20,6 @@ use mycelix_clinical_integrity::{DigestAlgorithm, DigestDomain, StoredDigest};
 
 fn action(seed: u8) -> ActionHash {
     ActionHash::from_raw_36(vec![seed; 36])
-}
-
-fn entry(seed: u8) -> EntryHash {
-    EntryHash::from_raw_36(vec![seed; 36])
 }
 
 fn digest(domain: DigestDomain, seed: u8) -> StoredDigest {
@@ -68,11 +66,17 @@ fn publication(
     }
 }
 
-fn snapshot(publications: Vec<CanonicalCausalPublicationSnapshotV1>) -> CanonicalCausalCommitmentSnapshotV1 {
-    let total_corrections = publications.iter().map(|publication| publication.corrections.len()).sum();
+fn snapshot(
+    publications: Vec<CanonicalCausalPublicationSnapshotV1>,
+) -> CanonicalCausalCommitmentSnapshotV1 {
+    let commitment = commitment(10);
+    let total_corrections = publications
+        .iter()
+        .map(|publication| publication.corrections.len())
+        .sum();
     CanonicalCausalCommitmentSnapshotV1 {
-        commitment: commitment(10),
-        anchor_hash: entry(99),
+        commitment,
+        anchor_hash: commitment_index_anchor_hash(commitment).unwrap(),
         observed_attestation_target_count: publications.len(),
         observed_total_correction_target_count: total_corrections,
         publications,
@@ -118,10 +122,10 @@ fn conflicting_canonical_conclusions_are_preserved() {
 #[test]
 fn cross_commitment_publication_fails_closed() {
     let input = snapshot(vec![publication(1, 11, CausalConclusionV1::Indeterminate)]);
-    assert_eq!(
+    assert!(matches!(
         reduce_canonical_causal_snapshot(&input),
         Err(CanonicalCausalStateError::CrossCommitmentPublication)
-    );
+    ));
 }
 
 #[test]
@@ -130,20 +134,20 @@ fn duplicate_publication_action_fails_closed() {
     let mut b = publication(2, 10, CausalConclusionV1::Indeterminate);
     b.attestation_action_hash = a.attestation_action_hash.clone();
     let input = snapshot(vec![a, b]);
-    assert_eq!(
+    assert!(matches!(
         reduce_canonical_causal_snapshot(&input),
         Err(CanonicalCausalStateError::DuplicatePublicationAction)
-    );
+    ));
 }
 
 #[test]
 fn publication_count_mismatch_fails_closed() {
     let mut input = snapshot(vec![publication(1, 10, CausalConclusionV1::Indeterminate)]);
     input.observed_attestation_target_count = 2;
-    assert_eq!(
+    assert!(matches!(
         reduce_canonical_causal_snapshot(&input),
         Err(CanonicalCausalStateError::PublicationCountMismatch)
-    );
+    ));
 }
 
 #[test]
@@ -151,8 +155,18 @@ fn correction_window_must_stay_inside_global_observation_window() {
     let mut p = publication(1, 10, CausalConclusionV1::Indeterminate);
     p.correction_observation_completed_at = Timestamp::from_micros(50);
     let input = snapshot(vec![p]);
-    assert_eq!(
+    assert!(matches!(
         reduce_canonical_causal_snapshot(&input),
         Err(CanonicalCausalStateError::InvalidObservationWindow)
-    );
+    ));
+}
+
+#[test]
+fn commitment_anchor_mismatch_fails_closed() {
+    let mut input = snapshot(vec![publication(1, 10, CausalConclusionV1::Indeterminate)]);
+    input.anchor_hash = commitment_index_anchor_hash(commitment(11)).unwrap();
+    assert!(matches!(
+        reduce_canonical_causal_snapshot(&input),
+        Err(CanonicalCausalStateError::AnchorHashMismatch)
+    ));
 }
