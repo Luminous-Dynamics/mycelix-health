@@ -19,3 +19,6 @@ mycelix-clinical-population-release = { path = "../clinical-population-release" 
 mycelix-clinical-population-accountant-canonical-state = { path = "../clinical-population-accountant-canonical-state" }
 population_accountant_index = { path = "../../zomes/population_accountant_index/coordinator" }
 population_accountant_integrity = { path = "../../zomes/population_accountant/integrity" }
+
+[dev-dependencies]
+population_accountant_index_integrity = { path = "../../zomes/population_accountant_index/integrity" }
