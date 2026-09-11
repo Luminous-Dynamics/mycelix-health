@@ -1,0 +1,13 @@
+[package]
+name = "mycelix-clinical-population-accountant-canonical-state"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Bounded canonical accountant-state view over runtime-admitted snapshots"
+
+[dependencies]
+holo_hash = { workspace = true }
+mycelix-clinical-population-accountant-state = { path = "../clinical-population-accountant-state" }
+population_accountant_index = { path = "../../zomes/population_accountant_index/coordinator" }
+population_accountant_index_integrity = { path = "../../zomes/population_accountant_index/integrity" }
+thiserror = { workspace = true }
