@@ -1,0 +1,24 @@
+[package]
+name = "mycelix-clinical-population-interactive-release"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "High-assurance interactive DP release gate bound to canonical trusted accountant state"
+
+[dependencies]
+blake3 = "1.8.5"
+hmac = "0.12"
+sha2 = "0.10"
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+holo_hash = { workspace = true }
+holochain_zome_types = { workspace = true }
+mycelix-clinical-integrity = { path = "../clinical-integrity" }
+mycelix-clinical-population-release = { path = "../clinical-population-release" }
+mycelix-clinical-population-accountant-canonical-state = { path = "../clinical-population-accountant-canonical-state" }
+population_accountant_index = { path = "../../zomes/population_accountant_index/coordinator" }
+population_accountant_integrity = { path = "../../zomes/population_accountant/integrity" }
+
+[dev-dependencies]
+population_accountant_index_integrity = { path = "../../zomes/population_accountant_index/integrity" }
