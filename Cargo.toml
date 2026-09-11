@@ -82,6 +82,7 @@ members = [
     "crates/clinical-causality-trust",
     "crates/clinical-causality-qualification",
     "crates/clinical-causality-attestation-state",
+    "crates/clinical-causality-canonical-state",
 
     # ── Tier 3: Behavioral Health (restored 2026-03-26) ──
     "zomes/mental_health/integrity",
