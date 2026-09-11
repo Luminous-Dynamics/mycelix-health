@@ -50,4 +50,5 @@ Do not promote this lane beyond experimental until:
 3. P0 #72 exact source-entry-definition checks are resolved for cross-zome dependencies;
 4. P0 #83 defines the canonical completeness/discovery contract for all publications sharing one commitment;
 5. downstream consumers preserve the bounded read classification end-to-end;
-6. privacy review confirms no patient/event/drug identifiers or cross-key correlator were introduced.
+6. privacy review confirms no patient/event/drug identifiers or cross-key correlator were introduced;
+7. qualification evidence is tied to the exact frozen branch head, not an ancestor.
