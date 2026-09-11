@@ -1,0 +1,14 @@
+[package]
+name = "mycelix-clinical-causality-canonical-state"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Bounded canonical state projection for index-admitted causal attestations"
+
+[dependencies]
+serde = { workspace = true }
+thiserror = { workspace = true }
+holo_hash = { workspace = true }
+mycelix-clinical-causality-attestation-state = { path = "../clinical-causality-attestation-state" }
+clinical_causality_index = { path = "../../zomes/clinical_causality_index/coordinator" }
+clinical_causality_index_integrity = { path = "../../zomes/clinical_causality_index/integrity" }
