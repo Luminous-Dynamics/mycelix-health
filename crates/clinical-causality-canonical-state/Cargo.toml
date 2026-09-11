@@ -12,3 +12,9 @@ holo_hash = { workspace = true }
 mycelix-clinical-causality-attestation-state = { path = "../clinical-causality-attestation-state" }
 clinical_causality_index = { path = "../../zomes/clinical_causality_index/coordinator" }
 clinical_causality_index_integrity = { path = "../../zomes/clinical_causality_index/integrity" }
+
+[dev-dependencies]
+holochain_zome_types = { workspace = true }
+mycelix-clinical-integrity = { path = "../clinical-integrity" }
+mycelix-clinical-causality = { path = "../clinical-causality" }
+clinical_causality_integrity = { path = "../../zomes/clinical_causality/integrity" }
