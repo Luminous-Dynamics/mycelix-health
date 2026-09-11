@@ -48,6 +48,8 @@ Duplicate links to the same correction action are semantically idempotent and de
 
 Holochain is eventually consistent. Network-backed reads improve freshness but cannot prove absence of data that has not propagated to the queried view. Depending on conductor/network settings, network reads may use race behavior in which an early peer response is returned before another queried peer has integrated newer data. The double-read therefore establishes only stability of the observed view around materialization, not global completeness. The returned boundary is intentionally narrower than `Complete`, `Authoritative`, or `Global`.
 
+This bounded snapshot is suitable as evidence of **what this conductor observed during this read interval**. It is not evidence that the world contained nothing else.
+
 ## Relationship to the reducer
 
 The #82 reducer remains a pure projection of supplied records. This materializer strengthens how correction records for one known publication are collected, but it does not solve discovery of every publication sharing one opaque receipt commitment. P0 #83 tracks canonical commitment-scoped publication discovery and non-upgradable read-boundary semantics.
