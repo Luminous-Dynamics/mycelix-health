@@ -80,6 +80,8 @@ integrity:
       path: ../target/wasm32-unknown-unknown/release/medication_administration_occurrence_integrity.wasm
     - name: clinical_causality_integrity
       path: ../target/wasm32-unknown-unknown/release/clinical_causality_integrity.wasm
+    - name: clinical_causality_index_integrity
+      path: ../target/wasm32-unknown-unknown/release/clinical_causality_index_integrity.wasm
     - name: consent_integrity
       path: ../target/wasm32-unknown-unknown/release/consent_integrity.wasm
     - name: bridge_integrity
@@ -129,6 +131,11 @@ coordinator:
     - name: clinical_causality
       path: ../target/wasm32-unknown-unknown/release/clinical_causality.wasm
       dependencies:
+        - name: clinical_causality_integrity
+    - name: clinical_causality_index
+      path: ../target/wasm32-unknown-unknown/release/clinical_causality_index.wasm
+      dependencies:
+        - name: clinical_causality_index_integrity
         - name: clinical_causality_integrity
     - name: consent
       path: ../target/wasm32-unknown-unknown/release/consent.wasm
