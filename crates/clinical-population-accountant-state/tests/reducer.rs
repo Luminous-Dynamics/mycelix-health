@@ -136,11 +136,12 @@ fn missing_predecessor_fails_closed() {
 #[test]
 fn invalidated_ancestor_contaminates_descendant_current_claim() {
     let mut root = observed(1, 0, None);
-    root.corrections.push(correction(
+    let invalidation = correction(
         20,
         &root,
         PopulationAccountantCorrectionReason::AccountantImplementationRevoked,
-    ));
+    );
+    root.corrections.push(invalidation);
     let child = observed(2, 1, Some(root.action_hash.clone()));
     let result = reduce_population_accountant_state(&[root, child]).unwrap();
     assert!(matches!(
