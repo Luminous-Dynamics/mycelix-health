@@ -1,9 +1,13 @@
 #![deny(unsafe_code)]
 //! Bounded canonical state projection for causal attestations.
 //!
-//! This crate accepts only the nested canonical runtime snapshot emitted by the
-//! commitment-index coordinator. It preserves the snapshot's bounded read semantics
-//! and deliberately renames reducer `Current` to `ObservedCurrentWithinBoundedRead`.
+//! The intended high-assurance API accepts the nested canonical runtime snapshot
+//! emitted by the commitment-index coordinator. Runtime provenance still belongs to
+//! the trusted conductor/adapter boundary; deserialization alone is not proof that a
+//! snapshot was actually materialized from the DHT.
+//!
+//! The reducer preserves bounded-read semantics and deliberately renames reducer
+//! `Current` to `ObservedCurrentWithinBoundedRead`.
 
 use clinical_causality_index::{
     CanonicalCausalCommitmentReadBoundaryV1, CanonicalCausalCommitmentSnapshotV1,
@@ -43,7 +47,7 @@ pub enum BoundedCanonicalCausalStateV1 {
     },
 }
 
-#[derive(Clone, Debug, Serialize, PartialEq, Eq)]
+#[derive(Clone, Serialize, PartialEq, Eq)]
 pub struct BoundedCanonicalCausalStateViewV1 {
     pub commitment: OpaqueCausalCommitmentV1,
     pub anchor_hash: EntryHash,
@@ -60,10 +64,10 @@ pub struct BoundedCanonicalCausalStateViewV1 {
 
 /// Reduce one exact nested canonical runtime snapshot.
 ///
-/// The function accepts no arbitrary publication list. Every publication/correction
-/// entering the underlying conflict reducer must first be present in the supplied
-/// index-admitted runtime snapshot. The result remains bounded to that observed
-/// snapshot and must never be interpreted as globally complete DHT state.
+/// The intended path supplies the exact index-admitted runtime snapshot. Every
+/// publication/correction entering the underlying conflict reducer must be present in
+/// that supplied snapshot. The result remains bounded to the observed snapshot and
+/// must never be interpreted as globally complete DHT state.
 pub fn reduce_canonical_causal_snapshot(
     snapshot: &CanonicalCausalCommitmentSnapshotV1,
 ) -> Result<BoundedCanonicalCausalStateViewV1, CanonicalCausalStateError> {
@@ -208,9 +212,13 @@ fn validate_snapshot_shape(
         return Err(CanonicalCausalStateError::PublicationCountMismatch);
     }
 
-    let total = snapshot.publications.iter().try_fold(0usize, |total, publication| {
-        total.checked_add(publication.corrections.len())
-    }).ok_or(CanonicalCausalStateError::CorrectionCountOverflow)?;
+    let total = snapshot
+        .publications
+        .iter()
+        .try_fold(0usize, |total, publication| {
+            total.checked_add(publication.corrections.len())
+        })
+        .ok_or(CanonicalCausalStateError::CorrectionCountOverflow)?;
     if total != snapshot.observed_total_correction_target_count {
         return Err(CanonicalCausalStateError::TotalCorrectionCountMismatch);
     }
