@@ -13,24 +13,36 @@ use hdk::prelude::*;
 
 const MAX_CORRECTIONS_PER_ATTESTATION: usize = 256;
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize)]
 pub struct ObservedCausalCorrectionV1 {
     pub action_hash: ActionHash,
     pub correction: CausalAttestationCorrection,
 }
 
-/// One locally observed, stable-double-read publication snapshot.
+/// Exact epistemic boundary of this materializer.
+///
+/// `NetworkBackedStableDoubleRead` means both correction-link reads requested network-backed
+/// metadata and returned the same target set around materialization. It does **not** mean the
+/// conductor has a globally complete DHT view or that an unpropagated correction is absent.
+#[derive(Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+pub enum CausalSnapshotReadBoundaryV1 {
+    NetworkBackedStableDoubleRead,
+}
+
+/// One observed publication snapshot whose correction-link target set was stable across two
+/// network-backed reads surrounding materialization.
 ///
 /// This is deliberately not named a globally complete read set. Holochain propagation is
 /// eventually consistent: a correction that has not reached this conductor cannot be proven
-/// absent. The guarantee here is narrower: the correction-link target set was unchanged across
-/// two local queries surrounding materialization, and every observed target was fetched and
-/// decoded successfully.
-#[derive(Clone, Debug, Serialize, Deserialize)]
+/// absent. The guarantee here is narrower: the observed correction-link target set was unchanged
+/// across the two reads and every observed target was fetched and decoded successfully.
+#[derive(Clone, Serialize, Deserialize)]
 pub struct CausalAttestationPublicationSnapshotV1 {
     pub attestation_action_hash: ActionHash,
     pub attestation: QualifiedCausalAssessmentAttestation,
     pub corrections: Vec<ObservedCausalCorrectionV1>,
+    pub read_boundary: CausalSnapshotReadBoundaryV1,
+    pub observed_correction_target_count: usize,
     pub observation_started_at: Timestamp,
     pub observation_completed_at: Timestamp,
 }
@@ -40,7 +52,7 @@ pub fn create_causal_verifier_authorization(
     authorization: CausalAssessmentVerifierAuthorization,
 ) -> ExternResult<Record> {
     let hash = create_entry(EntryTypes::CausalAssessmentVerifierAuthorization(authorization))?;
-    get(hash, GetOptions::default())?.ok_or(wasm_error!(WasmErrorInner::Guest(
+    get(hash, GetOptions::network())?.ok_or(wasm_error!(WasmErrorInner::Guest(
         "Committed causal verifier authorization could not be read back".to_string()
     )))
 }
@@ -50,7 +62,7 @@ pub fn publish_qualified_causal_attestation(
     attestation: QualifiedCausalAssessmentAttestation,
 ) -> ExternResult<Record> {
     let hash = create_entry(EntryTypes::QualifiedCausalAssessmentAttestation(attestation))?;
-    get(hash, GetOptions::default())?.ok_or(wasm_error!(WasmErrorInner::Guest(
+    get(hash, GetOptions::network())?.ok_or(wasm_error!(WasmErrorInner::Guest(
         "Committed qualified causal attestation could not be read back".to_string()
     )))
 }
@@ -67,24 +79,25 @@ pub fn append_causal_attestation_correction(
         LinkTypes::AttestationToCorrections,
         (),
     )?;
-    get(correction_hash, GetOptions::default())?.ok_or(wasm_error!(WasmErrorInner::Guest(
+    get(correction_hash, GetOptions::network())?.ok_or(wasm_error!(WasmErrorInner::Guest(
         "Committed causal attestation correction could not be read back".to_string()
     )))
 }
 
 /// Materialize one known causal-attestation publication and every correction link observed by
-/// this conductor, requiring the correction target set to be stable across two local reads.
+/// this conductor, requiring the correction target set to be stable across two network-backed
+/// reads.
 ///
 /// This does **not** prove global absence of unseen/unpropagated corrections or discover every
 /// other publication that may share the same opaque receipt commitment. Consumers must retain
-/// that bounded-read distinction in any safety decision.
+/// `read_boundary` in any safety decision and must not upgrade it to global completeness.
 #[hdk_extern]
 pub fn materialize_causal_attestation_publication_snapshot(
     attestation_hash: ActionHash,
 ) -> ExternResult<CausalAttestationPublicationSnapshotV1> {
     let observation_started_at = sys_time()?;
 
-    let attestation_record = get(attestation_hash.clone(), GetOptions::default())?.ok_or(
+    let attestation_record = get(attestation_hash.clone(), GetOptions::network())?.ok_or(
         wasm_error!(WasmErrorInner::Guest(
             "Qualified causal attestation was not found".to_string()
         )),
@@ -96,7 +109,7 @@ pub fn materialize_causal_attestation_publication_snapshot(
     let mut corrections = Vec::with_capacity(first_targets.len());
 
     for correction_hash in &first_targets {
-        let record = get(correction_hash.clone(), GetOptions::default())?.ok_or(wasm_error!(
+        let record = get(correction_hash.clone(), GetOptions::network())?.ok_or(wasm_error!(
             WasmErrorInner::Guest(
                 "Observed causal correction link target could not be materialized".to_string()
             )
@@ -136,6 +149,8 @@ pub fn materialize_causal_attestation_publication_snapshot(
         attestation_action_hash: attestation_hash,
         attestation,
         corrections,
+        read_boundary: CausalSnapshotReadBoundaryV1::NetworkBackedStableDoubleRead,
+        observed_correction_target_count: first_targets.len(),
         observation_started_at,
         observation_completed_at,
     })
@@ -147,7 +162,7 @@ fn observed_correction_targets(attestation_hash: &ActionHash) -> ExternResult<Ve
             attestation_hash.clone(),
             LinkTypes::AttestationToCorrections,
         )?,
-        GetStrategy::default(),
+        GetStrategy::Network,
     )?;
 
     if links.len() > MAX_CORRECTIONS_PER_ATTESTATION {
