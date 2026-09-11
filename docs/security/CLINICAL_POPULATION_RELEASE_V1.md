@@ -6,12 +6,14 @@ Experimental protected-boundary contract. Not a de-identification certification,
 
 ## Goal
 
-Population evidence can contain case counts, cohort counts, strata and analysis outputs that are useful for medicine/research but unsafe to expose by default. V1 creates a release gate with only two supported modes:
+Population evidence can contain case counts, cohort counts, strata and analysis outputs that are useful for medicine/research but unsafe to expose by default. V1 creates a release boundary with two supported evidence modes:
 
 1. `StaticPreSpecifiedReport`
 2. `InteractiveDifferentialPrivacy`
 
 There is intentionally no threshold-only interactive-query mode.
+
+Authority is asymmetric by design: this base crate may mint release authority only for static pre-specified reports. Interactive differential-privacy requests can be structurally validated here as preflight evidence, but actual interactive release authority requires the separate trusted canonical-accountant gate.
 
 ## Static pre-specified reports
 
@@ -32,7 +34,7 @@ Static threshold suppression is intentionally limited to a fixed/pre-specified r
 
 ## Interactive differential privacy
 
-An interactive release binds the exact:
+An interactive preflight binds the exact:
 
 - source population finding;
 - query specification;
@@ -58,7 +60,7 @@ NIST SP 800-226 is the design reference for treating differential privacy as a c
 
 V1 represents epsilon/delta as reduced rational numbers rather than floating-point values. This avoids NaN/infinity/serialization ambiguity and gives one canonical representation for artifact hashing.
 
-The release gate checks:
+The preflight checks:
 
 - delta is within `[0,1]`;
 - the mechanism is explicitly allowed by policy;
@@ -69,13 +71,13 @@ The release gate checks:
 - cumulative reported loss cannot decrease;
 - the successor accountant receipt binds the exact query, mechanism and public output.
 
-The gate does **not** implement a differential-privacy accountant or attempt to reproduce its mathematics. The accountant method/version/evidence are explicit inputs.
+The base crate does **not** implement a differential-privacy accountant or attempt to reproduce its mathematics. The accountant method/version/evidence are explicit inputs.
 
 ## Accountant trust boundary
 
 `PrivacyAccountantReceiptV1` is serializable evidence. A malicious caller can serialize a structurally plausible receipt.
 
-Therefore the pure v1 crate proves only:
+Therefore the pure base crate proves only:
 
 - canonical receipt shape;
 - exact policy binding;
@@ -83,13 +85,21 @@ Therefore the pure v1 crate proves only:
 - monotonic bounded counters/loss;
 - exact query/mechanism/output binding.
 
-Promotion requires a verifier-owned trust layer that establishes the deployment-selected accountant implementation/state root and prevents arbitrary genesis/state fabrication.
+The trusted interactive path is separate: DNA-rooted accountant state, canonical discovery, bounded conflict-preserving state reduction, protected-receipt commitment binding and exact scientific release-context binding are composed in the higher-assurance interactive release stack.
 
-## Release capability
+## Release authority split
 
-Only a validated request can create the non-serializable `PopulationReleaseCapabilityV1`. Consuming it creates a `PopulationReleaseReceiptV1` bound to the exact request/policy/source/output/mode and release time.
+`PopulationReleaseCapabilityV1` is now static-only.
 
-This reduces accidental bypass in safe code. It is not a defense against hostile code that can fabricate every upstream evidence artifact.
+- `authorize_static_population_release()` rejects interactive requests with `InteractiveReleaseRequiresTrustedGate`.
+- the compatibility name `authorize_population_release()` delegates to the same static-only path;
+- `PopulationReleaseRequestV1::validate()` remains available for interactive preflight validation;
+- no compatibility API converts `PopulationReleaseCapabilityV1` into trusted interactive authority;
+- production interactive release sinks must accept only `TrustedInteractivePopulationReleaseCapabilityV1` from `mycelix-clinical-population-interactive-release`.
+
+The historical wire enum retains `InteractiveDifferentialPrivacy` so historical evidence can remain readable; retaining a wire value is not authority to mint a new interactive release.
+
+Consuming a static base capability creates `PopulationReleaseReceiptV1` bound to the exact request/policy/source/output/mode and release time.
 
 ## Epistemic invariants
 
@@ -119,10 +129,11 @@ V1 does not claim:
 Before broad production release:
 
 1. qualify suppression/composition review authority;
-2. qualify trusted accountant admission/state roots;
+2. qualify trusted accountant admission/state roots and conductor-level fork/race behavior;
 3. execute exact-head CI;
 4. execute differencing and overlapping-query adversarial tests;
 5. execute accountant replay/fork/budget tests;
 6. independently review DP mechanism implementations and sensitivity/contribution bounds;
 7. review jurisdiction-specific disclosure requirements;
-8. ensure released outputs are the minimum necessary for the approved purpose.
+8. ensure released outputs are the minimum necessary for the approved purpose;
+9. retain the static-only base capability / trusted-interactive capability split at every release sink.

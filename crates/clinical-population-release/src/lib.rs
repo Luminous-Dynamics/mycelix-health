@@ -582,7 +582,9 @@ pub enum PopulationReleaseModeClassV1 {
     InteractiveDifferentialPrivacy,
 }
 
-/// Non-serializable capability created only after all v1 release checks succeed.
+/// Non-serializable authority for static pre-specified report release only.
+/// Interactive requests may be validated by this crate, but they require the
+/// separate high-assurance trusted interactive release gate to mint authority.
 pub struct PopulationReleaseCapabilityV1 {
     request_digest: PopulationReleaseDigestV1,
     policy_digest: PopulationReleaseDigestV1,
@@ -592,32 +594,34 @@ pub struct PopulationReleaseCapabilityV1 {
     requested_at_micros: i64,
 }
 
-pub fn authorize_population_release(
+pub fn authorize_static_population_release(
     request: &PopulationReleaseRequestV1,
 ) -> Result<PopulationReleaseCapabilityV1, PopulationReleaseError> {
     request.validate()?;
+    let static_request = match &request.mode {
+        PopulationReleaseModeV1::StaticPreSpecifiedReport(value) => value,
+        PopulationReleaseModeV1::InteractiveDifferentialPrivacy(_) => {
+            return Err(PopulationReleaseError::InteractiveReleaseRequiresTrustedGate)
+        }
+    };
     let request_digest = request.verified_digest()?;
     let policy_digest = request.policy.verified_digest()?;
-    let (source_finding_digest, public_output_digest, mode) = match &request.mode {
-        PopulationReleaseModeV1::StaticPreSpecifiedReport(static_request) => (
-            static_request.suppression.source_finding_digest,
-            static_request.suppression.public_output_digest,
-            PopulationReleaseModeClassV1::StaticPreSpecifiedReport,
-        ),
-        PopulationReleaseModeV1::InteractiveDifferentialPrivacy(dp_request) => (
-            dp_request.source_finding_digest,
-            dp_request.public_output_digest,
-            PopulationReleaseModeClassV1::InteractiveDifferentialPrivacy,
-        ),
-    };
     Ok(PopulationReleaseCapabilityV1 {
         request_digest,
         policy_digest,
-        source_finding_digest,
-        public_output_digest,
-        mode,
+        source_finding_digest: static_request.suppression.source_finding_digest,
+        public_output_digest: static_request.suppression.public_output_digest,
+        mode: PopulationReleaseModeClassV1::StaticPreSpecifiedReport,
         requested_at_micros: request.requested_at_micros,
     })
+}
+
+/// Compatibility name retained for callers migrating from the original v1 API.
+/// It is intentionally static-only and cannot mint interactive release authority.
+pub fn authorize_population_release(
+    request: &PopulationReleaseRequestV1,
+) -> Result<PopulationReleaseCapabilityV1, PopulationReleaseError> {
+    authorize_static_population_release(request)
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
@@ -820,6 +824,8 @@ pub enum PopulationReleaseError {
     AccountantTimeWentBackwards,
     #[error("privacy-accountant transition does not bind this exact query/mechanism/output")]
     AccountantTransitionDoesNotBindRelease,
+    #[error("interactive DP release requires the trusted canonical-accountant gate")]
+    InteractiveReleaseRequiresTrustedGate,
     #[error("release time precedes request time")]
     ReleaseTimeBeforeRequest,
     #[error("serialization failed: {0}")]
