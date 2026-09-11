@@ -93,6 +93,8 @@ integrity:
       path: ../target/wasm32-unknown-unknown/release/clinical_causality_index_integrity.wasm
     - name: population_accountant_integrity
       path: ../target/wasm32-unknown-unknown/release/population_accountant_integrity.wasm
+    - name: population_accountant_index_integrity
+      path: ../target/wasm32-unknown-unknown/release/population_accountant_index_integrity.wasm
     - name: consent_integrity
       path: ../target/wasm32-unknown-unknown/release/consent_integrity.wasm
     - name: bridge_integrity
@@ -151,6 +153,11 @@ coordinator:
     - name: population_accountant
       path: ../target/wasm32-unknown-unknown/release/population_accountant.wasm
       dependencies:
+        - name: population_accountant_integrity
+    - name: population_accountant_index
+      path: ../target/wasm32-unknown-unknown/release/population_accountant_index.wasm
+      dependencies:
+        - name: population_accountant_index_integrity
         - name: population_accountant_integrity
     - name: consent
       path: ../target/wasm32-unknown-unknown/release/consent.wasm
