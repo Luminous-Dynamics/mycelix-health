@@ -52,3 +52,5 @@ Do not promote this lane beyond experimental until:
 5. downstream consumers preserve the bounded read classification end-to-end;
 6. privacy review confirms no patient/event/drug identifiers or cross-key correlator were introduced;
 7. qualification evidence is tied to the exact frozen branch head, not an ancestor.
+
+Semantic expansion of the read-boundary claim requires a new contract version rather than editing this v1 meaning in place.
