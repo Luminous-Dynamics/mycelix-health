@@ -1,0 +1,12 @@
+[package]
+name = "mycelix-clinical-population-accountant-state"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Conflict-preserving canonical state reducer for trusted privacy-accountant lineage"
+
+[dependencies]
+holo_hash = { workspace = true }
+population_accountant_integrity = { path = "../../zomes/population_accountant/integrity" }
+serde = { workspace = true }
+thiserror = { workspace = true }
