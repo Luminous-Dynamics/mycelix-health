@@ -46,7 +46,7 @@ Duplicate links to the same correction action are semantically idempotent and de
 
 ## Network-read caveat
 
-Holochain is eventually consistent. Network-backed reads improve freshness but cannot prove absence of data that has not propagated to the queried view. The returned boundary is therefore intentionally narrower than `Complete`, `Authoritative`, or `Global`.
+Holochain is eventually consistent. Network-backed reads improve freshness but cannot prove absence of data that has not propagated to the queried view. Depending on conductor/network settings, network reads may also use race behavior in which an early peer response is returned before another queried peer has integrated newer data. The double-read therefore establishes only stability of the observed view around materialization, not global completeness. The returned boundary is intentionally narrower than `Complete`, `Authoritative`, or `Global`.
 
 ## Relationship to the reducer
 
