@@ -8,6 +8,7 @@ use mycelix_clinical_population_release::{
     PopulationReleaseModeV1, PopulationReleasePolicyV1, PopulationReleaseRequestV1,
     PrivacyAccountantReceiptV1, PrivacyLossV1, ReducedFractionV1,
 };
+use mycelix_clinical_population_release_context::interactive_release_context_digest;
 use population_accountant_index::{
     CanonicalAccountantObservedStateV1, CanonicalAccountantReadBoundaryV1,
     CanonicalPopulationAccountantLineageSnapshotV1,
@@ -105,7 +106,7 @@ fn fixture() -> Fixture {
         accountant_evidence_digest: digest(DigestDomain::ClinicalArtifact, 30),
         observed_at_micros: 100,
     };
-    let after_receipt = PrivacyAccountantReceiptV1 {
+    let mut after_receipt = PrivacyAccountantReceiptV1 {
         schema_version: 1,
         accountant_instance_digest: policy.accountant_instance_digest,
         accountant_method_digest: policy.accountant_method_digest,
@@ -119,6 +120,32 @@ fn fixture() -> Fixture {
         accountant_evidence_digest: digest(DigestDomain::ClinicalArtifact, 31),
         observed_at_micros: 110,
     };
+
+    let mut request = PopulationReleaseRequestV1 {
+        schema_version: 1,
+        release_id: "trusted-interactive-release-1".into(),
+        policy: policy.clone(),
+        mode: PopulationReleaseModeV1::InteractiveDifferentialPrivacy(
+            InteractiveDpReleaseRequestV1 {
+                source_finding_kind: PopulationFindingKindV1::CausalEffectEstimate,
+                source_finding_digest: digest(DigestDomain::ClinicalCausalEffectEstimate, 40),
+                query_specification_digest: query,
+                output_schema_digest: digest(DigestDomain::ClinicalArtifact, 41),
+                public_output_digest: output,
+                mechanism,
+                accountant_before: before_receipt.clone(),
+                accountant_after: after_receipt.clone(),
+            },
+        ),
+        requested_at_micros: 120,
+    };
+    let release_context_digest = interactive_release_context_digest(&request).unwrap();
+    after_receipt.accountant_evidence_digest = release_context_digest;
+    let PopulationReleaseModeV1::InteractiveDifferentialPrivacy(ref mut interactive) = request.mode
+    else {
+        unreachable!()
+    };
+    interactive.accountant_after = after_receipt.clone();
 
     let key = AccountantReceiptCommitmentKeyV1::new([7; 32]).unwrap();
     let before_commitment = commit_private_accountant_receipt(
@@ -165,25 +192,6 @@ fn fixture() -> Fixture {
             private_receipt_commitment: after_commitment,
         },
         verifier_authorization_hash: action(102),
-    };
-
-    let request = PopulationReleaseRequestV1 {
-        schema_version: 1,
-        release_id: "trusted-interactive-release-1".into(),
-        policy: policy.clone(),
-        mode: PopulationReleaseModeV1::InteractiveDifferentialPrivacy(
-            InteractiveDpReleaseRequestV1 {
-                source_finding_kind: PopulationFindingKindV1::CausalEffectEstimate,
-                source_finding_digest: digest(DigestDomain::ClinicalCausalEffectEstimate, 40),
-                query_specification_digest: query,
-                output_schema_digest: digest(DigestDomain::ClinicalArtifact, 41),
-                public_output_digest: output,
-                mechanism,
-                accountant_before: before_receipt,
-                accountant_after: after_receipt,
-            },
-        ),
-        requested_at_micros: 120,
     };
 
     let lineage = PopulationAccountantLineageAnchorV1::new(
@@ -239,6 +247,10 @@ fn exact_canonical_transition_mints_distinct_trusted_capability() {
     assert_eq!(receipt.accountant_query_count, 1);
     assert_eq!(receipt.accountant_before_state_hash, action(1));
     assert_eq!(receipt.accountant_after_state_hash, action(2));
+    assert_eq!(
+        receipt.release_context_digest.domain,
+        DigestDomain::ClinicalPopulationReleaseContext
+    );
     assert_ne!(receipt.verified_digest().unwrap().value, [0; 32]);
 }
 
@@ -306,6 +318,45 @@ fn different_policy_lineage_fails_before_release_authority() {
             &fixture.key,
         ),
         Err(TrustedInteractiveReleaseError::ReleasePolicyLineageMismatch)
+    ));
+}
+
+#[test]
+fn source_finding_substitution_breaks_accountant_context_binding() {
+    let mut fixture = fixture();
+    let PopulationReleaseModeV1::InteractiveDifferentialPrivacy(ref mut interactive) =
+        fixture.request.mode
+    else {
+        unreachable!()
+    };
+    interactive.source_finding_digest =
+        digest(DigestDomain::ClinicalCausalEffectEstimate, 77);
+    assert!(matches!(
+        authorize_trusted_interactive_population_release(
+            &fixture.request,
+            &fixture.snapshot,
+            &fixture.key,
+        ),
+        Err(TrustedInteractiveReleaseError::AccountantReleaseContextMismatch)
+    ));
+}
+
+#[test]
+fn output_schema_substitution_breaks_accountant_context_binding() {
+    let mut fixture = fixture();
+    let PopulationReleaseModeV1::InteractiveDifferentialPrivacy(ref mut interactive) =
+        fixture.request.mode
+    else {
+        unreachable!()
+    };
+    interactive.output_schema_digest = digest(DigestDomain::ClinicalArtifact, 78);
+    assert!(matches!(
+        authorize_trusted_interactive_population_release(
+            &fixture.request,
+            &fixture.snapshot,
+            &fixture.key,
+        ),
+        Err(TrustedInteractiveReleaseError::AccountantReleaseContextMismatch)
     ));
 }
 
