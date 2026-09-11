@@ -89,6 +89,7 @@ members = [
     "crates/clinical-causality-canonical-state",
     "crates/clinical-population-evidence",
     "crates/clinical-population-release",
+    "crates/clinical-population-release-context",
     "crates/clinical-population-accountant-state",
     "crates/clinical-population-accountant-canonical-state",
     "crates/clinical-population-interactive-release",
