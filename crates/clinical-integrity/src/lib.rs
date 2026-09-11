@@ -84,6 +84,7 @@ pub enum DigestDomain {
     CredentialStatusEvidence,
     IssuerAuthorityEvidence,
     WorkflowPolicy,
+    ClinicalPopulationReleaseContext,
 }
 
 impl DigestDomain {
@@ -154,6 +155,7 @@ impl DigestDomain {
             Self::CredentialStatusEvidence => b"credential-status-evidence",
             Self::IssuerAuthorityEvidence => b"issuer-authority-evidence",
             Self::WorkflowPolicy => b"workflow-policy",
+            Self::ClinicalPopulationReleaseContext => b"clinical-population-release-context",
         }
     }
 }
@@ -349,6 +351,7 @@ mod tests {
             DigestDomain::MedicationAdministrationOccurrenceBinding,
             DigestDomain::MedicationAdministrationOccurrenceAttestation,
             DigestDomain::AuthorityPolicy,
+            DigestDomain::ClinicalPopulationReleaseContext,
         ];
         let values: Vec<[u8; 32]> = domains
             .iter()
