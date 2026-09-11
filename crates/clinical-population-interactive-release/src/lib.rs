@@ -10,6 +10,7 @@
 
 use hmac::{Hmac, Mac};
 use holo_hash::ActionHash;
+use mycelix_clinical_integrity::{DigestDomain, IntegrityError, StoredDigest};
 use mycelix_clinical_population_accountant_canonical_state::{
     reduce_canonical_population_accountant_snapshot,
     BoundedCanonicalPopulationAccountantStateV1, CanonicalAccountantStateError,
@@ -18,6 +19,9 @@ use mycelix_clinical_population_release::{
     InteractiveDpReleaseRequestV1, PopulationReleaseDigestV1, PopulationReleaseError,
     PopulationReleaseModeV1, PopulationReleasePolicyV1, PopulationReleaseRequestV1,
     PrivacyAccountantReceiptV1,
+};
+use mycelix_clinical_population_release_context::{
+    interactive_release_context_digest, PopulationReleaseContextError,
 };
 use population_accountant_index::CanonicalPopulationAccountantLineageSnapshotV1;
 use population_accountant_integrity::{
@@ -113,8 +117,9 @@ pub fn commit_private_accountant_receipt(
 pub struct TrustedInteractivePopulationReleaseCapabilityV1 {
     request_digest: PopulationReleaseDigestV1,
     policy_digest: PopulationReleaseDigestV1,
-    source_finding_digest: mycelix_clinical_integrity::StoredDigest,
-    public_output_digest: mycelix_clinical_integrity::StoredDigest,
+    release_context_digest: StoredDigest,
+    source_finding_digest: StoredDigest,
+    public_output_digest: StoredDigest,
     accountant_before_state_hash: ActionHash,
     accountant_after_state_hash: ActionHash,
     accountant_sequence: u64,
@@ -136,6 +141,11 @@ pub fn authorize_trusted_interactive_population_release(
             return Err(TrustedInteractiveReleaseError::InteractiveModeRequired)
         }
     };
+
+    let release_context_digest = interactive_release_context_digest(request)?;
+    if dp.accountant_after.accountant_evidence_digest != release_context_digest {
+        return Err(TrustedInteractiveReleaseError::AccountantReleaseContextMismatch);
+    }
 
     let policy_digest = request.policy.verified_digest()?;
     validate_snapshot_lineage(&request.policy, policy_digest, canonical_snapshot)?;
@@ -213,6 +223,7 @@ pub fn authorize_trusted_interactive_population_release(
     Ok(TrustedInteractivePopulationReleaseCapabilityV1 {
         request_digest,
         policy_digest,
+        release_context_digest,
         source_finding_digest: dp.source_finding_digest,
         public_output_digest: dp.public_output_digest,
         accountant_before_state_hash: before.action_hash.clone(),
@@ -307,8 +318,9 @@ pub struct TrustedInteractivePopulationReleaseReceiptV1 {
     pub schema_version: u16,
     pub request_digest: PopulationReleaseDigestV1,
     pub policy_digest: PopulationReleaseDigestV1,
-    pub source_finding_digest: mycelix_clinical_integrity::StoredDigest,
-    pub public_output_digest: mycelix_clinical_integrity::StoredDigest,
+    pub release_context_digest: StoredDigest,
+    pub source_finding_digest: StoredDigest,
+    pub public_output_digest: StoredDigest,
     pub accountant_before_state_hash: ActionHash,
     pub accountant_after_state_hash: ActionHash,
     pub accountant_sequence: u64,
@@ -348,6 +360,7 @@ impl TrustedInteractivePopulationReleaseCapabilityV1 {
             schema_version: 1,
             request_digest: self.request_digest,
             policy_digest: self.policy_digest,
+            release_context_digest: self.release_context_digest,
             source_finding_digest: self.source_finding_digest,
             public_output_digest: self.public_output_digest,
             accountant_before_state_hash: self.accountant_before_state_hash,
@@ -371,6 +384,10 @@ impl TrustedInteractivePopulationReleaseReceiptV1 {
     {
         if self.schema_version != 1 {
             return Err(TrustedInteractiveReleaseError::UnsupportedReceiptVersion);
+        }
+        self.release_context_digest.validate_shape()?;
+        if self.release_context_digest.domain != DigestDomain::ClinicalPopulationReleaseContext {
+            return Err(TrustedInteractiveReleaseError::WrongReleaseContextDigestDomain);
         }
         if self.released_at_micros < self.requested_at_micros
             || self.released_at_micros < self.canonical_observation_completed_at_micros
@@ -401,6 +418,10 @@ pub enum TrustedInteractiveReleaseError {
     ZeroComputedCommitment,
     #[error("trusted interactive release gate accepts only interactive DP requests")]
     InteractiveModeRequired,
+    #[error("protected accountant transition does not bind the exact scientific release context")]
+    AccountantReleaseContextMismatch,
+    #[error("trusted interactive release receipt has wrong scientific context digest domain")]
+    WrongReleaseContextDigestDomain,
     #[error("canonical accountant snapshot uses a different release policy")]
     ReleasePolicyLineageMismatch,
     #[error("canonical accountant snapshot uses a different accountant instance/method")]
@@ -448,5 +469,9 @@ pub enum TrustedInteractiveReleaseError {
     #[error(transparent)]
     Release(#[from] PopulationReleaseError),
     #[error(transparent)]
+    ReleaseContext(#[from] PopulationReleaseContextError),
+    #[error(transparent)]
     Canonical(#[from] CanonicalAccountantStateError),
+    #[error(transparent)]
+    Integrity(#[from] IntegrityError),
 }
