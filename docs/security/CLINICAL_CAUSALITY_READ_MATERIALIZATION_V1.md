@@ -59,3 +59,7 @@ The #82 reducer remains a pure projection of supplied records. This materializer
 The materializer does not introduce patient, medication, symptom, assessor, or clinical-event identifiers. It operates on already-public attestation/correction actions and their opaque receipt commitment.
 
 No stable cross-key correlation identifier is introduced. Commitment-key rotation may intentionally split public lineages unless a separately reviewed protected migration proof is used.
+
+## Version status
+
+This v1 contract is frozen for qualification. Semantic changes require a new version rather than silently broadening `NetworkBackedStableDoubleRead`.
