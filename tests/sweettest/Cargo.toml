@@ -20,6 +20,14 @@ futures = "0.3"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 
+# Exact accountant qualification types
+mycelix-clinical-integrity = { path = "../../crates/clinical-integrity" }
+mycelix-clinical-population-release = { path = "../../crates/clinical-population-release" }
+mycelix-clinical-population-accountant-canonical-state = { path = "../../crates/clinical-population-accountant-canonical-state" }
+population_accountant_integrity = { path = "../../zomes/population_accountant/integrity" }
+population_accountant_index = { path = "../../zomes/population_accountant_index/coordinator" }
+population_accountant_index_integrity = { path = "../../zomes/population_accountant_index/integrity" }
+
 # Utilities
 anyhow = "1.0"
 
@@ -42,3 +50,7 @@ path = "tests/fhir_integration.rs"
 [[test]]
 name = "cds_safety"
 path = "tests/cds_safety.rs"
+
+[[test]]
+name = "population_accountant_qualification"
+path = "tests/population_accountant_qualification.rs"
