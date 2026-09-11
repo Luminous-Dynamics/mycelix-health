@@ -28,6 +28,8 @@ This checklist is test design and review guidance, not runtime evidence.
 - [ ] returned snapshot always carries `NetworkBackedStableDoubleRead`
 - [ ] no API field claims `Complete`, `Global`, or `Authoritative`
 - [ ] tests/documentation prove a stable double-read cannot establish absence of an unpropagated correction
+- [ ] downstream adapters preserve the read-boundary class rather than stripping it
+- [ ] downstream APIs do not rename bounded-read state to generic/global `Current`
 - [ ] callers cannot silently upgrade the snapshot into global-current truth
 
 ## Adversarial conductor / DHT tests
@@ -46,4 +48,5 @@ Do not promote this lane beyond experimental until:
 2. conductor-level adversarial tests cover the stable-double-read behavior;
 3. P0 #72 exact source-entry-definition checks are resolved for cross-zome dependencies;
 4. P0 #83 defines the canonical completeness/discovery contract for all publications sharing one commitment;
-5. privacy review confirms no patient/event/drug identifiers or cross-key correlator were introduced.
+5. downstream consumers preserve the bounded read classification end-to-end;
+6. privacy review confirms no patient/event/drug identifiers or cross-key correlator were introduced.
