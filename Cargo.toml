@@ -23,6 +23,8 @@ members = [
     "zomes/medication_administration_occurrence/coordinator",
     "zomes/clinical_causality/integrity",
     "zomes/clinical_causality/coordinator",
+    "zomes/clinical_causality_index/integrity",
+    "zomes/clinical_causality_index/coordinator",
     "zomes/consent/integrity",
     "zomes/consent/coordinator",
     "zomes/bridge/integrity",
