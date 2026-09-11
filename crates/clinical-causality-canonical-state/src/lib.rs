@@ -13,7 +13,9 @@ use clinical_causality_index::{
     CanonicalCausalCommitmentReadBoundaryV1, CanonicalCausalCommitmentSnapshotV1,
     CanonicalCorrectionReadBoundaryV1,
 };
-use clinical_causality_index_integrity::OpaqueCausalCommitmentV1;
+use clinical_causality_index_integrity::{
+    commitment_index_anchor_hash, OpaqueCausalCommitmentV1,
+};
 use holo_hash::{ActionHash, EntryHash};
 use mycelix_clinical_causality_attestation_state::{
     reduce_causal_attestation_state, CausalAttestationCorrectionRecord,
@@ -200,6 +202,11 @@ fn validate_snapshot_shape(
     if snapshot.commitment.value == [0u8; 32] {
         return Err(CanonicalCausalStateError::ZeroCommitment);
     }
+    let expected_anchor = commitment_index_anchor_hash(snapshot.commitment)
+        .map_err(|_| CanonicalCausalStateError::AnchorHashDerivationFailed)?;
+    if snapshot.anchor_hash != expected_anchor {
+        return Err(CanonicalCausalStateError::AnchorHashMismatch);
+    }
     if snapshot.read_boundary
         != CanonicalCausalCommitmentReadBoundaryV1::NestedNetworkBackedStableReadsWithFinalClosureChecks
     {
@@ -229,6 +236,10 @@ fn validate_snapshot_shape(
 pub enum CanonicalCausalStateError {
     #[error("canonical causal snapshot uses a zero opaque commitment")]
     ZeroCommitment,
+    #[error("canonical causal snapshot anchor hash could not be derived")]
+    AnchorHashDerivationFailed,
+    #[error("canonical causal snapshot anchor hash does not match its opaque commitment")]
+    AnchorHashMismatch,
     #[error("canonical causal snapshot has an unsupported read boundary")]
     UnsupportedCanonicalReadBoundary,
     #[error("canonical publication has an unsupported correction read boundary")]
