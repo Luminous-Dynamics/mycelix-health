@@ -58,6 +58,15 @@ integrity:
       # Root authorizations approve one exact qualified receipt + one exact public
       # projection and are hard-capped at 15 minutes by the integrity zome.
       max_verifier_authorization_duration_micros: 900000000
+    population_accountant:
+      schema_version: 1
+      # Privacy-accountant trust is independent of research/release authority.
+      # Empty by default: interactive DP has no trusted budget state until a
+      # deployment deliberately repacks this DNA with trusted root AgentPubKeys.
+      root_authorities: []
+      # Roots authorize one exact verifier + one exact accountant state projection.
+      # The integrity zome hard-caps this at 15 minutes.
+      max_verifier_authorization_duration_micros: 900000000
   zomes:
     # Tier 1: MVP Core
     - name: patient_integrity
@@ -82,6 +91,8 @@ integrity:
       path: ../target/wasm32-unknown-unknown/release/clinical_causality_integrity.wasm
     - name: clinical_causality_index_integrity
       path: ../target/wasm32-unknown-unknown/release/clinical_causality_index_integrity.wasm
+    - name: population_accountant_integrity
+      path: ../target/wasm32-unknown-unknown/release/population_accountant_integrity.wasm
     - name: consent_integrity
       path: ../target/wasm32-unknown-unknown/release/consent_integrity.wasm
     - name: bridge_integrity
@@ -137,6 +148,10 @@ coordinator:
       dependencies:
         - name: clinical_causality_index_integrity
         - name: clinical_causality_integrity
+    - name: population_accountant
+      path: ../target/wasm32-unknown-unknown/release/population_accountant.wasm
+      dependencies:
+        - name: population_accountant_integrity
     - name: consent
       path: ../target/wasm32-unknown-unknown/release/consent.wasm
       dependencies:
