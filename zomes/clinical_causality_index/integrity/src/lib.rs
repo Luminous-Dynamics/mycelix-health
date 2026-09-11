@@ -7,15 +7,14 @@
 //! high-assurance commitment-scoped read model. The deterministic link base is
 //! derived solely from the attestation's already-public opaque receipt commitment.
 
-use clinical_causality_integrity::{
-    CausalCommitmentSchemeV1, OpaqueCausalCommitmentV1, QualifiedCausalAssessmentAttestation,
-};
+use clinical_causality_integrity::QualifiedCausalAssessmentAttestation;
 use hdi::prelude::*;
 
 const INDEX_SCHEMA_VERSION: u16 = 1;
 
 pub use clinical_causality_integrity::{
-    CausalAttestationCorrection, QualifiedCausalAssessmentAttestationV1,
+    CausalAttestationCorrection, OpaqueCausalCommitmentV1,
+    QualifiedCausalAssessmentAttestationV1,
 };
 
 /// Synthetic anchor used only to derive a deterministic `EntryHash` link base.
@@ -157,6 +156,7 @@ fn invalid(message: impl Into<String>) -> ExternResult<ValidateCallbackResult> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use clinical_causality_integrity::CausalCommitmentSchemeV1;
 
     fn commitment(seed: u8) -> OpaqueCausalCommitmentV1 {
         OpaqueCausalCommitmentV1 {
