@@ -12,6 +12,8 @@ crate-type = ["cdylib", "rlib"]
 hdi = { workspace = true }
 holochain_serialized_bytes = { workspace = true }
 serde = { workspace = true }
+mycelix-clinical-integrity = { path = "../../../crates/clinical-integrity" }
+mycelix-clinical-population-release = { path = "../../../crates/clinical-population-release" }
 population_accountant_integrity = { path = "../../population_accountant/integrity" }
 
 [features]
