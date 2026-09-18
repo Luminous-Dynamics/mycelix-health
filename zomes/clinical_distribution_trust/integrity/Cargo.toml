@@ -1,0 +1,19 @@
+[package]
+name = "clinical_distribution_trust_integrity"
+version = "0.1.0"
+edition = "2021"
+license.workspace = true
+description = "DNA-rooted evaluator admission for clinical distribution/OOD evidence"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+hdi = { workspace = true }
+holochain_serialized_bytes = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+blake3 = "1.8.5"
+
+[features]
+default = []
