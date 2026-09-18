@@ -34,7 +34,36 @@ The v1 framing is explicit and independent of serde:
 - enums: fixed one-byte discriminants;
 - snapshot schema version and domain tag are framed explicitly.
 
-Changing the framing requires a new snapshot version/domain. Existing v1 meanings must not be silently changed.
+The top-level v1 field order is frozen as:
+
+1. snapshot version;
+2. snapshot domain tag;
+3. `fact_id`;
+4. subject;
+5. concept;
+6. clinical value;
+7. effective time;
+8. provenance;
+9. uncertainty.
+
+Nested object field order follows the Rust domain object order used by the v1 encoder and is part of the framing contract.
+
+### ClinicalValue discriminants
+
+| Tag | Variant |
+| ---: | --- |
+| `0` | `Quantity` |
+| `1` | `CodeableConcept` |
+| `2` | `Range` |
+| `3` | `Ratio` |
+| `4` | `Boolean` |
+| `5` | `Integer` |
+| `6` | `Decimal` |
+| `7` | `DateTimeMicros` |
+| `8` | `Reference` |
+| `9` | `Narrative` (reserved; current machine-actionable validation rejects it before snapshotting) |
+
+Changing field order, option/vector framing, numeric representation, enum tags, or semantic interpretation requires a new snapshot version/domain. Existing v1 meanings must not be silently changed.
 
 ## Bound fields
 
@@ -49,6 +78,8 @@ The identity binds the complete validated fact state, including:
 - recorded time and asserter;
 - transformation software/version/operation/input-fact lineage;
 - uncertainty/confidence/interpretation.
+
+Vector order is preserved intentionally. Reordering codings or transformation input IDs therefore changes the exact snapshot identity even if a higher-level consumer considers those collections semantically equivalent.
 
 ## Digest
 
