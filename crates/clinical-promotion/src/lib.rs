@@ -4,12 +4,27 @@
 //! The key design choice is that a clinician-facing presentation permit is an
 //! opaque Rust value. Safe downstream code can require that permit instead of
 //! trusting mutable metadata such as a string qualification label.
+//!
+//! Model-backed supervised outputs have two additional boundaries:
+//!
+//! 1. the capsule-only path cannot issue a permit for a model-backed result;
+//! 2. a serializable distribution/OOD assessment is structural preflight only.
+//!
+//! A future trusted distribution-admission layer must supply a non-serializable,
+//! deployment-rooted proof before model-backed output can obtain a clinical
+//! presentation permit.
 
+use mycelix_clinical_distribution_assessment::{
+    validate_distribution_for_capsule, ClinicalDistributionAssessmentError,
+    ClinicalDistributionAssessmentV1, ClinicalDistributionPolicyV1,
+    ClinicalDistributionStatusV1,
+};
 use mycelix_clinical_evidence::{
     AuthorityMode, ClinicalEvidenceCapsule, EvidenceCapsuleError, QualificationLevel,
     RequirementCriticality, ReviewStatus,
 };
 use mycelix_clinical_semantics::EvaluationState;
+use thiserror::Error;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum GateDecision {
@@ -18,6 +33,14 @@ pub enum GateDecision {
     ShadowWorkflowOnly,
     BlockedIndeterminate,
     BlockedCriticalMissingData,
+    BlockedModelRequiresDistributionAssessment,
+    BlockedDistributionNotRun,
+    BlockedDistributionUnavailable,
+    BlockedDistributionIndeterminate,
+    BlockedOutOfDistribution,
+    /// Structural OOD preflight passed, but no deployment-rooted evaluator
+    /// admission/trust receipt has yet authorized model-backed presentation.
+    BlockedModelRequiresTrustedDistributionAdmission,
     HumanReviewRequired,
     RejectedByHuman,
     EligibleForClinicalPresentation,
@@ -36,8 +59,12 @@ impl GateOutcome {
 }
 
 /// Opaque proof that one exact evidence capsule passed the supervised-clinical
-/// promotion boundary. This type deliberately does not implement serde traits;
+/// presentation boundary. This type deliberately does not implement serde traits;
 /// it is not a wire credential and cannot be reconstructed from untrusted JSON.
+///
+/// V1 permits are currently issued only for non-model/rule-backed capsules. A
+/// future model-backed permit must additionally bind a trusted distribution
+/// admission receipt.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ClinicalPresentationPermit {
     capsule_id: String,
@@ -64,6 +91,11 @@ impl ClinicalPresentationPermit {
     }
 }
 
+/// Capsule-only presentation evaluation.
+///
+/// Deterministic/rule-backed supervised capsules may continue to use this path.
+/// A supervised capsule carrying a model identity is deliberately blocked until
+/// distribution evidence and a later trusted admission proof are supplied.
 pub fn evaluate_for_clinical_presentation(
     capsule: &ClinicalEvidenceCapsule,
 ) -> Result<GateOutcome, EvidenceCapsuleError> {
@@ -73,6 +105,9 @@ pub fn evaluate_for_clinical_presentation(
         QualificationLevel::Experimental => GateDecision::ResearchOnly,
         QualificationLevel::ValidatedOffline => GateDecision::OfflineValidationOnly,
         QualificationLevel::ShadowClinical => GateDecision::ShadowWorkflowOnly,
+        QualificationLevel::SupervisedClinical if capsule.execution.model.is_some() => {
+            GateDecision::BlockedModelRequiresDistributionAssessment
+        }
         QualificationLevel::SupervisedClinical => evaluate_supervised(capsule),
     };
 
@@ -88,6 +123,59 @@ pub fn evaluate_for_clinical_presentation(
     };
 
     Ok(GateOutcome { decision, permit })
+}
+
+/// Structural preflight for model-backed distribution/OOD evidence.
+///
+/// This function intentionally cannot mint a `ClinicalPresentationPermit`.
+/// `ClinicalDistributionAssessmentV1` and `ClinicalDistributionPolicyV1` are
+/// serializable and therefore cannot, by themselves, establish institutional
+/// trust in the detector/evaluator that produced the assessment.
+///
+/// Valid negative states are preserved as explicit gate decisions. Structural
+/// mismatches (wrong model/subject/capsule/detector/reference domain, stale
+/// evidence, etc.) are errors. If the assessment is valid `InDistribution`, the
+/// pre-existing clinical gates are evaluated; only if they would otherwise pass
+/// does the function return `BlockedModelRequiresTrustedDistributionAdmission`.
+pub fn evaluate_model_distribution_preflight(
+    capsule: &ClinicalEvidenceCapsule,
+    assessment: &ClinicalDistributionAssessmentV1,
+    policy: &ClinicalDistributionPolicyV1,
+    now_micros: i64,
+) -> Result<GateOutcome, ClinicalAiPreflightError> {
+    capsule.validate()?;
+    let validated = validate_distribution_for_capsule(capsule, assessment, policy, now_micros)?;
+
+    let decision = match capsule.intended_use.qualification {
+        QualificationLevel::Experimental => GateDecision::ResearchOnly,
+        QualificationLevel::ValidatedOffline => GateDecision::OfflineValidationOnly,
+        QualificationLevel::ShadowClinical => GateDecision::ShadowWorkflowOnly,
+        QualificationLevel::SupervisedClinical => match validated.status() {
+            ClinicalDistributionStatusV1::NotRun => GateDecision::BlockedDistributionNotRun,
+            ClinicalDistributionStatusV1::Unavailable => {
+                GateDecision::BlockedDistributionUnavailable
+            }
+            ClinicalDistributionStatusV1::Indeterminate => {
+                GateDecision::BlockedDistributionIndeterminate
+            }
+            ClinicalDistributionStatusV1::OutOfDistribution => {
+                GateDecision::BlockedOutOfDistribution
+            }
+            ClinicalDistributionStatusV1::InDistribution => {
+                let clinical_decision = evaluate_supervised(capsule);
+                if clinical_decision == GateDecision::EligibleForClinicalPresentation {
+                    GateDecision::BlockedModelRequiresTrustedDistributionAdmission
+                } else {
+                    clinical_decision
+                }
+            }
+        },
+    };
+
+    Ok(GateOutcome {
+        decision,
+        permit: None,
+    })
 }
 
 fn evaluate_supervised(capsule: &ClinicalEvidenceCapsule) -> GateDecision {
@@ -116,9 +204,23 @@ fn evaluate_supervised(capsule: &ClinicalEvidenceCapsule) -> GateDecision {
     GateDecision::EligibleForClinicalPresentation
 }
 
+#[derive(Debug, Error, PartialEq, Eq)]
+pub enum ClinicalAiPreflightError {
+    #[error(transparent)]
+    EvidenceCapsule(#[from] EvidenceCapsuleError),
+    #[error(transparent)]
+    Distribution(#[from] ClinicalDistributionAssessmentError),
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    use mycelix_clinical_distribution_assessment::{
+        capsule_binding_digest, ClinicalDistributionAssessmentV1,
+        ClinicalDistributionPolicyV1, NumericDistributionBoundaryV1,
+        NumericDistributionDirectionV1, CLINICAL_DISTRIBUTION_ASSESSMENT_VERSION,
+        CLINICAL_DISTRIBUTION_POLICY_VERSION,
+    };
     use mycelix_clinical_evidence::{
         Alternative, ArtifactIdentity, AssertionKind, AssertionUncertainty, ClinicalAuthority,
         ContentDigest, EvidenceRole, EvidenceSource, EvidenceSourceKind, ExecutionIdentity,
@@ -130,6 +232,14 @@ mod tests {
         ContentDigest {
             algorithm: "sha256".into(),
             value: value.into(),
+        }
+    }
+
+    fn artifact(name: &str, version: &str, value: &str) -> ArtifactIdentity {
+        ArtifactIdentity {
+            name: name.into(),
+            version: version.into(),
+            digest: digest(value),
         }
     }
 
@@ -179,17 +289,9 @@ mod tests {
                 calibration_reference: None,
             }),
             execution: ExecutionIdentity {
-                engine: ArtifactIdentity {
-                    name: "symthaea-cds".into(),
-                    version: "0.1.0".into(),
-                    digest: digest("engine"),
-                },
+                engine: artifact("symthaea-cds", "0.1.0", "engine"),
                 model: None,
-                knowledge_artifact: Some(ArtifactIdentity {
-                    name: "guideline".into(),
-                    version: "2026.1".into(),
-                    digest: digest("guideline"),
-                }),
+                knowledge_artifact: Some(artifact("guideline", "2026.1", "guideline")),
                 environment_digest: Some(digest("env")),
                 operation: "evaluate".into(),
             },
@@ -214,43 +316,138 @@ mod tests {
         }
     }
 
-    #[test]
-    fn experimental_cannot_obtain_clinical_permit() {
-        let outcome = evaluate_for_clinical_presentation(&capsule(QualificationLevel::Experimental))
-            .unwrap();
-        assert_eq!(outcome.decision, GateDecision::ResearchOnly);
-        assert!(outcome.permit().is_none());
+    fn model_capsule() -> ClinicalEvidenceCapsule {
+        let mut capsule = capsule(QualificationLevel::SupervisedClinical);
+        capsule.kind = AssertionKind::RiskPrediction;
+        capsule.execution.model = Some(artifact("risk-model", "1.0.0", "risk-model"));
+        capsule.execution.knowledge_artifact = None;
+        capsule
+    }
+
+    fn distribution_policy() -> ClinicalDistributionPolicyV1 {
+        ClinicalDistributionPolicyV1 {
+            schema_version: CLINICAL_DISTRIBUTION_POLICY_VERSION,
+            policy_id: "distribution-policy-v1".into(),
+            required_detector: artifact("ood-detector", "1.0.0", "ood-detector"),
+            required_reference_population: "adult-outpatient-v1".into(),
+            required_reference_domain_digest: digest("reference-domain"),
+            max_age_micros: 1_000,
+            max_future_skew_micros: 10,
+        }
+    }
+
+    fn distribution_assessment(
+        capsule: &ClinicalEvidenceCapsule,
+        status: ClinicalDistributionStatusV1,
+    ) -> ClinicalDistributionAssessmentV1 {
+        let numeric_boundary = match status {
+            ClinicalDistributionStatusV1::InDistribution => {
+                Some(NumericDistributionBoundaryV1 {
+                    score: 0.8,
+                    threshold: 0.5,
+                    direction: NumericDistributionDirectionV1::HigherMeansMoreInDistribution,
+                })
+            }
+            ClinicalDistributionStatusV1::OutOfDistribution => {
+                Some(NumericDistributionBoundaryV1 {
+                    score: 0.2,
+                    threshold: 0.5,
+                    direction: NumericDistributionDirectionV1::HigherMeansMoreInDistribution,
+                })
+            }
+            _ => None,
+        };
+        ClinicalDistributionAssessmentV1 {
+            schema_version: CLINICAL_DISTRIBUTION_ASSESSMENT_VERSION,
+            assessment_id: "assessment-1".into(),
+            subject: capsule.subject.clone(),
+            model: capsule.execution.model.clone().expect("model required"),
+            detector: distribution_policy().required_detector,
+            reference_population: "adult-outpatient-v1".into(),
+            reference_domain_digest: digest("reference-domain"),
+            capsule_binding_digest: capsule_binding_digest(capsule).unwrap(),
+            status,
+            numeric_boundary,
+            assessment_evidence_digest: if status == ClinicalDistributionStatusV1::NotRun
+                || status == ClinicalDistributionStatusV1::Unavailable
+            {
+                None
+            } else {
+                Some(digest("distribution-evidence"))
+            },
+            assessed_at_micros: 100,
+        }
     }
 
     #[test]
-    fn offline_validated_cannot_obtain_clinical_permit() {
-        let outcome = evaluate_for_clinical_presentation(&capsule(QualificationLevel::ValidatedOffline))
-            .unwrap();
-        assert_eq!(outcome.decision, GateDecision::OfflineValidationOnly);
-        assert!(outcome.permit().is_none());
-    }
-
-    #[test]
-    fn shadow_cannot_obtain_clinical_permit() {
-        let outcome = evaluate_for_clinical_presentation(&capsule(QualificationLevel::ShadowClinical))
-            .unwrap();
-        assert_eq!(outcome.decision, GateDecision::ShadowWorkflowOnly);
-        assert!(outcome.permit().is_none());
-    }
-
-    #[test]
-    fn supervised_approved_capsule_gets_opaque_permit() {
+    fn deterministic_supervised_capsule_still_gets_permit() {
         let capsule = capsule(QualificationLevel::SupervisedClinical);
         let outcome = evaluate_for_clinical_presentation(&capsule).unwrap();
         assert_eq!(outcome.decision, GateDecision::EligibleForClinicalPresentation);
-        let permit = outcome.permit().expect("permit required");
-        assert_eq!(permit.capsule_id(), "capsule-1");
-        assert_eq!(permit.subject_id(), "patient-a");
+        assert!(outcome.permit().is_some());
     }
 
     #[test]
-    fn indeterminate_supervised_capsule_is_blocked() {
-        let mut capsule = capsule(QualificationLevel::SupervisedClinical);
+    fn model_cannot_use_capsule_only_supervised_path() {
+        let outcome = evaluate_for_clinical_presentation(&model_capsule()).unwrap();
+        assert_eq!(
+            outcome.decision,
+            GateDecision::BlockedModelRequiresDistributionAssessment
+        );
+        assert!(outcome.permit().is_none());
+    }
+
+    #[test]
+    fn structurally_in_distribution_is_still_preflight_only() {
+        let capsule = model_capsule();
+        let outcome = evaluate_model_distribution_preflight(
+            &capsule,
+            &distribution_assessment(&capsule, ClinicalDistributionStatusV1::InDistribution),
+            &distribution_policy(),
+            200,
+        )
+        .unwrap();
+        assert_eq!(
+            outcome.decision,
+            GateDecision::BlockedModelRequiresTrustedDistributionAdmission
+        );
+        assert!(outcome.permit().is_none());
+    }
+
+    #[test]
+    fn out_of_distribution_model_is_explicitly_blocked() {
+        let capsule = model_capsule();
+        let outcome = evaluate_model_distribution_preflight(
+            &capsule,
+            &distribution_assessment(
+                &capsule,
+                ClinicalDistributionStatusV1::OutOfDistribution,
+            ),
+            &distribution_policy(),
+            200,
+        )
+        .unwrap();
+        assert_eq!(outcome.decision, GateDecision::BlockedOutOfDistribution);
+        assert!(outcome.permit().is_none());
+    }
+
+    #[test]
+    fn detector_not_run_is_distinct_from_in_distribution() {
+        let capsule = model_capsule();
+        let outcome = evaluate_model_distribution_preflight(
+            &capsule,
+            &distribution_assessment(&capsule, ClinicalDistributionStatusV1::NotRun),
+            &distribution_policy(),
+            200,
+        )
+        .unwrap();
+        assert_eq!(outcome.decision, GateDecision::BlockedDistributionNotRun);
+        assert!(outcome.permit().is_none());
+    }
+
+    #[test]
+    fn existing_clinical_blockers_still_win_after_distribution_preflight() {
+        let mut capsule = model_capsule();
         capsule.state = EvaluationState::Indeterminate;
         capsule.missing_requirements = vec![MissingRequirement {
             requirement_id: "renal-function".into(),
@@ -258,27 +455,40 @@ mod tests {
             concept: None,
             criticality: RequirementCriticality::Critical,
         }];
-        let outcome = evaluate_for_clinical_presentation(&capsule).unwrap();
+        let assessment =
+            distribution_assessment(&capsule, ClinicalDistributionStatusV1::InDistribution);
+        let outcome = evaluate_model_distribution_preflight(
+            &capsule,
+            &assessment,
+            &distribution_policy(),
+            200,
+        )
+        .unwrap();
         assert_eq!(outcome.decision, GateDecision::BlockedIndeterminate);
         assert!(outcome.permit().is_none());
     }
 
     #[test]
-    fn critical_missing_data_blocks_permit() {
-        let mut capsule = capsule(QualificationLevel::SupervisedClinical);
-        capsule.missing_requirements = vec![MissingRequirement {
-            requirement_id: "pregnancy-status".into(),
-            description: "pregnancy status required".into(),
-            concept: None,
-            criticality: RequirementCriticality::Critical,
-        }];
-        let outcome = evaluate_for_clinical_presentation(&capsule).unwrap();
-        assert_eq!(outcome.decision, GateDecision::BlockedCriticalMissingData);
-        assert!(outcome.permit().is_none());
+    fn stale_distribution_assessment_is_structural_error() {
+        let capsule = model_capsule();
+        let mut policy = distribution_policy();
+        policy.max_age_micros = 50;
+        let result = evaluate_model_distribution_preflight(
+            &capsule,
+            &distribution_assessment(&capsule, ClinicalDistributionStatusV1::InDistribution),
+            &policy,
+            200,
+        );
+        assert_eq!(
+            result,
+            Err(ClinicalAiPreflightError::Distribution(
+                ClinicalDistributionAssessmentError::StaleAssessment
+            ))
+        );
     }
 
     #[test]
-    fn pending_required_review_blocks_permit() {
+    fn pending_required_review_blocks_rule_permit() {
         let mut capsule = capsule(QualificationLevel::SupervisedClinical);
         capsule.authority.review = HumanReview {
             status: ReviewStatus::Pending,
@@ -292,7 +502,7 @@ mod tests {
     }
 
     #[test]
-    fn rejected_review_blocks_permit() {
+    fn rejected_review_blocks_rule_permit() {
         let mut capsule = capsule(QualificationLevel::SupervisedClinical);
         capsule.authority.review = HumanReview {
             status: ReviewStatus::Rejected,
