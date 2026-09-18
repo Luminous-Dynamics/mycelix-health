@@ -12,3 +12,8 @@ mycelix-clinical-evidence-v2 = { path = "../clinical-evidence-v2" }
 mycelix-symthaea-clinical-admission-v2 = { path = "../symthaea-clinical-admission-v2" }
 mycelix-symthaea-clinical-evidence-context = { path = "../symthaea-clinical-evidence-context" }
 mycelix-symthaea-clinical-wire-v2 = { path = "../symthaea-clinical-wire-v2" }
+
+[dev-dependencies]
+mycelix-clinical-semantics = { path = "../clinical-semantics" }
+mycelix-clinical-fact-snapshot = { path = "../clinical-fact-snapshot" }
+mycelix-symthaea-clinical-fact-binding = { path = "../symthaea-clinical-fact-binding" }
