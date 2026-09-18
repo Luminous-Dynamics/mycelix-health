@@ -1,0 +1,9 @@
+[package]
+name = "mycelix-symthaea-clinical-wire-v2"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Independent bounded verifier for Symthaea clinical inference binary wire v2"
+
+[dependencies]
+blake3 = "1.8.5"
