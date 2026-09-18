@@ -231,20 +231,11 @@ pub enum ClinicalEvidenceV2Error {
 mod tests {
     use super::*;
     use mycelix_clinical_evidence::{
-        AssertionKind, AuthorityMode, ClinicalAuthority, ExecutionIdentity, FactEvidence,
-        HumanReview, IntendedUse, QualificationLevel, ReviewStatus,
+        ArtifactIdentity, AssertionKind, AuthorityMode, ClinicalAuthority, ContentDigest,
+        ExecutionIdentity, FactEvidence, HumanReview, IntendedUse, QualificationLevel,
+        ReviewStatus,
     };
-    use mycelix_clinical_evidence::{ArtifactIdentity, ContentDigest};
     use mycelix_clinical_semantics::{EvaluationState, SubjectRef};
-
-    fn digest(byte: u8) -> ClinicalFactSnapshotDigestV1 {
-        // Test-only construction goes through the real snapshot digest type's
-        // bytes by deriving one from a real digest-shaped value is unavailable;
-        // instead use a tiny helper fact path in tests below when a valid typed
-        // identity is needed.
-        let _ = byte;
-        panic!("unused helper")
-    }
 
     fn core() -> ClinicalEvidenceCapsule {
         ClinicalEvidenceCapsule {
@@ -406,6 +397,36 @@ mod tests {
         assert_eq!(
             typed.validate(),
             Err(ClinicalEvidenceV2Error::ZeroTypedDigest)
+        );
+    }
+
+    #[test]
+    fn duplicate_typed_fact_is_rejected() {
+        let capsule = ClinicalEvidenceCapsuleV2 {
+            schema_version: CLINICAL_EVIDENCE_CAPSULE_V2_VERSION,
+            core: core(),
+            typed_fact_evidence: vec![typed(), typed()],
+        };
+        assert_eq!(
+            capsule.validate(),
+            Err(ClinicalEvidenceV2Error::TypedFactCoverageMismatch)
+        );
+    }
+
+    #[test]
+    fn extra_typed_fact_is_rejected() {
+        let mut extra = typed();
+        extra.fact_id = "fact-extra".into();
+        extra.identity.artifact_id = "fact-extra".into();
+        extra.identity.digest = [0xCD; 32];
+        let capsule = ClinicalEvidenceCapsuleV2 {
+            schema_version: CLINICAL_EVIDENCE_CAPSULE_V2_VERSION,
+            core: core(),
+            typed_fact_evidence: vec![typed(), extra],
+        };
+        assert_eq!(
+            capsule.validate(),
+            Err(ClinicalEvidenceV2Error::TypedFactCoverageMismatch)
         );
     }
 }
