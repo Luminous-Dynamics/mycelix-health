@@ -1,0 +1,16 @@
+[package]
+name = "clinical_causality"
+version = "0.1.0"
+edition = "2021"
+license.workspace = true
+description = "Coordinator for DNA-rooted qualified clinical causal assessment attestations"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+hdk = { workspace = true }
+clinical_causality_integrity = { path = "../integrity" }
+
+[features]
+default = []
