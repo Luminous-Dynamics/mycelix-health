@@ -1,0 +1,12 @@
+[package]
+name = "mycelix-clinical-evidence"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Evidence-bearing clinical assertion and recommendation capsules for Mycelix-Health"
+
+[dependencies]
+serde = { workspace = true }
+thiserror = { workspace = true }
+mycelix-clinical-semantics = { path = "../clinical-semantics" }
+health-validation = { path = "../health-validation" }
