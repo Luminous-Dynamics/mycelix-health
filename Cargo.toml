@@ -57,6 +57,7 @@ members = [
     "crates/hdc-experiments",
     "crates/health-validation",
     "crates/clinical-semantics",
+    "crates/clinical-fact-snapshot",
     "crates/fhir-semantics",
     "crates/clinical-evidence",
     "crates/symthaea-clinical-wire",
