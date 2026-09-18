@@ -1,0 +1,15 @@
+[package]
+name = "mycelix-symthaea-clinical-evidence-context"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Compose admitted Symthaea v2 inference with verified Mycelix ClinicalFact bindings"
+
+[dependencies]
+blake3 = "1.8.5"
+thiserror = { workspace = true }
+mycelix-clinical-evidence = { path = "../clinical-evidence" }
+mycelix-clinical-evidence-v2 = { path = "../clinical-evidence-v2" }
+mycelix-symthaea-clinical-admission-v2 = { path = "../symthaea-clinical-admission-v2" }
+mycelix-symthaea-clinical-fact-binding = { path = "../symthaea-clinical-fact-binding" }
+mycelix-symthaea-clinical-wire-v2 = { path = "../symthaea-clinical-wire-v2" }
