@@ -65,6 +65,7 @@ members = [
     "crates/symthaea-clinical-wire-v2",
     "crates/symthaea-clinical-fact-binding",
     "crates/symthaea-clinical-admission",
+    "crates/symthaea-clinical-admission-v2",
     "crates/clinical-distribution-assessment",
     "crates/clinical-distribution-trust",
     "crates/clinical-promotion",
