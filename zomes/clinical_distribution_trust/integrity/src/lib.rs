@@ -31,7 +31,6 @@ pub struct ClinicalDistributionTrustRootConfig {
     pub max_verifier_authorization_duration_micros: i64,
 }
 
-/// Wire-stable content digest shape used by this runtime boundary.
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]
 pub struct RuntimeContentDigestV1 {
@@ -48,7 +47,6 @@ impl RuntimeContentDigestV1 {
     }
 }
 
-/// Exact public artifact identity for the admitted detector/evaluator.
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]
 pub struct RuntimeArtifactIdentityV1 {
@@ -76,11 +74,7 @@ pub struct DistributionEvaluatorAdmissionProposalV1 {
     pub detector: RuntimeArtifactIdentityV1,
     pub distribution_policy_digest: RuntimeContentDigestV1,
     pub trust_policy_digest: RuntimeContentDigestV1,
-    /// Digest/identity of the externally verified registry/configuration evidence
-    /// that caused the deployment to admit this detector.
     pub external_admission_evidence_digest: RuntimeContentDigestV1,
-    /// Evaluator admission validity is distinct from the short root authorization
-    /// used to publish this exact proposal.
     pub valid_from: Timestamp,
     pub valid_until: Option<Timestamp>,
 }
@@ -139,8 +133,6 @@ impl DistributionEvaluatorAdmissionProposalV1 {
     }
 }
 
-/// DNA-root-issued short-lived authorization for one verifier and one exact
-/// evaluator-admission proposal. This is not a reusable evaluator role grant.
 #[hdk_entry_helper]
 #[derive(Clone, PartialEq)]
 pub struct DistributionEvaluatorVerifierAuthorization {
@@ -151,8 +143,6 @@ pub struct DistributionEvaluatorVerifierAuthorization {
     pub valid_until: Timestamp,
 }
 
-/// Runtime-admitted evaluator projection. Integrity validation requires exact
-/// proposal equality with the referenced root authorization.
 #[hdk_entry_helper]
 #[derive(Clone, PartialEq)]
 pub struct QualifiedDistributionEvaluatorAdmission {
@@ -171,7 +161,6 @@ pub enum DistributionEvaluatorRevocationReason {
     Other,
 }
 
-/// Append-only correction/revocation for one exact admitted evaluator action.
 #[hdk_entry_helper]
 #[derive(Clone, PartialEq)]
 pub struct DistributionEvaluatorAdmissionRevocation {
@@ -179,7 +168,6 @@ pub struct DistributionEvaluatorAdmissionRevocation {
     pub admission_hash: ActionHash,
     pub admission_proposal_digest: [u8; 32],
     pub reason: DistributionEvaluatorRevocationReason,
-    /// Optional commitment to protected human-readable rationale.
     pub reason_commitment: Option<[u8; 32]>,
 }
 
@@ -307,6 +295,23 @@ fn require_exact_verifier_authorization(
     let authorization: DistributionEvaluatorVerifierAuthorization =
         decode_entry(&record, "distribution evaluator verifier authorization")?;
 
+    // Containment against a structurally compatible record from another entry
+    // definition: the referenced authorization author must still be a DNA root,
+    // and its shape/window are revalidated here before it grants authority.
+    let config = distribution_trust_root_config()?;
+    let root = require_root_authority(record.action().author(), &config)?;
+    if !matches!(root, ValidateCallbackResult::Valid) {
+        return Ok(root);
+    }
+    let shape = validate_authorization_shape(&authorization)?;
+    if !matches!(shape, ValidateCallbackResult::Valid) {
+        return Ok(shape);
+    }
+    let window = validate_authorization_window(record.action().timestamp(), &authorization, &config)?;
+    if !matches!(window, ValidateCallbackResult::Valid) {
+        return Ok(window);
+    }
+
     if &authorization.grantee != author {
         return invalid("Distribution evaluator admission author is not authorization grantee");
     }
@@ -327,7 +332,7 @@ fn require_exact_verifier_authorization(
     Ok(ValidateCallbackResult::Valid)
 }
 
-fn validate_revocation_shape(
+fn validate_revocation_local_shape(
     revocation: &DistributionEvaluatorAdmissionRevocation,
 ) -> ExternResult<ValidateCallbackResult> {
     if revocation.revocation_id.trim().is_empty() {
@@ -347,10 +352,32 @@ fn validate_revocation_shape(
     {
         return invalid("Other evaluator-revocation reason requires rationale commitment");
     }
+    Ok(ValidateCallbackResult::Valid)
+}
+
+fn validate_revocation_shape(
+    revocation: &DistributionEvaluatorAdmissionRevocation,
+) -> ExternResult<ValidateCallbackResult> {
+    let local = validate_revocation_local_shape(revocation)?;
+    if !matches!(local, ValidateCallbackResult::Valid) {
+        return Ok(local);
+    }
 
     let record = must_get_valid_record(revocation.admission_hash.clone())?;
     let admission: QualifiedDistributionEvaluatorAdmission =
         decode_entry(&record, "qualified distribution evaluator admission")?;
+
+    // Re-run the admission's exact root/grantee authorization chain instead of
+    // treating structural deserialization as runtime provenance.
+    let admitted = require_exact_verifier_authorization(
+        record.action().author(),
+        record.action().timestamp(),
+        &admission,
+    )?;
+    if !matches!(admitted, ValidateCallbackResult::Valid) {
+        return Ok(admitted);
+    }
+
     if admission.proposal.digest()? != revocation.admission_proposal_digest {
         return invalid("Distribution evaluator revocation does not match target admission proposal");
     }
@@ -373,6 +400,16 @@ fn validate_create_link(
             let revocation_record = must_get_valid_record(revocation_hash)?;
             let revocation: DistributionEvaluatorAdmissionRevocation =
                 decode_entry(&revocation_record, "distribution evaluator admission revocation")?;
+
+            let config = distribution_trust_root_config()?;
+            let revocation_root = require_root_authority(revocation_record.action().author(), &config)?;
+            if !matches!(revocation_root, ValidateCallbackResult::Valid) {
+                return Ok(revocation_root);
+            }
+            let revocation_shape = validate_revocation_shape(&revocation)?;
+            if !matches!(revocation_shape, ValidateCallbackResult::Valid) {
+                return Ok(revocation_shape);
+            }
 
             if revocation.admission_hash != admission_hash
                 || revocation.admission_proposal_digest != admission.proposal.digest()?
@@ -536,8 +573,20 @@ mod tests {
             reason: DistributionEvaluatorRevocationReason::Other,
             reason_commitment: None,
         };
-        // Test the local shape that does not require a live DHT target first.
-        assert!(revocation.revocation_id.len() > 0);
-        assert!(revocation.reason_commitment.is_none());
+        let result = validate_revocation_local_shape(&revocation).unwrap();
+        assert!(matches!(result, ValidateCallbackResult::Invalid(_)));
+    }
+
+    #[test]
+    fn root_config_rejects_overlong_authorization_window() {
+        let bytes = serde_json::to_vec(&serde_json::json!({
+            "clinical_distribution_trust": {
+                "schema_version": 1,
+                "root_authorities": [],
+                "max_verifier_authorization_duration_micros": 900000001_i64
+            }
+        }))
+        .unwrap();
+        assert!(parse_distribution_trust_root_config(&bytes).is_err());
     }
 }
