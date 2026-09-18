@@ -60,6 +60,7 @@ members = [
     "crates/clinical-fact-snapshot",
     "crates/fhir-semantics",
     "crates/clinical-evidence",
+    "crates/clinical-evidence-v2",
     "crates/symthaea-clinical-wire",
     "crates/symthaea-clinical-wire-v2",
     "crates/symthaea-clinical-fact-binding",
