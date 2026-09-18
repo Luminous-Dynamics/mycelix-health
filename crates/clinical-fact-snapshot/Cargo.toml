@@ -1,0 +1,11 @@
+[package]
+name = "mycelix-clinical-fact-snapshot"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Serializer-independent canonical snapshot identity for validated Mycelix ClinicalFact values"
+
+[dependencies]
+blake3 = "1.8.5"
+thiserror = { workspace = true }
+mycelix-clinical-semantics = { path = "../clinical-semantics" }
