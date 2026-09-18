@@ -1,0 +1,18 @@
+[package]
+name = "population_accountant_index"
+version = "0.1.0"
+edition = "2021"
+license.workspace = true
+description = "Canonical admission and bounded discovery for trusted population accountant state"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+hdk = { workspace = true }
+serde = { workspace = true }
+population_accountant_index_integrity = { path = "../integrity" }
+population_accountant_integrity = { path = "../../population_accountant/integrity" }
+
+[features]
+default = []
