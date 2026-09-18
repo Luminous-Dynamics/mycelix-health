@@ -1,0 +1,17 @@
+[package]
+name = "medication_dispense"
+version = "0.1.0"
+edition = "2021"
+license.workspace = true
+description = "Coordinator for exact refill-slot authorization and finalized medication dispense receipts"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+hdk = { workspace = true }
+serde = { workspace = true }
+medication_dispense_integrity = { path = "../integrity" }
+
+[features]
+default = []

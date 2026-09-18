@@ -1,0 +1,12 @@
+[package]
+name = "mycelix-clinical-quarantine"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Privacy-preserving quarantine and reconciliation lineage for rejected Mycelix-Health clinical inputs"
+
+[dependencies]
+serde = { workspace = true }
+thiserror = { workspace = true }
+mycelix-fhir-conformance = { path = "../fhir-conformance" }
+mycelix-fhir-semantics = { path = "../fhir-semantics" }
