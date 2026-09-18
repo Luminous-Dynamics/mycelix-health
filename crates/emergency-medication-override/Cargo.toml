@@ -1,0 +1,18 @@
+[package]
+name = "mycelix-emergency-medication-override"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Evidence-bearing emergency medication override capabilities for Mycelix-Health"
+
+[dependencies]
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+mycelix-clinical-authority = { path = "../clinical-authority" }
+mycelix-clinical-integrity = { path = "../clinical-integrity" }
+mycelix-fhir-medication-semantics = { path = "../fhir-medication-semantics" }
+mycelix-medication-safety-assessment = { path = "../medication-safety-assessment" }
+
+[dev-dependencies]
+mycelix-medication-safety = { path = "../medication-safety" }
