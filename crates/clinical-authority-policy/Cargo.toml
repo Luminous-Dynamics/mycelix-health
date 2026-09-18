@@ -1,0 +1,13 @@
+[package]
+name = "mycelix-clinical-authority-policy"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Cryptographically policy-bound authority evaluation for Mycelix-Health"
+
+[dependencies]
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+mycelix-clinical-authority = { path = "../clinical-authority" }
+mycelix-clinical-integrity = { path = "../clinical-integrity" }
