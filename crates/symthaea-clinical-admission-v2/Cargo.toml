@@ -1,0 +1,11 @@
+[package]
+name = "mycelix-symthaea-clinical-admission-v2"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Fail-closed deployment admission preflight for typed Symthaea clinical inference v2"
+
+[dependencies]
+blake3 = "1.8.5"
+thiserror = { workspace = true }
+mycelix-symthaea-clinical-wire-v2 = { path = "../symthaea-clinical-wire-v2" }

@@ -1,0 +1,16 @@
+[package]
+name = "clinical_distribution_trust"
+version = "0.1.0"
+edition = "2021"
+license.workspace = true
+description = "Thin coordinator for DNA-rooted clinical distribution evaluator admission"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+hdk = { workspace = true }
+clinical_distribution_trust_integrity = { path = "../integrity" }
+
+[features]
+default = []

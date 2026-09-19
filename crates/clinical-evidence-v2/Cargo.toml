@@ -1,0 +1,13 @@
+[package]
+name = "mycelix-clinical-evidence-v2"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Typed artifact identities for strict Mycelix clinical evidence capsules"
+
+[dependencies]
+serde = { workspace = true }
+thiserror = { workspace = true }
+mycelix-clinical-evidence = { path = "../clinical-evidence" }
+mycelix-clinical-fact-snapshot = { path = "../clinical-fact-snapshot" }
+mycelix-clinical-semantics = { path = "../clinical-semantics" }

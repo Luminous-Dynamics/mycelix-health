@@ -1,0 +1,20 @@
+[package]
+name = "mycelix-symthaea-clinical-distribution-assessment-v2"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Symthaea-native distribution/OOD assessment bound to exact verified model assertions"
+
+[dependencies]
+blake3 = "1.8.5"
+serde = { workspace = true }
+thiserror = { workspace = true }
+mycelix-symthaea-clinical-model-assertion = { path = "../symthaea-clinical-model-assertion" }
+mycelix-symthaea-clinical-wire-v2 = { path = "../symthaea-clinical-wire-v2" }
+
+[dev-dependencies]
+mycelix-clinical-fact-snapshot = { path = "../clinical-fact-snapshot" }
+mycelix-clinical-semantics = { path = "../clinical-semantics" }
+mycelix-symthaea-clinical-admission-v2 = { path = "../symthaea-clinical-admission-v2" }
+mycelix-symthaea-clinical-evidence-context = { path = "../symthaea-clinical-evidence-context" }
+mycelix-symthaea-clinical-fact-binding = { path = "../symthaea-clinical-fact-binding" }
