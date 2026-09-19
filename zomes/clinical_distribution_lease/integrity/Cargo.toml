@@ -1,0 +1,19 @@
+[package]
+name = "clinical_distribution_lease_integrity"
+version = "0.1.0"
+edition = "2021"
+license.workspace = true
+description = "DNA-rooted short-lived positive evaluator leases for clinical distribution trust"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+hdi = { workspace = true }
+holochain_serialized_bytes = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+clinical_distribution_trust_integrity = { path = "../../clinical_distribution_trust/integrity" }
+
+[features]
+default = []
