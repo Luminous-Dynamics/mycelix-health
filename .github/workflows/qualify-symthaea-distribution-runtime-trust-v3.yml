@@ -5,9 +5,14 @@ on:
     branches: [main]
   workflow_dispatch:
 
+concurrency:
+  group: qualify-symthaea-runtime-trust-v3-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 env:
   CARGO_TERM_COLOR: always
   RUST_BACKTRACE: 1
+  SUBJECT_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
   MYCELIX_PARENT_SHA: a85369699099d4c7524e502e531735eed4ab36f4
   CHECKOUT_ACTION_SHA: 11d5960a326750d5838078e36cf38b85af677262
   INSTALL_NIX_ACTION_SHA: 6004951b182f8860210c8d6f0d808ec5b1a33d28
@@ -16,17 +21,23 @@ env:
 jobs:
   qualify:
     name: Exact-head v3 qualification
+    if: github.event_name == 'workflow_dispatch' || github.head_ref == 'integration/symthaea-clinical-distribution-runtime-trust-v3'
     runs-on: ubuntu-24.04
     steps:
       - name: Check out exact subject with full ancestry
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
+          ref: ${{ env.SUBJECT_SHA }}
           fetch-depth: 0
+          persist-credentials: false
 
-      - name: Verify required proof-line ancestry
+      - name: Verify exact subject and required proof-line ancestry
         shell: bash
         run: |
           set -euo pipefail
+          actual_subject="$(git rev-parse HEAD)"
+          test "$actual_subject" = "$SUBJECT_SHA"
+
           ASSERTION_HEAD=469f3e75f6b2b2905956657ab549e7bfdd4962ec
           CURRENTNESS_HEAD=2c89b88f949a9d013b4f190e071a690c978cea4d
           INTEGRATION_HEAD=50d5ac4aca63dce737f1f2bb91a0dce530038b33
@@ -45,7 +56,7 @@ jobs:
           test -f crates/symthaea-clinical-distribution-trust-v3/tests/runtime_trust.rs
           test -f docs/security/SYMTHAEA_CLINICAL_DISTRIBUTION_RUNTIME_TRUST_V3_QUALIFICATION.md
 
-          echo "Qualification subject: $(git rev-parse HEAD)"
+          echo "Qualification subject: $actual_subject"
           echo "Integration parents: $actual_parents"
 
       - name: Check out pinned parent Mycelix dependency snapshot
@@ -181,6 +192,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$SUBJECT_SHA"
           sha256sum -c qualification-evidence/Cargo.lock.sha256
           sha256sum -c qualification-evidence/flake.lock.sha256
           sha256sum -c qualification-evidence/rust-toolchain.toml.sha256
@@ -192,6 +204,7 @@ jobs:
           set -euo pipefail
           {
             echo "subject_sha=$(git rev-parse HEAD)"
+            echo "event_subject_sha=$SUBJECT_SHA"
             echo "assertion_head=469f3e75f6b2b2905956657ab549e7bfdd4962ec"
             echo "currentness_head=2c89b88f949a9d013b4f190e071a690c978cea4d"
             echo "integration_head=50d5ac4aca63dce737f1f2bb91a0dce530038b33"

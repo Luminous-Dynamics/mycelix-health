@@ -14,8 +14,13 @@ on:
       - '.github/workflows/prepare-clinical-assurance-lock-candidate.yml'
   workflow_dispatch:
 
+concurrency:
+  group: prepare-clinical-assurance-lock-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 env:
   CARGO_TERM_COLOR: always
+  SUBJECT_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
   MYCELIX_PARENT_SHA: a85369699099d4c7524e502e531735eed4ab36f4
   CHECKOUT_ACTION_SHA: 11d5960a326750d5838078e36cf38b85af677262
   INSTALL_NIX_ACTION_SHA: 6004951b182f8860210c8d6f0d808ec5b1a33d28
@@ -24,12 +29,23 @@ env:
 jobs:
   candidate:
     name: Non-authoritative lock reconciliation candidate
+    if: github.event_name == 'workflow_dispatch' || github.head_ref == 'integration/symthaea-clinical-distribution-runtime-trust-v3'
     runs-on: ubuntu-24.04
     steps:
-      - name: Check out candidate subject
+      - name: Check out exact candidate subject
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
+          ref: ${{ env.SUBJECT_SHA }}
           fetch-depth: 0
+          persist-credentials: false
+
+      - name: Verify exact candidate subject
+        shell: bash
+        run: |
+          set -euo pipefail
+          actual_subject="$(git rev-parse HEAD)"
+          test "$actual_subject" = "$SUBJECT_SHA"
+          echo "Candidate subject: $actual_subject"
 
       - name: Check out pinned parent Mycelix dependency snapshot
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
@@ -71,13 +87,14 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p lock-candidate
+          test "$(git rev-parse HEAD)" = "$SUBJECT_SHA"
           cp Cargo.lock lock-candidate/Cargo.lock.before
           cp flake.lock lock-candidate/flake.lock.before
           cp rust-toolchain.toml lock-candidate/rust-toolchain.toml.before
           sha256sum Cargo.lock > lock-candidate/Cargo.lock.before.sha256
           sha256sum flake.lock > lock-candidate/flake.lock.before.sha256
           sha256sum rust-toolchain.toml > lock-candidate/rust-toolchain.toml.before.sha256
-          git rev-parse HEAD > lock-candidate/subject-sha.txt
+          printf '%s\n' "$SUBJECT_SHA" > lock-candidate/subject-sha.txt
 
           nix flake metadata --json --no-write-lock-file > lock-candidate/flake-metadata.json
           nix eval --raw --no-write-lock-file .#devShells.x86_64-linux.ci.drvPath \
@@ -92,6 +109,8 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$SUBJECT_SHA"
+
           nix develop --no-write-lock-file .#ci --command \
             cargo metadata --no-deps --format-version 1 \
             > lock-candidate/metadata.json
@@ -207,8 +226,10 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$SUBJECT_SHA"
           {
             echo "subject_sha=$(git rev-parse HEAD)"
+            echo "event_subject_sha=$SUBJECT_SHA"
             echo "mycelix_parent_sha=$MYCELIX_PARENT_SHA"
             echo "mycelix_parent_tree=$MYCELIX_PARENT_TREE"
             echo "committed_lock_sha256=$(awk '{print $1}' lock-candidate/Cargo.lock.before.sha256)"

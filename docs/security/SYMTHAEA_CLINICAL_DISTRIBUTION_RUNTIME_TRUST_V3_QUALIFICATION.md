@@ -6,7 +6,18 @@ Qualify the software theorem implemented by `mycelix-symthaea-clinical-distribut
 
 A PASS means only that the exact qualified head satisfies the executable/static checks below and preserves the required prerequisite lineages, dependency-source identities, dependency graph, and declared execution-environment inputs.
 
-## Q0 — exact ancestry
+## Q0 — exact subject and ancestry
+
+The qualification workflow MUST test the exact immutable PR head SHA, not GitHub's synthetic pull-request merge ref.
+
+For a `pull_request` event:
+
+- `SUBJECT_SHA` MUST be `github.event.pull_request.head.sha`;
+- checkout MUST explicitly use that SHA;
+- the first executable identity gate MUST verify `git rev-parse HEAD == SUBJECT_SHA`;
+- postflight MUST re-verify the same identity.
+
+For `workflow_dispatch`, `SUBJECT_SHA` is the dispatched `github.sha` and the same equality rule applies.
 
 The qualification subject MUST contain both prerequisite histories through the explicit two-parent integration commit:
 
@@ -16,13 +27,15 @@ The qualification subject MUST contain both prerequisite histories through the e
 
 Required checks include the equivalent of:
 
-- integration commit is an ancestor of the qualification subject;
-- `469f3e75...` is an ancestor of the qualification subject;
-- `2c89b88...` is an ancestor of the qualification subject;
+- integration commit is an ancestor of the exact `SUBJECT_SHA`;
+- `469f3e75...` is an ancestor of the exact `SUBJECT_SHA`;
+- `2c89b88...` is an ancestor of the exact `SUBJECT_SHA`;
 - the integration commit has exactly those two parents, in the recorded order;
 - the subject's v3 crate and qualification document are exactly those at the recorded head.
 
-A reconstructed tree with missing ancestry is not equivalent evidence.
+A synthetic PR merge commit, reconstructed tree, ancestor, successor, or different branch head is not equivalent exact-head evidence.
+
+The dedicated pull-request qualification/candidate jobs are admitted only for `integration/symthaea-clinical-distribution-runtime-trust-v3`; #139 is an integration/review surface and does not need duplicate specialized runner allocation.
 
 ## Q0A — external path-dependency source identity
 
@@ -69,7 +82,7 @@ The Nix bootstrap URL is pinned to the Nix 2.19.2 installer for this qualificati
 
 ## Q1 — frozen workspace/build graph
 
-Run against the exact subject head, the Q0A parent snapshot, and the Q0B flake-bound execution environment.
+Run against the exact `SUBJECT_SHA`, the Q0A parent snapshot, and the Q0B flake-bound execution environment.
 
 Before any build/test gate:
 
@@ -88,12 +101,13 @@ Focused qualification gates include, inside the flake-bound `.#ci` environment:
 
 Postflight:
 
+- `git rev-parse HEAD` MUST still equal `SUBJECT_SHA`;
 - the `Cargo.lock`, `flake.lock`, and `rust-toolchain.toml` digests MUST equal their preflight digests;
 - `git diff --exit-code` MUST succeed for all tracked files.
 
 A runner-generated or silently reconciled lockfile is not exact-head evidence.
 
-The separate `Prepare Clinical Assurance Lock Candidate` workflow is explicitly non-authoritative. It MUST use the same Q0A parent source and Q0B flake-bound environment as qualification. Its artifact may be reviewed and committed in a later repair subject, but its generated lockfile does not itself qualify anything.
+The separate `Prepare Clinical Assurance Lock Candidate` workflow is explicitly non-authoritative. It MUST use the same exact `SUBJECT_SHA`, Q0A parent source, and Q0B flake-bound environment as qualification. Its artifact may be reviewed and committed in a later repair subject, but its generated lockfile does not itself qualify anything.
 
 The candidate audit MUST surface local-package, registry-package, registry-version-set, and git-sourced package movement rather than treating a changed lockfile as an opaque blob.
 
@@ -178,7 +192,8 @@ If those prerequisite runtime lanes are still queued, failed, cancelled, stale, 
 
 For every qualifying workflow execution record:
 
-- exact commit SHA;
+- exact event `SUBJECT_SHA`;
+- verified checkout HEAD SHA equal to that subject;
 - workflow run ID;
 - relevant job ID(s);
 - conclusion;
@@ -193,6 +208,7 @@ For every qualifying workflow execution record:
 The workflow MUST upload a qualification evidence capsule containing the recorded identities, flake metadata, Cargo metadata, environment derivation identity, and toolchain version records.
 
 A workflow queued but never assigned a runner is not a PASS.
+A run that checked out `refs/pull/*/merge` rather than the exact event head is not exact-head evidence.
 A successful run for an ancestor or successor is not evidence for the exact frozen subject unless the qualification contract explicitly re-derives and binds that subject.
 A lock-candidate artifact is repair evidence only, never qualification evidence.
 A run whose flake/toolchain inputs drifted or whose workflow action reference resolved from a moving tag is not equivalent exact qualification evidence.
