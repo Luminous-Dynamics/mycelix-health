@@ -69,6 +69,7 @@ members = [
     "crates/target-trial-analysis-contribution-v1",
     "crates/target-trial-baseline-covariate-v1",
     "crates/target-trial-baseline-matrix-v1",
+    "crates/target-trial-covariate-encoding-v1",
     "crates/fhir-semantics",
     "crates/clinical-evidence",
     "crates/clinical-evidence-v2",
