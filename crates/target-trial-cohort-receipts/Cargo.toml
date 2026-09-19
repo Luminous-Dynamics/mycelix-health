@@ -10,7 +10,7 @@ mycelix-clinical-phenotype = { path = "../clinical-phenotype" }
 mycelix-clinical-semantics = { path = "../clinical-semantics" }
 serde = { workspace = true }
 thiserror = { workspace = true }
-blake3 = "1.8"
+blake3 = "1.8.5"
 
 [lints]
 workspace = true
