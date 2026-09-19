@@ -60,6 +60,7 @@ members = [
     "crates/health-validation",
     "crates/clinical-semantics",
     "crates/clinical-fact-snapshot",
+    "crates/clinical-laboratory-semantics",
     "crates/fhir-semantics",
     "crates/clinical-evidence",
     "crates/clinical-evidence-v2",
