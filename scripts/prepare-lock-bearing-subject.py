@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
 """Prepare a deterministic lock-bearing replacement subject without committing it.
 
-The program consumes the complete portable lock-repair and explicit-review evidence
-chain, reconstructs the exact frozen product subject in a disposable worktree,
-installs only the reviewed Cargo.lock candidate, and computes the exact proposed Git
-tree with a temporary index. It never creates a commit, moves a branch, or grants
-qualification authority.
+The program consumes the complete portable lock-repair, explicit-review, and signed
+acceptance evidence chain, reconstructs the exact frozen product subject in a
+disposable worktree, installs only the reviewed Cargo.lock candidate, and computes
+the exact proposed Git tree with a temporary index. It never creates a commit,
+moves a branch, or grants qualification authority.
 
 Terminal authority: PreparedReplacementSubjectOnly.
 """
@@ -121,6 +121,8 @@ def verify_evidence_chain(candidate_dir: pathlib.Path) -> dict[str, Any]:
     candidate_verification_path = candidate_dir / "lock-candidate-verification.json"
     review_statement_path = candidate_dir / "lock-movement-review-statement.json"
     review_verification_path = candidate_dir / "lock-movement-review-verification.json"
+    acceptance_statement_path = candidate_dir / "lock-acceptance-statement.json"
+    acceptance_verification_path = candidate_dir / "lock-acceptance-verification.json"
 
     candidate, candidate_raw = load_canonical(candidate_path, label="candidate report")
     candidate_verification, candidate_verification_raw = load_canonical(
@@ -130,11 +132,19 @@ def verify_evidence_chain(candidate_dir: pathlib.Path) -> dict[str, Any]:
     review_verification, review_verification_raw = load_canonical(
         review_verification_path, label="review verification"
     )
+    acceptance_statement, acceptance_statement_raw = load_canonical(
+        acceptance_statement_path, label="acceptance statement"
+    )
+    acceptance_verification, acceptance_verification_raw = load_canonical(
+        acceptance_verification_path, label="acceptance verification"
+    )
     for path, raw, label in (
         (candidate_path, candidate_raw, "candidate report"),
         (candidate_verification_path, candidate_verification_raw, "candidate verification"),
         (review_statement_path, review_statement_raw, "review statement"),
         (review_verification_path, review_verification_raw, "review verification"),
+        (acceptance_statement_path, acceptance_statement_raw, "acceptance statement"),
+        (acceptance_verification_path, acceptance_verification_raw, "acceptance verification"),
     ):
         require_sidecar(path, raw, label=label)
 
@@ -148,10 +158,19 @@ def verify_evidence_chain(candidate_dir: pathlib.Path) -> dict[str, Any]:
         fail("unsupported review statement schema or authority")
     if review_verification.get("schema") != "mycelix-health-lock-movement-review-verification/v1" or review_verification.get("authority") != "MechanicalReviewCoverageComplete":
         fail("unsupported review verification schema or authority")
+    if acceptance_statement.get("schema") != "mycelix-health-lock-acceptance-statement/v1" or acceptance_statement.get("authority") != "AcceptanceStatementToSignOnly":
+        fail("unsupported acceptance statement schema or authority")
+    if acceptance_verification.get("schema") != "mycelix-health-lock-acceptance-verification/v1":
+        fail("unsupported acceptance verification schema")
+    if acceptance_verification.get("authority") != "VerifiedHumanAcceptanceAttestationOnly" or acceptance_verification.get("result") != "pass":
+        fail("acceptance verification must be successful VerifiedHumanAcceptanceAttestationOnly")
 
     candidate_sha = sha256_bytes(candidate_raw)
     candidate_verification_sha = sha256_bytes(candidate_verification_raw)
     review_statement_sha = sha256_bytes(review_statement_raw)
+    review_verification_sha = sha256_bytes(review_verification_raw)
+    acceptance_statement_sha = sha256_bytes(acceptance_statement_raw)
+
     if candidate_verification.get("candidate_report_sha256") != candidate_sha:
         fail("candidate verification does not bind candidate report")
     if review_statement.get("candidate_report_sha256") != candidate_sha:
@@ -168,6 +187,23 @@ def verify_evidence_chain(candidate_dir: pathlib.Path) -> dict[str, Any]:
         fail("review verification is not complete")
     if review_verification.get("has_rejections") is not False or review_verification.get("all_non_rejected") is not True:
         fail("review contains one or more rejected dependency movements")
+
+    expected_acceptance_evidence = {
+        "candidate_report_sha256": candidate_sha,
+        "candidate_verification_sha256": candidate_verification_sha,
+        "review_statement_sha256": review_statement_sha,
+        "review_verification_sha256": review_verification_sha,
+    }
+    if acceptance_statement.get("evidence") != expected_acceptance_evidence:
+        fail("acceptance statement evidence bindings differ from reviewed dependency evidence")
+    if acceptance_verification.get("statement_sha256") != acceptance_statement_sha:
+        fail("acceptance verification does not bind acceptance statement")
+    if acceptance_verification.get("evidence") != expected_acceptance_evidence:
+        fail("acceptance verification evidence bindings differ from acceptance statement")
+    if acceptance_verification.get("principal") != acceptance_statement.get("principal"):
+        fail("acceptance principal differs between signed statement and verification")
+    if acceptance_verification.get("signature_namespace") != "mycelix-health-lock-acceptance-v1":
+        fail("acceptance verification namespace mismatch")
 
     candidate_locks = candidate.get("locks")
     candidate_verification_locks = candidate_verification.get("locks")
@@ -186,9 +222,17 @@ def verify_evidence_chain(candidate_dir: pathlib.Path) -> dict[str, Any]:
         (candidate_verification_locks.get("candidate_sha256"), "candidate verification"),
         (review_statement.get("candidate_lock_sha256"), "review statement"),
         (review_verification.get("candidate_lock_sha256"), "review verification"),
+        ((acceptance_statement.get("locks") or {}).get("candidate_sha256"), "acceptance statement"),
+        ((acceptance_verification.get("locks") or {}).get("candidate_sha256"), "acceptance verification"),
     ):
         if value != candidate_lock_sha:
             fail(f"{label} does not bind Cargo.lock.candidate")
+    for value, label in (
+        ((acceptance_statement.get("locks") or {}).get("before_sha256"), "acceptance statement"),
+        ((acceptance_verification.get("locks") or {}).get("before_sha256"), "acceptance verification"),
+    ):
+        if value != before_lock_sha:
+            fail(f"{label} before-lock digest differs from candidate evidence")
 
     subject = candidate.get("subject")
     if not isinstance(subject, dict):
@@ -199,6 +243,8 @@ def verify_evidence_chain(candidate_dir: pathlib.Path) -> dict[str, Any]:
         (candidate_verification.get("subject"), "candidate verification"),
         (review_statement.get("subject"), "review statement"),
         (review_verification.get("subject"), "review verification"),
+        (acceptance_statement.get("subject"), "acceptance statement"),
+        (acceptance_verification.get("subject"), "acceptance verification"),
     ):
         if value != subject:
             fail(f"{label} subject identity differs from candidate")
@@ -207,10 +253,14 @@ def verify_evidence_chain(candidate_dir: pathlib.Path) -> dict[str, Any]:
     candidate_verification_harness = harness_identity(candidate_verification.get("harness"), label="candidate verification")
     if candidate_verification_harness != candidate_harness:
         fail("candidate verification harness SHA/tree differs from candidate report")
-    if review_statement.get("harness") != candidate.get("harness"):
-        fail("review statement harness identity differs from candidate")
-    if review_verification.get("harness") != candidate.get("harness"):
-        fail("review verification harness identity differs from candidate")
+    for value, label in (
+        (review_statement.get("harness"), "review statement"),
+        (review_verification.get("harness"), "review verification"),
+        (acceptance_statement.get("harness"), "acceptance statement"),
+        (acceptance_verification.get("harness"), "acceptance verification"),
+    ):
+        if value != candidate.get("harness"):
+            fail(f"{label} harness identity differs from candidate")
 
     return {
         "candidate": candidate,
@@ -218,6 +268,8 @@ def verify_evidence_chain(candidate_dir: pathlib.Path) -> dict[str, Any]:
         "candidate_verification_raw": candidate_verification_raw,
         "review_statement_raw": review_statement_raw,
         "review_verification_raw": review_verification_raw,
+        "acceptance_statement_raw": acceptance_statement_raw,
+        "acceptance_verification_raw": acceptance_verification_raw,
         "subject_sha": subject_sha,
         "subject_tree": subject_tree,
         "candidate_lock": candidate_lock,
@@ -317,6 +369,12 @@ def main() -> None:
                 "candidate_verification_sha256": sha256_bytes(chain["candidate_verification_raw"]),
                 "review_statement_sha256": sha256_bytes(chain["review_statement_raw"]),
                 "review_verification_sha256": sha256_bytes(chain["review_verification_raw"]),
+                "acceptance_statement_sha256": sha256_bytes(chain["acceptance_statement_raw"]),
+                "acceptance_verification_sha256": sha256_bytes(chain["acceptance_verification_raw"]),
+            },
+            "acceptance": {
+                "principal": json.loads(chain["acceptance_verification_raw"])["principal"],
+                "signature_namespace": "mycelix-health-lock-acceptance-v1",
             },
             "preparation_harness": {
                 "sha": harness_sha,
@@ -324,9 +382,10 @@ def main() -> None:
                 "program_sha256": sha256_file(pathlib.Path(__file__).resolve()),
             },
             "non_claims": [
-                "PreparedReplacementSubjectOnly is not a commit and does not authenticate the human acceptance decision.",
-                "The proposed replacement tree is not repository qualification or clinical evidence.",
-                "A human-created replacement commit must be independently verified before qualification.",
+                "PreparedReplacementSubjectOnly is not a commit and does not grant repository qualification.",
+                "The verified human acceptance attestation authenticates only the configured OpenSSH principal under the supplied allowed_signers policy.",
+                "The proposed replacement tree is not scientific or clinical evidence.",
+                "A human-created replacement commit must be identity-verified and receive fresh exact-head --locked qualification.",
             ],
         }
         raw = canonical_bytes(receipt)
