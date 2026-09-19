@@ -61,6 +61,7 @@ members = [
     "crates/clinical-semantics",
     "crates/clinical-fact-snapshot",
     "crates/clinical-phenotype",
+    "crates/target-trial-protocol",
     "crates/fhir-semantics",
     "crates/clinical-evidence",
     "crates/clinical-evidence-v2",
