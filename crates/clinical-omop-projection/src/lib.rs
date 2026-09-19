@@ -49,7 +49,7 @@ impl SourceCodingKeyV1 {
         if self.system.trim().is_empty() || self.code.trim().is_empty() {
             return Err(OmopProjectionError::InvalidSourceCoding);
         }
-        if self.code.as_bytes().len() > OMOP_SOURCE_VALUE_MAX_BYTES {
+        if self.code.len() > OMOP_SOURCE_VALUE_MAX_BYTES {
             return Err(OmopProjectionError::SourceValueTooLong {
                 value: self.code.clone(),
             });
@@ -74,7 +74,7 @@ impl OmopUnitBindingV1 {
         if self.ucum_code.trim().is_empty() || self.unit_concept_id <= 0 {
             return Err(OmopProjectionError::InvalidUnitBinding);
         }
-        if self.ucum_code.as_bytes().len() > OMOP_SOURCE_VALUE_MAX_BYTES {
+        if self.ucum_code.len() > OMOP_SOURCE_VALUE_MAX_BYTES {
             return Err(OmopProjectionError::SourceValueTooLong {
                 value: self.ucum_code.clone(),
             });
