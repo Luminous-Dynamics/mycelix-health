@@ -9,14 +9,17 @@ env:
   CARGO_TERM_COLOR: always
   RUST_BACKTRACE: 1
   MYCELIX_PARENT_SHA: a85369699099d4c7524e502e531735eed4ab36f4
+  CHECKOUT_ACTION_SHA: 11d5960a326750d5838078e36cf38b85af677262
+  INSTALL_NIX_ACTION_SHA: 6004951b182f8860210c8d6f0d808ec5b1a33d28
+  UPLOAD_ARTIFACT_ACTION_SHA: ea165f8d65b6e75b540449e92b4886f43607fa02
 
 jobs:
   qualify:
     name: Exact-head v3 qualification
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - name: Check out exact subject with full ancestry
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
           fetch-depth: 0
 
@@ -46,7 +49,7 @@ jobs:
           echo "Integration parents: $actual_parents"
 
       - name: Check out pinned parent Mycelix dependency snapshot
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
           repository: Luminous-Dynamics/mycelix
           ref: ${{ env.MYCELIX_PARENT_SHA }}
@@ -77,83 +80,116 @@ jobs:
           echo "Pinned parent Mycelix: $actual_parent"
           echo "Pinned parent tree: $parent_tree"
 
-      - name: Install pinned Rust toolchain
-        uses: dtolnay/rust-toolchain@1.96.0
+      - name: Install pinned Nix bootstrap
+        uses: cachix/install-nix-action@6004951b182f8860210c8d6f0d808ec5b1a33d28
         with:
-          components: rustfmt, clippy
-          targets: wasm32-unknown-unknown
+          install_url: https://releases.nixos.org/nix/nix-2.19.2/install
+          enable_kvm: false
 
-      - name: Install native dependencies
+      - name: Freeze execution-environment inputs
+        shell: bash
         run: |
-          sudo apt-get update
-          sudo apt-get install -y libssl-dev pkg-config
+          set -euo pipefail
+          mkdir -p qualification-evidence
+          git diff --exit-code -- Cargo.lock flake.lock rust-toolchain.toml
+
+          sha256sum Cargo.lock > qualification-evidence/Cargo.lock.sha256
+          sha256sum flake.lock > qualification-evidence/flake.lock.sha256
+          sha256sum rust-toolchain.toml > qualification-evidence/rust-toolchain.toml.sha256
+
+          nix flake metadata --json --no-write-lock-file > qualification-evidence/flake-metadata.json
+          nix eval --raw --no-write-lock-file .#devShells.x86_64-linux.ci.drvPath \
+            > qualification-evidence/ci-dev-shell.drv
+
+          nix develop --no-write-lock-file .#ci --command rustc -vV \
+            > qualification-evidence/rustc-vV.txt
+          nix develop --no-write-lock-file .#ci --command cargo -vV \
+            > qualification-evidence/cargo-vV.txt
+
+          sha256sum -c qualification-evidence/Cargo.lock.sha256
+          sha256sum -c qualification-evidence/flake.lock.sha256
+          sha256sum -c qualification-evidence/rust-toolchain.toml.sha256
+          git diff --exit-code -- Cargo.lock flake.lock rust-toolchain.toml
 
       - name: Require frozen lock-consistent workspace
         shell: bash
         run: |
           set -euo pipefail
-          git diff --exit-code -- Cargo.lock
-          sha256sum Cargo.lock > /tmp/qualify-cargo-lock.sha256
-          cargo metadata --locked --no-deps --format-version 1 \
-            | jq -e '.packages[] | select(.name == "mycelix-symthaea-clinical-distribution-trust-v3")' >/dev/null
-          sha256sum -c /tmp/qualify-cargo-lock.sha256
-          git diff --exit-code -- Cargo.lock
+          nix develop --no-write-lock-file .#ci --command \
+            cargo metadata --locked --no-deps --format-version 1 \
+            > qualification-evidence/cargo-metadata.json
+          jq -e '.packages[] | select(.name == "mycelix-symthaea-clinical-distribution-trust-v3")' \
+            qualification-evidence/cargo-metadata.json >/dev/null
+
+          sha256sum -c qualification-evidence/Cargo.lock.sha256
+          sha256sum -c qualification-evidence/flake.lock.sha256
+          git diff --exit-code -- Cargo.lock flake.lock rust-toolchain.toml
 
       - name: Check focused formatting
-        run: cargo fmt --package mycelix-symthaea-clinical-distribution-trust-v3 -- --check
+        run: |
+          nix develop --no-write-lock-file .#ci --command \
+            cargo fmt --package mycelix-symthaea-clinical-distribution-trust-v3 -- --check
 
       - name: Check focused host clippy
         shell: bash
         run: |
           set -euo pipefail
-          HOST="$(rustc -vV | awk '/^host:/{print $2}')"
-          cargo clippy \
-            --locked \
-            -p mycelix-symthaea-clinical-distribution-trust-v3 \
-            --all-targets \
-            --target "$HOST" \
-            -- -D warnings
+          HOST="$(nix develop --no-write-lock-file .#ci --command rustc -vV | awk '/^host:/{print $2}')"
+          nix develop --no-write-lock-file .#ci --command \
+            cargo clippy \
+              --locked \
+              -p mycelix-symthaea-clinical-distribution-trust-v3 \
+              --all-targets \
+              --target "$HOST" \
+              -- -D warnings
 
       - name: Check focused WASM build surface
-        run: cargo check --locked -p mycelix-symthaea-clinical-distribution-trust-v3 --target wasm32-unknown-unknown
+        run: |
+          nix develop --no-write-lock-file .#ci --command \
+            cargo check --locked \
+              -p mycelix-symthaea-clinical-distribution-trust-v3 \
+              --target wasm32-unknown-unknown
 
       - name: Run assertion-native runtime-trust tests
         shell: bash
         run: |
           set -euo pipefail
-          HOST="$(rustc -vV | awk '/^host:/{print $2}')"
-          cargo test \
-            --locked \
-            -p mycelix-symthaea-clinical-distribution-trust-v3 \
-            --target "$HOST"
+          HOST="$(nix develop --no-write-lock-file .#ci --command rustc -vV | awk '/^host:/{print $2}')"
+          nix develop --no-write-lock-file .#ci --command \
+            cargo test \
+              --locked \
+              -p mycelix-symthaea-clinical-distribution-trust-v3 \
+              --target "$HOST"
 
       - name: Run prerequisite proof-line tests
         shell: bash
         run: |
           set -euo pipefail
-          HOST="$(rustc -vV | awk '/^host:/{print $2}')"
-          cargo test \
-            --locked \
-            -p mycelix-symthaea-clinical-distribution-assessment-v2 \
-            -p mycelix-clinical-distribution-currentness \
-            -p clinical_distribution_trust_integrity \
-            -p clinical_distribution_trust \
-            -p clinical_distribution_lease_integrity \
-            -p clinical_distribution_lease \
-            --target "$HOST"
+          HOST="$(nix develop --no-write-lock-file .#ci --command rustc -vV | awk '/^host:/{print $2}')"
+          nix develop --no-write-lock-file .#ci --command \
+            cargo test \
+              --locked \
+              -p mycelix-symthaea-clinical-distribution-assessment-v2 \
+              -p mycelix-clinical-distribution-currentness \
+              -p clinical_distribution_trust_integrity \
+              -p clinical_distribution_trust \
+              -p clinical_distribution_lease_integrity \
+              -p clinical_distribution_lease \
+              --target "$HOST"
 
-      - name: Verify lockfile immutability postflight
+      - name: Verify subject and environment immutability postflight
         shell: bash
         run: |
           set -euo pipefail
-          sha256sum -c /tmp/qualify-cargo-lock.sha256
-          git diff --exit-code -- Cargo.lock
+          sha256sum -c qualification-evidence/Cargo.lock.sha256
+          sha256sum -c qualification-evidence/flake.lock.sha256
+          sha256sum -c qualification-evidence/rust-toolchain.toml.sha256
+          git diff --exit-code
 
       - name: Record exact qualification identity
         shell: bash
         run: |
           set -euo pipefail
-          lock_sha="$(sha256sum Cargo.lock | awk '{print $1}')"
           {
             echo "subject_sha=$(git rev-parse HEAD)"
             echo "assertion_head=469f3e75f6b2b2905956657ab549e7bfdd4962ec"
@@ -161,6 +197,31 @@ jobs:
             echo "integration_head=50d5ac4aca63dce737f1f2bb91a0dce530038b33"
             echo "mycelix_parent_sha=$MYCELIX_PARENT_SHA"
             echo "mycelix_parent_tree=$MYCELIX_PARENT_TREE"
-            echo "cargo_lock_sha256=$lock_sha"
-          } | tee -a "$GITHUB_STEP_SUMMARY"
-          echo "A green job is software qualification evidence only; it is not clinical validation or clinical authority."
+            echo "cargo_lock_sha256=$(awk '{print $1}' qualification-evidence/Cargo.lock.sha256)"
+            echo "flake_lock_sha256=$(awk '{print $1}' qualification-evidence/flake.lock.sha256)"
+            echo "rust_toolchain_file_sha256=$(awk '{print $1}' qualification-evidence/rust-toolchain.toml.sha256)"
+            echo "ci_dev_shell_drv=$(cat qualification-evidence/ci-dev-shell.drv)"
+            echo "checkout_action_sha=$CHECKOUT_ACTION_SHA"
+            echo "install_nix_action_sha=$INSTALL_NIX_ACTION_SHA"
+            echo "upload_artifact_action_sha=$UPLOAD_ARTIFACT_ACTION_SHA"
+            echo "nix_version=$(nix --version)"
+            echo "rustc_version=$(nix develop --no-write-lock-file .#ci --command rustc --version)"
+            echo "cargo_version=$(nix develop --no-write-lock-file .#ci --command cargo --version)"
+            echo "runner_os=$RUNNER_OS"
+            echo "runner_arch=$RUNNER_ARCH"
+            echo "runner_image_os=${ImageOS:-unknown}"
+            echo "runner_image_version=${ImageVersion:-unknown}"
+            echo "execution_environment_authority=FlakeLockBound"
+            echo "runner_identity_role=TransportFingerprintOnly"
+          } | tee qualification-evidence/identity.txt | tee -a "$GITHUB_STEP_SUMMARY"
+
+          echo "A green job is software qualification evidence only; it is not clinical validation or clinical authority." \
+            | tee -a qualification-evidence/identity.txt
+
+      - name: Upload qualification evidence capsule
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: symthaea-distribution-runtime-trust-v3-qualification-evidence
+          path: qualification-evidence/
+          if-no-files-found: error
+          retention-days: 30
