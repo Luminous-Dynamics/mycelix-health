@@ -1,0 +1,18 @@
+[package]
+name = "mycelix-target-trial-covariate-encoding-v1"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Research-only explicit baseline covariate value encoding for target-trial emulation"
+
+[dependencies]
+mycelix-target-trial-baseline-matrix-v1 = { path = "../target-trial-baseline-matrix-v1" }
+mycelix-target-trial-protocol-v2 = { path = "../target-trial-protocol-v2" }
+mycelix-clinical-semantics = { path = "../clinical-semantics" }
+mycelix-clinical-fact-snapshot = { path = "../clinical-fact-snapshot" }
+blake3 = "1.8.5"
+serde = { workspace = true }
+thiserror = { workspace = true }
+
+[lints]
+workspace = true
