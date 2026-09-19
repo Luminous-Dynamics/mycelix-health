@@ -1,0 +1,16 @@
+[workspace]
+
+[package]
+name = "mycelix-vault-session-core"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.94"
+license = "AGPL-3.0-or-later"
+description = "Reference semantics for bounded zeroizing Mycelix Health vault sessions"
+publish = false
+
+[dependencies]
+zeroize = "=1.9.0"
+
+[lib]
+path = "src/lib.rs"
