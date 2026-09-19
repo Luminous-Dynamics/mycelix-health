@@ -1,0 +1,17 @@
+[package]
+name = "mycelix-target-trial-followup-outcome"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+mycelix-target-trial-protocol = { path = "../target-trial-protocol" }
+mycelix-target-trial-cohort-receipts = { path = "../target-trial-cohort-receipts" }
+mycelix-clinical-phenotype = { path = "../clinical-phenotype" }
+mycelix-clinical-semantics = { path = "../clinical-semantics" }
+serde = { workspace = true }
+thiserror = { workspace = true }
+blake3 = "1.8.5"
+
+[lints]
+workspace = true
