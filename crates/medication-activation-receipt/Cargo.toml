@@ -1,0 +1,14 @@
+[package]
+name = "mycelix-medication-activation-receipt"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Serializable audit receipt produced by consuming a qualified Mycelix medication activation capability"
+
+[dependencies]
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+mycelix-clinical-integrity = { path = "../clinical-integrity" }
+mycelix-clinical-authority = { path = "../clinical-authority" }
+mycelix-clinical-workflow = { path = "../clinical-workflow" }
