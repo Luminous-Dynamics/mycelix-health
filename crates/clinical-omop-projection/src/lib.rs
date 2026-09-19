@@ -253,10 +253,26 @@ pub struct OmopMeasurementProjectionV1 {
 impl OmopMeasurementProjectionV1 {
     /// Domain-separated identity of the exact research projection.
     pub fn digest_v1(&self) -> Result<[u8; 32], OmopProjectionError> {
-        if self.authority != "ResearchProjectionOnly" || self.cdm_version != OMOP_CDM_VERSION {
-            return Err(OmopProjectionError::InvalidProjection);
-        }
-        if !self.value_as_number.is_finite() {
+        if self.schema_version != OMOP_PROJECTION_VERSION
+            || self.authority != "ResearchProjectionOnly"
+            || self.cdm_version != OMOP_CDM_VERSION
+            || self.person_id <= 0
+            || self.measurement_concept_id <= 0
+            || self.measurement_source_concept_id < 0
+            || self.measurement_type_concept_id <= 0
+            || self.unit_concept_id <= 0
+            || self.measurement_source_value.trim().is_empty()
+            || self.measurement_source_value.len() > OMOP_SOURCE_VALUE_MAX_BYTES
+            || self.unit_source_value.trim().is_empty()
+            || self.unit_source_value.len() > OMOP_SOURCE_VALUE_MAX_BYTES
+            || self.source_fact_id.trim().is_empty()
+            || self.source_fact_snapshot_digest == [0; 32]
+            || self.projection_policy_digest == [0; 32]
+            || self.vocabulary_snapshot_digest == [0; 32]
+            || self.person_binding_namespace.trim().is_empty()
+            || self.person_binding_evidence_digest == [0; 32]
+            || !self.value_as_number.is_finite()
+        {
             return Err(OmopProjectionError::InvalidProjection);
         }
         let mut writer = CanonicalWriter::default();
