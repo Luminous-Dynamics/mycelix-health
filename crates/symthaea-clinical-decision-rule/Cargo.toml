@@ -1,0 +1,13 @@
+[package]
+name = "mycelix-symthaea-clinical-decision-rule"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Explicit evidence-bound decision rules for verified Symthaea model assertions"
+
+[dependencies]
+blake3 = "1.8.5"
+thiserror = { workspace = true }
+mycelix-symthaea-clinical-model-assertion = { path = "../symthaea-clinical-model-assertion" }
+mycelix-symthaea-clinical-admission-v2 = { path = "../symthaea-clinical-admission-v2" }
+mycelix-symthaea-clinical-wire-v2 = { path = "../symthaea-clinical-wire-v2" }
