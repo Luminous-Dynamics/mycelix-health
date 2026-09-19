@@ -1,0 +1,13 @@
+[package]
+name = "mycelix-fhir-laboratory-semantics"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Strict FHIR R4 laboratory-report projection into Mycelix laboratory evidence semantics"
+
+[dependencies]
+chrono = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+mycelix-clinical-semantics = { path = "../clinical-semantics" }
+mycelix-clinical-laboratory-semantics = { path = "../clinical-laboratory-semantics" }
