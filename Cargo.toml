@@ -63,6 +63,7 @@ members = [
     "crates/clinical-evidence",
     "crates/clinical-distribution-assessment",
     "crates/clinical-distribution-trust",
+    "crates/clinical-distribution-currentness",
     "crates/clinical-promotion",
     "crates/fhir-conformance",
     "crates/medication-semantics",
