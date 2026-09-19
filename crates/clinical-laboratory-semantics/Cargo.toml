@@ -1,0 +1,12 @@
+[package]
+name = "mycelix-clinical-laboratory-semantics"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Evidence-grade laboratory result semantics and canonical identity for Mycelix Health"
+
+[dependencies]
+blake3 = "1.8.5"
+serde = { workspace = true }
+thiserror = { workspace = true }
+mycelix-clinical-semantics = { path = "../clinical-semantics" }
