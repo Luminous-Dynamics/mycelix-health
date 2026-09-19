@@ -10,4 +10,4 @@ description = "Reference semantics for protected patient profile v2 migration"
 publish = false
 
 [lib]
-path = "src/lib.rs"
+path = "src/wrapper.rs"
