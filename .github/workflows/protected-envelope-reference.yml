@@ -1,0 +1,72 @@
+name: Protected Envelope Reference
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'crates/protected-envelope-v2/**'
+      - '.github/workflows/protected-envelope-reference.yml'
+  push:
+    branches:
+      - 'feat/protected-envelope-v2-foundation'
+    paths:
+      - 'crates/protected-envelope-v2/**'
+      - '.github/workflows/protected-envelope-reference.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  qualify-reference-semantics:
+    name: Qualify representation semantics
+    runs-on: ubuntu-24.04
+    defaults:
+      run:
+        working-directory: crates/protected-envelope-v2
+    steps:
+      - name: Check out exact subject
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+
+      - name: Install exact Rust toolchain
+        run: |
+          rustup toolchain install 1.96.0 --profile minimal --component rustfmt,clippy
+          rustc +1.96.0 -Vv
+          cargo +1.96.0 -V
+
+      - name: Freeze preflight identities
+        run: |
+          git rev-parse HEAD | tee /tmp/subject.sha
+          sha256sum Cargo.toml Cargo.lock src/lib.rs README.md | tee /tmp/reference.before.sha256
+          cargo +1.96.0 metadata --locked --no-deps --format-version 1 > /tmp/reference.metadata.json
+          test "$(jq -r '.packages | length' /tmp/reference.metadata.json)" = "1"
+          test "$(jq -r '.packages[0].name' /tmp/reference.metadata.json)" = "mycelix-protected-envelope-v2"
+
+      - name: Check formatting
+        run: cargo +1.96.0 fmt -- --check
+
+      - name: Run tests
+        run: cargo +1.96.0 test --locked
+
+      - name: Run Clippy
+        run: cargo +1.96.0 clippy --locked --all-targets -- -D warnings
+
+      - name: Verify postflight immutability
+        run: |
+          test "$(git rev-parse HEAD)" = "$(cat /tmp/subject.sha)"
+          sha256sum Cargo.toml Cargo.lock src/lib.rs README.md > /tmp/reference.after.sha256
+          diff -u /tmp/reference.before.sha256 /tmp/reference.after.sha256
+          git diff --exit-code -- Cargo.toml Cargo.lock src/lib.rs README.md
+
+      - name: Evidence summary
+        if: always()
+        run: |
+          {
+            echo '## Protected Envelope V2 reference evidence'
+            echo
+            echo "- subject: $(git rev-parse HEAD)"
+            echo "- runner: ubuntu-24.04"
+            echo "- rustc: $(rustc +1.96.0 --version)"
+            echo "- cargo: $(cargo +1.96.0 --version)"
+            echo '- scope: representation semantics only'
+            echo '- non-claim: no cryptographic/privacy/clinical/legal qualification'
+          } >> "$GITHUB_STEP_SUMMARY"
