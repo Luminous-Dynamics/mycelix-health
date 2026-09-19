@@ -1,0 +1,15 @@
+[package]
+name = "mycelix-clinical-phenotype-v2"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+mycelix-clinical-semantics = { path = "../clinical-semantics" }
+mycelix-clinical-fact-snapshot = { path = "../clinical-fact-snapshot" }
+serde = { workspace = true }
+thiserror = { workspace = true }
+blake3 = "1.8.5"
+
+[lints]
+workspace = true
