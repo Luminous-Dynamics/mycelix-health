@@ -1,0 +1,13 @@
+[workspace]
+
+[package]
+name = "mycelix-audit-chain-core"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.96"
+license = "AGPL-3.0-or-later"
+description = "Reference semantics for fail-closed per-author audit chains and checkpoints"
+publish = false
+
+[lib]
+path = "src/model.rs"
