@@ -1,0 +1,23 @@
+[package]
+name = "mycelix-clinical-distribution-trust-v2"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Currentness-bound trust receipts for clinical distribution/OOD evidence"
+
+[dependencies]
+blake3 = "1.8.5"
+thiserror = { workspace = true }
+mycelix-clinical-distribution-assessment = { path = "../clinical-distribution-assessment" }
+mycelix-clinical-distribution-trust = { path = "../clinical-distribution-trust" }
+mycelix-clinical-distribution-currentness = { path = "../clinical-distribution-currentness" }
+mycelix-clinical-evidence = { path = "../clinical-evidence" }
+
+[dev-dependencies]
+hdi = { workspace = true }
+holo_hash = { workspace = true }
+mycelix-clinical-semantics = { path = "../clinical-semantics" }
+clinical-distribution-trust-zome = { package = "clinical_distribution_trust", path = "../../zomes/clinical_distribution_trust/coordinator" }
+clinical-distribution-lease-zome = { package = "clinical_distribution_lease", path = "../../zomes/clinical_distribution_lease/coordinator" }
+clinical-distribution-trust-integrity = { path = "../../zomes/clinical_distribution_trust/integrity" }
+clinical-distribution-lease-integrity = { path = "../../zomes/clinical_distribution_lease/integrity" }

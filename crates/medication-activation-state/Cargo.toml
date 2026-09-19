@@ -1,0 +1,14 @@
+[package]
+name = "mycelix-medication-activation-state"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Provenance-preserving medication activation lifecycle read model for Mycelix-Health"
+
+[dependencies]
+serde = { workspace = true }
+thiserror = { workspace = true }
+holo_hash = { workspace = true }
+mycelix-clinical-integrity = { path = "../clinical-integrity" }
+medication_activation_integrity = { path = "../../zomes/medication_activation/integrity" }
+medication_emergency_integrity = { path = "../../zomes/medication_emergency/integrity" }

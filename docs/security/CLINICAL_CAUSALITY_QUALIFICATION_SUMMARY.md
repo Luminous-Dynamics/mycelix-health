@@ -1,0 +1,1 @@
+Pure qualification tranche summary: evidence-use-scoped trust + policy-bound assessor authority + one qualification policy pinning all subordinate policies. Draft only pending CI/runtime qualification.
