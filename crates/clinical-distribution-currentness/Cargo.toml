@@ -1,0 +1,18 @@
+[package]
+name = "mycelix-clinical-distribution-currentness"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Ephemeral composition of revocation observation and positive evaluator lease evidence"
+
+[dependencies]
+blake3 = "1.8.5"
+thiserror = { workspace = true }
+holo_hash = { workspace = true }
+mycelix-clinical-evidence = { path = "../clinical-evidence" }
+clinical-distribution-trust-zome = { package = "clinical_distribution_trust", path = "../../zomes/clinical_distribution_trust/coordinator" }
+clinical-distribution-lease-zome = { package = "clinical_distribution_lease", path = "../../zomes/clinical_distribution_lease/coordinator" }
+
+[dev-dependencies]
+clinical-distribution-trust-integrity = { path = "../../zomes/clinical_distribution_trust/integrity" }
+clinical-distribution-lease-integrity = { path = "../../zomes/clinical_distribution_lease/integrity" }
