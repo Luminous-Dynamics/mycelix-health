@@ -83,6 +83,16 @@ pub struct OutcomeAscertainmentReceiptV2 {
     pub evidence_fact_digests: Vec<[u8; 32]>,
 }
 
+/// Typed evidence bundle for one subject/outcome evaluation. Keeping these
+/// semantically coupled inputs together reduces accidental positional swaps at
+/// the trust boundary.
+pub struct OutcomeEvidenceV2<'a> {
+    pub outcome_id: &'a str,
+    pub definition: &'a RelativePhenotypeDefinitionV2,
+    pub context: &'a PhenotypeEvaluationContextV2,
+    pub facts: &'a [ClinicalFact],
+}
+
 macro_rules! digest_type {
     ($name:ident) => {
         #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
@@ -181,45 +191,54 @@ pub fn build_outcome_ascertainment_receipt_v2(
     cohort_entry: &CohortEntryReceiptV2,
     time_zero: &TimeZeroReceiptV2,
     follow_up: &FollowUpReceiptV2,
-    outcome_id: &str,
-    definition: &RelativePhenotypeDefinitionV2,
-    context: &PhenotypeEvaluationContextV2,
-    facts: &[ClinicalFact],
+    evidence: &OutcomeEvidenceV2<'_>,
 ) -> Result<OutcomeAscertainmentReceiptV2, FollowUpOutcomeV2Error> {
     verify_follow_up_receipt_v2(protocol, plan, cohort_entry, time_zero, follow_up)?;
-    let outcome = find_outcome(protocol, outcome_id)?;
-    verify_outcome_definition(outcome, definition)?;
+    let outcome = find_outcome(protocol, evidence.outcome_id)?;
+    verify_outcome_definition(outcome, evidence.definition)?;
     let operationalization = plan
         .outcome_operationalizations
         .iter()
-        .find(|mapping| mapping.outcome_id == outcome_id)
-        .ok_or_else(|| FollowUpOutcomeV2Error::UnknownOutcomeOperationalization(outcome_id.to_string()))?;
+        .find(|mapping| mapping.outcome_id == evidence.outcome_id)
+        .ok_or_else(|| FollowUpOutcomeV2Error::UnknownOutcomeOperationalization(evidence.outcome_id.to_string()))?;
 
-    if context.anchor_micros != time_zero.time_zero_micros {
+    if evidence.context.anchor_micros != time_zero.time_zero_micros {
         return Err(FollowUpOutcomeV2Error::OutcomeAnchorTimeMismatch);
     }
-    if context.anchor_evidence != time_zero_anchor_evidence_v2(time_zero)? {
+    if evidence.context.anchor_evidence != time_zero_anchor_evidence_v2(time_zero)? {
         return Err(FollowUpOutcomeV2Error::OutcomeAnchorEvidenceMismatch);
     }
-    let window_start = context
+    if evidence.definition.window.start_offset_micros < 0 {
+        return Err(FollowUpOutcomeV2Error::OutcomeWindowPrecedesTimeZero);
+    }
+    if evidence.definition.window.end_offset_micros > protocol.follow_up.maximum_duration_micros {
+        return Err(FollowUpOutcomeV2Error::OutcomeWindowExceedsProtocolFollowUp);
+    }
+    let window_start = evidence
+        .context
         .anchor_micros
-        .checked_add(definition.window.start_offset_micros)
+        .checked_add(evidence.definition.window.start_offset_micros)
         .ok_or(FollowUpOutcomeV2Error::TimeOverflow)?;
-    let window_end = context
+    let window_end = evidence
+        .context
         .anchor_micros
-        .checked_add(definition.window.end_offset_micros)
+        .checked_add(evidence.definition.window.end_offset_micros)
         .ok_or(FollowUpOutcomeV2Error::TimeOverflow)?;
     if window_start >= window_end {
         return Err(FollowUpOutcomeV2Error::InvalidDerivedOutcomeWindow);
     }
     if follow_up.observed_until_micros < window_end
-        && context.coverage.iter().any(|coverage| coverage.status == CoverageStatusV2::Complete)
+        && evidence
+            .context
+            .coverage
+            .iter()
+            .any(|coverage| coverage.status == CoverageStatusV2::Complete)
     {
         return Err(FollowUpOutcomeV2Error::CompleteCoverageAfterTruncatedFollowUp);
     }
 
     let mut observable_facts = Vec::new();
-    for fact in facts {
+    for fact in evidence.facts {
         fact.validate_machine_actionable()?;
         if fact.subject.resource_type != cohort_entry.subject.resource_type
             || fact.subject.id != cohort_entry.subject.id
@@ -232,8 +251,8 @@ pub fn build_outcome_ascertainment_receipt_v2(
     }
 
     let evaluation = evaluate_relative_phenotype_v2(
-        definition,
-        context,
+        evidence.definition,
+        evidence.context,
         &cohort_entry.subject.id,
         &observable_facts,
     )?;
@@ -250,9 +269,9 @@ pub fn build_outcome_ascertainment_receipt_v2(
         cohort_entry_digest: follow_up.cohort_entry_digest,
         time_zero_receipt_digest: follow_up.time_zero_receipt_digest,
         follow_up_receipt_digest: follow_up_receipt_digest_v2(follow_up)?.into_bytes(),
-        outcome_id: outcome_id.to_string(),
-        phenotype_definition_digest: relative_phenotype_definition_digest_v2(definition)?.into_bytes(),
-        evaluation_context_digest: phenotype_evaluation_context_digest_v2(definition, context)?.into_bytes(),
+        outcome_id: evidence.outcome_id.to_string(),
+        phenotype_definition_digest: relative_phenotype_definition_digest_v2(evidence.definition)?.into_bytes(),
+        evaluation_context_digest: phenotype_evaluation_context_digest_v2(evidence.definition, evidence.context)?.into_bytes(),
         phenotype_evaluation_digest: relative_phenotype_evaluation_digest_v2(&evaluation)?.into_bytes(),
         outcome_operationalization: operationalization.operationalization.clone(),
         window_start_micros: window_start,
@@ -264,17 +283,13 @@ pub fn build_outcome_ascertainment_receipt_v2(
     Ok(receipt)
 }
 
-#[allow(clippy::too_many_arguments)]
 pub fn verify_outcome_ascertainment_receipt_v2(
     protocol: &TargetTrialProtocolV2,
     plan: &TargetTrialEmulationPlanV2,
     cohort_entry: &CohortEntryReceiptV2,
     time_zero: &TimeZeroReceiptV2,
     follow_up: &FollowUpReceiptV2,
-    outcome_id: &str,
-    definition: &RelativePhenotypeDefinitionV2,
-    context: &PhenotypeEvaluationContextV2,
-    facts: &[ClinicalFact],
+    evidence: &OutcomeEvidenceV2<'_>,
     receipt: &OutcomeAscertainmentReceiptV2,
 ) -> Result<(), FollowUpOutcomeV2Error> {
     validate_outcome_shape(receipt)?;
@@ -284,10 +299,7 @@ pub fn verify_outcome_ascertainment_receipt_v2(
         cohort_entry,
         time_zero,
         follow_up,
-        outcome_id,
-        definition,
-        context,
-        facts,
+        evidence,
     )?;
     if outcome_ascertainment_receipt_digest_v2(&rebuilt)?
         != outcome_ascertainment_receipt_digest_v2(receipt)?
@@ -526,6 +538,10 @@ pub enum FollowUpOutcomeV2Error {
     OutcomeAnchorTimeMismatch,
     #[error("outcome context does not bind the exact time-zero receipt")]
     OutcomeAnchorEvidenceMismatch,
+    #[error("outcome observation window starts before target-trial time zero")]
+    OutcomeWindowPrecedesTimeZero,
+    #[error("outcome observation window extends beyond the protocol follow-up horizon")]
+    OutcomeWindowExceedsProtocolFollowUp,
     #[error("derived outcome window is invalid")]
     InvalidDerivedOutcomeWindow,
     #[error("outcome evaluation window does not match the relative phenotype")]
