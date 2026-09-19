@@ -1,0 +1,13 @@
+[package]
+name = "mycelix-clinical-phenotype"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Evidence-bound longitudinal computable phenotyping for Mycelix Health"
+
+[dependencies]
+blake3 = "1.8.5"
+serde = { workspace = true }
+thiserror = { workspace = true }
+mycelix-clinical-semantics = { path = "../clinical-semantics" }
+mycelix-clinical-fact-snapshot = { path = "../clinical-fact-snapshot" }
