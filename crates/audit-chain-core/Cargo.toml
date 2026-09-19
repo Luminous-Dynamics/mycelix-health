@@ -10,4 +10,4 @@ description = "Reference semantics for fail-closed per-author audit chains and c
 publish = false
 
 [lib]
-path = "src/lib.rs"
+path = "src/model.rs"
