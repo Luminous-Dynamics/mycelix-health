@@ -1,0 +1,14 @@
+[package]
+name = "mycelix-mental-health-instruments"
+version = "0.1.0"
+edition = "2024"
+license = "AGPL-3.0-or-later"
+publish = false
+description = "Fail-closed reference semantics for versioned mental-health screening instruments"
+
+[lib]
+path = "src/lib.rs"
+
+# Keep this first reference core independently testable until the integration
+# tranche deliberately registers it in the parent workspace and Cargo.lock.
+[workspace]
