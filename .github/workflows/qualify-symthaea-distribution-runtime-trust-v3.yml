@@ -8,6 +8,7 @@ on:
 env:
   CARGO_TERM_COLOR: always
   RUST_BACKTRACE: 1
+  MYCELIX_PARENT_SHA: a85369699099d4c7524e502e531735eed4ab36f4
 
 jobs:
   qualify:
@@ -44,16 +45,37 @@ jobs:
           echo "Qualification subject: $(git rev-parse HEAD)"
           echo "Integration parents: $actual_parents"
 
-      - name: Check out standalone sibling dependencies
+      - name: Check out pinned parent Mycelix dependency snapshot
+        uses: actions/checkout@v4
+        with:
+          repository: Luminous-Dynamics/mycelix
+          ref: ${{ env.MYCELIX_PARENT_SHA }}
+          path: _qualification/mycelix-parent
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Verify and install pinned sibling dependencies
         shell: bash
         run: |
           set -euo pipefail
-          git clone --depth 1 https://github.com/Luminous-Dynamics/mycelix.git /tmp/mycelix-parent
+          actual_parent="$(git -C _qualification/mycelix-parent rev-parse HEAD)"
+          test "$actual_parent" = "$MYCELIX_PARENT_SHA"
+          parent_tree="$(git -C _qualification/mycelix-parent rev-parse 'HEAD^{tree}')"
+          echo "MYCELIX_PARENT_TREE=$parent_tree" >> "$GITHUB_ENV"
+
+          rm -rf ../crates ../mycelix-core ../mycelix-workspace/mycelix-core
           mkdir -p ../crates ../mycelix-core ../mycelix-workspace/mycelix-core
-          cp -r /tmp/mycelix-parent/crates/. ../crates/
-          cp -r /tmp/mycelix-parent/mycelix-core/. ../mycelix-core/
-          cp -r /tmp/mycelix-parent/mycelix-core/. ../mycelix-workspace/mycelix-core/
-          rm -rf /tmp/mycelix-parent
+          cp -r _qualification/mycelix-parent/crates/. ../crates/
+          cp -r _qualification/mycelix-parent/mycelix-core/. ../mycelix-core/
+          cp -r _qualification/mycelix-parent/mycelix-core/. ../mycelix-workspace/mycelix-core/
+
+          test -f ../crates/mycelix-bridge-common/Cargo.toml
+          test -f ../crates/mycelix-leptos-core/Cargo.toml
+          test -f ../crates/mycelix-zkp-core/Cargo.toml
+          test -f ../mycelix-core/libs/mycelix-fl/Cargo.toml
+
+          echo "Pinned parent Mycelix: $actual_parent"
+          echo "Pinned parent tree: $parent_tree"
 
       - name: Install pinned Rust toolchain
         uses: dtolnay/rust-toolchain@1.96.0
@@ -71,8 +93,10 @@ jobs:
         run: |
           set -euo pipefail
           git diff --exit-code -- Cargo.lock
+          sha256sum Cargo.lock > /tmp/qualify-cargo-lock.sha256
           cargo metadata --locked --no-deps --format-version 1 \
             | jq -e '.packages[] | select(.name == "mycelix-symthaea-clinical-distribution-trust-v3")' >/dev/null
+          sha256sum -c /tmp/qualify-cargo-lock.sha256
           git diff --exit-code -- Cargo.lock
 
       - name: Check focused formatting
@@ -119,14 +143,24 @@ jobs:
             --target "$HOST"
 
       - name: Verify lockfile immutability postflight
-        run: git diff --exit-code -- Cargo.lock
+        shell: bash
+        run: |
+          set -euo pipefail
+          sha256sum -c /tmp/qualify-cargo-lock.sha256
+          git diff --exit-code -- Cargo.lock
 
       - name: Record exact qualification identity
         shell: bash
         run: |
           set -euo pipefail
-          echo "subject_sha=$(git rev-parse HEAD)"
-          echo "assertion_head=469f3e75f6b2b2905956657ab549e7bfdd4962ec"
-          echo "currentness_head=2c89b88f949a9d013b4f190e071a690c978cea4d"
-          echo "integration_head=50d5ac4aca63dce737f1f2bb91a0dce530038b33"
+          lock_sha="$(sha256sum Cargo.lock | awk '{print $1}')"
+          {
+            echo "subject_sha=$(git rev-parse HEAD)"
+            echo "assertion_head=469f3e75f6b2b2905956657ab549e7bfdd4962ec"
+            echo "currentness_head=2c89b88f949a9d013b4f190e071a690c978cea4d"
+            echo "integration_head=50d5ac4aca63dce737f1f2bb91a0dce530038b33"
+            echo "mycelix_parent_sha=$MYCELIX_PARENT_SHA"
+            echo "mycelix_parent_tree=$MYCELIX_PARENT_TREE"
+            echo "cargo_lock_sha256=$lock_sha"
+          } | tee -a "$GITHUB_STEP_SUMMARY"
           echo "A green job is software qualification evidence only; it is not clinical validation or clinical authority."

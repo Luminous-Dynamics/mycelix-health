@@ -1,0 +1,186 @@
+name: Prepare Clinical Assurance Lock Candidate
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - Cargo.toml
+      - Cargo.lock
+      - 'crates/**/Cargo.toml'
+      - 'zomes/**/Cargo.toml'
+      - '.github/workflows/prepare-clinical-assurance-lock-candidate.yml'
+  workflow_dispatch:
+
+env:
+  CARGO_TERM_COLOR: always
+  MYCELIX_PARENT_SHA: a85369699099d4c7524e502e531735eed4ab36f4
+
+jobs:
+  candidate:
+    name: Non-authoritative lock reconciliation candidate
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out candidate subject
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Check out pinned parent Mycelix dependency snapshot
+        uses: actions/checkout@v4
+        with:
+          repository: Luminous-Dynamics/mycelix
+          ref: ${{ env.MYCELIX_PARENT_SHA }}
+          path: _qualification/mycelix-parent
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Verify and install pinned sibling dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          actual_parent="$(git -C _qualification/mycelix-parent rev-parse HEAD)"
+          test "$actual_parent" = "$MYCELIX_PARENT_SHA"
+          parent_tree="$(git -C _qualification/mycelix-parent rev-parse 'HEAD^{tree}')"
+          echo "MYCELIX_PARENT_TREE=$parent_tree" >> "$GITHUB_ENV"
+
+          rm -rf ../crates ../mycelix-core ../mycelix-workspace/mycelix-core
+          mkdir -p ../crates ../mycelix-core ../mycelix-workspace/mycelix-core
+          cp -r _qualification/mycelix-parent/crates/. ../crates/
+          cp -r _qualification/mycelix-parent/mycelix-core/. ../mycelix-core/
+          cp -r _qualification/mycelix-parent/mycelix-core/. ../mycelix-workspace/mycelix-core/
+
+          test -f ../crates/mycelix-bridge-common/Cargo.toml
+          test -f ../crates/mycelix-leptos-core/Cargo.toml
+          test -f ../crates/mycelix-zkp-core/Cargo.toml
+          test -f ../mycelix-core/libs/mycelix-fl/Cargo.toml
+
+      - name: Install pinned Rust toolchain
+        uses: dtolnay/rust-toolchain@1.96.0
+
+      - name: Snapshot committed lock
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p lock-candidate
+          cp Cargo.lock lock-candidate/Cargo.lock.before
+          sha256sum Cargo.lock > lock-candidate/Cargo.lock.before.sha256
+          git rev-parse HEAD > lock-candidate/subject-sha.txt
+
+      - name: Reconcile lock from existing graph
+        shell: bash
+        run: |
+          set -euo pipefail
+          cargo metadata --no-deps --format-version 1 > lock-candidate/metadata.json
+          cargo metadata --locked --no-deps --format-version 1 \
+            | jq -e '.packages[] | select(.name == "mycelix-symthaea-clinical-distribution-trust-v3")' >/dev/null
+          cp Cargo.lock lock-candidate/Cargo.lock.candidate
+          sha256sum Cargo.lock > lock-candidate/Cargo.lock.candidate.sha256
+          git diff -- Cargo.lock > lock-candidate/Cargo.lock.diff
+          git status --short > lock-candidate/git-status.txt
+
+      - name: Audit dependency movement
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          import pathlib
+          import tomllib
+
+          root = pathlib.Path('lock-candidate')
+          with (root / 'Cargo.lock.before').open('rb') as f:
+              before = tomllib.load(f)
+          with (root / 'Cargo.lock.candidate').open('rb') as f:
+              after = tomllib.load(f)
+
+          def packages(doc):
+              return doc.get('package', [])
+
+          def registry_set(doc):
+              return {
+                  (p['name'], p['version'], p.get('source', ''))
+                  for p in packages(doc)
+                  if p.get('source', '').startswith('registry+')
+              }
+
+          def local_set(doc):
+              return {
+                  (p['name'], p['version'])
+                  for p in packages(doc)
+                  if 'source' not in p
+              }
+
+          def versions_by_name(items):
+              out = {}
+              for name, version, *_ in items:
+                  out.setdefault(name, set()).add(version)
+              return {k: sorted(v) for k, v in out.items()}
+
+          before_reg = registry_set(before)
+          after_reg = registry_set(after)
+          before_local = local_set(before)
+          after_local = local_set(after)
+          before_versions = versions_by_name(before_reg)
+          after_versions = versions_by_name(after_reg)
+
+          changed_registry_versions = {
+              name: {
+                  'before': before_versions[name],
+                  'after': after_versions[name],
+              }
+              for name in sorted(before_versions.keys() & after_versions.keys())
+              if before_versions[name] != after_versions[name]
+          }
+
+          audit = {
+              'added_local_packages': sorted(after_local - before_local),
+              'removed_local_packages': sorted(before_local - after_local),
+              'added_registry_packages': sorted(after_reg - before_reg),
+              'removed_registry_packages': sorted(before_reg - after_reg),
+              'changed_registry_versions': changed_registry_versions,
+          }
+          (root / 'lock-audit.json').write_text(json.dumps(audit, indent=2, sort_keys=True) + '\n')
+
+          lines = [
+              '# Cargo.lock reconciliation audit',
+              '',
+              f"Added local packages: {len(audit['added_local_packages'])}",
+              f"Removed local packages: {len(audit['removed_local_packages'])}",
+              f"Added registry package tuples: {len(audit['added_registry_packages'])}",
+              f"Removed registry package tuples: {len(audit['removed_registry_packages'])}",
+              f"Registry names with version-set changes: {len(changed_registry_versions)}",
+              '',
+              'This artifact is a repair candidate only. Registry movement must be reviewed before commit.',
+          ]
+          (root / 'lock-audit.md').write_text('\n'.join(lines) + '\n')
+          print('\n'.join(lines))
+          PY
+
+      - name: Record candidate source identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          {
+            echo "subject_sha=$(git rev-parse HEAD)"
+            echo "mycelix_parent_sha=$MYCELIX_PARENT_SHA"
+            echo "mycelix_parent_tree=$MYCELIX_PARENT_TREE"
+            echo "rust_toolchain=$(rustc --version)"
+            echo "committed_lock_sha256=$(awk '{print $1}' lock-candidate/Cargo.lock.before.sha256)"
+            echo "candidate_lock_sha256=$(awk '{print $1}' lock-candidate/Cargo.lock.candidate.sha256)"
+            echo "authority=RepairCandidateOnly"
+          } | tee lock-candidate/identity.txt
+
+          git diff --exit-code -- Cargo.toml
+
+      - name: Upload reviewable lock candidate
+        uses: actions/upload-artifact@v4
+        with:
+          name: clinical-assurance-lock-candidate
+          path: lock-candidate/
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Preserve non-authoritative boundary
+        run: |
+          echo 'The uploaded lockfile is not committed and is not qualification evidence.'
+          echo 'Review lock-audit.json and Cargo.lock.diff before creating a new exact subject.'
