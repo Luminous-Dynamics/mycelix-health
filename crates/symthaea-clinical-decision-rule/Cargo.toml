@@ -11,3 +11,9 @@ thiserror = { workspace = true }
 mycelix-symthaea-clinical-model-assertion = { path = "../symthaea-clinical-model-assertion" }
 mycelix-symthaea-clinical-admission-v2 = { path = "../symthaea-clinical-admission-v2" }
 mycelix-symthaea-clinical-wire-v2 = { path = "../symthaea-clinical-wire-v2" }
+
+[dev-dependencies]
+mycelix-clinical-fact-snapshot = { path = "../clinical-fact-snapshot" }
+mycelix-clinical-semantics = { path = "../clinical-semantics" }
+mycelix-symthaea-clinical-evidence-context = { path = "../symthaea-clinical-evidence-context" }
+mycelix-symthaea-clinical-fact-binding = { path = "../symthaea-clinical-fact-binding" }
