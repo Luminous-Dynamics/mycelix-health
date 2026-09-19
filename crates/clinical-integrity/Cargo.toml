@@ -1,0 +1,11 @@
+[package]
+name = "mycelix-clinical-integrity"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Domain-separated BLAKE3 integrity identities for Mycelix-Health clinical artifacts"
+
+[dependencies]
+blake3 = "1.8.5"
+serde = { workspace = true }
+thiserror = { workspace = true }

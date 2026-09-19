@@ -1,0 +1,19 @@
+[package]
+name = "mycelix-symthaea-clinical-model-assertion"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Verified non-authorizing model assertions from Symthaea clinical evidence context"
+
+[dependencies]
+blake3 = "1.8.5"
+thiserror = { workspace = true }
+mycelix-clinical-evidence-v2 = { path = "../clinical-evidence-v2" }
+mycelix-symthaea-clinical-admission-v2 = { path = "../symthaea-clinical-admission-v2" }
+mycelix-symthaea-clinical-evidence-context = { path = "../symthaea-clinical-evidence-context" }
+mycelix-symthaea-clinical-wire-v2 = { path = "../symthaea-clinical-wire-v2" }
+
+[dev-dependencies]
+mycelix-clinical-semantics = { path = "../clinical-semantics" }
+mycelix-clinical-fact-snapshot = { path = "../clinical-fact-snapshot" }
+mycelix-symthaea-clinical-fact-binding = { path = "../symthaea-clinical-fact-binding" }

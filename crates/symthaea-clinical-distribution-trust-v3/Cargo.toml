@@ -1,0 +1,29 @@
+[package]
+name = "mycelix-symthaea-clinical-distribution-trust-v3"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Assertion-native runtime-currentness trust receipts for Symthaea clinical distribution/OOD evidence"
+
+[dependencies]
+blake3 = "1.8.5"
+thiserror = { workspace = true }
+mycelix-clinical-distribution-currentness = { path = "../clinical-distribution-currentness" }
+mycelix-clinical-distribution-trust = { path = "../clinical-distribution-trust" }
+mycelix-clinical-evidence = { path = "../clinical-evidence" }
+mycelix-symthaea-clinical-distribution-assessment-v2 = { path = "../symthaea-clinical-distribution-assessment-v2" }
+
+[dev-dependencies]
+hdi = { workspace = true }
+holo_hash = { workspace = true }
+mycelix-clinical-fact-snapshot = { path = "../clinical-fact-snapshot" }
+mycelix-clinical-semantics = { path = "../clinical-semantics" }
+mycelix-symthaea-clinical-admission-v2 = { path = "../symthaea-clinical-admission-v2" }
+mycelix-symthaea-clinical-evidence-context = { path = "../symthaea-clinical-evidence-context" }
+mycelix-symthaea-clinical-fact-binding = { path = "../symthaea-clinical-fact-binding" }
+mycelix-symthaea-clinical-model-assertion = { path = "../symthaea-clinical-model-assertion" }
+mycelix-symthaea-clinical-wire-v2 = { path = "../symthaea-clinical-wire-v2" }
+clinical-distribution-trust-zome = { package = "clinical_distribution_trust", path = "../../zomes/clinical_distribution_trust/coordinator" }
+clinical-distribution-lease-zome = { package = "clinical_distribution_lease", path = "../../zomes/clinical_distribution_lease/coordinator" }
+clinical-distribution-trust-integrity = { path = "../../zomes/clinical_distribution_trust/integrity" }
+clinical-distribution-lease-integrity = { path = "../../zomes/clinical_distribution_lease/integrity" }
