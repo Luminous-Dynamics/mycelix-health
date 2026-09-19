@@ -1,0 +1,13 @@
+[workspace]
+
+[package]
+name = "mycelix-protected-envelope-v2"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.94"
+license = "AGPL-3.0-or-later"
+description = "Reference semantics for metadata-minimized Mycelix protected health envelopes"
+publish = false
+
+[lib]
+path = "src/lib.rs"
