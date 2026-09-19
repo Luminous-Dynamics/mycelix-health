@@ -1,0 +1,16 @@
+[package]
+name = "clinical_causality_index_integrity"
+version = "0.1.0"
+edition = "2021"
+license.workspace = true
+description = "Integrity boundary for canonical opaque-commitment causal attestation admission"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+hdi = { workspace = true }
+clinical_causality_integrity = { path = "../../clinical_causality/integrity" }
+
+[features]
+default = []

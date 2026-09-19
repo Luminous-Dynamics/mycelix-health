@@ -1,0 +1,12 @@
+[package]
+name = "mycelix-symthaea-clinical-fact-binding"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Verify Symthaea v2 evidence identities against exact Mycelix ClinicalFact snapshots"
+
+[dependencies]
+blake3 = "1.8.5"
+mycelix-clinical-semantics = { path = "../clinical-semantics" }
+mycelix-clinical-fact-snapshot = { path = "../clinical-fact-snapshot" }
+mycelix-symthaea-clinical-wire-v2 = { path = "../symthaea-clinical-wire-v2" }

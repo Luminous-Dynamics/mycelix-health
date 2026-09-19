@@ -1,0 +1,11 @@
+[package]
+name = "mycelix-medication-semantics"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Typed medication-order and dosage semantics for Mycelix-Health"
+
+[dependencies]
+serde = { workspace = true }
+thiserror = { workspace = true }
+mycelix-clinical-semantics = { path = "../clinical-semantics" }
