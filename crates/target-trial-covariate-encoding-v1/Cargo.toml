@@ -7,6 +7,7 @@ description = "Research-only explicit baseline covariate value encoding for targ
 
 [dependencies]
 mycelix-target-trial-baseline-matrix-v1 = { path = "../target-trial-baseline-matrix-v1" }
+mycelix-target-trial-baseline-covariate-v1 = { path = "../target-trial-baseline-covariate-v1" }
 mycelix-target-trial-protocol-v2 = { path = "../target-trial-protocol-v2" }
 mycelix-clinical-semantics = { path = "../clinical-semantics" }
 mycelix-clinical-fact-snapshot = { path = "../clinical-fact-snapshot" }
