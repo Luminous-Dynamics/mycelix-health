@@ -94,7 +94,7 @@ impl VerifiedBaselineCovariateMatrixV1 {
             .rows
             .iter()
             .flat_map(|row| row.cells.iter())
-            .filter(|cell| matches!(cell.state, BaselineMeasurementStateV1::MissingMeasurement))
+            .filter(|cell| matches!(&cell.state, BaselineMeasurementStateV1::MissingMeasurement))
             .count()
     }
 }
@@ -226,9 +226,9 @@ pub fn build_baseline_covariate_matrix_v1(
         let measurement_policy_digest = policy_by_confounder
             .get(confounder_id)
             .copied()
-            .ok_or_else(|| BaselineMatrixV1Error::MissingConfounderMeasurements(
-                confounder_id.clone(),
-            ))?;
+            .ok_or_else(|| {
+                BaselineMatrixV1Error::MissingConfounderMeasurements(confounder_id.clone())
+            })?;
         columns.push(BaselineCovariateColumnV1 {
             confounder_id: confounder_id.clone(),
             protocol_definition: definition.clone(),
@@ -301,7 +301,9 @@ pub fn baseline_covariate_matrix_digest_v1(
     )))
 }
 
-fn validate_matrix_shape(matrix: &BaselineCovariateMatrixV1) -> Result<(), BaselineMatrixV1Error> {
+fn validate_matrix_shape(
+    matrix: &BaselineCovariateMatrixV1,
+) -> Result<(), BaselineMatrixV1Error> {
     if matrix.schema_version != TARGET_TRIAL_BASELINE_MATRIX_V1_VERSION
         || matrix.protocol_digest == [0; 32]
         || matrix.emulation_plan_digest == [0; 32]
@@ -515,7 +517,10 @@ pub enum BaselineMatrixV1Error {
     #[error("duplicate baseline confounder: {0}")]
     DuplicateConfounder(String),
     #[error("measurement references a subject outside the exact analysis manifest: {resource_type}/{id}")]
-    UnknownMeasurementSubject { resource_type: String, id: String },
+    UnknownMeasurementSubject {
+        resource_type: String,
+        id: String,
+    },
     #[error("measurement time zero differs from the analysis contribution for {resource_type}/{id}/{confounder_id}")]
     MeasurementTimeZeroMismatch {
         resource_type: String,
@@ -541,7 +546,10 @@ pub enum BaselineMatrixV1Error {
     #[error("unexpected measurement-cell count")]
     UnexpectedMeasurementCellCount,
     #[error("duplicate subject contribution: {resource_type}/{id}")]
-    DuplicateSubjectContribution { resource_type: String, id: String },
+    DuplicateSubjectContribution {
+        resource_type: String,
+        id: String,
+    },
     #[error("matrix is malformed")]
     InvalidMatrix,
     #[error("matrix columns are not strictly canonical")]
