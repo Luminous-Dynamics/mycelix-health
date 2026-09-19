@@ -1,0 +1,17 @@
+[package]
+name = "clinical_distribution_lease"
+version = "0.1.0"
+edition = "2021"
+license.workspace = true
+description = "Thin coordinator for positive clinical distribution evaluator leases"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+hdk = { workspace = true }
+clinical_distribution_lease_integrity = { path = "../integrity" }
+clinical_distribution_trust_integrity = { path = "../../clinical_distribution_trust/integrity" }
+
+[features]
+default = []

@@ -1,0 +1,17 @@
+[package]
+name = "population_accountant"
+version = "0.1.0"
+edition = "2021"
+license.workspace = true
+description = "Thin coordinator for DNA-rooted privacy accountant state"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+hdk = { workspace = true }
+serde = { workspace = true }
+population_accountant_integrity = { path = "../integrity" }
+
+[features]
+default = []
