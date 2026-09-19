@@ -1,0 +1,11 @@
+[package]
+name = "mycelix-target-trial-protocol"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Research-only target trial protocol and observational emulation plan identities for Mycelix Health"
+
+[dependencies]
+blake3 = "1.8.5"
+serde = { workspace = true }
+thiserror = { workspace = true }
