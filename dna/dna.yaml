@@ -62,11 +62,14 @@ integrity:
       schema_version: 1
       # Clinical-AI distribution/OOD evaluator trust is independent of model output,
       # clinical promotion, medication, and causality authority. Empty by default:
-      # no evaluator admission can validate until a deployment deliberately repacks
-      # the DNA with trusted root AgentPubKeys, changing the DNA hash.
+      # neither evaluator admission nor a positive evaluator lease can validate until
+      # a deployment deliberately repacks the DNA with trusted root AgentPubKeys,
+      # changing the DNA hash.
       root_authorities: []
       # Roots authorize one verifier to publish one exact admission proposal. The
-      # integrity zome hard-caps this short-lived exact-target grant at 15 minutes.
+      # admission integrity zome hard-caps this exact-target grant at 15 minutes.
+      # Positive evaluator leases reuse the same root set but are independently
+      # hard-capped by the lease integrity zome at five minutes.
       max_verifier_authorization_duration_micros: 900000000
     population_accountant:
       schema_version: 1
@@ -103,6 +106,8 @@ integrity:
       path: ../target/wasm32-unknown-unknown/release/clinical_causality_index_integrity.wasm
     - name: clinical_distribution_trust_integrity
       path: ../target/wasm32-unknown-unknown/release/clinical_distribution_trust_integrity.wasm
+    - name: clinical_distribution_lease_integrity
+      path: ../target/wasm32-unknown-unknown/release/clinical_distribution_lease_integrity.wasm
     - name: population_accountant_integrity
       path: ../target/wasm32-unknown-unknown/release/population_accountant_integrity.wasm
     - name: population_accountant_index_integrity
@@ -165,6 +170,11 @@ coordinator:
     - name: clinical_distribution_trust
       path: ../target/wasm32-unknown-unknown/release/clinical_distribution_trust.wasm
       dependencies:
+        - name: clinical_distribution_trust_integrity
+    - name: clinical_distribution_lease
+      path: ../target/wasm32-unknown-unknown/release/clinical_distribution_lease.wasm
+      dependencies:
+        - name: clinical_distribution_lease_integrity
         - name: clinical_distribution_trust_integrity
     - name: population_accountant
       path: ../target/wasm32-unknown-unknown/release/population_accountant.wasm
