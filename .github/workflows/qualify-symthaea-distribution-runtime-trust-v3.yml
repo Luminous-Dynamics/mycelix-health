@@ -66,12 +66,14 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y libssl-dev pkg-config
 
-      - name: Verify focused workspace registration
+      - name: Require frozen lock-consistent workspace
         shell: bash
         run: |
           set -euo pipefail
-          cargo metadata --no-deps --format-version 1 \
+          git diff --exit-code -- Cargo.lock
+          cargo metadata --locked --no-deps --format-version 1 \
             | jq -e '.packages[] | select(.name == "mycelix-symthaea-clinical-distribution-trust-v3")' >/dev/null
+          git diff --exit-code -- Cargo.lock
 
       - name: Check focused formatting
         run: cargo fmt --package mycelix-symthaea-clinical-distribution-trust-v3 -- --check
@@ -82,13 +84,14 @@ jobs:
           set -euo pipefail
           HOST="$(rustc -vV | awk '/^host:/{print $2}')"
           cargo clippy \
+            --locked \
             -p mycelix-symthaea-clinical-distribution-trust-v3 \
             --all-targets \
             --target "$HOST" \
             -- -D warnings
 
       - name: Check focused WASM build surface
-        run: cargo check -p mycelix-symthaea-clinical-distribution-trust-v3 --target wasm32-unknown-unknown
+        run: cargo check --locked -p mycelix-symthaea-clinical-distribution-trust-v3 --target wasm32-unknown-unknown
 
       - name: Run assertion-native runtime-trust tests
         shell: bash
@@ -96,6 +99,7 @@ jobs:
           set -euo pipefail
           HOST="$(rustc -vV | awk '/^host:/{print $2}')"
           cargo test \
+            --locked \
             -p mycelix-symthaea-clinical-distribution-trust-v3 \
             --target "$HOST"
 
@@ -105,6 +109,7 @@ jobs:
           set -euo pipefail
           HOST="$(rustc -vV | awk '/^host:/{print $2}')"
           cargo test \
+            --locked \
             -p mycelix-symthaea-clinical-distribution-assessment-v2 \
             -p mycelix-clinical-distribution-currentness \
             -p clinical_distribution_trust_integrity \
@@ -112,6 +117,9 @@ jobs:
             -p clinical_distribution_lease_integrity \
             -p clinical_distribution_lease \
             --target "$HOST"
+
+      - name: Verify lockfile immutability postflight
+        run: git diff --exit-code -- Cargo.lock
 
       - name: Record exact qualification identity
         shell: bash
