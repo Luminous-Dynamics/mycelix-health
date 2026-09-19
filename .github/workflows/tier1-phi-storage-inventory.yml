@@ -1,0 +1,66 @@
+name: Tier-1 PHI Storage Inventory
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'dna/dna.yaml'
+      - 'zomes/**/integrity/src/lib.rs'
+      - 'docs/security/tier1_phi_storage_inventory.json'
+      - 'scripts/check_tier1_phi_storage_inventory.py'
+      - '.github/workflows/tier1-phi-storage-inventory.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'dna/dna.yaml'
+      - 'zomes/**/integrity/src/lib.rs'
+      - 'docs/security/tier1_phi_storage_inventory.json'
+      - 'scripts/check_tier1_phi_storage_inventory.py'
+      - '.github/workflows/tier1-phi-storage-inventory.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  classify-packaged-entry-types:
+    name: Classify packaged EntryTypes
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Record exact subject
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "commit=$(git rev-parse HEAD)"
+          sha256sum dna/dna.yaml docs/security/tier1_phi_storage_inventory.json scripts/check_tier1_phi_storage_inventory.py
+
+      - name: Check Tier-1 storage classifications
+        run: python3 scripts/check_tier1_phi_storage_inventory.py
+
+      - name: Prove checker rejects an unclassified packaged variant
+        shell: bash
+        run: |
+          set -euo pipefail
+          cp zomes/patient/integrity/src/lib.rs /tmp/patient-lib.rs
+          python3 - <<'PY'
+          from pathlib import Path
+          path = Path('zomes/patient/integrity/src/lib.rs')
+          text = path.read_text()
+          needle = 'pub enum EntryTypes {\n'
+          assert needle in text
+          path.write_text(text.replace(needle, needle + '    PrivacyGateCanary(PrivacyGateCanary),\n', 1))
+          PY
+          if python3 scripts/check_tier1_phi_storage_inventory.py; then
+            echo 'ERROR: inventory checker accepted an unclassified packaged EntryTypes variant' >&2
+            exit 1
+          fi
+          mv /tmp/patient-lib.rs zomes/patient/integrity/src/lib.rs
+
+      - name: Re-check pristine subject
+        shell: bash
+        run: |
+          set -euo pipefail
+          git diff --exit-code -- zomes/patient/integrity/src/lib.rs
+          python3 scripts/check_tier1_phi_storage_inventory.py
+          sha256sum dna/dna.yaml docs/security/tier1_phi_storage_inventory.json scripts/check_tier1_phi_storage_inventory.py
