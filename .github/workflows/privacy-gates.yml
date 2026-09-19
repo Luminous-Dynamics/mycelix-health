@@ -1,0 +1,21 @@
+name: Privacy Packaging Gates
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop]
+
+permissions:
+  contents: read
+
+jobs:
+  mental-health-packaging:
+    name: Mental-health packaging containment
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Check out exact subject
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+
+      - name: Refuse unqualified mental-health packaging
+        run: bash scripts/check-sensitive-zome-packaging.sh
