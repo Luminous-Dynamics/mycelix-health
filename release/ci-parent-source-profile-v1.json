@@ -1,0 +1,39 @@
+{
+  "schema": "mycelix-health-parent-source-profile/v1",
+  "profile_id": "mycelix-parent-pinned-v1",
+  "authority": "DeclaredDependencySourceIdentityOnly",
+  "repository": "Luminous-Dynamics/mycelix",
+  "commit_sha": "a85369699099d4c7524e502e531735eed4ab36f4",
+  "tree_sha": "6f7ff861547fdff31dba9a284f845e7a2a736d7a",
+  "exports": [
+    {
+      "source": "crates",
+      "destination": "../crates",
+      "required_manifests": [
+        "mycelix-bridge-common/Cargo.toml",
+        "mycelix-leptos-core/Cargo.toml",
+        "mycelix-zkp-core/Cargo.toml"
+      ]
+    },
+    {
+      "source": "mycelix-core",
+      "destination": "../mycelix-core",
+      "required_manifests": [
+        "libs/mycelix-fl/Cargo.toml"
+      ]
+    },
+    {
+      "source": "mycelix-core",
+      "destination": "../mycelix-workspace/mycelix-core",
+      "required_manifests": [
+        "libs/mycelix-fl/Cargo.toml"
+      ]
+    }
+  ],
+  "non_claims": [
+    "This profile does not establish Cargo.lock consistency.",
+    "This profile does not establish build, test, compatibility, qualification, or clinical PASS.",
+    "A moving-parent compatibility observation is not reproducible exact-subject evidence.",
+    "Materialized source identity does not establish clinical validity, safety, effectiveness, authority, or regulatory status."
+  ]
+}

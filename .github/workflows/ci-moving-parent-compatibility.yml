@@ -1,0 +1,259 @@
+name: Compatibility Only - Moving Parent Mycelix
+
+on:
+  workflow_dispatch:
+    inputs:
+      subject_sha:
+        description: Exact mycelix-health commit SHA to test for compatibility
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: compatibility-moving-parent-${{ inputs.subject_sha }}
+  cancel-in-progress: true
+
+env:
+  SUBJECT_SHA: ${{ inputs.subject_sha }}
+  HARNESS_SHA: ${{ github.workflow_sha }}
+  CHECKOUT_ACTION_SHA: 11d5960a326750d5838078e36cf38b85af677262
+  INSTALL_NIX_ACTION_SHA: 6004951b182f8860210c8d6f0d808ec5b1a33d28
+  UPLOAD_ARTIFACT_ACTION_SHA: ea165f8d65b6e75b540449e92b4886f43607fa02
+
+jobs:
+  compatibility:
+    name: CompatibilityOnly against current parent main
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Check out exact Health product subject
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ env.SUBJECT_SHA }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Verify exact product subject and reserve CI namespace
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$SUBJECT_SHA" =~ ^[0-9a-fA-F]{40}$ ]]
+          [[ "$HARNESS_SHA" =~ ^[0-9a-fA-F]{40}$ ]]
+          test "$(git rev-parse HEAD)" = "$SUBJECT_SHA"
+          test ! -e _ci
+          test -z "$(git status --porcelain=v1 --untracked-files=no)"
+
+      - name: Check out exact reviewed CI harness
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ env.HARNESS_SHA }}
+          path: _ci/harness
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Verify exact CI harness identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git -C _ci/harness rev-parse HEAD)" = "$HARNESS_SHA"
+          test -z "$(git -C _ci/harness status --porcelain=v1 --untracked-files=all)"
+          test -f _ci/harness/.github/workflows/ci-moving-parent-compatibility.yml
+          test -f _ci/harness/scripts/materialize-parent-mycelix.py
+          test -f _ci/harness/scripts/verify-parent-source-materialization.py
+          test -f _ci/harness/scripts/build-ci-evidence-receipt.py
+          test -f _ci/harness/scripts/verify-ci-evidence-receipt.py
+          test -f _ci/harness/scripts/check-parent-source-materializer.py
+          test -f _ci/harness/scripts/check-parent-source-verifier.py
+          test -f _ci/harness/scripts/check-ci-evidence-receipt.py
+          test -f _ci/harness/scripts/check-ci-evidence-verifier.py
+
+      - name: Initialize isolated compatibility diagnostics
+        shell: bash
+        run: |
+          set -euo pipefail
+          EVIDENCE_DIR="$RUNNER_TEMP/mycelix-health-compatibility-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          test ! -e "$EVIDENCE_DIR"
+          mkdir -p "$EVIDENCE_DIR"
+          echo "EVIDENCE_DIR=$EVIDENCE_DIR" >> "$GITHUB_ENV"
+          {
+            echo "authority=CompatibilityDiagnosticsOnly"
+            echo "subject_sha=$SUBJECT_SHA"
+            echo "harness_sha=$HARNESS_SHA"
+            echo "state=started"
+          } > "$EVIDENCE_DIR/execution-state.txt"
+
+      - name: Check out sampled parent Mycelix main
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          repository: Luminous-Dynamics/mycelix
+          ref: main
+          path: _ci/mycelix-parent
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Install pinned Nix bootstrap
+        uses: cachix/install-nix-action@6004951b182f8860210c8d6f0d808ec5b1a33d28
+        with:
+          install_url: https://releases.nixos.org/nix/nix-2.19.2/install
+          enable_kvm: false
+
+      - name: Validate harness evidence contracts
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 _ci/harness/scripts/check-parent-source-materializer.py
+          python3 _ci/harness/scripts/check-parent-source-verifier.py
+          python3 _ci/harness/scripts/check-ci-evidence-receipt.py
+          python3 _ci/harness/scripts/check-ci-evidence-verifier.py
+
+      - name: Materialize sampled parent as compatibility-only source
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 _ci/harness/scripts/materialize-parent-mycelix.py \
+            --checkout _ci/mycelix-parent \
+            --workspace-root "$GITHUB_WORKSPACE" \
+            --profile "$GITHUB_WORKSPACE/release/ci-parent-source-profile-v1.json" \
+            --mode compatibility \
+            --replace-existing \
+            --receipt "$EVIDENCE_DIR/parent-source.json"
+
+      - name: Independently verify compatibility source materialization
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 _ci/harness/scripts/verify-parent-source-materialization.py \
+            --checkout _ci/mycelix-parent \
+            --workspace-root "$GITHUB_WORKSPACE" \
+            --profile "$GITHUB_WORKSPACE/release/ci-parent-source-profile-v1.json" \
+            --receipt "$EVIDENCE_DIR/parent-source.json" \
+            --verification "$EVIDENCE_DIR/parent-source-verification.json"
+          python3 - "$EVIDENCE_DIR/parent-source-verification.json" <<'PY'
+          import json, sys
+          value = json.load(open(sys.argv[1], encoding='utf-8'))
+          assert value['authority'] == 'VerifiedCompatibilityObservation'
+          PY
+
+      - name: Freeze compatibility and harness inputs
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -z "$(git status --porcelain=v1 --untracked-files=no)"
+          sha256sum Cargo.lock > "$EVIDENCE_DIR/Cargo.lock.sha256"
+          sha256sum flake.lock > "$EVIDENCE_DIR/flake.lock.sha256"
+          sha256sum rust-toolchain.toml > "$EVIDENCE_DIR/rust-toolchain.toml.sha256"
+          sha256sum release/ci-parent-source-profile-v1.json > "$EVIDENCE_DIR/parent-profile.sha256"
+          sha256sum _ci/harness/scripts/materialize-parent-mycelix.py > "$EVIDENCE_DIR/materializer.sha256"
+          sha256sum _ci/harness/scripts/verify-parent-source-materialization.py > "$EVIDENCE_DIR/source-verifier.sha256"
+          sha256sum _ci/harness/scripts/build-ci-evidence-receipt.py > "$EVIDENCE_DIR/receipt-builder.sha256"
+          sha256sum _ci/harness/scripts/verify-ci-evidence-receipt.py > "$EVIDENCE_DIR/receipt-verifier.sha256"
+          sha256sum _ci/harness/.github/workflows/ci-moving-parent-compatibility.yml > "$EVIDENCE_DIR/workflow.sha256"
+          nix flake metadata --json --no-write-lock-file > "$EVIDENCE_DIR/flake-metadata.json"
+          nix eval --raw --no-write-lock-file .#devShells.x86_64-linux.ci.drvPath > "$EVIDENCE_DIR/ci-dev-shell.drv"
+          nix develop --no-write-lock-file .#ci --command rustc -vV > "$EVIDENCE_DIR/rustc-vV.txt"
+          nix develop --no-write-lock-file .#ci --command cargo -vV > "$EVIDENCE_DIR/cargo-vV.txt"
+
+      - name: Check compatibility against frozen Health lock
+        shell: bash
+        run: |
+          set -euo pipefail
+          nix develop --no-write-lock-file .#ci --command \
+            cargo metadata --locked --no-deps --format-version 1 > "$EVIDENCE_DIR/cargo-metadata.json"
+          sha256sum -c "$EVIDENCE_DIR/Cargo.lock.sha256"
+          test -z "$(git status --porcelain=v1 --untracked-files=no)"
+
+      - name: Format compatibility subject
+        run: nix develop --no-write-lock-file .#ci --command cargo fmt --all -- --check
+
+      - name: Clippy compatibility surface on host target
+        shell: bash
+        run: |
+          set -euo pipefail
+          HOST="$(nix develop --no-write-lock-file .#ci --command rustc -vV | awk '/^host:/{print $2}')"
+          nix develop --no-write-lock-file .#ci --command \
+            cargo clippy --workspace --all-targets --locked --target "$HOST" -- -D warnings
+
+      - name: Test compatibility surface on host target
+        shell: bash
+        run: |
+          set -euo pipefail
+          HOST="$(nix develop --no-write-lock-file .#ci --command rustc -vV | awk '/^host:/{print $2}')"
+          nix develop --no-write-lock-file .#ci --command \
+            cargo test --workspace --locked --target "$HOST"
+
+      - name: Verify product, harness, and input immutability postflight
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$SUBJECT_SHA"
+          test "$(git -C _ci/harness rev-parse HEAD)" = "$HARNESS_SHA"
+          sha256sum -c "$EVIDENCE_DIR/Cargo.lock.sha256"
+          sha256sum -c "$EVIDENCE_DIR/flake.lock.sha256"
+          sha256sum -c "$EVIDENCE_DIR/rust-toolchain.toml.sha256"
+          sha256sum -c "$EVIDENCE_DIR/parent-profile.sha256"
+          sha256sum -c "$EVIDENCE_DIR/materializer.sha256"
+          sha256sum -c "$EVIDENCE_DIR/source-verifier.sha256"
+          sha256sum -c "$EVIDENCE_DIR/receipt-builder.sha256"
+          sha256sum -c "$EVIDENCE_DIR/receipt-verifier.sha256"
+          sha256sum -c "$EVIDENCE_DIR/workflow.sha256"
+          test -z "$(git status --porcelain=v1 --untracked-files=no)"
+          test -z "$(git -C _ci/harness status --porcelain=v1 --untracked-files=all)"
+
+      - name: Build canonical successful compatibility receipt
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 _ci/harness/scripts/build-ci-evidence-receipt.py \
+            --mode compatibility \
+            --subject-sha "$SUBJECT_SHA" \
+            --harness-sha "$HARNESS_SHA" \
+            --workspace "$GITHUB_WORKSPACE" \
+            --harness-root "$GITHUB_WORKSPACE/_ci/harness" \
+            --evidence-dir "$EVIDENCE_DIR" \
+            --workflow .github/workflows/ci-moving-parent-compatibility.yml \
+            --checkout-action-sha "$CHECKOUT_ACTION_SHA" \
+            --install-nix-action-sha "$INSTALL_NIX_ACTION_SHA" \
+            --upload-artifact-action-sha "$UPLOAD_ARTIFACT_ACTION_SHA" \
+            --output "$EVIDENCE_DIR/ci-evidence.json"
+
+      - name: Independently verify final compatibility receipt
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 _ci/harness/scripts/verify-ci-evidence-receipt.py \
+            --subject-sha "$SUBJECT_SHA" \
+            --harness-sha "$HARNESS_SHA" \
+            --workspace "$GITHUB_WORKSPACE" \
+            --harness-root "$GITHUB_WORKSPACE/_ci/harness" \
+            --evidence-dir "$EVIDENCE_DIR" \
+            --receipt "$EVIDENCE_DIR/ci-evidence.json" \
+            --workflow .github/workflows/ci-moving-parent-compatibility.yml \
+            --verification "$EVIDENCE_DIR/ci-evidence-verification.json"
+          python3 - "$EVIDENCE_DIR/ci-evidence-verification.json" <<'PY' | tee -a "$GITHUB_STEP_SUMMARY"
+          import json, sys
+          value = json.load(open(sys.argv[1], encoding='utf-8'))
+          print(f"authority={value['authority']}")
+          print(f"result={value['result']}")
+          print(f"subject_sha={value['subject']['sha']}")
+          print(f"harness_sha={value['harness']['sha']}")
+          print(f"sampled_parent_authority=CompatibilityOnly")
+          PY
+          {
+            echo "authority=VerifiedCompatibilityOnlyObservation"
+            echo "subject_sha=$SUBJECT_SHA"
+            echo "harness_sha=$HARNESS_SHA"
+            echo "state=completed"
+            echo "result=pass"
+            echo "ci_evidence_sha256=$(cat "$EVIDENCE_DIR/ci-evidence.json.sha256")"
+            echo "ci_evidence_verification_sha256=$(cat "$EVIDENCE_DIR/ci-evidence-verification.json.sha256")"
+          } > "$EVIDENCE_DIR/execution-state.txt"
+
+      - name: Upload compatibility-only evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: compatibility-only-moving-parent-${{ env.SUBJECT_SHA }}
+          path: ${{ runner.temp }}/mycelix-health-compatibility-${{ github.run_id }}-${{ github.run_attempt }}/
+          if-no-files-found: warn
+          retention-days: 14
