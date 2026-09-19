@@ -1,0 +1,17 @@
+[package]
+name = "mycelix-target-trial-cohort-receipts-v2"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Research-only target-trial subject receipts v2 anchored to exact observational time zero"
+
+[dependencies]
+mycelix-target-trial-protocol-v2 = { path = "../target-trial-protocol-v2" }
+mycelix-clinical-phenotype-v2 = { path = "../clinical-phenotype-v2" }
+mycelix-clinical-semantics = { path = "../clinical-semantics" }
+blake3 = "1.8.5"
+serde = { workspace = true }
+thiserror = { workspace = true }
+
+[lints]
+workspace = true
