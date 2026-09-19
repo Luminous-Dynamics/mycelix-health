@@ -1,0 +1,13 @@
+[package]
+name = "mycelix-clinical-omop-projection"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Fail-closed research-only OMOP CDM 5.5 projection from validated Mycelix ClinicalFact measurements"
+
+[dependencies]
+blake3 = "1.8.5"
+serde = { workspace = true }
+thiserror = { workspace = true }
+mycelix-clinical-semantics = { path = "../clinical-semantics" }
+mycelix-clinical-fact-snapshot = { path = "../clinical-fact-snapshot" }
