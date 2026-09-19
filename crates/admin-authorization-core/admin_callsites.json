@@ -1,0 +1,48 @@
+{
+  "schema": "mycelix-health/admin-authorization-callsites/v1",
+  "declared_callsite_count": 6,
+  "callsites": [
+    {
+      "zome": "patient",
+      "function": "get_all_patients",
+      "path": "zomes/patient/coordinator/src/lib.rs",
+      "scope": "tier1_packaged",
+      "risk": "bulk_patient_retrieval"
+    },
+    {
+      "zome": "patient",
+      "function": "search_patients_by_name",
+      "path": "zomes/patient/coordinator/src/lib.rs",
+      "scope": "tier1_packaged",
+      "risk": "bulk_patient_search"
+    },
+    {
+      "zome": "patient",
+      "function": "get_patient_by_mrn",
+      "path": "zomes/patient/coordinator/src/lib.rs",
+      "scope": "tier1_packaged",
+      "risk": "population_scan_by_identifier"
+    },
+    {
+      "zome": "records",
+      "function": "get_critical_results",
+      "path": "zomes/records/coordinator/src/lib.rs",
+      "scope": "tier1_packaged",
+      "risk": "bulk_critical_result_retrieval"
+    },
+    {
+      "zome": "prescriptions",
+      "function": "register_pharmacy",
+      "path": "zomes/prescriptions/coordinator/src/lib.rs",
+      "scope": "tier1_packaged",
+      "risk": "privileged_directory_mutation"
+    },
+    {
+      "zome": "insurance",
+      "function": "get_pending_claims",
+      "path": "zomes/insurance/coordinator/src/lib.rs",
+      "scope": "tier2_unpackaged",
+      "risk": "bulk_cross_patient_claim_retrieval"
+    }
+  ]
+}
