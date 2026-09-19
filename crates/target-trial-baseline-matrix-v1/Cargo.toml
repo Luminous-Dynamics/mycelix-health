@@ -1,0 +1,17 @@
+[package]
+name = "mycelix-target-trial-baseline-matrix-v1"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Research-only canonical baseline covariate identity and missingness matrix for target-trial emulation"
+
+[dependencies]
+mycelix-target-trial-protocol-v2 = { path = "../target-trial-protocol-v2" }
+mycelix-target-trial-analysis-contribution-v1 = { path = "../target-trial-analysis-contribution-v1" }
+mycelix-target-trial-baseline-covariate-v1 = { path = "../target-trial-baseline-covariate-v1" }
+blake3 = "1.8.5"
+serde = { workspace = true }
+thiserror = { workspace = true }
+
+[lints]
+workspace = true
