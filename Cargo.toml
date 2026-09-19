@@ -62,6 +62,7 @@ members = [
     "crates/clinical-fact-snapshot",
     "crates/clinical-phenotype",
     "crates/clinical-phenotype-v2",
+    "crates/target-trial-protocol",
     "crates/target-trial-protocol-v2",
     "crates/target-trial-cohort-receipts-v2",
     "crates/target-trial-followup-outcome-v2",
