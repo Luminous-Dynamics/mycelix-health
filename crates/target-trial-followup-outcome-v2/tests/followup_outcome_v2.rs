@@ -10,8 +10,7 @@ use mycelix_clinical_semantics::{
 use mycelix_target_trial_cohort_receipts_v2::{
     build_eligibility_receipt_v2, build_strategy_classification_receipt_v2,
     build_time_zero_receipt_v2, compose_cohort_entry_v2, time_zero_anchor_evidence_v2,
-    CohortEntryReceiptV2, EligibilityReceiptV2, StrategyClassificationReceiptV2,
-    TimeZeroReceiptV2,
+    CohortEntryReceiptV2, TimeZeroReceiptV2,
 };
 use mycelix_target_trial_followup_outcome_v2::*;
 use mycelix_target_trial_protocol_v2::*;
@@ -201,12 +200,7 @@ fn fact(code: &str, at: i64) -> ClinicalFact {
 
 struct EntryFixture {
     time_zero: TimeZeroReceiptV2,
-    eligibility: EligibilityReceiptV2,
-    strategy: StrategyClassificationReceiptV2,
     entry: CohortEntryReceiptV2,
-    eligibility_definition: RelativePhenotypeDefinitionV2,
-    eligibility_context: PhenotypeEvaluationContextV2,
-    eligibility_facts: Vec<ClinicalFact>,
 }
 
 fn entry_fixture(protocol: &TargetTrialProtocolV2, plan: &TargetTrialEmulationPlanV2) -> EntryFixture {
@@ -261,18 +255,13 @@ fn entry_fixture(protocol: &TargetTrialProtocolV2, plan: &TargetTrialEmulationPl
         &strategy,
     )
     .unwrap();
-    EntryFixture {
-        time_zero,
-        eligibility,
-        strategy,
-        entry,
-        eligibility_definition,
-        eligibility_context,
-        eligibility_facts,
-    }
+    EntryFixture { time_zero, entry }
 }
 
-fn outcome_context(time_zero: &TimeZeroReceiptV2, status: CoverageStatusV2) -> PhenotypeEvaluationContextV2 {
+fn outcome_context(
+    time_zero: &TimeZeroReceiptV2,
+    status: CoverageStatusV2,
+) -> PhenotypeEvaluationContextV2 {
     PhenotypeEvaluationContextV2 {
         schema_version: PHENOTYPE_V2_VERSION,
         anchor_micros: time_zero.time_zero_micros,
@@ -283,6 +272,19 @@ fn outcome_context(time_zero: &TimeZeroReceiptV2, status: CoverageStatusV2) -> P
             source: phenotype_artifact("coverage", "outcome", 24),
         }],
         context_evidence: vec![],
+    }
+}
+
+fn outcome_evidence<'a>(
+    definition: &'a RelativePhenotypeDefinitionV2,
+    context: &'a PhenotypeEvaluationContextV2,
+    facts: &'a [ClinicalFact],
+) -> OutcomeEvidenceV2<'a> {
+    OutcomeEvidenceV2 {
+        outcome_id: "outcome",
+        definition,
+        context,
+        facts,
     }
 }
 
@@ -383,19 +385,21 @@ fn positive_outcome_before_early_censoring_can_be_satisfied() {
     let follow_up = censored_follow_up(&protocol, &plan, &fixture, 150);
     let definition = outcome_definition();
     let context = outcome_context(&fixture.time_zero, CoverageStatusV2::Incomplete);
+    let facts = vec![fact("222", 120)];
+    let evidence = outcome_evidence(&definition, &context, &facts);
     let receipt = build_outcome_ascertainment_receipt_v2(
         &protocol,
         &plan,
         &fixture.entry,
         &fixture.time_zero,
         &follow_up,
-        "outcome",
-        &definition,
-        &context,
-        &[fact("222", 120)],
+        &evidence,
     )
     .unwrap();
-    assert_eq!(receipt.state, mycelix_clinical_phenotype_v2::CriterionStateV2::Satisfied);
+    assert_eq!(
+        receipt.state,
+        mycelix_clinical_phenotype_v2::CriterionStateV2::Satisfied
+    );
 }
 
 #[test]
@@ -406,19 +410,20 @@ fn no_outcome_under_early_censoring_remains_indeterminate() {
     let follow_up = censored_follow_up(&protocol, &plan, &fixture, 150);
     let definition = outcome_definition();
     let context = outcome_context(&fixture.time_zero, CoverageStatusV2::Incomplete);
+    let evidence = outcome_evidence(&definition, &context, &[]);
     let receipt = build_outcome_ascertainment_receipt_v2(
         &protocol,
         &plan,
         &fixture.entry,
         &fixture.time_zero,
         &follow_up,
-        "outcome",
-        &definition,
-        &context,
-        &[],
+        &evidence,
     )
     .unwrap();
-    assert_eq!(receipt.state, mycelix_clinical_phenotype_v2::CriterionStateV2::Indeterminate);
+    assert_eq!(
+        receipt.state,
+        mycelix_clinical_phenotype_v2::CriterionStateV2::Indeterminate
+    );
 }
 
 #[test]
@@ -436,10 +441,7 @@ fn complete_coverage_claim_is_rejected_when_followup_truncates_outcome_window() 
             &fixture.entry,
             &fixture.time_zero,
             &follow_up,
-            "outcome",
-            &definition,
-            &context,
-            &[],
+            &outcome_evidence(&definition, &context, &[]),
         ),
         Err(FollowUpOutcomeV2Error::CompleteCoverageAfterTruncatedFollowUp)
     ));
@@ -453,19 +455,21 @@ fn fact_exactly_at_followup_end_is_not_observed() {
     let follow_up = censored_follow_up(&protocol, &plan, &fixture, 150);
     let definition = outcome_definition();
     let context = outcome_context(&fixture.time_zero, CoverageStatusV2::Incomplete);
+    let facts = vec![fact("222", 150)];
+    let evidence = outcome_evidence(&definition, &context, &facts);
     let receipt = build_outcome_ascertainment_receipt_v2(
         &protocol,
         &plan,
         &fixture.entry,
         &fixture.time_zero,
         &follow_up,
-        "outcome",
-        &definition,
-        &context,
-        &[fact("222", 150)],
+        &evidence,
     )
     .unwrap();
-    assert_eq!(receipt.state, mycelix_clinical_phenotype_v2::CriterionStateV2::Indeterminate);
+    assert_eq!(
+        receipt.state,
+        mycelix_clinical_phenotype_v2::CriterionStateV2::Indeterminate
+    );
 }
 
 #[test]
@@ -484,19 +488,20 @@ fn full_followup_with_complete_coverage_can_establish_not_satisfied() {
     .unwrap();
     let definition = outcome_definition();
     let context = outcome_context(&fixture.time_zero, CoverageStatusV2::Complete);
+    let evidence = outcome_evidence(&definition, &context, &[]);
     let receipt = build_outcome_ascertainment_receipt_v2(
         &protocol,
         &plan,
         &fixture.entry,
         &fixture.time_zero,
         &follow_up,
-        "outcome",
-        &definition,
-        &context,
-        &[],
+        &evidence,
     )
     .unwrap();
-    assert_eq!(receipt.state, mycelix_clinical_phenotype_v2::CriterionStateV2::NotSatisfied);
+    assert_eq!(
+        receipt.state,
+        mycelix_clinical_phenotype_v2::CriterionStateV2::NotSatisfied
+    );
 }
 
 #[test]
@@ -515,10 +520,7 @@ fn wrong_outcome_definition_is_rejected() {
             &fixture.entry,
             &fixture.time_zero,
             &follow_up,
-            "outcome",
-            &definition,
-            &context,
-            &[],
+            &outcome_evidence(&definition, &context, &[]),
         ),
         Err(FollowUpOutcomeV2Error::OutcomeDefinitionMismatch)
     ));
@@ -532,16 +534,15 @@ fn changed_followup_receipt_breaks_outcome_replay() {
     let original_follow_up = censored_follow_up(&protocol, &plan, &fixture, 150);
     let definition = outcome_definition();
     let context = outcome_context(&fixture.time_zero, CoverageStatusV2::Incomplete);
+    let facts = vec![fact("222", 120)];
+    let evidence = outcome_evidence(&definition, &context, &facts);
     let receipt = build_outcome_ascertainment_receipt_v2(
         &protocol,
         &plan,
         &fixture.entry,
         &fixture.time_zero,
         &original_follow_up,
-        "outcome",
-        &definition,
-        &context,
-        &[fact("222", 120)],
+        &evidence,
     )
     .unwrap();
     let changed_follow_up = censored_follow_up(&protocol, &plan, &fixture, 160);
@@ -552,12 +553,75 @@ fn changed_followup_receipt_breaks_outcome_replay() {
             &fixture.entry,
             &fixture.time_zero,
             &changed_follow_up,
-            "outcome",
-            &definition,
-            &context,
-            &[fact("222", 120)],
+            &evidence,
             &receipt,
         ),
         Err(FollowUpOutcomeV2Error::OutcomeReceiptMismatch)
+    ));
+}
+
+#[test]
+fn outcome_window_starting_before_time_zero_is_rejected() {
+    let definition = phenotype("outcome", "222", -1, 100, 30);
+    let mut protocol = protocol();
+    protocol.outcomes[0].phenotype =
+        RelativePhenotypeRefV2::from_definition(&definition).unwrap();
+    let plan = plan(&protocol);
+    let fixture = entry_fixture(&protocol, &plan);
+    let follow_up = build_follow_up_receipt_v2(
+        &protocol,
+        &plan,
+        &fixture.entry,
+        &fixture.time_zero,
+        200,
+        FollowUpEndV2::PlannedHorizonComplete,
+    )
+    .unwrap();
+    let context = outcome_context(&fixture.time_zero, CoverageStatusV2::Complete);
+    let evidence = outcome_evidence(&definition, &context, &[]);
+
+    assert!(matches!(
+        build_outcome_ascertainment_receipt_v2(
+            &protocol,
+            &plan,
+            &fixture.entry,
+            &fixture.time_zero,
+            &follow_up,
+            &evidence,
+        ),
+        Err(FollowUpOutcomeV2Error::OutcomeWindowPrecedesTimeZero)
+    ));
+}
+
+#[test]
+fn outcome_window_extending_beyond_protocol_followup_is_rejected() {
+    let definition = phenotype("outcome", "222", 0, 101, 31);
+    let mut protocol = protocol();
+    protocol.outcomes[0].phenotype =
+        RelativePhenotypeRefV2::from_definition(&definition).unwrap();
+    let plan = plan(&protocol);
+    let fixture = entry_fixture(&protocol, &plan);
+    let follow_up = build_follow_up_receipt_v2(
+        &protocol,
+        &plan,
+        &fixture.entry,
+        &fixture.time_zero,
+        200,
+        FollowUpEndV2::PlannedHorizonComplete,
+    )
+    .unwrap();
+    let context = outcome_context(&fixture.time_zero, CoverageStatusV2::Complete);
+    let evidence = outcome_evidence(&definition, &context, &[]);
+
+    assert!(matches!(
+        build_outcome_ascertainment_receipt_v2(
+            &protocol,
+            &plan,
+            &fixture.entry,
+            &fixture.time_zero,
+            &follow_up,
+            &evidence,
+        ),
+        Err(FollowUpOutcomeV2Error::OutcomeWindowExceedsProtocolFollowUp)
     ));
 }
