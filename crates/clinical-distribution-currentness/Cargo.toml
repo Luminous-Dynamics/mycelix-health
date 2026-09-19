@@ -14,5 +14,6 @@ clinical-distribution-trust-zome = { package = "clinical_distribution_trust", pa
 clinical-distribution-lease-zome = { package = "clinical_distribution_lease", path = "../../zomes/clinical_distribution_lease/coordinator" }
 
 [dev-dependencies]
+hdi = { workspace = true }
 clinical-distribution-trust-integrity = { path = "../../zomes/clinical_distribution_trust/integrity" }
 clinical-distribution-lease-integrity = { path = "../../zomes/clinical_distribution_lease/integrity" }
