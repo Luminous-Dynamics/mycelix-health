@@ -1,0 +1,24 @@
+{
+  "schema": "mycelix-health/patient-v1-field-routes/v1",
+  "declared_field_count": 18,
+  "fields": [
+    {"field": "patient_id", "route": "protected_identifier"},
+    {"field": "mrn", "route": "protected_identifier"},
+    {"field": "first_name", "route": "protected_demographic"},
+    {"field": "last_name", "route": "protected_demographic"},
+    {"field": "date_of_birth", "route": "protected_demographic"},
+    {"field": "biological_sex", "route": "protected_demographic"},
+    {"field": "gender_identity", "route": "protected_demographic"},
+    {"field": "blood_type", "route": "protected_sourced_clinical_datum"},
+    {"field": "contact", "route": "protected_communication_profile"},
+    {"field": "emergency_contact", "route": "protected_communication_profile"},
+    {"field": "primary_language", "route": "protected_communication_profile"},
+    {"field": "allergies", "route": "allergy_domain_migration"},
+    {"field": "conditions", "route": "condition_domain_migration"},
+    {"field": "medications", "route": "medication_domain_migration"},
+    {"field": "mycelix_identity_hash", "route": "protected_identity_binding_migration"},
+    {"field": "matl_trust_score", "route": "legacy_reliability_observation"},
+    {"field": "created_at", "route": "protected_provenance"},
+    {"field": "updated_at", "route": "protected_provenance"}
+  ]
+}
