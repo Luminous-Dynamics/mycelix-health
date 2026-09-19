@@ -1,0 +1,124 @@
+name: Qualify Symthaea Distribution Runtime Trust V3
+
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: 1
+
+jobs:
+  qualify:
+    name: Exact-head v3 qualification
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out exact subject with full ancestry
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Verify required proof-line ancestry
+        shell: bash
+        run: |
+          set -euo pipefail
+          ASSERTION_HEAD=469f3e75f6b2b2905956657ab549e7bfdd4962ec
+          CURRENTNESS_HEAD=2c89b88f949a9d013b4f190e071a690c978cea4d
+          INTEGRATION_HEAD=50d5ac4aca63dce737f1f2bb91a0dce530038b33
+
+          for sha in "$ASSERTION_HEAD" "$CURRENTNESS_HEAD" "$INTEGRATION_HEAD"; do
+            git cat-file -e "${sha}^{commit}"
+            git merge-base --is-ancestor "$sha" HEAD
+          done
+
+          expected_parents="$ASSERTION_HEAD $CURRENTNESS_HEAD"
+          actual_parents="$(git show -s --format=%P "$INTEGRATION_HEAD")"
+          test "$actual_parents" = "$expected_parents"
+
+          test -f crates/symthaea-clinical-distribution-trust-v3/Cargo.toml
+          test -f crates/symthaea-clinical-distribution-trust-v3/src/lib.rs
+          test -f crates/symthaea-clinical-distribution-trust-v3/tests/runtime_trust.rs
+          test -f docs/security/SYMTHAEA_CLINICAL_DISTRIBUTION_RUNTIME_TRUST_V3_QUALIFICATION.md
+
+          echo "Qualification subject: $(git rev-parse HEAD)"
+          echo "Integration parents: $actual_parents"
+
+      - name: Check out standalone sibling dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          git clone --depth 1 https://github.com/Luminous-Dynamics/mycelix.git /tmp/mycelix-parent
+          mkdir -p ../crates ../mycelix-core ../mycelix-workspace/mycelix-core
+          cp -r /tmp/mycelix-parent/crates/. ../crates/
+          cp -r /tmp/mycelix-parent/mycelix-core/. ../mycelix-core/
+          cp -r /tmp/mycelix-parent/mycelix-core/. ../mycelix-workspace/mycelix-core/
+          rm -rf /tmp/mycelix-parent
+
+      - name: Install pinned Rust toolchain
+        uses: dtolnay/rust-toolchain@1.96.0
+        with:
+          components: rustfmt, clippy
+          targets: wasm32-unknown-unknown
+
+      - name: Install native dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libssl-dev pkg-config
+
+      - name: Verify focused workspace registration
+        shell: bash
+        run: |
+          set -euo pipefail
+          cargo metadata --no-deps --format-version 1 \
+            | jq -e '.packages[] | select(.name == "mycelix-symthaea-clinical-distribution-trust-v3")' >/dev/null
+
+      - name: Check focused formatting
+        run: cargo fmt --package mycelix-symthaea-clinical-distribution-trust-v3 -- --check
+
+      - name: Check focused host clippy
+        shell: bash
+        run: |
+          set -euo pipefail
+          HOST="$(rustc -vV | awk '/^host:/{print $2}')"
+          cargo clippy \
+            -p mycelix-symthaea-clinical-distribution-trust-v3 \
+            --all-targets \
+            --target "$HOST" \
+            -- -D warnings
+
+      - name: Check focused WASM build surface
+        run: cargo check -p mycelix-symthaea-clinical-distribution-trust-v3 --target wasm32-unknown-unknown
+
+      - name: Run assertion-native runtime-trust tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          HOST="$(rustc -vV | awk '/^host:/{print $2}')"
+          cargo test \
+            -p mycelix-symthaea-clinical-distribution-trust-v3 \
+            --target "$HOST"
+
+      - name: Run prerequisite proof-line tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          HOST="$(rustc -vV | awk '/^host:/{print $2}')"
+          cargo test \
+            -p mycelix-symthaea-clinical-distribution-assessment-v2 \
+            -p mycelix-clinical-distribution-currentness \
+            -p clinical_distribution_trust_integrity \
+            -p clinical_distribution_trust \
+            -p clinical_distribution_lease_integrity \
+            -p clinical_distribution_lease \
+            --target "$HOST"
+
+      - name: Record exact qualification identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "subject_sha=$(git rev-parse HEAD)"
+          echo "assertion_head=469f3e75f6b2b2905956657ab549e7bfdd4962ec"
+          echo "currentness_head=2c89b88f949a9d013b4f190e071a690c978cea4d"
+          echo "integration_head=50d5ac4aca63dce737f1f2bb91a0dce530038b33"
+          echo "A green job is software qualification evidence only; it is not clinical validation or clinical authority."
