@@ -69,6 +69,7 @@ members = [
     "crates/symthaea-clinical-evidence-context",
     "crates/symthaea-clinical-model-assertion",
     "crates/symthaea-clinical-decision-rule",
+    "crates/symthaea-clinical-distribution-assessment-v2",
     "crates/clinical-distribution-assessment",
     "crates/clinical-distribution-trust",
     "crates/clinical-promotion",
