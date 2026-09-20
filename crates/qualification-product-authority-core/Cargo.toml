@@ -1,0 +1,17 @@
+[workspace]
+
+[package]
+name = "mycelix-qualification-product-authority-core"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.96"
+license = "AGPL-3.0-or-later"
+description = "Final typed qualification authority boundary for Mycelix Health product seams"
+publish = false
+
+[dependencies]
+mycelix-qualification-checkpoint-adapter-core = { path = "../qualification-checkpoint-adapter-core" }
+mycelix-qualification-receipt-core = { path = "../qualification-receipt-core" }
+
+[lib]
+path = "src/lib.rs"
