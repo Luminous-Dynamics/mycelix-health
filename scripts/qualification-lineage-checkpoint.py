@@ -756,6 +756,48 @@ def _load_store(path: pathlib.Path, binding: dict[str, Any]) -> dict[str, Any]:
         if state not in {"ActiveHead", "InactiveHead", "Forked"}:
             fail("durable checkpoint store contains invalid lineage state")
         derived_fork_lock = derived_fork_lock or state == "Forked"
+
+        stored_bundle = entry.get("bundle")
+        stored_policy = entry.get("policy_snapshot")
+        stored_trust = entry.get("trust_store_snapshot")
+        if (
+            not isinstance(stored_bundle, dict)
+            or not isinstance(stored_policy, dict)
+            or not isinstance(stored_trust, dict)
+        ):
+            fail("durable checkpoint store is missing signed verification material")
+        original_verified_at = int_value(
+            stored_bundle.get("verified_at_micros"), "stored bundle verified_at_micros"
+        )
+        verify_checkpoint_bundle(
+            stored_bundle, stored_policy, stored_trust, original_verified_at
+        )
+        signed_statement = stored_bundle["statement"]
+        expected_summary = {
+            "checkpoint_digest_sha256": stored_bundle["checkpoint_digest_sha256"],
+            "checkpoint_epoch": signed_statement["checkpoint_epoch"],
+            "previous_checkpoint_digest_sha256": signed_statement[
+                "previous_checkpoint_digest_sha256"
+            ],
+            "checkpoint_nonce": signed_statement["checkpoint_nonce"],
+            "lineage_state": signed_statement["lineage_state"],
+            "current_head_receipt_digest_sha256": signed_statement[
+                "current_head_receipt_digest_sha256"
+            ],
+            "current_head_sequence": signed_statement["current_head_sequence"],
+            "profile_match_commitment_sha256": signed_statement[
+                "profile_match_commitment_sha256"
+            ],
+            "lineage_state_commitment_sha256": signed_statement[
+                "lineage_state_commitment_sha256"
+            ],
+            "issued_at_micros": signed_statement["issued_at_micros"],
+            "expires_at_micros": signed_statement["expires_at_micros"],
+            "bundle_digest_sha256": stored_bundle["bundle_digest_sha256"],
+        }
+        for field, expected in expected_summary.items():
+            if entry.get(field) != expected:
+                fail(f"durable checkpoint store summary drifted: {field}")
     if nonces != derived_nonces:
         fail("durable checkpoint store nonce index drifted")
     expected_latest_epoch = 0 if not entries else entries[-1]["checkpoint_epoch"]
@@ -845,6 +887,9 @@ def admit_checkpoint(
         "issued_at_micros": statement["issued_at_micros"],
         "expires_at_micros": statement["expires_at_micros"],
         "bundle_digest_sha256": bundle["bundle_digest_sha256"],
+        "bundle": bundle,
+        "policy_snapshot": policy,
+        "trust_store_snapshot": trust_store,
     }
     next_store = dict(store)
     next_store["accepted_checkpoints"] = [*store["accepted_checkpoints"], record]
@@ -896,6 +941,7 @@ def emit_verified_head(
         "head_receipt_digest_sha256": statement["current_head_receipt_digest_sha256"],
         "head_sequence": statement["current_head_sequence"],
         "checkpoint_digest_sha256": bundle["checkpoint_digest_sha256"],
+        "checkpoint_bundle_digest_sha256": bundle["bundle_digest_sha256"],
         "checkpoint_epoch": statement["checkpoint_epoch"],
         "profile_match_commitment_sha256": statement["profile_match_commitment_sha256"],
         "lineage_state_commitment_sha256": statement["lineage_state_commitment_sha256"],
