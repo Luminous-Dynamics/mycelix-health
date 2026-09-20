@@ -3,7 +3,8 @@
 //!
 //! This reference consumes `VerifiedQualification` values from
 //! `mycelix-qualification-receipt-core`. It does not verify signatures, compute
-//! receipt/profile hashes, load governance policy, or provide trusted time.
+//! receipt/profile hashes, load governance policy, provide trusted time, or
+//! durably persist the seam-consumption clock.
 
 use core::fmt;
 use mycelix_qualification_receipt_core as qual;
@@ -118,6 +119,7 @@ impl Profile208CompositionCommitment {
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum AdapterConversionError {
+    ClockRollback,
     WrongReceiptKind,
     LineageBindingMismatch,
     LedgerBindingMismatch,
@@ -197,69 +199,110 @@ impl Profile208CompositionCommitmentToken {
     }
 }
 
-/// Convert one already-governed qualification into the exact #208
-/// composition-commitment authority token.
+/// Stateful consumption boundary for the exact #208 composition seam.
 ///
-/// This conversion performs an independent product-seam check after generic
-/// receipt verification. It also requires the receipt to remain active in the
-/// exact semantic-lineage ledger at consumption time.
-pub fn convert_profile208_composition_commitment(
-    qualification: &qual::VerifiedQualification,
-    ledger: &qual::QualificationLedger,
+/// The gate observes time before any semantic checks. Once it has observed a
+/// later time, a retry with an earlier time is rejected even when an earlier
+/// timestamp would otherwise make the receipt fresh again.
+pub struct Profile208CompositionCommitmentGate {
     profile: Profile208CompositionCommitment,
-    now_micros: i64,
-) -> Result<Profile208CompositionCommitmentToken, AdapterConversionError> {
-    if qualification.kind() != qual::ReceiptKind::CompositionCommitmentQualification {
-        return Err(AdapterConversionError::WrongReceiptKind);
-    }
-    if qualification.binding() != profile.binding {
-        return Err(AdapterConversionError::LineageBindingMismatch);
-    }
-    if ledger.binding() != profile.binding {
-        return Err(AdapterConversionError::LedgerBindingMismatch);
-    }
-    if qualification.policy_digest() != profile.policy_digest {
-        return Err(AdapterConversionError::PolicyMismatch);
-    }
-    if qualification.trust_store_digest() != profile.trust_store_digest {
-        return Err(AdapterConversionError::TrustStoreMismatch);
-    }
-    if qualification.deployment_evidence() != Some(profile.deployment_evidence) {
-        return Err(AdapterConversionError::DeploymentEvidenceMismatch);
-    }
-    if now_micros < qualification.issued_at_micros() {
-        return Err(AdapterConversionError::ReceiptNotYetValid);
-    }
-    if now_micros >= qualification.expires_at_micros() {
-        return Err(AdapterConversionError::ReceiptExpired);
-    }
-    if now_micros - qualification.issued_at_micros() > profile.max_consumption_age_micros {
-        return Err(AdapterConversionError::ReceiptTooOld);
-    }
-    if !ledger.is_admissible(qualification.receipt_digest()) {
-        return Err(AdapterConversionError::ReceiptNotAdmissible);
+    latest_time_micros: Option<i64>,
+}
+
+impl Profile208CompositionCommitmentGate {
+    pub fn new(profile: Profile208CompositionCommitment) -> Self {
+        Self {
+            profile,
+            latest_time_micros: None,
+        }
     }
 
-    Ok(Profile208CompositionCommitmentToken {
-        receipt_digest: qualification.receipt_digest(),
-        profile_digest: profile.profile_digest,
-        binding: qualification.binding(),
-        policy_digest: qualification.policy_digest(),
-        trust_store_digest: qualification.trust_store_digest(),
-        deployment_evidence: profile.deployment_evidence,
-        issued_at_micros: qualification.issued_at_micros(),
-        expires_at_micros: qualification.expires_at_micros(),
-    })
+    pub fn profile(&self) -> Profile208CompositionCommitment {
+        self.profile
+    }
+
+    pub fn latest_time_micros(&self) -> Option<i64> {
+        self.latest_time_micros
+    }
+
+    fn observe_time(&mut self, now_micros: i64) -> Result<(), AdapterConversionError> {
+        if self
+            .latest_time_micros
+            .is_some_and(|previous| now_micros < previous)
+        {
+            return Err(AdapterConversionError::ClockRollback);
+        }
+        self.latest_time_micros = Some(now_micros);
+        Ok(())
+    }
+
+    /// Convert one already-governed qualification into the exact #208
+    /// composition-commitment authority token.
+    ///
+    /// This performs an independent product-seam check after generic receipt
+    /// verification and requires the receipt to remain active in the exact
+    /// semantic-lineage ledger at consumption time.
+    pub fn convert(
+        &mut self,
+        qualification: &qual::VerifiedQualification,
+        ledger: &qual::QualificationLedger,
+        now_micros: i64,
+    ) -> Result<Profile208CompositionCommitmentToken, AdapterConversionError> {
+        self.observe_time(now_micros)?;
+
+        if qualification.kind() != qual::ReceiptKind::CompositionCommitmentQualification {
+            return Err(AdapterConversionError::WrongReceiptKind);
+        }
+        if qualification.binding() != self.profile.binding {
+            return Err(AdapterConversionError::LineageBindingMismatch);
+        }
+        if ledger.binding() != self.profile.binding {
+            return Err(AdapterConversionError::LedgerBindingMismatch);
+        }
+        if qualification.policy_digest() != self.profile.policy_digest {
+            return Err(AdapterConversionError::PolicyMismatch);
+        }
+        if qualification.trust_store_digest() != self.profile.trust_store_digest {
+            return Err(AdapterConversionError::TrustStoreMismatch);
+        }
+        if qualification.deployment_evidence() != Some(self.profile.deployment_evidence) {
+            return Err(AdapterConversionError::DeploymentEvidenceMismatch);
+        }
+        if now_micros < qualification.issued_at_micros() {
+            return Err(AdapterConversionError::ReceiptNotYetValid);
+        }
+        if now_micros >= qualification.expires_at_micros() {
+            return Err(AdapterConversionError::ReceiptExpired);
+        }
+        if now_micros - qualification.issued_at_micros()
+            > self.profile.max_consumption_age_micros
+        {
+            return Err(AdapterConversionError::ReceiptTooOld);
+        }
+        if !ledger.is_admissible(qualification.receipt_digest()) {
+            return Err(AdapterConversionError::ReceiptNotAdmissible);
+        }
+
+        Ok(Profile208CompositionCommitmentToken {
+            receipt_digest: qualification.receipt_digest(),
+            profile_digest: self.profile.profile_digest,
+            binding: qualification.binding(),
+            policy_digest: qualification.policy_digest(),
+            trust_store_digest: qualification.trust_store_digest(),
+            deployment_evidence: self.profile.deployment_evidence,
+            issued_at_micros: qualification.issued_at_micros(),
+            expires_at_micros: qualification.expires_at_micros(),
+        })
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use qual::{
-        ApproverId, ApproverRole, BoundApproverVerification, BoundReceiptCommitment,
-        DependencySetDigest, DispositionEvidenceDigest, GovernedAdmissionPolicy,
-        GovernedDispositionEvidence, GovernanceRule, Nonce, OrganizationId,
-        QualificationLineageBinding, ReceiptDisposition, ReceiptOutcome, RoleSet, SignerKeyId,
+        ApproverRole, BoundApproverVerification, BoundReceiptCommitment,
+        GovernedAdmissionPolicy, GovernedDispositionEvidence, GovernanceRule,
+        QualificationLineageBinding, ReceiptDisposition, ReceiptOutcome, RoleSet,
     };
 
     fn bytes(value: u8) -> [u8; 32] {
@@ -324,6 +367,7 @@ mod tests {
         .unwrap()
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn verified(
         kind: qual::ReceiptKind,
         subject: u8,
@@ -404,13 +448,8 @@ mod tests {
             1_000,
         );
         let ledger = admitted(&qualification);
-        let token = convert_profile208_composition_commitment(
-            &qualification,
-            &ledger,
-            profile(3, 500),
-            200,
-        )
-        .unwrap();
+        let mut gate = Profile208CompositionCommitmentGate::new(profile(3, 500));
+        let token = gate.convert(&qualification, &ledger, 200).unwrap();
         assert_eq!(token.seam(), AdapterSeamId::Patient208CompositionCommitment);
         assert_eq!(token.receipt_digest(), oid!(ReceiptDigest, 40));
         assert_eq!(token.policy_digest(), oid!(GovernancePolicyDigest, 7));
@@ -430,9 +469,9 @@ mod tests {
             1_000,
         );
         let ledger = admitted(&qualification);
+        let mut gate = Profile208CompositionCommitmentGate::new(profile(3, 500));
         assert_eq!(
-            convert_profile208_composition_commitment(&qualification, &ledger, profile(3, 500), 200)
-                .map(|_| ()),
+            gate.convert(&qualification, &ledger, 200).map(|_| ()),
             Err(AdapterConversionError::WrongReceiptKind)
         );
     }
@@ -450,9 +489,9 @@ mod tests {
             1_000,
         );
         let ledger = admitted(&qualification);
+        let mut gate = Profile208CompositionCommitmentGate::new(profile(3, 500));
         assert_eq!(
-            convert_profile208_composition_commitment(&qualification, &ledger, profile(3, 500), 200)
-                .map(|_| ()),
+            gate.convert(&qualification, &ledger, 200).map(|_| ()),
             Err(AdapterConversionError::LineageBindingMismatch)
         );
     }
@@ -470,9 +509,9 @@ mod tests {
             1_000,
         );
         let ledger = admitted(&wrong_policy);
+        let mut gate = Profile208CompositionCommitmentGate::new(profile(3, 500));
         assert_eq!(
-            convert_profile208_composition_commitment(&wrong_policy, &ledger, profile(3, 500), 200)
-                .map(|_| ()),
+            gate.convert(&wrong_policy, &ledger, 200).map(|_| ()),
             Err(AdapterConversionError::PolicyMismatch)
         );
 
@@ -487,9 +526,9 @@ mod tests {
             1_000,
         );
         let ledger = admitted(&wrong_trust);
+        let mut gate = Profile208CompositionCommitmentGate::new(profile(3, 500));
         assert_eq!(
-            convert_profile208_composition_commitment(&wrong_trust, &ledger, profile(3, 500), 200)
-                .map(|_| ()),
+            gate.convert(&wrong_trust, &ledger, 200).map(|_| ()),
             Err(AdapterConversionError::TrustStoreMismatch)
         );
 
@@ -504,14 +543,9 @@ mod tests {
             1_000,
         );
         let ledger = admitted(&wrong_deployment);
+        let mut gate = Profile208CompositionCommitmentGate::new(profile(3, 500));
         assert_eq!(
-            convert_profile208_composition_commitment(
-                &wrong_deployment,
-                &ledger,
-                profile(3, 500),
-                200,
-            )
-            .map(|_| ()),
+            gate.convert(&wrong_deployment, &ledger, 200).map(|_| ()),
             Err(AdapterConversionError::DeploymentEvidenceMismatch)
         );
     }
@@ -539,9 +573,9 @@ mod tests {
                 true,
             ))
             .unwrap();
+        let mut gate = Profile208CompositionCommitmentGate::new(profile(3, 500));
         assert_eq!(
-            convert_profile208_composition_commitment(&qualification, &ledger, profile(3, 500), 200)
-                .map(|_| ()),
+            gate.convert(&qualification, &ledger, 200).map(|_| ()),
             Err(AdapterConversionError::ReceiptNotAdmissible)
         );
     }
@@ -559,15 +593,21 @@ mod tests {
             1_000,
         );
         let ledger = admitted(&qualification);
+
+        let mut age_gate = Profile208CompositionCommitmentGate::new(profile(3, 50));
         assert_eq!(
-            convert_profile208_composition_commitment(&qualification, &ledger, profile(3, 50), 200)
-                .map(|_| ()),
+            age_gate.convert(&qualification, &ledger, 200).map(|_| ()),
             Err(AdapterConversionError::ReceiptTooOld)
         );
+
+        let mut expiry_gate = Profile208CompositionCommitmentGate::new(profile(3, 5_000));
         assert_eq!(
-            convert_profile208_composition_commitment(&qualification, &ledger, profile(3, 5_000), 1_000)
-                .map(|_| ()),
+            expiry_gate.convert(&qualification, &ledger, 1_000).map(|_| ()),
             Err(AdapterConversionError::ReceiptExpired)
+        );
+        assert_eq!(
+            expiry_gate.convert(&qualification, &ledger, 200).map(|_| ()),
+            Err(AdapterConversionError::ClockRollback)
         );
     }
 
@@ -594,9 +634,9 @@ mod tests {
             1_000,
         );
         let ledger = admitted(&wrong);
+        let mut gate = Profile208CompositionCommitmentGate::new(profile(3, 500));
         assert_eq!(
-            convert_profile208_composition_commitment(&qualification, &ledger, profile(3, 500), 200)
-                .map(|_| ()),
+            gate.convert(&qualification, &ledger, 200).map(|_| ()),
             Err(AdapterConversionError::LedgerBindingMismatch)
         );
     }
