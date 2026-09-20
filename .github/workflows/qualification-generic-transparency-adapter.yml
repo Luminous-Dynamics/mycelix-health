@@ -1,0 +1,135 @@
+name: Qualification Generic Transparency Adapter
+
+on:
+  pull_request:
+    branches:
+      - 'feat/qualification-external-anchor-v1'
+    paths:
+      - 'crates/qualification-generic-transparency-adapter-core/**'
+      - 'crates/qualification-anti-rollback-anchor-core/**'
+      - 'crates/qualification-product-authority-core/**'
+      - 'crates/qualification-checkpoint-adapter-core/**'
+      - 'crates/qualification-adapter-profile-core/**'
+      - 'crates/qualification-receipt-core/**'
+      - '.github/workflows/qualification-generic-transparency-adapter.yml'
+  push:
+    branches:
+      - 'feat/qualification-generic-transparency-adapter-v1'
+
+permissions:
+  contents: read
+
+jobs:
+  qualify-generic-transparency-adapter:
+    name: Qualify Health generic-transparency mapping theorem
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Check out exact stacked subject
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+
+      - name: Install exact Rust toolchain
+        run: |
+          rustup toolchain install 1.96.0 --profile minimal --component rustfmt,clippy
+          rustc +1.96.0 -Vv
+          cargo +1.96.0 -V
+
+      - name: Freeze exact source identity
+        run: |
+          git rev-parse HEAD | tee /tmp/subject.sha
+          find \
+            crates/qualification-receipt-core \
+            crates/qualification-adapter-profile-core \
+            crates/qualification-checkpoint-adapter-core \
+            crates/qualification-product-authority-core \
+            crates/qualification-anti-rollback-anchor-core \
+            crates/qualification-generic-transparency-adapter-core \
+            -path '*/target' -prune -o -type f -print0 \
+            | sort -z | xargs -0 sha256sum > /tmp/adapter.before.sha256
+
+      - name: Static interoperability guards
+        run: |
+          manifest='crates/qualification-generic-transparency-adapter-core/Cargo.toml'
+          core='crates/qualification-generic-transparency-adapter-core/src/lib.rs'
+          transcript='crates/qualification-generic-transparency-adapter-core/tests/transcript.rs'
+          boundaries='crates/qualification-generic-transparency-adapter-core/BOUNDARIES.md'
+          status='crates/qualification-generic-transparency-adapter-core/SOURCE_STATUS.md'
+
+          grep -q 'mycelix-qualification-anti-rollback-anchor-core' "$manifest"
+          grep -q 'VerifiedGenericAcceptedAnchorV1' "$core"
+          grep -q 'VerifiedGenericStateCommitmentDeriverV1' "$core"
+          grep -q 'VerifiedHealthSecurityTimeFloorV1' "$core"
+          grep -q 'HealthGenericAnchorProofV1' "$core"
+          grep -q 'canonical_health_state_transcript' "$core"
+          grep -q 'RecoveredGenericLineageUnsupported' "$core"
+          grep -q 'HEALTH_GENERIC_DOMAIN_ID_V1' "$core"
+          grep -q 'MYCELIX-HEALTH-QUALIFICATION-ANTI-ROLLBACK-STATE-V1' "$core"
+          grep -q 'to_be_bytes' "$transcript"
+          grep -q 'does not establish' "$boundaries"
+          grep -q 'NO PASS CLAIM' "$status"
+
+          ! grep -n 'verified: bool' "$core"
+          ! grep -nE 'pub fn .*verified.*bool|pub struct .*Verified.*\{[^}]*bool' "$core"
+          ! grep -n 'Luminous-Dynamics/luminous-dynamics.*path' "$manifest"
+
+      - name: Verify isolated adapter metadata
+        run: |
+          cargo +1.96.0 metadata --locked --no-deps --format-version 1 \
+            --manifest-path crates/qualification-generic-transparency-adapter-core/Cargo.toml \
+            > /tmp/adapter.metadata.json
+          test "$(jq -r '.packages | length' /tmp/adapter.metadata.json)" = "1"
+          test "$(jq -r '.packages[0].name' /tmp/adapter.metadata.json)" = "mycelix-qualification-generic-transparency-adapter-core"
+
+      - name: Re-run parent anti-rollback reference tests
+        run: |
+          cargo +1.96.0 fmt --manifest-path crates/qualification-anti-rollback-anchor-core/Cargo.toml -- --check
+          cargo +1.96.0 test --locked --manifest-path crates/qualification-anti-rollback-anchor-core/Cargo.toml
+          cargo +1.96.0 clippy --locked --manifest-path crates/qualification-anti-rollback-anchor-core/Cargo.toml --all-targets -- -D warnings
+
+      - name: Format adapter
+        run: |
+          cargo +1.96.0 fmt \
+            --manifest-path crates/qualification-generic-transparency-adapter-core/Cargo.toml \
+            -- --check
+
+      - name: Test adapter and transcript framing
+        run: |
+          cargo +1.96.0 test --locked \
+            --manifest-path crates/qualification-generic-transparency-adapter-core/Cargo.toml
+
+      - name: Clippy adapter
+        run: |
+          cargo +1.96.0 clippy --locked \
+            --manifest-path crates/qualification-generic-transparency-adapter-core/Cargo.toml \
+            --all-targets -- -D warnings
+
+      - name: Verify postflight source immutability
+        run: |
+          test "$(git rev-parse HEAD)" = "$(cat /tmp/subject.sha)"
+          find \
+            crates/qualification-receipt-core \
+            crates/qualification-adapter-profile-core \
+            crates/qualification-checkpoint-adapter-core \
+            crates/qualification-product-authority-core \
+            crates/qualification-anti-rollback-anchor-core \
+            crates/qualification-generic-transparency-adapter-core \
+            -path '*/target' -prune -o -type f -print0 \
+            | sort -z | xargs -0 sha256sum > /tmp/adapter.after.sha256
+          diff -u /tmp/adapter.before.sha256 /tmp/adapter.after.sha256
+          git diff --exit-code
+
+      - name: Evidence summary
+        if: always()
+        run: |
+          {
+            echo '## QUAL-EVID-007 generic transparency adapter evidence'
+            echo
+            echo "- subject: $(git rev-parse HEAD)"
+            echo "- rustc: $(rustc +1.96.0 --version 2>/dev/null || echo unavailable)"
+            echo '- parent: QUAL-EVID-005/#220 external anti-rollback theorem'
+            echo '- scope: exact Health <-> generic transparency semantic mapping only'
+            echo '- invariant: domain, subject, epoch and canonical state commitment must all match'
+            echo '- invariant: generic currentness and Health security-time floor are independent typed evidence boundaries'
+            echo '- invariant: recovered generic lineages are refused in V1 pending explicit recovery-policy mapping'
+            echo '- non-claim: draft #2023 generic backend is not imported or qualified by this child'
+            echo '- non-claim: a green child run does not independently qualify queued parent workflows'
+          } >> "$GITHUB_STEP_SUMMARY"

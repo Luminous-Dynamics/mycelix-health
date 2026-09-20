@@ -1,0 +1,44 @@
+version = 4
+
+[[package]]
+name = "mycelix-qualification-adapter-profile-core"
+version = "0.1.0"
+dependencies = [
+ "mycelix-qualification-receipt-core",
+]
+
+[[package]]
+name = "mycelix-qualification-anti-rollback-anchor-core"
+version = "0.1.0"
+dependencies = [
+ "mycelix-qualification-product-authority-core",
+ "mycelix-qualification-receipt-core",
+]
+
+[[package]]
+name = "mycelix-qualification-checkpoint-adapter-core"
+version = "0.1.0"
+dependencies = [
+ "mycelix-qualification-adapter-profile-core",
+ "mycelix-qualification-receipt-core",
+]
+
+[[package]]
+name = "mycelix-qualification-generic-transparency-adapter-core"
+version = "0.1.0"
+dependencies = [
+ "mycelix-qualification-anti-rollback-anchor-core",
+ "mycelix-qualification-product-authority-core",
+]
+
+[[package]]
+name = "mycelix-qualification-product-authority-core"
+version = "0.1.0"
+dependencies = [
+ "mycelix-qualification-checkpoint-adapter-core",
+ "mycelix-qualification-receipt-core",
+]
+
+[[package]]
+name = "mycelix-qualification-receipt-core"
+version = "0.1.0"
