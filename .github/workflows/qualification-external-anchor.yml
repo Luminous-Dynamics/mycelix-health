@@ -1,0 +1,184 @@
+name: Qualification External Anti-Rollback Anchor
+
+on:
+  pull_request:
+    branches:
+      - 'feat/qualification-checkpoint-adapter-integration-v1'
+    paths:
+      - 'crates/qualification-receipt-core/**'
+      - 'crates/qualification-adapter-profile-core/**'
+      - 'crates/qualification-checkpoint-adapter-core/**'
+      - 'crates/qualification-product-authority-core/**'
+      - 'crates/qualification-anti-rollback-anchor-core/**'
+      - 'scripts/qualification-receipt.py'
+      - 'scripts/qualification-receipt-profile.py'
+      - 'scripts/qualification-lineage-checkpoint.py'
+      - 'scripts/qualification-lineage-checkpoint-admission.py'
+      - 'scripts/test-qualification-receipt.py'
+      - 'scripts/test-qualification-receipt-profile.py'
+      - 'scripts/test-qualification-lineage-checkpoint.py'
+      - 'scripts/test-qualification-lineage-checkpoint-admission.py'
+      - 'docs/security/QUALIFICATION_EXTERNAL_ANTI_ROLLBACK_ANCHOR_V1.md'
+      - '.github/workflows/qualification-external-anchor.yml'
+  push:
+    branches:
+      - 'feat/qualification-external-anchor-v1'
+
+permissions:
+  contents: read
+
+jobs:
+  qualify-external-anchor-reconciliation:
+    name: Qualify external anti-rollback reconciliation theorem
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Check out exact stacked subject
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+
+      - name: Install exact Rust toolchain
+        run: |
+          rustup toolchain install 1.96.0 --profile minimal --component rustfmt,clippy
+          rustc +1.96.0 -Vv
+          cargo +1.96.0 -V
+          python3 --version
+          openssl version
+
+      - name: Freeze exact source identities
+        run: |
+          git rev-parse HEAD | tee /tmp/subject.sha
+          find \
+            crates/qualification-receipt-core \
+            crates/qualification-adapter-profile-core \
+            crates/qualification-checkpoint-adapter-core \
+            crates/qualification-product-authority-core \
+            crates/qualification-anti-rollback-anchor-core \
+            -path '*/target' -prune -o -type f -print0 \
+            | sort -z | xargs -0 sha256sum \
+            > /tmp/anchor.before.sha256
+          sha256sum \
+            scripts/qualification-receipt.py \
+            scripts/qualification-receipt-profile.py \
+            scripts/qualification-lineage-checkpoint.py \
+            scripts/qualification-lineage-checkpoint-admission.py \
+            scripts/test-qualification-receipt.py \
+            scripts/test-qualification-receipt-profile.py \
+            scripts/test-qualification-lineage-checkpoint.py \
+            scripts/test-qualification-lineage-checkpoint-admission.py \
+            docs/security/QUALIFICATION_EXTERNAL_ANTI_ROLLBACK_ANCHOR_V1.md \
+            >> /tmp/anchor.before.sha256
+
+      - name: Static authority-boundary guards
+        run: |
+          anchor='crates/qualification-anti-rollback-anchor-core/src/lib.rs'
+          grep -q 'VerifiedExternalAnchorProof' "$anchor"
+          grep -q 'AnchorUpdateIntent' "$anchor"
+          grep -q 'AnchoredQualificationHead' "$anchor"
+          grep -q 'AnchoredProfile208ProductAuthorityGate' "$anchor"
+          grep -q 'LocalRollbackDetected' "$anchor"
+          grep -q 'ExternalAnchorBehind' "$anchor"
+          grep -q 'SameEpochStateConflict' "$anchor"
+          grep -q 'BootstrapRequiresCheckpointEpochOne' "$anchor"
+          grep -q 'ReusedAnchorNonce' "$anchor"
+          grep -q 'QUALIFICATION_ANCHOR_SUBJECT_DOMAIN_V1' "$anchor"
+          grep -q 'Luminous-Dynamics/luminous-dynamics#1962' crates/qualification-anti-rollback-anchor-core/README.md
+          grep -q 'SOURCE-STAGED / UNEXECUTED' crates/qualification-anti-rollback-anchor-core/SOURCE_STATUS.md
+          ! grep -n 'verified: bool' "$anchor"
+          ! grep -nE 'pub fn .*verified.*bool|pub struct .*Verified.*\{[^}]*bool' "$anchor"
+          ! grep -n 'AnyQualification' "$anchor"
+
+      - name: Re-run governed qualification cryptographic tests
+        run: |
+          python3 -m py_compile \
+            scripts/qualification-receipt.py \
+            scripts/qualification-receipt-profile.py \
+            scripts/qualification-lineage-checkpoint.py \
+            scripts/qualification-lineage-checkpoint-admission.py \
+            scripts/test-qualification-receipt.py \
+            scripts/test-qualification-receipt-profile.py \
+            scripts/test-qualification-lineage-checkpoint.py \
+            scripts/test-qualification-lineage-checkpoint-admission.py
+          python3 scripts/test-qualification-receipt.py
+          python3 scripts/test-qualification-receipt-profile.py
+          python3 scripts/test-qualification-lineage-checkpoint.py
+          python3 scripts/test-qualification-lineage-checkpoint-admission.py
+
+      - name: Check/test/Clippy qualification receipt core
+        run: |
+          cargo +1.96.0 fmt --manifest-path crates/qualification-receipt-core/Cargo.toml -- --check
+          cargo +1.96.0 test --locked --manifest-path crates/qualification-receipt-core/Cargo.toml
+          cargo +1.96.0 clippy --locked --manifest-path crates/qualification-receipt-core/Cargo.toml --all-targets -- -D warnings
+
+      - name: Check/test/Clippy exact adapter profile core
+        run: |
+          cargo +1.96.0 fmt --manifest-path crates/qualification-adapter-profile-core/Cargo.toml -- --check
+          cargo +1.96.0 test --locked --manifest-path crates/qualification-adapter-profile-core/Cargo.toml
+          cargo +1.96.0 clippy --locked --manifest-path crates/qualification-adapter-profile-core/Cargo.toml --all-targets -- -D warnings
+
+      - name: Check/test/Clippy checkpoint adapter core
+        run: |
+          cargo +1.96.0 fmt --manifest-path crates/qualification-checkpoint-adapter-core/Cargo.toml -- --check
+          cargo +1.96.0 test --locked --manifest-path crates/qualification-checkpoint-adapter-core/Cargo.toml
+          cargo +1.96.0 clippy --locked --manifest-path crates/qualification-checkpoint-adapter-core/Cargo.toml --all-targets -- -D warnings
+
+      - name: Check/test/Clippy product authority core
+        run: |
+          cargo +1.96.0 fmt --manifest-path crates/qualification-product-authority-core/Cargo.toml -- --check
+          cargo +1.96.0 test --locked --manifest-path crates/qualification-product-authority-core/Cargo.toml
+          cargo +1.96.0 clippy --locked --manifest-path crates/qualification-product-authority-core/Cargo.toml --all-targets -- -D warnings
+
+      - name: Check anti-rollback anchor metadata
+        run: |
+          cargo +1.96.0 metadata --locked --no-deps --format-version 1 \
+            --manifest-path crates/qualification-anti-rollback-anchor-core/Cargo.toml \
+            > /tmp/anchor.metadata.json
+          test "$(jq -r '.packages | length' /tmp/anchor.metadata.json)" = "1"
+          test "$(jq -r '.packages[0].name' /tmp/anchor.metadata.json)" = "mycelix-qualification-anti-rollback-anchor-core"
+
+      - name: Check/test/Clippy anti-rollback anchor core
+        run: |
+          cargo +1.96.0 fmt --manifest-path crates/qualification-anti-rollback-anchor-core/Cargo.toml -- --check
+          cargo +1.96.0 test --locked --manifest-path crates/qualification-anti-rollback-anchor-core/Cargo.toml
+          cargo +1.96.0 clippy --locked --manifest-path crates/qualification-anti-rollback-anchor-core/Cargo.toml --all-targets -- -D warnings
+
+      - name: Verify postflight source immutability
+        run: |
+          test "$(git rev-parse HEAD)" = "$(cat /tmp/subject.sha)"
+          find \
+            crates/qualification-receipt-core \
+            crates/qualification-adapter-profile-core \
+            crates/qualification-checkpoint-adapter-core \
+            crates/qualification-product-authority-core \
+            crates/qualification-anti-rollback-anchor-core \
+            -path '*/target' -prune -o -type f -print0 \
+            | sort -z | xargs -0 sha256sum \
+            > /tmp/anchor.after.sha256
+          sha256sum \
+            scripts/qualification-receipt.py \
+            scripts/qualification-receipt-profile.py \
+            scripts/qualification-lineage-checkpoint.py \
+            scripts/qualification-lineage-checkpoint-admission.py \
+            scripts/test-qualification-receipt.py \
+            scripts/test-qualification-receipt-profile.py \
+            scripts/test-qualification-lineage-checkpoint.py \
+            scripts/test-qualification-lineage-checkpoint-admission.py \
+            docs/security/QUALIFICATION_EXTERNAL_ANTI_ROLLBACK_ANCHOR_V1.md \
+            >> /tmp/anchor.after.sha256
+          diff -u /tmp/anchor.before.sha256 /tmp/anchor.after.sha256
+          git diff --exit-code
+
+      - name: Evidence summary
+        if: always()
+        run: |
+          {
+            echo '## QUAL-EVID-005 external anti-rollback anchor evidence'
+            echo
+            echo "- subject: $(git rev-parse HEAD)"
+            echo '- parent: QUAL-EVID-006/#219 product-authority stack'
+            echo "- rustc: $(rustc +1.96.0 --version 2>/dev/null || echo unavailable)"
+            echo '- scope: backend-neutral health reconciliation + anchored #208 product gate only'
+            echo '- invariant: prepare state is non-authorizing; finalize requires exact verified external proof'
+            echo '- invariant: older local state, older external state, same-epoch substitution and epoch gaps deny authority'
+            echo '- invariant: stale/unavailable/conflicting external anchor cannot fall back to local-only authority'
+            echo '- invariant: external backend sees opaque commitments rather than care-record payloads'
+            echo '- non-claim: no concrete witness/TPM/HSM backend qualified; generic Luminous extraction remains #1962'
+          } >> "$GITHUB_STEP_SUMMARY"
