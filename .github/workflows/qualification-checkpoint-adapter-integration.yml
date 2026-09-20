@@ -51,7 +51,8 @@ jobs:
             crates/qualification-adapter-profile-core \
             crates/qualification-checkpoint-adapter-core \
             crates/qualification-product-authority-core \
-            -type f -print0 | sort -z | xargs -0 sha256sum \
+            -type d -name target -prune -o -type f -print0 \
+            | sort -z | xargs -0 sha256sum \
             > /tmp/checkpoint-adapter.before.sha256
           sha256sum \
             scripts/qualification-receipt.py \
@@ -156,7 +157,8 @@ jobs:
             crates/qualification-adapter-profile-core \
             crates/qualification-checkpoint-adapter-core \
             crates/qualification-product-authority-core \
-            -type f -print0 | sort -z | xargs -0 sha256sum \
+            -type d -name target -prune -o -type f -print0 \
+            | sort -z | xargs -0 sha256sum \
             > /tmp/checkpoint-adapter.after.sha256
           sha256sum \
             scripts/qualification-receipt.py \
