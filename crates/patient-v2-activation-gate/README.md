@@ -7,73 +7,89 @@ Reference semantics for PATIENT-PRIV-005 (#203).
 ```text
 reference qualified
     != integration qualified
+    != legacy writes frozen
     != migration rehearsed
     != authority to deploy
     != V2 active
 ```
 
-This crate exists so a set of green reference tests cannot silently become a
-production Patient v2 cutover decision.
+This crate exists so a collection of green reference tests cannot silently become
+a production Patient v2 cutover decision.
 
 ## Required evidence
 
-The gate has a fixed mandatory proof vocabulary. Reference proofs bind exact
-contract IDs/versions; deployment proofs must bind the exact activation
-`DeploymentIdentity` (source, DNA manifest, integrity/coordinator WASM sets,
-toolchain, privacy-contract epoch).
+The gate has 20 mandatory proof lines. Reference proofs bind exact contract
+IDs/versions; deployment proofs bind the exact activation `DeploymentIdentity`:
+source commit, DNA manifest, integrity/coordinator WASM sets, toolchain and
+privacy-contract epoch.
 
-Only `EvidenceState::Qualified` satisfies a requirement. These states deny:
+Only `EvidenceState::Qualified` satisfies a requirement. `SourceStaged`,
+`QueuedInfrastructure`, `Failed`, `Stale`, `Missing` and `Superseded` all deny.
+Queued CI is therefore never a PASS.
 
-- `SourceStaged`
-- `QueuedInfrastructure`
-- `Failed`
-- `Stale`
-- `Missing`
-- `Superseded`
+Reference evidence cannot satisfy deployment integration evidence. For example,
+a ProtectedEnvelopeV2 semantic PASS cannot stand in for the production
+AEAD/KDF/serialization/WASM proof.
 
-This deliberately matches the project's evidence discipline: queued CI is not a
-PASS.
+## Cutover freeze
 
-## Reference vs deployment proof
+A migration rehearsal is unsafe if v1 writes can continue after the rehearsed
+snapshot. The v2 contract therefore requires a separately qualified
+`LegacyWriteFreezeIntegration` proof and a concrete `CutoverFreezeReceipt`.
 
-A reference contract can prove a semantic theorem such as CARE-CAP attenuation
-or ProtectedEnvelopeV2 representation. It cannot satisfy the separate production
-adapter/integration proof bound to the exact deployment candidate.
+The receipt binds:
 
-That prevents evidence laundering of the form:
+- exact deployment identity;
+- exact legacy-state digest;
+- non-zero freeze epoch;
+- proof that legacy writes are blocked;
+- a unique evidence identity.
 
-```text
-reference unit tests passed
-        -> therefore production crypto/storage is qualified
-```
+After the freeze is admitted, the write target is `DenyDuringCutover`. It stays
+that way through rehearsal, authority admission and activation authorization.
+Only actual `V2Active` switches writes to `ProtectedV2`.
 
 ## Migration rehearsal
 
-Migration rehearsal is a separate transition after technical evidence completion.
-Its receipt requires exact deployment identity plus positive evidence for:
+The rehearsal receipt must bind the exact frozen legacy-state digest and freeze
+epoch, as well as positive evidence for idempotency, conflict detection, no
+plaintext fallback, unresolved-route accounting and the fact that historical
+legacy-public exposure may persist.
 
-- idempotency;
-- conflict detection;
-- no plaintext fallback;
-- unresolved domain-route accounting;
-- historical public exposure acknowledgement.
+A rehearsal of snapshot A cannot authorize activation after the system has moved
+to snapshot B.
 
 ## Activation authority
 
-Technical evidence and rehearsal still do not authorize deployment.
-
-`ActivationAuthorityReceipt` is an opaque already-verified authority artifact
-that must bind:
+Technical evidence, freeze and rehearsal still do not authorize deployment.
+`ActivationAuthorityReceipt` must bind:
 
 - the exact deployment;
-- the exact admitted evidence IDs plus rehearsal evidence ID;
+- the canonical evidence-set transcript;
+- the exact freeze evidence ID, frozen-state digest and freeze epoch;
+- the exact rehearsal evidence ID;
 - a finite validity window;
 - an opaque authority reference;
-- acknowledgement that historical legacy-public exposure may persist.
+- explicit acknowledgement of historical public exposure.
 
-Signature/governance verification is intentionally a separate adapter proof
-line. CI status, merge permission, first caller, or ownership cannot substitute
-for this authority artifact.
+Signature/governance verification is intentionally a separate adapter theorem.
+CI status, merge permission, ownership or first-caller behavior cannot substitute
+for explicit activation authority.
+
+## Time theorem
+
+Authority validity is checked at three separate transitions:
+
+1. authority admission;
+2. activation authorization;
+3. final `V2Active` transition.
+
+The state remembers the latest observed authority time and rejects clock rollback.
+An authority that has been observed expired at T=100 cannot be made valid again by
+retrying with T=99.
+
+The production adapter must still supply a trusted clock; the reference core does
+not claim trusted-time implementation.
 
 ## State machine
 
@@ -81,6 +97,7 @@ for this authority artifact.
 LegacyV1Writable
     -> CandidatePrepared
     -> EvidenceComplete
+    -> LegacyWritesFrozen
     -> MigrationRehearsed
     -> ActivationAuthorityAdmitted
     -> V2ActivationAuthorized
@@ -88,29 +105,30 @@ LegacyV1Writable
     -> LegacyV1ReadOnly
 ```
 
-Transitions are ordered and fail closed. There is no force/override API in v1.
+`ActivationState` owns its phase privately; callers cannot directly construct a
+`V2Active` phase. There is no generic force/override path.
 
-Only after `V2Active` does the write target switch to protected v2. Once active,
-protected read failures return `DenyNoLegacyFallback`; they never reactivate
-legacy plaintext reads.
+After activation, any protected read failure becomes
+`DenyNoLegacyFallback(...)`; it never re-enables legacy plaintext reads.
 
 ## Historical exposure
 
-`ActivationCandidate` and qualified rehearsal construction hard-code the legacy
-public-exposure acknowledgement to true. The API cannot claim that old public
-DHT observations were cryptographically recalled.
+The activation candidate, evidence receipt and rehearsal model preserve the fact
+that prior public-DHT observations may remain observable. Migration is not
+cryptographic recall.
 
 ## Deliberate boundaries
 
 This crate does not:
 
-- query GitHub/CI;
-- decide whether an external run truly qualifies a proof;
-- hash/sign evidence transcripts;
-- verify governance/operator signatures;
-- inspect Holochain WASM/DNA bytes;
-- perform migration;
-- make privacy, clinical, or regulatory-compliance claims.
+- query GitHub or decide whether a CI result is truthful;
+- verify evidence/signature/governance artifacts;
+- implement a trusted clock;
+- hash or sign the evidence transcript;
+- perform the production write freeze or migration;
+- inspect exact Holochain WASM/DNA bytes itself;
+- provide a rollback/unfreeze governance protocol;
+- make privacy, clinical, HIPAA, POPIA, GDPR or other legal-compliance claims.
 
-It defines the fail-closed aggregation/activation theorem that those independently
-qualified adapters must satisfy.
+It defines the fail-closed evidence/cutover/authority theorem that separately
+qualified production adapters must satisfy.
