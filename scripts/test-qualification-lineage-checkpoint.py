@@ -426,7 +426,7 @@ class CheckpointTests(unittest.TestCase):
             )
         changed_statement = copy.deepcopy(statement)
         changed_statement["latest_ledger_time_micros"] += 1
-        with self.assertRaises(Q.QualificationError):
+        with self.assertRaises(C.CheckpointError):
             C.assemble_checkpoint_bundle(
                 changed_statement,
                 [first, second],
@@ -590,6 +590,19 @@ class CheckpointTests(unittest.TestCase):
         with self.assertRaises(C.CheckpointError):
             C.admit_checkpoint(
                 store, bundle, self.h.checkpoint_policy, self.h.trust, 250
+            )
+
+    def test_parseable_but_internally_inconsistent_store_fails_closed(self):
+        statement = self.h.checkpoint_statement()
+        bundle = self.h.checkpoint_bundle(statement)
+        store = self.root / "checkpoint-store.json"
+        C.admit_checkpoint(store, bundle, self.h.checkpoint_policy, self.h.trust, 250)
+        value = json.loads(store.read_text())
+        value["latest_checkpoint_epoch"] = 99
+        store.write_text(json.dumps(value), encoding="utf-8")
+        with self.assertRaises(C.CheckpointError):
+            C.emit_verified_head(
+                store, bundle, self.h.checkpoint_policy, self.h.trust, 260
             )
 
     def test_bundle_tampering_fails_independent_reconstruction(self):
