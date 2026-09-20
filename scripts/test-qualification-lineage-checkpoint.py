@@ -302,6 +302,46 @@ class CheckpointTests(unittest.TestCase):
         )
         self.assertTrue(head["claims"]["checkpoint_is_durable_current_checkpoint"])
         self.assertTrue(head["claims"]["product_seam_conversion_not_performed"])
+        self.assertEqual(json.loads(store.read_text())["latest_time_micros"], 260)
+
+    def test_fresh_process_can_reload_store_and_emit_same_head(self):
+        statement = self.h.checkpoint_statement()
+        bundle = self.h.checkpoint_bundle(statement)
+        store = self.root / "checkpoint-store.json"
+        C.admit_checkpoint(store, bundle, self.h.checkpoint_policy, self.h.trust, 250)
+        bundle_path = self.root / "bundle.json"
+        policy_path = self.root / "checkpoint-policy.json"
+        trust_path = self.root / "trust.json"
+        output = self.root / "head.json"
+        bundle_path.write_text(json.dumps(bundle), encoding="utf-8")
+        policy_path.write_text(json.dumps(self.h.checkpoint_policy), encoding="utf-8")
+        trust_path.write_text(json.dumps(self.h.trust), encoding="utf-8")
+        result = subprocess.run(
+            [
+                "python3",
+                str(ROOT / "scripts/qualification-lineage-checkpoint.py"),
+                "emit-head",
+                str(bundle_path),
+                "--policy",
+                str(policy_path),
+                "--trust-store",
+                str(trust_path),
+                "--now-micros",
+                "260",
+                "--store",
+                str(store),
+                "--output",
+                str(output),
+            ],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        head = json.loads(output.read_text())
+        self.assertEqual(
+            head["head_receipt_digest_sha256"], self.h.bundle["receipt_digest_sha256"]
+        )
 
     def test_exact_replay_is_idempotent(self):
         statement = self.h.checkpoint_statement()
@@ -312,9 +352,24 @@ class CheckpointTests(unittest.TestCase):
             "Added",
         )
         self.assertEqual(
-            C.admit_checkpoint(store, bundle, self.h.checkpoint_policy, self.h.trust, 250),
+            C.admit_checkpoint(store, bundle, self.h.checkpoint_policy, self.h.trust, 400),
             "IdempotentReplay",
         )
+        self.assertEqual(json.loads(store.read_text())["latest_time_micros"], 400)
+        later_statement = self.h.checkpoint_statement(
+            epoch=2,
+            previous=bundle["checkpoint_digest_sha256"],
+            nonce=h("c"),
+            issued=300,
+            expires=850,
+        )
+        later_bundle = self.h.checkpoint_bundle(
+            later_statement, attested=320, verify_at=350
+        )
+        with self.assertRaises(C.CheckpointError):
+            C.admit_checkpoint(
+                store, later_bundle, self.h.checkpoint_policy, self.h.trust, 350
+            )
 
     def test_forked_receipt_state_never_emits_head_authority(self):
         root_digest = self.h.bundle["receipt_digest_sha256"]
