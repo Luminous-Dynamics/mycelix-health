@@ -6,21 +6,24 @@ This subject implements QUAL-EVID-006/#218 on top of QUAL-EVID-004/#217.
 
 ## What source exists
 
-- public crate root moved from `src/lib.rs` to `src/integrated.rs`;
-- QUAL-EVID-002 implementation retained privately as `mod legacy`;
-- exact #217 verified-head artifact vocabulary represented in Rust;
-- no public `verified: bool` current-head constructor;
-- exact qualification/head/profile-match/time checks before #208 conversion;
-- provenance-rich `Profile208CompositionCommitmentToken`;
-- unit tests for exact valid conversion and principal negative cases.
+The final design intentionally has two Rust layers above QUAL-EVID-002:
+
+1. `mycelix-qualification-checkpoint-adapter-core` — an internal integration reference that binds the exact #217 head identity into the lower #212 semantics; and
+2. `mycelix-qualification-product-authority-core` — the product-facing boundary that accepts the exact #214 profile-match artifact plus exact #217 current-head artifact and emits one typed #208 product token.
+
+The lower QUAL-EVID-002 crate is unchanged from its parent subject.
+
+The final product-facing crate exposes no raw `VerifiedLineageHead`, no `verified: bool`, and no caller-selected bare expected profile-match digest.
+
+The final token preserves governed qualification identity plus profile-match and checkpoint provenance.
 
 ## What is not yet proven
 
-No successful exact-head Rust workflow has been observed for this subject yet.
+No successful exact-head workflow has been observed for this subject yet.
 
 Do not describe this branch as qualified until the dedicated workflow executes successfully on the exact PR head.
 
-A green integration workflow would prove only the Rust composition theorem for consuming an already-verified #217 head. It would **not** independently qualify #217 checkpoint cryptography/durability, #216 external anti-rollback anchoring, #208 production activation, or clinical/regulatory claims.
+A green integration workflow would prove only the typed Rust composition theorem over already-verified #214/#217 artifact identities plus the lower #210/#212 semantics. It would **not** independently qualify #217 checkpoint cryptography/durability, #216 external anti-rollback anchoring, #208 production activation, or clinical/regulatory claims.
 
 ## Upstream evidence dependencies
 
