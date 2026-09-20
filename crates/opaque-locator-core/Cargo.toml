@@ -1,0 +1,13 @@
+[workspace]
+
+[package]
+name = "mycelix-opaque-locator-core"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.96"
+license = "AGPL-3.0-or-later"
+description = "Reference semantics for rotatable opaque care locators and protected manifests"
+publish = false
+
+[lib]
+path = "src/lib.rs"
