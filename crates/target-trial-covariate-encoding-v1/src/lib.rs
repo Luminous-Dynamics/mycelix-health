@@ -177,9 +177,9 @@ pub fn build_encoded_baseline_covariate_matrix_v1(
     for column in &baseline_matrix.columns {
         let policy = policy_by_confounder
             .get(&column.confounder_id)
-            .ok_or_else(|| CovariateEncodingV1Error::MissingEncodingPolicy(
-                column.confounder_id.clone(),
-            ))?;
+            .ok_or_else(|| {
+                CovariateEncodingV1Error::MissingEncodingPolicy(column.confounder_id.clone())
+            })?;
         if policy.measurement_policy_digest != column.measurement_policy_digest {
             return Err(CovariateEncodingV1Error::MeasurementPolicyDigestMismatch(
                 column.confounder_id.clone(),
@@ -224,9 +224,9 @@ pub fn build_encoded_baseline_covariate_matrix_v1(
         for (cell, column) in row.cells.iter().zip(&baseline_matrix.columns) {
             let policy = policy_by_confounder
                 .get(&column.confounder_id)
-                .ok_or_else(|| CovariateEncodingV1Error::MissingEncodingPolicy(
-                    column.confounder_id.clone(),
-                ))?;
+                .ok_or_else(|| {
+                    CovariateEncodingV1Error::MissingEncodingPolicy(column.confounder_id.clone())
+                })?;
             let (selected_fact_snapshot_digest, value) = match &cell.state {
                 mycelix_target_trial_baseline_covariate_v1::BaselineMeasurementStateV1::MissingMeasurement => {
                     (None, EncodedCovariateValueV1::Missing)
@@ -375,6 +375,35 @@ fn validate_policy(
     validate_artifact(&policy.policy_evidence)
 }
 
+fn validate_encoded_value(
+    value: &EncodedCovariateValueV1,
+) -> Result<(), CovariateEncodingV1Error> {
+    match value {
+        EncodedCovariateValueV1::Missing
+        | EncodedCovariateValueV1::Boolean(_)
+        | EncodedCovariateValueV1::Integer(_) => Ok(()),
+        EncodedCovariateValueV1::DecimalBits(bits) => {
+            if f64::from_bits(*bits).is_finite() {
+                Ok(())
+            } else {
+                Err(CovariateEncodingV1Error::NonFiniteAnalysisValue)
+            }
+        }
+        EncodedCovariateValueV1::QuantityUcumExact {
+            value_bits,
+            unit_code,
+        } => {
+            if unit_code.trim().is_empty() {
+                return Err(CovariateEncodingV1Error::InvalidEncodedMatrix);
+            }
+            if !f64::from_bits(*value_bits).is_finite() {
+                return Err(CovariateEncodingV1Error::NonFiniteAnalysisValue);
+            }
+            Ok(())
+        }
+    }
+}
+
 fn validate_encoded_matrix_shape(
     matrix: &EncodedBaselineCovariateMatrixV1,
 ) -> Result<(), CovariateEncodingV1Error> {
@@ -439,7 +468,7 @@ fn validate_encoded_matrix_shape(
                 (Some(digest), EncodedCovariateValueV1::Missing) if *digest != [0; 32] => {
                     return Err(CovariateEncodingV1Error::InvalidEncodedMatrix);
                 }
-                (Some(digest), _) if *digest != [0; 32] => {}
+                (Some(digest), value) if *digest != [0; 32] => validate_encoded_value(value)?,
                 _ => return Err(CovariateEncodingV1Error::InvalidEncodedMatrix),
             }
         }
