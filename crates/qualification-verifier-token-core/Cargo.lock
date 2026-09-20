@@ -49,5 +49,6 @@ version = "0.1.0"
 dependencies = [
  "mycelix-qualification-anti-rollback-anchor-core",
  "mycelix-qualification-generic-transparency-adapter-core",
+ "mycelix-qualification-product-authority-core",
  "mycelix-qualification-receipt-core",
 ]
