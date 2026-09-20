@@ -14,4 +14,4 @@ mycelix-qualification-product-authority-core = { path = "../qualification-produc
 mycelix-qualification-receipt-core = { path = "../qualification-receipt-core" }
 
 [lib]
-path = "src/lib.rs"
+path = "src/hardened.rs"
