@@ -1,0 +1,153 @@
+name: Qualification Ed25519 Verifier
+
+on:
+  pull_request:
+    branches:
+      - 'feat/qualification-adapter-profiles-v1'
+    paths:
+      - 'scripts/qualification-receipt.py'
+      - 'scripts/qualification-receipt-profile.py'
+      - 'scripts/test-qualification-receipt.py'
+      - 'scripts/test-qualification-receipt-profile.py'
+      - 'release/qualification-receipt-golden-v1.json'
+      - 'docs/security/QUALIFICATION_RECEIPT_ED25519_V1.md'
+      - 'docs/security/QUALIFICATION_RECEIPT_ED25519_V1_STATUS.md'
+      - '.github/workflows/qualification-ed25519-verifier.yml'
+  push:
+    branches:
+      - 'feat/qualification-ed25519-verifier-v1'
+    paths:
+      - 'scripts/qualification-receipt.py'
+      - 'scripts/qualification-receipt-profile.py'
+      - 'scripts/test-qualification-receipt.py'
+      - 'scripts/test-qualification-receipt-profile.py'
+      - 'release/qualification-receipt-golden-v1.json'
+      - 'docs/security/QUALIFICATION_RECEIPT_ED25519_V1.md'
+      - 'docs/security/QUALIFICATION_RECEIPT_ED25519_V1_STATUS.md'
+      - '.github/workflows/qualification-ed25519-verifier.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  qualify-ed25519-governed-receipts:
+    name: Qualify real Ed25519 governed qualification receipts
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Check out exact stacked subject
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+
+      - name: Freeze preflight identities
+        run: |
+          git rev-parse HEAD | tee /tmp/subject.sha
+          python3 --version
+          openssl version
+          sha256sum \
+            scripts/qualification-receipt.py \
+            scripts/qualification-receipt-profile.py \
+            scripts/test-qualification-receipt.py \
+            scripts/test-qualification-receipt-profile.py \
+            release/qualification-receipt-golden-v1.json \
+            docs/security/QUALIFICATION_RECEIPT_ED25519_V1.md \
+            docs/security/QUALIFICATION_RECEIPT_ED25519_V1_STATUS.md \
+            | tee /tmp/qualification-ed25519.before.sha256
+
+      - name: Static trust-boundary guards
+        run: |
+          grep -q 'MYCELIX-HEALTH-QUALIFICATION-RECEIPT-V1' scripts/qualification-receipt.py
+          grep -q 'MYCELIX-HEALTH-QUALIFICATION-ATTESTATION-V1' scripts/qualification-receipt.py
+          grep -q 'MYCELIX-HEALTH-QUALIFICATION-PROFILE-MATCH-V1' scripts/qualification-receipt-profile.py
+          grep -q 'openssl.*pkeyutl' scripts/qualification-receipt.py
+          grep -q 'minimum_organizations' scripts/qualification-receipt.py
+          grep -q 'required_roles' scripts/qualification-receipt.py
+          grep -q 'compromised_at_micros' scripts/qualification-receipt.py
+          grep -q 'another receipt' scripts/qualification-receipt.py
+          grep -q 'Patient208CompositionCommitment' scripts/qualification-receipt-profile.py
+          grep -q 'domain_separated_profile_match_commitment' scripts/qualification-receipt-profile.py
+          grep -q 'product_seam_authority_not_established' scripts/qualification-receipt-profile.py
+          grep -q 'current_lineage_head_not_established' scripts/qualification-receipt-profile.py
+          grep -q '98621a93db931616186ae1f8c6d1788baa6f29da9b2e00b0931132d07f526389' release/qualification-receipt-golden-v1.json
+          grep -q 'SOURCE-STAGED / UNEXECUTED' docs/security/QUALIFICATION_RECEIPT_ED25519_V1_STATUS.md
+          ! grep -R -nE 'PRIVATE KEY|BEGIN PRIVATE' release/qualification-receipt-golden-v1.json docs/security/QUALIFICATION_RECEIPT_ED25519_V1.md
+
+      - name: Compile Python sources
+        run: |
+          python3 -m py_compile \
+            scripts/qualification-receipt.py \
+            scripts/qualification-receipt-profile.py \
+            scripts/test-qualification-receipt.py \
+            scripts/test-qualification-receipt-profile.py
+
+      - name: Run governed receipt adversarial tests
+        run: python3 scripts/test-qualification-receipt.py
+
+      - name: Run exact #208 profile-match adversarial tests
+        run: python3 scripts/test-qualification-receipt-profile.py
+
+      - name: Verify golden transcript directly
+        run: |
+          python3 - <<'PY'
+          import importlib.util, json, pathlib
+          root=pathlib.Path('.')
+          spec=importlib.util.spec_from_file_location('q',root/'scripts/qualification-receipt.py'); q=importlib.util.module_from_spec(spec); spec.loader.exec_module(q)
+          v=json.loads((root/'release/qualification-receipt-golden-v1.json').read_text())
+          b=q.qualification_transcript(v['statement'])
+          assert len(b)==v['transcript_length_bytes'], (len(b),v['transcript_length_bytes'])
+          assert q.sha256_bytes(b)==v['transcript_sha256'], (q.sha256_bytes(b),v['transcript_sha256'])
+          print(v['transcript_sha256'])
+          PY
+
+      - name: CLI create-only round trip
+        run: |
+          tmp="$(mktemp -d)"
+          trap 'rm -rf "$tmp"' EXIT
+          cp release/qualification-receipt-golden-v1.json "$tmp/vector.json"
+          python3 - <<'PY' "$tmp"
+          import json,pathlib,sys
+          root=pathlib.Path(sys.argv[1]); v=json.loads((root/'vector.json').read_text()); (root/'statement.json').write_text(json.dumps(v['statement'],sort_keys=True,indent=2)+'\n')
+          PY
+          python3 scripts/qualification-receipt.py prepare "$tmp/statement.json" --output "$tmp/transcript.bin"
+          test "$(sha256sum "$tmp/transcript.bin" | cut -d' ' -f1)" = "98621a93db931616186ae1f8c6d1788baa6f29da9b2e00b0931132d07f526389"
+          test -s "$tmp/transcript.bin"
+          if python3 scripts/qualification-receipt.py prepare "$tmp/statement.json" --output "$tmp/transcript.bin"; then
+            echo 'create-only output unexpectedly overwrote existing transcript' >&2
+            exit 1
+          fi
+
+      - name: Verify postflight immutability
+        run: |
+          test "$(git rev-parse HEAD)" = "$(cat /tmp/subject.sha)"
+          sha256sum \
+            scripts/qualification-receipt.py \
+            scripts/qualification-receipt-profile.py \
+            scripts/test-qualification-receipt.py \
+            scripts/test-qualification-receipt-profile.py \
+            release/qualification-receipt-golden-v1.json \
+            docs/security/QUALIFICATION_RECEIPT_ED25519_V1.md \
+            docs/security/QUALIFICATION_RECEIPT_ED25519_V1_STATUS.md \
+            > /tmp/qualification-ed25519.after.sha256
+          diff -u /tmp/qualification-ed25519.before.sha256 /tmp/qualification-ed25519.after.sha256
+          git diff --exit-code -- \
+            scripts/qualification-receipt.py \
+            scripts/qualification-receipt-profile.py \
+            scripts/test-qualification-receipt.py \
+            scripts/test-qualification-receipt-profile.py \
+            release/qualification-receipt-golden-v1.json \
+            docs/security/QUALIFICATION_RECEIPT_ED25519_V1.md \
+            docs/security/QUALIFICATION_RECEIPT_ED25519_V1_STATUS.md
+
+      - name: Evidence summary
+        if: always()
+        run: |
+          {
+            echo '## Qualification Ed25519 verifier evidence'
+            echo
+            echo "- subject: $(git rev-parse HEAD)"
+            echo "- python: $(python3 --version 2>&1)"
+            echo "- openssl: $(openssl version)"
+            echo '- scope: Rust-compatible canonical receipt transcript + real Ed25519 multi-party governance verification + domain-separated exact #208 profile-match evidence'
+            echo '- invariant: signed attestation binds exact receipt digest, signer identity and attestation time'
+            echo '- invariant: threshold/org/role/signer status/freshness fail closed'
+            echo '- invariant: authentic generic qualification still does not establish #208 product seam authority'
+            echo '- non-claim: no durable nonce/head ledger, trusted clock, private-key custody, PQ signatures, or product activation authority'
+          } >> "$GITHUB_STEP_SUMMARY"
