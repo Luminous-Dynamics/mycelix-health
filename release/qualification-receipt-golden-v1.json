@@ -1,0 +1,33 @@
+{
+  "schema_version": 1,
+  "vector_id": "qualification-receipt-rust-python-v1",
+  "statement": {
+    "schema_version": 1,
+    "receipt_kind": "CompositionCommitmentQualification",
+    "contract_digest": "0101010101010101010101010101010101010101010101010101010101010101",
+    "contract_version": 1,
+    "qualification_lineage": "0202020202020202020202020202020202020202020202020202020202020202",
+    "subject_digest": "0303030303030303030303030303030303030303030303030303030303030303",
+    "dependency_set_digest": "0404040404040404040404040404040404040404040404040404040404040404",
+    "deployment_evidence_digest": "0505050505050505050505050505050505050505050505050505050505050505",
+    "context_digest": "0606060606060606060606060606060606060606060606060606060606060606",
+    "outcome": "Qualified",
+    "issued_at_micros": 1000000,
+    "expires_at_micros": 2000000,
+    "nonce": "0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a",
+    "sequence": 1,
+    "previous_receipt": null,
+    "governance_policy_digest": "0707070707070707070707070707070707070707070707070707070707070707",
+    "trust_store_digest": "0808080808080808080808080808080808080808080808080808080808080808",
+    "admission_scope": "Cutover",
+    "claim_profile_digest": "0909090909090909090909090909090909090909090909090909090909090909"
+  },
+  "transcript_length_bytes": 394,
+  "transcript_sha256": "98621a93db931616186ae1f8c6d1788baa6f29da9b2e00b0931132d07f526389",
+  "claims": {
+    "field_order_matches_qualification_receipt_core_v1": true,
+    "binary_integer_encoding_is_big_endian": true,
+    "optional_digest_encoding_is_presence_byte_then_bytes": true,
+    "vector_contains_no_secret_key_material": true
+  }
+}
