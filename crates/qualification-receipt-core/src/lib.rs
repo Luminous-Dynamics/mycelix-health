@@ -6,5 +6,6 @@
 //! theorems outside this crate.
 
 mod model;
+mod strict;
 
-pub use model::*;
+pub use strict::*;
