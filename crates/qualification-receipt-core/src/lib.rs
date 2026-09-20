@@ -5,6 +5,9 @@
 //! durable/distributed ledger persistence, and hash computation are adapter
 //! theorems outside this crate.
 
+// The low-level model intentionally contains adapter-only helpers that are not
+// part of the external crate API. The strict module is the only public surface.
+#[allow(dead_code)]
 mod model;
 mod strict;
 
