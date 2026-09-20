@@ -668,6 +668,15 @@ def verify_checkpoint_bundle(
         != "mycelix-health-qualification-lineage-checkpoint-bundle-v1"
     ):
         fail("checkpoint bundle schema/kind invalid")
+    original_verified_at = int_value(
+        bundle.get("verified_at_micros"), "bundle verified_at_micros"
+    )
+    if verification_time_micros < original_verified_at:
+        fail("checkpoint verification clock rollback")
+    statement = bundle.get("statement", {})
+    expires = int_value(statement.get("expires_at_micros"), "checkpoint expires_at_micros")
+    if verification_time_micros >= expires:
+        fail("checkpoint bundle is expired at current verification time")
     signatures = [
         {
             "approver_id": item.get("approver_id"),
@@ -680,7 +689,7 @@ def verify_checkpoint_bundle(
         if isinstance(item, dict)
     ]
     rebuilt = assemble_checkpoint_bundle(
-        bundle.get("statement", {}), signatures, policy, trust_store, verification_time_micros
+        statement, signatures, policy, trust_store, original_verified_at
     )
     if rebuilt != bundle:
         fail("checkpoint bundle does not match independent reconstruction")
@@ -716,10 +725,52 @@ def _load_store(path: pathlib.Path, binding: dict[str, Any]) -> dict[str, Any]:
         fail("durable checkpoint store identity invalid")
     if value.get("lineage_binding_digest_sha256") != binding_digest(binding):
         fail("durable checkpoint store belongs to another lineage")
-    if not isinstance(value.get("accepted_checkpoints"), list) or not isinstance(
-        value.get("used_checkpoint_nonces"), list
-    ):
+    entries = value.get("accepted_checkpoints")
+    nonces = value.get("used_checkpoint_nonces")
+    if not isinstance(entries, list) or not isinstance(nonces, list):
         fail("durable checkpoint store shape invalid")
+    if len(nonces) != len(set(nonces)):
+        fail("durable checkpoint store contains duplicate nonces")
+    seen_digests: set[str] = set()
+    expected_previous = None
+    expected_epoch = 1
+    derived_nonces: list[str] = []
+    derived_fork_lock = False
+    for entry in entries:
+        if not isinstance(entry, dict):
+            fail("durable checkpoint store entry must be object")
+        digest = hex32(entry.get("checkpoint_digest_sha256"), "stored checkpoint digest")
+        if digest in seen_digests:
+            fail("durable checkpoint store contains duplicate checkpoint digest")
+        seen_digests.add(digest)
+        epoch = int_value(entry.get("checkpoint_epoch"), "stored checkpoint epoch", 1)
+        if epoch != expected_epoch:
+            fail("durable checkpoint store epoch chain is not contiguous")
+        expected_epoch += 1
+        if entry.get("previous_checkpoint_digest_sha256") != expected_previous:
+            fail("durable checkpoint store predecessor chain is inconsistent")
+        nonce = hex32(entry.get("checkpoint_nonce"), "stored checkpoint nonce")
+        derived_nonces.append(nonce)
+        expected_previous = digest
+        state = entry.get("lineage_state")
+        if state not in {"ActiveHead", "InactiveHead", "Forked"}:
+            fail("durable checkpoint store contains invalid lineage state")
+        derived_fork_lock = derived_fork_lock or state == "Forked"
+    if nonces != derived_nonces:
+        fail("durable checkpoint store nonce index drifted")
+    expected_latest_epoch = 0 if not entries else entries[-1]["checkpoint_epoch"]
+    expected_latest_digest = None if not entries else entries[-1]["checkpoint_digest_sha256"]
+    if value.get("latest_checkpoint_epoch") != expected_latest_epoch:
+        fail("durable checkpoint store latest epoch drifted")
+    if value.get("latest_checkpoint_digest_sha256") != expected_latest_digest:
+        fail("durable checkpoint store latest digest drifted")
+    if bool(value.get("fork_locked")) != derived_fork_lock:
+        fail("durable checkpoint store fork-lock state drifted")
+    latest_time = value.get("latest_time_micros")
+    if entries and not isinstance(latest_time, int):
+        fail("durable checkpoint store missing latest time")
+    if not entries and latest_time is not None:
+        fail("empty durable checkpoint store cannot carry latest time")
     return value
 
 
