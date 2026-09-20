@@ -1,0 +1,52 @@
+name: Qualification External Anchor Public API Guard
+
+on:
+  pull_request:
+    branches:
+      - 'feat/qualification-checkpoint-adapter-integration-v1'
+    paths:
+      - 'crates/qualification-anti-rollback-anchor-core/**'
+      - '.github/workflows/qualification-external-anchor-public-api.yml'
+  push:
+    branches:
+      - 'feat/qualification-external-anchor-v1'
+
+permissions:
+  contents: read
+
+jobs:
+  guard-public-authority-surface:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+
+      - name: Prove hardened root is the compiled API
+        run: |
+          manifest='crates/qualification-anti-rollback-anchor-core/Cargo.toml'
+          api='crates/qualification-anti-rollback-anchor-core/src/hardened.rs'
+          grep -q 'path = "src/hardened.rs"' "$manifest"
+          grep -q 'pub trait VerifiedExternalAnchorProof' "$api"
+          grep -q 'pub struct ExternalAnchorState' "$api"
+          grep -q 'pub fn new(' "$api"
+          grep -q 'head_sequence' "$api"
+          grep -q 'InvalidPredecessorShape' "$api"
+          grep -q 'CurrentHeadExpired' "$api"
+          grep -q 'AnchoredProfile208ProductAuthorityGate' "$api"
+          ! grep -n 'verified: bool' "$api"
+          ! grep -n 'AnyQualification' "$api"
+          ! grep -n 'from_checkpoint_adapter' "$api"
+
+      - name: Ensure historical draft is not crate root
+        run: |
+          manifest='crates/qualification-anti-rollback-anchor-core/Cargo.toml'
+          ! grep -q 'path = "src/lib.rs"' "$manifest"
+
+      - name: Summary
+        run: |
+          {
+            echo '## External anchor public API guard'
+            echo '- compiled root: src/hardened.rs'
+            echo '- reconstructible opaque external state: required'
+            echo '- head sequence + predecessor shape + head lifetime: guarded'
+            echo '- no public verified: bool currentness seam'
+          } >> "$GITHUB_STEP_SUMMARY"
