@@ -1,0 +1,119 @@
+name: Tier-1 Link Topology Inventory
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'dna/dna.yaml'
+      - 'zomes/patient/integrity/src/lib.rs'
+      - 'zomes/provider/integrity/src/lib.rs'
+      - 'zomes/records/integrity/src/lib.rs'
+      - 'zomes/prescriptions/integrity/src/lib.rs'
+      - 'zomes/consent/integrity/src/lib.rs'
+      - 'zomes/bridge/integrity/src/lib.rs'
+      - 'docs/security/tier1_link_topology_inventory.json'
+      - 'scripts/check_tier1_link_topology_inventory.py'
+      - '.github/workflows/tier1-link-topology-inventory.yml'
+  push:
+    branches:
+      - 'audit/tier1-link-topology-inventory-v1'
+    paths:
+      - 'dna/dna.yaml'
+      - 'zomes/patient/integrity/src/lib.rs'
+      - 'zomes/provider/integrity/src/lib.rs'
+      - 'zomes/records/integrity/src/lib.rs'
+      - 'zomes/prescriptions/integrity/src/lib.rs'
+      - 'zomes/consent/integrity/src/lib.rs'
+      - 'zomes/bridge/integrity/src/lib.rs'
+      - 'docs/security/tier1_link_topology_inventory.json'
+      - 'scripts/check_tier1_link_topology_inventory.py'
+      - '.github/workflows/tier1-link-topology-inventory.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  classify-link-topology:
+    name: Classify packaged Tier-1 link topology
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Check out exact subject
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+
+      - name: Freeze preflight identities
+        run: |
+          git rev-parse HEAD | tee /tmp/subject.sha
+          python3 --version
+          sha256sum \
+            dna/dna.yaml \
+            docs/security/tier1_link_topology_inventory.json \
+            scripts/check_tier1_link_topology_inventory.py \
+            zomes/patient/integrity/src/lib.rs \
+            zomes/provider/integrity/src/lib.rs \
+            zomes/records/integrity/src/lib.rs \
+            zomes/prescriptions/integrity/src/lib.rs \
+            zomes/consent/integrity/src/lib.rs \
+            zomes/bridge/integrity/src/lib.rs \
+            | tee /tmp/topology.before.sha256
+
+      - name: Verify pristine topology classification
+        run: python3 scripts/check_tier1_link_topology_inventory.py
+
+      - name: Prove unclassified-link canary is rejected
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          path = Path('zomes/patient/integrity/src/lib.rs')
+          text = path.read_text(encoding='utf-8')
+          needle = '    PatientToIdentityLink,\n}'
+          if text.count(needle) != 1:
+              raise SystemExit('could not locate exact patient LinkTypes canary insertion point')
+          path.write_text(
+              text.replace(
+                  needle,
+                  '    PatientToIdentityLink,\n    PrivacyTopologyCanary,\n}',
+                  1,
+              ),
+              encoding='utf-8',
+          )
+          PY
+
+          if python3 scripts/check_tier1_link_topology_inventory.py; then
+            echo 'ERROR: topology checker accepted an unclassified LinkTypes variant' >&2
+            exit 1
+          fi
+
+          git checkout -- zomes/patient/integrity/src/lib.rs
+          git diff --exit-code
+          python3 scripts/check_tier1_link_topology_inventory.py
+
+      - name: Verify postflight immutability
+        run: |
+          test "$(git rev-parse HEAD)" = "$(cat /tmp/subject.sha)"
+          sha256sum \
+            dna/dna.yaml \
+            docs/security/tier1_link_topology_inventory.json \
+            scripts/check_tier1_link_topology_inventory.py \
+            zomes/patient/integrity/src/lib.rs \
+            zomes/provider/integrity/src/lib.rs \
+            zomes/records/integrity/src/lib.rs \
+            zomes/prescriptions/integrity/src/lib.rs \
+            zomes/consent/integrity/src/lib.rs \
+            zomes/bridge/integrity/src/lib.rs \
+            > /tmp/topology.after.sha256
+          diff -u /tmp/topology.before.sha256 /tmp/topology.after.sha256
+          git diff --exit-code
+
+      - name: Evidence summary
+        if: always()
+        run: |
+          {
+            echo '## Tier-1 link topology classification evidence'
+            echo
+            echo "- subject: $(git rev-parse HEAD)"
+            echo '- exact packaged manifest: dna/dna.yaml'
+            echo '- expected link variants: 78 across six Tier-1 integrity zomes'
+            echo '- negative canary: unclassified patient LinkTypes addition must be rejected'
+            echo '- scope: topology-classification completeness only'
+            echo '- non-claim: no DHT confidentiality/unlinkability/migration/regulatory qualification'
+          } >> "$GITHUB_STEP_SUMMARY"
