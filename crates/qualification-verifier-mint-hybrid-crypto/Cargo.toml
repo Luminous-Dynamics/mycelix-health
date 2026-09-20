@@ -1,0 +1,19 @@
+[workspace]
+
+[package]
+name = "mycelix-qualification-verifier-mint-hybrid-crypto"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.96"
+license = "AGPL-3.0-or-later"
+description = "Real Ed25519 + ML-DSA-65 verification for isolated Health qualification mint statements"
+publish = false
+
+[dependencies]
+mycelix-qualification-verifier-mint-contract = { path = "../qualification-verifier-mint-contract" }
+ed25519-dalek = "=2.2.0"
+ml-dsa = "=0.1.1"
+sha2 = "=0.10.9"
+
+[lib]
+path = "src/lib.rs"
