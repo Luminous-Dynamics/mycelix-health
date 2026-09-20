@@ -1,0 +1,13 @@
+[workspace]
+
+[package]
+name = "mycelix-qualification-verifier-mint-contract"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.96"
+license = "AGPL-3.0-or-later"
+description = "Portable request and signed-statement contract for isolated Health qualification token minting"
+publish = false
+
+[lib]
+path = "src/lib.rs"
