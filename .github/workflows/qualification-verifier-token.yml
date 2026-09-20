@@ -1,0 +1,131 @@
+name: Qualification Verifier Token Boundary
+
+on:
+  pull_request:
+    paths:
+      - 'crates/qualification-verifier-token-core/**'
+      - 'crates/qualification-generic-transparency-adapter-core/**'
+      - 'crates/qualification-anti-rollback-anchor-core/**'
+      - '.github/workflows/qualification-verifier-token.yml'
+  push:
+    branches:
+      - 'feat/qualification-verifier-minted-tokens-v1'
+
+permissions:
+  contents: read
+
+jobs:
+  qualify-verifier-token-boundary:
+    name: Qualify concrete non-forgeable verifier-token path
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Check out exact subject
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+
+      - name: Install exact Rust toolchain
+        run: |
+          rustup toolchain install 1.96.0 --profile minimal --component rustfmt,clippy
+          rustc +1.96.0 -Vv
+          cargo +1.96.0 -V
+
+      - name: Freeze exact source identity
+        run: |
+          git rev-parse HEAD | tee /tmp/subject.sha
+          find crates/qualification-verifier-token-core \
+            -type d -name target -prune -o -type f -print0 \
+            | sort -z | xargs -0 sha256sum > /tmp/token.before.sha256
+
+      - name: Static authority boundary guards
+        run: |
+          core='crates/qualification-verifier-token-core/src/lib.rs'
+          manifest='crates/qualification-verifier-token-core/Cargo.toml'
+          boundaries='crates/qualification-verifier-token-core/BOUNDARIES.md'
+          status='crates/qualification-verifier-token-core/SOURCE_STATUS.md'
+
+          grep -q 'VerifiedGenericAcceptedAnchorTokenV1' "$core"
+          grep -q 'VerifiedGenericStateCommitmentTokenV1' "$core"
+          grep -q 'VerifiedHealthSecurityTimeTokenV1' "$core"
+          grep -q 'VerifierBoundHealthAnchorProofV1' "$core"
+          grep -q 'VerifierAnchoredQualificationHead' "$core"
+          grep -q 'VerifierBoundProfile208ProductAuthorityGate' "$core"
+          grep -q 'bind_verifier_tokens_to_health' "$core"
+          grep -q 'There is deliberately no public production mint constructor yet' "$core"
+          grep -q 'ordinary downstream safe Rust cannot construct' "$boundaries"
+          grep -q 'SOURCE-STAGED / UNEXECUTED' "$status"
+          grep -q 'path = "src/lib.rs"' "$manifest"
+
+          ! grep -n 'verified: bool' "$core"
+          ! grep -nE 'pub fn (mint|issue|forge)_' "$core"
+          ! grep -n 'serde' "$manifest"
+
+      - name: Verify isolated metadata
+        run: |
+          cargo +1.96.0 metadata --locked --no-deps --format-version 1 \
+            --manifest-path crates/qualification-verifier-token-core/Cargo.toml \
+            > /tmp/token.metadata.json
+          test "$(jq -r '.packages | length' /tmp/token.metadata.json)" = "1"
+          test "$(jq -r '.packages[0].name' /tmp/token.metadata.json)" = "mycelix-qualification-verifier-token-core"
+
+      - name: Re-run parent generic transparency adapter semantics
+        run: |
+          cargo +1.96.0 fmt \
+            --manifest-path crates/qualification-generic-transparency-adapter-core/Cargo.toml \
+            -- --check
+          cargo +1.96.0 test --locked \
+            --manifest-path crates/qualification-generic-transparency-adapter-core/Cargo.toml
+          cargo +1.96.0 clippy --locked \
+            --manifest-path crates/qualification-generic-transparency-adapter-core/Cargo.toml \
+            --all-targets -- -D warnings
+
+      - name: Format verifier token core
+        run: |
+          cargo +1.96.0 fmt \
+            --manifest-path crates/qualification-verifier-token-core/Cargo.toml \
+            -- --check
+
+      - name: Test verifier token core
+        run: |
+          cargo +1.96.0 test --locked \
+            --manifest-path crates/qualification-verifier-token-core/Cargo.toml
+
+      - name: Clippy verifier token core
+        run: |
+          cargo +1.96.0 clippy --locked \
+            --manifest-path crates/qualification-verifier-token-core/Cargo.toml \
+            --all-targets -- -D warnings
+
+      - name: Prove downstream safe Rust cannot forge a token
+        run: |
+          set +e
+          cargo +1.96.0 check --locked \
+            --manifest-path crates/qualification-verifier-token-core/compile-fail/forged-token/Cargo.toml \
+            2> /tmp/forged-token.stderr
+          status=$?
+          set -e
+          test "$status" -ne 0
+          grep -Eq 'private field|field .* is private|E0451' /tmp/forged-token.stderr
+          cat /tmp/forged-token.stderr
+
+      - name: Verify postflight source immutability
+        run: |
+          test "$(git rev-parse HEAD)" = "$(cat /tmp/subject.sha)"
+          find crates/qualification-verifier-token-core \
+            -type d -name target -prune -o -type f -print0 \
+            | sort -z | xargs -0 sha256sum > /tmp/token.after.sha256
+          diff -u /tmp/token.before.sha256 /tmp/token.after.sha256
+          git diff --exit-code
+
+      - name: Evidence summary
+        if: always()
+        run: |
+          {
+            echo '## Qualification verifier-token evidence'
+            echo
+            echo "- subject: $(git rev-parse HEAD)"
+            echo "- rustc: $(rustc +1.96.0 --version 2>/dev/null || echo unavailable)"
+            echo '- scope: private-field concrete token boundary + exact #222 semantic composition only'
+            echo '- invariant: ordinary downstream safe Rust cannot construct authority tokens'
+            echo '- invariant: lower open Verified traits are not accepted by the new product-facing binding API'
+            echo '- invariant: verifier-bound anchored heads cannot be relabeled from arbitrary lower reference outputs'
+            echo '- non-claim: production token minting remains unavailable until real verifier integration is qualified'
+          } >> "$GITHUB_STEP_SUMMARY"
