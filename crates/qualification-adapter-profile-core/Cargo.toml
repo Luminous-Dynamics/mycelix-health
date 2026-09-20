@@ -13,4 +13,4 @@ publish = false
 mycelix-qualification-receipt-core = { path = "../qualification-receipt-core" }
 
 [lib]
-path = "src/integrated.rs"
+path = "src/lib.rs"
