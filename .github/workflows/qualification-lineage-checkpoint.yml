@@ -1,0 +1,175 @@
+name: Qualification Lineage Checkpoint
+
+on:
+  pull_request:
+    branches:
+      - 'feat/qualification-ed25519-verifier-v1'
+    paths:
+      - 'scripts/qualification-receipt.py'
+      - 'scripts/qualification-receipt-profile.py'
+      - 'scripts/qualification-lineage-checkpoint.py'
+      - 'scripts/qualification-lineage-checkpoint-admission.py'
+      - 'scripts/test-qualification-receipt.py'
+      - 'scripts/test-qualification-receipt-profile.py'
+      - 'scripts/test-qualification-lineage-checkpoint.py'
+      - 'scripts/test-qualification-lineage-checkpoint-admission.py'
+      - 'release/qualification-receipt-golden-v1.json'
+      - 'docs/security/QUALIFICATION_LINEAGE_CHECKPOINT_V1.md'
+      - 'docs/security/QUALIFICATION_LINEAGE_CHECKPOINT_V1_STATUS.md'
+      - '.github/workflows/qualification-lineage-checkpoint.yml'
+  push:
+    branches:
+      - 'feat/qualification-lineage-checkpoint-v1'
+    paths:
+      - 'scripts/qualification-receipt.py'
+      - 'scripts/qualification-receipt-profile.py'
+      - 'scripts/qualification-lineage-checkpoint.py'
+      - 'scripts/qualification-lineage-checkpoint-admission.py'
+      - 'scripts/test-qualification-receipt.py'
+      - 'scripts/test-qualification-receipt-profile.py'
+      - 'scripts/test-qualification-lineage-checkpoint.py'
+      - 'scripts/test-qualification-lineage-checkpoint-admission.py'
+      - 'release/qualification-receipt-golden-v1.json'
+      - 'docs/security/QUALIFICATION_LINEAGE_CHECKPOINT_V1.md'
+      - 'docs/security/QUALIFICATION_LINEAGE_CHECKPOINT_V1_STATUS.md'
+      - '.github/workflows/qualification-lineage-checkpoint.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  qualify-lineage-checkpoint:
+    name: Qualify governed durable qualification lineage checkpoints
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Check out exact stacked subject
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+
+      - name: Freeze preflight identities
+        run: |
+          git rev-parse HEAD | tee /tmp/subject.sha
+          python3 --version
+          openssl version
+          sha256sum \
+            scripts/qualification-receipt.py \
+            scripts/qualification-receipt-profile.py \
+            scripts/qualification-lineage-checkpoint.py \
+            scripts/qualification-lineage-checkpoint-admission.py \
+            scripts/test-qualification-receipt.py \
+            scripts/test-qualification-receipt-profile.py \
+            scripts/test-qualification-lineage-checkpoint.py \
+            scripts/test-qualification-lineage-checkpoint-admission.py \
+            release/qualification-receipt-golden-v1.json \
+            docs/security/QUALIFICATION_LINEAGE_CHECKPOINT_V1.md \
+            docs/security/QUALIFICATION_LINEAGE_CHECKPOINT_V1_STATUS.md \
+            | tee /tmp/checkpoint.before.sha256
+
+      - name: Static authority-boundary guards
+        run: |
+          grep -q 'MYCELIX-HEALTH-QUALIFICATION-LINEAGE-CHECKPOINT-V1' scripts/qualification-lineage-checkpoint.py
+          grep -q 'MYCELIX-HEALTH-QUALIFICATION-LINEAGE-CHECKPOINT-ATTESTATION-V1' scripts/qualification-lineage-checkpoint.py
+          grep -q 'MYCELIX-HEALTH-VERIFIED-QUALIFICATION-HEAD-V1' scripts/qualification-lineage-checkpoint.py
+          grep -q 'profile_match_commitment_sha256' scripts/qualification-lineage-checkpoint.py
+          grep -q 'fork_locked' scripts/qualification-lineage-checkpoint.py
+          grep -q 'os.fsync' scripts/qualification-lineage-checkpoint.py
+          grep -q 'os.replace' scripts/qualification-lineage-checkpoint.py
+          grep -q 'policy_snapshot' scripts/qualification-lineage-checkpoint.py
+          grep -q 'trust_store_snapshot' scripts/qualification-lineage-checkpoint.py
+          grep -q 'verify_checkpoint_bundle' scripts/qualification-lineage-checkpoint.py
+          grep -q 'contains unknown fields' scripts/qualification-lineage-checkpoint-admission.py
+          grep -q 'STORE_ENTRY_REQUIRED' scripts/qualification-lineage-checkpoint-admission.py
+          grep -q 'product_seam_conversion_not_performed' scripts/qualification-lineage-checkpoint.py
+          grep -q 'whole-volume rollback' docs/security/QUALIFICATION_LINEAGE_CHECKPOINT_V1.md
+          grep -q 'QUAL-EVID-005 (#216)' docs/security/QUALIFICATION_LINEAGE_CHECKPOINT_V1_STATUS.md
+          grep -q 'SOURCE-STAGED / UNEXECUTED' docs/security/QUALIFICATION_LINEAGE_CHECKPOINT_V1_STATUS.md
+          ! grep -R -nE 'BEGIN (RSA |EC |OPENSSH |)?PRIVATE KEY|PRIVATE KEY-----' \
+            scripts/qualification-lineage-checkpoint.py \
+            scripts/qualification-lineage-checkpoint-admission.py \
+            docs/security/QUALIFICATION_LINEAGE_CHECKPOINT_V1.md
+
+      - name: Compile Python sources
+        run: |
+          python3 -m py_compile \
+            scripts/qualification-receipt.py \
+            scripts/qualification-receipt-profile.py \
+            scripts/qualification-lineage-checkpoint.py \
+            scripts/qualification-lineage-checkpoint-admission.py \
+            scripts/test-qualification-receipt.py \
+            scripts/test-qualification-receipt-profile.py \
+            scripts/test-qualification-lineage-checkpoint.py \
+            scripts/test-qualification-lineage-checkpoint-admission.py
+
+      - name: Re-run parent governed receipt tests
+        run: python3 scripts/test-qualification-receipt.py
+
+      - name: Re-run parent exact #208 profile tests
+        run: python3 scripts/test-qualification-receipt-profile.py
+
+      - name: Run checkpoint adversarial tests
+        run: python3 scripts/test-qualification-lineage-checkpoint.py
+
+      - name: Run strict schema and persisted-history tests
+        run: python3 scripts/test-qualification-lineage-checkpoint-admission.py
+
+      - name: Verify qualification golden transcript remains unchanged
+        run: |
+          python3 - <<'PY'
+          import importlib.util, json, pathlib
+          root=pathlib.Path('.')
+          spec=importlib.util.spec_from_file_location('q',root/'scripts/qualification-receipt.py')
+          q=importlib.util.module_from_spec(spec); spec.loader.exec_module(q)
+          v=json.loads((root/'release/qualification-receipt-golden-v1.json').read_text())
+          b=q.qualification_transcript(v['statement'])
+          assert len(b)==v['transcript_length_bytes']
+          assert q.sha256_bytes(b)==v['transcript_sha256']
+          assert v['transcript_sha256']=='98621a93db931616186ae1f8c6d1788baa6f29da9b2e00b0931132d07f526389'
+          print(v['transcript_sha256'])
+          PY
+
+      - name: Verify postflight immutability
+        run: |
+          test "$(git rev-parse HEAD)" = "$(cat /tmp/subject.sha)"
+          sha256sum \
+            scripts/qualification-receipt.py \
+            scripts/qualification-receipt-profile.py \
+            scripts/qualification-lineage-checkpoint.py \
+            scripts/qualification-lineage-checkpoint-admission.py \
+            scripts/test-qualification-receipt.py \
+            scripts/test-qualification-receipt-profile.py \
+            scripts/test-qualification-lineage-checkpoint.py \
+            scripts/test-qualification-lineage-checkpoint-admission.py \
+            release/qualification-receipt-golden-v1.json \
+            docs/security/QUALIFICATION_LINEAGE_CHECKPOINT_V1.md \
+            docs/security/QUALIFICATION_LINEAGE_CHECKPOINT_V1_STATUS.md \
+            > /tmp/checkpoint.after.sha256
+          diff -u /tmp/checkpoint.before.sha256 /tmp/checkpoint.after.sha256
+          git diff --exit-code -- \
+            scripts/qualification-receipt.py \
+            scripts/qualification-receipt-profile.py \
+            scripts/qualification-lineage-checkpoint.py \
+            scripts/qualification-lineage-checkpoint-admission.py \
+            scripts/test-qualification-receipt.py \
+            scripts/test-qualification-receipt-profile.py \
+            scripts/test-qualification-lineage-checkpoint.py \
+            scripts/test-qualification-lineage-checkpoint-admission.py \
+            release/qualification-receipt-golden-v1.json \
+            docs/security/QUALIFICATION_LINEAGE_CHECKPOINT_V1.md \
+            docs/security/QUALIFICATION_LINEAGE_CHECKPOINT_V1_STATUS.md
+
+      - name: Evidence summary
+        if: always()
+        run: |
+          {
+            echo '## Qualification lineage checkpoint evidence'
+            echo
+            echo "- subject: $(git rev-parse HEAD)"
+            echo "- python: $(python3 --version 2>&1)"
+            echo "- openssl: $(openssl version)"
+            echo '- scope: governed signed current-head checkpoint + local durable restart/tamper/fork/time theorem only'
+            echo '- invariant: Active != current head; forked lineages emit no head authority'
+            echo '- invariant: exact #214 profile-match commitment is bound into the checkpoint'
+            echo '- invariant: persisted historical signed bundles are reverified after restart'
+            echo '- invariant: public admission rejects unknown authority-bearing JSON fields'
+            echo '- non-claim: no whole-volume rollback resistance; tracked by #216'
+            echo '- non-claim: no #212 product-seam conversion or Patient-v2 activation authority'
+          } >> "$GITHUB_STEP_SUMMARY"
