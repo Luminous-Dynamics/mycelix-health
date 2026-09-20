@@ -1,0 +1,17 @@
+[workspace]
+
+[package]
+name = "mycelix-qualification-checkpoint-adapter-core"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.96"
+license = "AGPL-3.0-or-later"
+description = "Product-facing #217 checkpoint to #208 qualification adapter semantics"
+publish = false
+
+[dependencies]
+mycelix-qualification-adapter-profile-core = { path = "../qualification-adapter-profile-core" }
+mycelix-qualification-receipt-core = { path = "../qualification-receipt-core" }
+
+[lib]
+path = "src/lib.rs"
