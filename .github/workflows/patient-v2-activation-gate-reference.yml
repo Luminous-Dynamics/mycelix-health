@@ -1,0 +1,90 @@
+name: Patient v2 Activation Gate Reference
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'crates/patient-v2-activation-gate/**'
+      - '.github/workflows/patient-v2-activation-gate-reference.yml'
+  push:
+    branches:
+      - 'feat/patient-v2-activation-gate-v1'
+    paths:
+      - 'crates/patient-v2-activation-gate/**'
+      - '.github/workflows/patient-v2-activation-gate-reference.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  qualify-patient-v2-activation-gate:
+    name: Qualify fail-closed Patient v2 activation semantics
+    runs-on: ubuntu-24.04
+    defaults:
+      run:
+        working-directory: crates/patient-v2-activation-gate
+    steps:
+      - name: Check out exact subject
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+
+      - name: Install exact Rust toolchain
+        run: |
+          rustup toolchain install 1.96.0 --profile minimal --component rustfmt,clippy
+          rustc +1.96.0 -Vv
+          cargo +1.96.0 -V
+
+      - name: Freeze preflight identities
+        run: |
+          git rev-parse HEAD | tee /tmp/subject.sha
+          sha256sum Cargo.toml Cargo.lock README.md src/lib.rs src/core.rs | tee /tmp/activation.before.sha256
+          cargo +1.96.0 metadata --locked --no-deps --format-version 1 > /tmp/activation.metadata.json
+          test "$(jq -r '.packages | length' /tmp/activation.metadata.json)" = "1"
+          test "$(jq -r '.packages[0].name' /tmp/activation.metadata.json)" = "mycelix-patient-v2-activation-gate"
+
+      - name: Static theorem guards
+        run: |
+          grep -q 'LegacyWriteFreezeIntegration = 20' src/core.rs
+          grep -q 'LegacyWritesFrozen' src/core.rs
+          grep -q 'DenyDuringCutover' src/core.rs
+          grep -q 'ClockRollback' src/core.rs
+          grep -q 'DenyNoLegacyFallback' src/core.rs
+          if grep -Eq 'force_activate|force_activation|override_activation' src/core.rs; then
+            echo 'unexpected force/override activation API' >&2
+            exit 1
+          fi
+
+      - name: Check formatting
+        run: cargo +1.96.0 fmt -- --check
+
+      - name: Run tests
+        run: cargo +1.96.0 test --locked
+
+      - name: Run Clippy
+        run: cargo +1.96.0 clippy --locked --all-targets -- -D warnings
+
+      - name: Verify postflight immutability
+        run: |
+          test "$(git rev-parse HEAD)" = "$(cat /tmp/subject.sha)"
+          sha256sum Cargo.toml Cargo.lock README.md src/lib.rs src/core.rs > /tmp/activation.after.sha256
+          diff -u /tmp/activation.before.sha256 /tmp/activation.after.sha256
+          git diff --exit-code -- Cargo.toml Cargo.lock README.md src/lib.rs src/core.rs
+
+      - name: Evidence summary
+        if: always()
+        run: |
+          {
+            echo '## Patient v2 activation-gate reference evidence'
+            echo
+            echo "- subject: $(git rev-parse HEAD)"
+            echo "- runner: ubuntu-24.04"
+            echo "- rustc: $(rustc +1.96.0 --version)"
+            echo "- cargo: $(cargo +1.96.0 --version)"
+            echo '- scope: evidence aggregation + cutover freeze + rehearsal + authority + state transitions only'
+            echo '- invariant: only Qualified satisfies a mandatory proof line'
+            echo '- invariant: legacy writes are denied after cutover freeze and before V2Active'
+            echo '- invariant: rehearsal binds exact frozen legacy-state digest/epoch'
+            echo '- invariant: authority binds evidence + freeze + rehearsal and is rechecked at final activation'
+            echo '- invariant: authority-clock rollback is rejected'
+            echo '- invariant: protected-read failures never reopen legacy plaintext after activation'
+            echo '- non-claim: no CI truth/signature/trusted-clock/migration/Holochain/privacy/regulatory qualification'
+          } >> "$GITHUB_STEP_SUMMARY"
