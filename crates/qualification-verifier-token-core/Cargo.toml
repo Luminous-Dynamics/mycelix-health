@@ -12,6 +12,7 @@ publish = false
 [dependencies]
 mycelix-qualification-generic-transparency-adapter-core = { path = "../qualification-generic-transparency-adapter-core" }
 mycelix-qualification-anti-rollback-anchor-core = { path = "../qualification-anti-rollback-anchor-core" }
+mycelix-qualification-product-authority-core = { path = "../qualification-product-authority-core" }
 mycelix-qualification-receipt-core = { path = "../qualification-receipt-core" }
 
 [lib]
