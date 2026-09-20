@@ -28,13 +28,28 @@ It does **not** establish:
 - trusted-time source correctness;
 - witness independence or key custody;
 - durable network/hardware anti-rollback;
+- that a public Rust `Verified*` trait implementation is itself authority;
 - Health #220 qualification;
 - Patient-v2 activation;
 - clinical validity or legal/regulatory compliance.
 
 ## Generic accepted-anchor seam
 
-`VerifiedGenericAcceptedAnchorV1` is a pinned future compatibility contract, not a claim about the current generic crate's public API. `Luminous-Dynamics/luminous-dynamics#2038` tracks producing one complete typed accepted-anchor identity without pairing a head with an arbitrary second proof object.
+`VerifiedGenericAcceptedAnchorV1` is a pinned **reference compatibility contract**, not a production minting mechanism and not a claim about the current generic crate's public API. `Luminous-Dynamics/luminous-dynamics#2038` tracks producing one complete typed accepted-anchor identity without pairing a head with an arbitrary second proof object.
+
+## Production token boundary
+
+Public evidence traits in this reference crate are semantic/test adapters. Downstream application code can implement a public trait for its own local type; that fact alone cannot confer cryptographic or governance authority.
+
+Before product activation, these reference seams must be replaced or wrapped by concrete verifier-minted tokens (or sealed adapter-owned wrappers) whose constructors are unavailable to ordinary application code. Health #223 tracks that production hardening across the QUAL-EVID stack.
+
+```text
+implements VerifiedFoo
+!=
+Foo cryptographically/governance verified
+```
+
+No final product authority API should accept an arbitrary caller-defined implementation as sufficient proof.
 
 ## Recovery policy
 
