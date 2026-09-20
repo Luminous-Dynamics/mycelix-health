@@ -56,12 +56,14 @@ jobs:
         run: |
           grep -q 'MYCELIX-HEALTH-QUALIFICATION-RECEIPT-V1' scripts/qualification-receipt.py
           grep -q 'MYCELIX-HEALTH-QUALIFICATION-ATTESTATION-V1' scripts/qualification-receipt.py
+          grep -q 'MYCELIX-HEALTH-QUALIFICATION-PROFILE-MATCH-V1' scripts/qualification-receipt-profile.py
           grep -q 'openssl.*pkeyutl' scripts/qualification-receipt.py
           grep -q 'minimum_organizations' scripts/qualification-receipt.py
           grep -q 'required_roles' scripts/qualification-receipt.py
           grep -q 'compromised_at_micros' scripts/qualification-receipt.py
           grep -q 'another receipt' scripts/qualification-receipt.py
           grep -q 'Patient208CompositionCommitment' scripts/qualification-receipt-profile.py
+          grep -q 'domain_separated_profile_match_commitment' scripts/qualification-receipt-profile.py
           grep -q 'product_seam_authority_not_established' scripts/qualification-receipt-profile.py
           grep -q 'current_lineage_head_not_established' scripts/qualification-receipt-profile.py
           grep -q '98621a93db931616186ae1f8c6d1788baa6f29da9b2e00b0931132d07f526389' release/qualification-receipt-golden-v1.json
@@ -84,8 +86,6 @@ jobs:
 
       - name: Verify golden transcript directly
         run: |
-          tmp="$(mktemp -d)"
-          trap 'rm -rf "$tmp"' EXIT
           python3 - <<'PY'
           import importlib.util, json, pathlib
           root=pathlib.Path('.')
@@ -145,7 +145,7 @@ jobs:
             echo "- subject: $(git rev-parse HEAD)"
             echo "- python: $(python3 --version 2>&1)"
             echo "- openssl: $(openssl version)"
-            echo '- scope: Rust-compatible canonical receipt transcript + real Ed25519 multi-party governance verification + exact #208 profile match evidence'
+            echo '- scope: Rust-compatible canonical receipt transcript + real Ed25519 multi-party governance verification + domain-separated exact #208 profile-match evidence'
             echo '- invariant: signed attestation binds exact receipt digest, signer identity and attestation time'
             echo '- invariant: threshold/org/role/signer status/freshness fail closed'
             echo '- invariant: authentic generic qualification still does not establish #208 product seam authority'
