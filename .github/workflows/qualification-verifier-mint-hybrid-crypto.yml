@@ -1,0 +1,140 @@
+name: Qualification Verifier Mint Hybrid Crypto
+
+on:
+  pull_request:
+    paths:
+      - 'crates/qualification-verifier-mint-contract/**'
+      - 'crates/qualification-verifier-mint-hybrid-crypto/**'
+      - '.github/workflows/qualification-verifier-mint-hybrid-crypto.yml'
+  push:
+    branches:
+      - 'feat/qualification-verifier-mint-hybrid-crypto-v1'
+
+permissions:
+  contents: read
+
+jobs:
+  qualify-hybrid-verifier:
+    name: Verify exact mint statement with Ed25519 + ML-DSA-65
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Check out exact subject
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+
+      - name: Install exact Rust toolchain
+        run: |
+          rustup toolchain install 1.96.0 --profile minimal --component rustfmt,clippy
+          rustc +1.96.0 -Vv
+          cargo +1.96.0 -V
+
+      - name: Freeze source identity before dependency resolution
+        run: |
+          git rev-parse HEAD | tee /tmp/subject.sha
+          find crates/qualification-verifier-mint-hybrid-crypto \
+            -type d -name target -prune -o \
+            -type f ! -name Cargo.lock -print0 \
+            | sort -z | xargs -0 sha256sum > /tmp/verifier.before.sha256
+
+      - name: Guard exact crypto profile and claim boundary
+        run: |
+          manifest='crates/qualification-verifier-mint-hybrid-crypto/Cargo.toml'
+          core='crates/qualification-verifier-mint-hybrid-crypto/src/lib.rs'
+          boundaries='crates/qualification-verifier-mint-hybrid-crypto/BOUNDARIES.md'
+          status='crates/qualification-verifier-mint-hybrid-crypto/SOURCE_STATUS.md'
+
+          grep -q 'ed25519-dalek = "=2.2.0"' "$manifest"
+          grep -q 'ml-dsa = "=0.1.1"' "$manifest"
+          grep -q 'sha2 = "=0.10.9"' "$manifest"
+          grep -q 'ML_DSA_65_PK_LEN: usize = 1952' "$core"
+          grep -q 'VerifiedVerifierMintSignaturesV1' "$core"
+          grep -q 'VerifiedVerifierMintCryptographyV1' "$core"
+          grep -q 'verify_mint_signatures_v1' "$core"
+          grep -q 'bind_verified_mint_to_enrollment_v1' "$core"
+          grep -q 'MYCELIX-HEALTH-QUALIFICATION-VERIFIER-KEY-LINEAGE-V1' "$core"
+          grep -q 'challenge issuance, freshness, or single-use' "$boundaries"
+          grep -q 'SOURCE-STAGED' "$status"
+          ! grep -n 'challenge_consumed' "$core"
+          ! grep -nE 'mint_token|issue_token|VerifiedHealthSecurityTimeTokenV1' "$core"
+
+      - name: Generate and identify transitive lock evidence
+        run: |
+          test ! -e crates/qualification-verifier-mint-hybrid-crypto/Cargo.lock
+          cargo +1.96.0 generate-lockfile \
+            --manifest-path crates/qualification-verifier-mint-hybrid-crypto/Cargo.toml
+          sha256sum crates/qualification-verifier-mint-hybrid-crypto/Cargo.lock \
+            | tee /tmp/generated-lock.sha256
+          cp crates/qualification-verifier-mint-hybrid-crypto/Cargo.lock /tmp/Cargo.lock
+
+      - name: Preserve generated lockfile evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: qualification-verifier-mint-hybrid-crypto-lock
+          path: /tmp/Cargo.lock
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Verify generated locked metadata
+        run: |
+          cargo +1.96.0 metadata --locked --no-deps --format-version 1 \
+            --manifest-path crates/qualification-verifier-mint-hybrid-crypto/Cargo.toml \
+            > /tmp/verifier.metadata.json
+          test "$(jq -r '.packages | length' /tmp/verifier.metadata.json)" = "1"
+          test "$(jq -r '.packages[0].name' /tmp/verifier.metadata.json)" = "mycelix-qualification-verifier-mint-hybrid-crypto"
+
+      - name: Re-run exact portable contract
+        run: |
+          cargo +1.96.0 fmt \
+            --manifest-path crates/qualification-verifier-mint-contract/Cargo.toml \
+            -- --check
+          cargo +1.96.0 test --locked \
+            --manifest-path crates/qualification-verifier-mint-contract/Cargo.toml
+          cargo +1.96.0 clippy --locked \
+            --manifest-path crates/qualification-verifier-mint-contract/Cargo.toml \
+            --all-targets -- -D warnings
+
+      - name: Format hybrid verifier
+        run: |
+          cargo +1.96.0 fmt \
+            --manifest-path crates/qualification-verifier-mint-hybrid-crypto/Cargo.toml \
+            -- --check
+
+      - name: Test real hybrid verifier
+        run: |
+          cargo +1.96.0 test --locked \
+            --manifest-path crates/qualification-verifier-mint-hybrid-crypto/Cargo.toml
+
+      - name: Clippy real hybrid verifier
+        run: |
+          cargo +1.96.0 clippy --locked \
+            --manifest-path crates/qualification-verifier-mint-hybrid-crypto/Cargo.toml \
+            --all-targets -- -D warnings
+
+      - name: Verify source immutability and generated-lock stability
+        run: |
+          test "$(git rev-parse HEAD)" = "$(cat /tmp/subject.sha)"
+          sha256sum -c /tmp/generated-lock.sha256
+          find crates/qualification-verifier-mint-hybrid-crypto \
+            -type d -name target -prune -o \
+            -type f ! -name Cargo.lock -print0 \
+            | sort -z | xargs -0 sha256sum > /tmp/verifier.after.sha256
+          diff -u /tmp/verifier.before.sha256 /tmp/verifier.after.sha256
+          rm crates/qualification-verifier-mint-hybrid-crypto/Cargo.lock
+          git diff --exit-code
+
+      - name: Evidence summary
+        if: always()
+        run: |
+          {
+            echo '## Qualification verifier-mint hybrid crypto evidence'
+            echo
+            echo "- subject: $(git rev-parse HEAD)"
+            echo "- rustc: $(rustc +1.96.0 --version 2>/dev/null || echo unavailable)"
+            if test -f /tmp/generated-lock.sha256; then
+              echo "- generated lock: $(cat /tmp/generated-lock.sha256)"
+            fi
+            echo '- crypto: Ed25519 AND ML-DSA-65 over the exact same 009A statement transcript'
+            echo '- enrollment: exact hybrid key pair + signed verifier identity commitments'
+            echo '- non-claim: challenge freshness/single-use and daemon endpoint identity remain 009C'
+            echo '- non-claim: token mint/product admission remains 009D'
+            echo '- reproducibility: generated lock is evidence, not yet a committed release graph'
+          } >> "$GITHUB_STEP_SUMMARY"
