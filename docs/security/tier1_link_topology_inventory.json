@@ -1,0 +1,800 @@
+{
+  "schema_version": 1,
+  "subject": {
+    "repository": "Luminous-Dynamics/mycelix-health",
+    "base_commit": "111340010702acbdab2e85211af97b4a8099db22",
+    "dna_manifest": "dna/dna.yaml",
+    "packaged_integrity_zome_count": 6,
+    "link_variant_count": 78,
+    "scope": "classification only; no confidentiality claim"
+  },
+  "topology_classes": [
+    "intentionally_public",
+    "opaque_scoped_index",
+    "private_local_index",
+    "remove_global_index",
+    "split_required"
+  ],
+  "links": [
+    {
+      "zome": "patient_integrity",
+      "variant": "PatientToRecords",
+      "current_visibility": "dht_link_operation",
+      "contains_patient_or_clinical_correlation": true,
+      "desired_topology_class": "opaque_scoped_index",
+      "risk": "critical",
+      "reason": "Patient-to-clinical-record correlation",
+      "replacement": "Use scoped opaque context handles to protected record/envelope IDs."
+    },
+    {
+      "zome": "patient_integrity",
+      "variant": "PatientToConsents",
+      "current_visibility": "dht_link_operation",
+      "contains_patient_or_clinical_correlation": true,
+      "desired_topology_class": "opaque_scoped_index",
+      "risk": "critical",
+      "reason": "Patient-to-consent relationship reveals care/privacy state",
+      "replacement": "Use scoped opaque capability/policy handles; semantic index remains protected/local."
+    },
+    {
+      "zome": "patient_integrity",
+      "variant": "PatientToPrescriptions",
+      "current_visibility": "dht_link_operation",
+      "contains_patient_or_clinical_correlation": true,
+      "desired_topology_class": "opaque_scoped_index",
+      "risk": "critical",
+      "reason": "Patient-to-prescription correlation reveals medication activity",
+      "replacement": "Use scoped opaque context handles; no clear patient anchor."
+    },
+    {
+      "zome": "patient_integrity",
+      "variant": "PatientToProviders",
+      "current_visibility": "dht_link_operation",
+      "contains_patient_or_clinical_correlation": true,
+      "desired_topology_class": "opaque_scoped_index",
+      "risk": "high",
+      "reason": "Care relationship itself is sensitive",
+      "replacement": "Use capability-scoped relationship handles, not clear patient/provider topology."
+    },
+    {
+      "zome": "patient_integrity",
+      "variant": "PatientToTrials",
+      "current_visibility": "dht_link_operation",
+      "contains_patient_or_clinical_correlation": true,
+      "desired_topology_class": "opaque_scoped_index",
+      "risk": "high",
+      "reason": "Trial participation can reveal condition/research involvement",
+      "replacement": "Use scoped opaque relationship handles."
+    },
+    {
+      "zome": "patient_integrity",
+      "variant": "PatientToInsurance",
+      "current_visibility": "dht_link_operation",
+      "contains_patient_or_clinical_correlation": true,
+      "desired_topology_class": "opaque_scoped_index",
+      "risk": "high",
+      "reason": "Insurance relationship reveals administrative/health context",
+      "replacement": "Use scoped opaque relationship handles."
+    },
+    {
+      "zome": "patient_integrity",
+      "variant": "PatientUpdates",
+      "current_visibility": "dht_link_operation",
+      "contains_patient_or_clinical_correlation": true,
+      "desired_topology_class": "opaque_scoped_index",
+      "risk": "high",
+      "reason": "Update history correlates a stable patient identity with profile activity",
+      "replacement": "Use protected profile lineage indexed by opaque context."
+    },
+    {
+      "zome": "patient_integrity",
+      "variant": "AllPatients",
+      "current_visibility": "dht_link_operation",
+      "contains_patient_or_clinical_correlation": true,
+      "desired_topology_class": "remove_global_index",
+      "risk": "critical",
+      "reason": "Global patient enumerability is incompatible with v2 discovery theorem",
+      "replacement": "No v2 global patient directory."
+    },
+    {
+      "zome": "patient_integrity",
+      "variant": "PatientToDID",
+      "current_visibility": "dht_link_operation",
+      "contains_patient_or_clinical_correlation": true,
+      "desired_topology_class": "remove_global_index",
+      "risk": "critical",
+      "reason": "Clear patient-to-DID binding enables identity correlation",
+      "replacement": "Move to protected identity-binding assertion/local index."
+    },
+    {
+      "zome": "patient_integrity",
+      "variant": "DIDToPatient",
+      "current_visibility": "dht_link_operation",
+      "contains_patient_or_clinical_correlation": true,
+      "desired_topology_class": "remove_global_index",
+      "risk": "critical",
+      "reason": "Clear reverse DID-to-patient directory enables global re-identification",
+      "replacement": "Remove; authorized correlation uses scoped proof/capability."
+    },
+    {
+      "zome": "patient_integrity",
+      "variant": "PatientToIdentityLink",
+      "current_visibility": "dht_link_operation",
+      "contains_patient_or_clinical_correlation": true,
+      "desired_topology_class": "opaque_scoped_index",
+      "risk": "critical",
+      "reason": "Identity verification relationship is sensitive",
+      "replacement": "Protected identity-binding assertion addressed by opaque capability-scoped handle."
+    },
+    {
+      "zome": "provider_integrity",
+      "variant": "ProviderToLicenses",
+      "current_visibility": "dht_link_operation",
+      "contains_patient_or_clinical_correlation": false,
+      "desired_topology_class": "intentionally_public",
+      "risk": "low",
+      "reason": "Professional licensure is part of public provider directory contract",
+      "replacement": "Retain public directory topology with provenance/issuer validation."
+    },
+    {
+      "zome": "provider_integrity",
+      "variant": "ProviderToCertifications",
+      "current_visibility": "dht_link_operation",
+      "contains_patient_or_clinical_correlation": false,
+      "desired_topology_class": "intentionally_public",
+      "risk": "low",
+      "reason": "Professional board certification is public provider-directory metadata",
+      "replacement": "Retain public directory topology with provenance/issuer validation."
+    },
+    {
+      "zome": "provider_integrity",
+      "variant": "ProviderToPatients",
+      "current_visibility": "dht_link_operation",
+      "contains_patient_or_clinical_correlation": true,
+      "desired_topology_class": "opaque_scoped_index",
+      "risk": "critical",
+      "reason": "Provider-patient relationship is sensitive",
+      "replacement": "Use scoped care-relationship handles; never public provider-to-patient directory."
+    },
+    {
+      "zome": "provider_integrity",
+      "variant": "ProviderToRecords",
+      "current_visibility": "dht_link_operation",
+      "contains_patient_or_clinical_correlation": true,
+      "desired_topology_class": "opaque_scoped_index",
+      "risk": "critical",
+      "reason": "Provider-to-record relationship can reveal treatment activity",
+      "replacement": "Use capability-scoped opaque handles."
+    },
+    {
+      "zome": "provider_integrity",
+      "variant": "ProviderToPrescriptions",
+      "current_visibility": "dht_link_operation",
+      "contains_patient_or_clinical_correlation": true,
+      "desired_topology_class": "opaque_scoped_index",
+      "risk": "critical",
+      "reason": "Provider-to-prescription relation can reveal prescribing/treatment context",
+      "replacement": "Use capability-scoped opaque handles."
+    },
+    {
+      "zome": "provider_integrity",
+      "variant": "ProviderToTrials",
+      "current_visibility": "dht_link_operation",
+      "contains_patient_or_clinical_correlation": false,
+      "desired_topology_class": "split_required",
+      "risk": "moderate",
+      "reason": "Some provider trial affiliations may be legitimately public, operational participation may not be",
+      "replacement": "Separate public professional affiliation from protected operational relationship."
+    },
+    {
+      "zome": "provider_integrity",
+      "variant": "ProviderUpdates",
+      "current_visibility": "dht_link_operation",
+      "contains_patient_or_clinical_correlation": false,
+      "desired_topology_class": "intentionally_public",
+      "risk": "low",
+      "reason": "Public provider profile update lineage is compatible with directory discovery",
+      "replacement": "Retain only for intentionally public provider-directory fields."
+    },
+    {
+      "zome": "provider_integrity",
+      "variant": "AllProviders",
+      "current_visibility": "dht_link_operation",
+      "contains_patient_or_clinical_correlation": false,
+      "desired_topology_class": "intentionally_public",
+      "risk": "low",
+      "reason": "Provider directory is intentionally discoverable",
+      "replacement": "Retain as public professional directory anchor."
+    },
+    {
+      "zome": "provider_integrity",
+      "variant": "ProvidersBySpecialty",
+      "current_visibility": "dht_link_operation",
+      "contains_patient_or_clinical_correlation": false,
+      "desired_topology_class": "intentionally_public",
+      "risk": "low",
+      "reason": "Specialty discovery is intentionally public provider-directory functionality",
+      "replacement": "Retain public directory index."
+    },
+    {
+      "zome": "provider_integrity",
+      "variant": "ProvidersByLocation",
+      "current_visibility": "dht_link_operation",
+      "contains_patient_or_clinical_correlation": false,
+      "desired_topology_class": "intentionally_public",
+      "risk": "low",
+      "reason": "Location discovery is intentionally public provider-directory functionality",
+      "replacement": "Retain public directory index with non-sensitive location granularity."
+    },
+    {
+      "zome": "records_integrity",
+      "variant": "PatientToEncounters",
+      "current_visibility": "dht_link_operation",
+      "contains_patient_or_clinical_correlation": true,
+      "desired_topology_class": "opaque_scoped_index",
+      "risk": "critical",
+      "reason": "Patient encounter existence/timing is sensitive",
+      "replacement": "Use scoped opaque context handles."
+    },
+    {
+      "zome": "records_integrity",
+      "variant": "EncounterToDiagnoses",
+      "current_visibility": "dht_link_operation",
+      "contains_patient_or_clinical_correlation": true,
+      "desired_topology_class": "opaque_scoped_index",
+      "risk": "critical",
+      "reason": "Diagnosis relationship is highly sensitive",
+      "replacement": "Keep diagnosis graph protected; distributed lookup only via opaque scoped handles."
+    },
+    {
+      "zome": "records_integrity",
+      "variant": "EncounterToProcedures",
+      "current_visibility": "dht_link_operation",
+      "contains_patient_or_clinical_correlation": true,
+      "desired_topology_class": "opaque_scoped_index",
+      "risk": "critical",
+      "reason": "Procedure relationship is sensitive",
+      "replacement": "Use opaque scoped handles."
+    },
+    {
+      "zome": "records_integrity",
+      "variant": "PatientToLabResults",
+      "current_visibility": "dht_link_operation",
+      "contains_patient_or_clinical_correlation": true,
+      "desired_topology_class": "opaque_scoped_index",
+      "risk": "critical",
+      "reason": "Lab-result relationship reveals clinical activity",
+      "replacement": "Use opaque scoped handles."
+    },
+    {
+      "zome": "records_integrity",
+      "variant": "PatientToImaging",
+      "current_visibility": "dht_link_operation",
+      "contains_patient_or_clinical_correlation": true,
+      "desired_topology_class": "opaque_scoped_index",
+      "risk": "critical",
+      "reason": "Imaging relationship reveals clinical activity",
+      "replacement": "Use opaque scoped handles."
+    },
+    {
+      "zome": "records_integrity",
+      "variant": "PatientToVitals",
+      "current_visibility": "dht_link_operation",
+      "contains_patient_or_clinical_correlation": true,
+      "desired_topology_class": "opaque_scoped_index",
+      "risk": "high",
+      "reason": "Vitals relationship reveals health monitoring activity",
+      "replacement": "Use opaque scoped handles."
+    },
+    {
+      "zome": "records_integrity",
+      "variant": "ProviderToEncounters",
+      "current_visibility": "dht_link_operation",
+      "contains_patient_or_clinical_correlation": true,
+      "desired_topology_class": "opaque_scoped_index",
+      "risk": "critical",
+      "reason": "Provider encounter relationship can identify treatment",
+      "replacement": "Use care-context-scoped opaque handles."
+    },
+    {
+      "zome": "records_integrity",
+      "variant": "DiagnosisUpdates",
+      "current_visibility": "dht_link_operation",
+      "contains_patient_or_clinical_correlation": true,
+      "desired_topology_class": "opaque_scoped_index",
+      "risk": "critical",
+      "reason": "Diagnosis update topology reveals diagnosis existence/evolution",
+      "replacement": "Use protected lineage keyed by opaque record context."
+    },
+    {
+      "zome": "records_integrity",
+      "variant": "EncounterUpdates",
+      "current_visibility": "dht_link_operation",
+      "contains_patient_or_clinical_correlation": true,
+      "desired_topology_class": "opaque_scoped_index",
+      "risk": "high",
+      "reason": "Encounter update topology leaks care activity",
+      "replacement": "Use protected lineage keyed by opaque record context."
+    },
+    {
+      "zome": "records_integrity",
+      "variant": "LabResultUpdates",
+      "current_visibility": "dht_link_operation",
+      "contains_patient_or_clinical_correlation": true,
+      "desired_topology_class": "opaque_scoped_index",
+      "risk": "critical",
+      "reason": "Lab update topology leaks testing activity",
+      "replacement": "Use protected lineage keyed by opaque record context."
+    },
+    {
+      "zome": "records_integrity",
+      "variant": "CriticalResults",
+      "current_visibility": "dht_link_operation",
+      "contains_patient_or_clinical_correlation": true,
+      "desired_topology_class": "remove_global_index",
+      "risk": "critical",
+      "reason": "Global critical-result enumeration leaks severe clinical events",
+      "replacement": "Replace with capability-scoped alert delivery/notification, not global anchor."
+    },
+    {
+      "zome": "records_integrity",
+      "variant": "PatientToEncryptedRecords",
+      "current_visibility": "dht_link_operation",
+      "contains_patient_or_clinical_correlation": true,
+      "desired_topology_class": "opaque_scoped_index",
+      "risk": "critical",
+      "reason": "Encryption does not hide patient-to-record count/timing correlation",
+      "replacement": "Index opaque context handle to opaque envelope ID."
+    },
+    {
+      "zome": "records_integrity",
+      "variant": "PatientToAmendments",
+      "current_visibility": "dht_link_operation",
+      "contains_patient_or_clinical_correlation": true,
+      "desired_topology_class": "opaque_scoped_index",
+      "risk": "high",
+      "reason": "Amendment activity reveals dispute/correction of health data",
+      "replacement": "Use opaque scoped handles."
+    },
+    {
+      "zome": "records_integrity",
+      "variant": "PatientToSdohScreenings",
+      "current_visibility": "dht_link_operation",
+      "contains_patient_or_clinical_correlation": true,
+      "desired_topology_class": "opaque_scoped_index",
+      "risk": "critical",
+      "reason": "SDOH screening activity can reveal socioeconomic vulnerabilities",
+      "replacement": "Use opaque scoped handles."
+    },
+    {
+      "zome": "prescriptions_integrity",
+      "variant": "PatientToPrescriptions",
+      "current_visibility": "dht_link_operation",
+      "contains_patient_or_clinical_correlation": true,
+      "desired_topology_class": "opaque_scoped_index",
+      "risk": "critical",
+      "reason": "Medication relationship is sensitive",
+      "replacement": "Use opaque context/envelope lookup."
+    },
+    {
+      "zome": "prescriptions_integrity",
+      "variant": "PrescriberToPrescriptions",
+      "current_visibility": "dht_link_operation",
+      "contains_patient_or_clinical_correlation": true,
+      "desired_topology_class": "opaque_scoped_index",
+      "risk": "critical",
+      "reason": "Prescriber relationship can expose patient treatment through graph joins",
+      "replacement": "Use scoped opaque prescription handles."
+    },
+    {
+      "zome": "prescriptions_integrity",
+      "variant": "PrescriptionToFills",
+      "current_visibility": "dht_link_operation",
+      "contains_patient_or_clinical_correlation": true,
+      "desired_topology_class": "opaque_scoped_index",
+      "risk": "critical",
+      "reason": "Fill history reveals medication use/adherence",
+      "replacement": "Use scoped opaque handles."
+    },
+    {
+      "zome": "prescriptions_integrity",
+      "variant": "PatientToAdherence",
+      "current_visibility": "dht_link_operation",
+      "contains_patient_or_clinical_correlation": true,
+      "desired_topology_class": "opaque_scoped_index",
+      "risk": "critical",
+      "reason": "Adherence relationship is sensitive behavioral health information",
+      "replacement": "Use protected/local semantic graph or opaque scoped handles."
+    },
+    {
+      "zome": "prescriptions_integrity",
+      "variant": "PrescriptionToAlerts",
+      "current_visibility": "dht_link_operation",
+      "contains_patient_or_clinical_correlation": true,
+      "desired_topology_class": "opaque_scoped_index",
+      "risk": "critical",
+      "reason": "Alerts may disclose contraindications/interactions",
+      "replacement": "Use protected alert graph with opaque handles."
+    },
+    {
+      "zome": "prescriptions_integrity",
+      "variant": "PatientToPharmacy",
+      "current_visibility": "dht_link_operation",
+      "contains_patient_or_clinical_correlation": true,
+      "desired_topology_class": "opaque_scoped_index",
+      "risk": "high",
+      "reason": "Patient-pharmacy relation can reveal treatment/location patterns",
+      "replacement": "Use scoped opaque relationship handles."
+    },
+    {
+      "zome": "prescriptions_integrity",
+      "variant": "AllPharmacies",
+      "current_visibility": "dht_link_operation",
+      "contains_patient_or_clinical_correlation": false,
+      "desired_topology_class": "intentionally_public",
+      "risk": "low",
+      "reason": "Pharmacy directory is intentionally discoverable",
+      "replacement": "Retain public pharmacy directory topology."
+    },
+    {
+      "zome": "prescriptions_integrity",
+      "variant": "ControlledSubstances",
+      "current_visibility": "dht_link_operation",
+      "contains_patient_or_clinical_correlation": true,
+      "desired_topology_class": "remove_global_index",
+      "risk": "critical",
+      "reason": "Global controlled-substance enumeration is a high-risk clinical/behavioral signal",
+      "replacement": "Replace with protected policy checks/alerts, no global semantic anchor."
+    },
+    {
+      "zome": "consent_integrity",
+      "variant": "PatientToConsents",
+      "current_visibility": "dht_link_operation",
+      "contains_patient_or_clinical_correlation": true,
+      "desired_topology_class": "opaque_scoped_index",
+      "risk": "critical",
+      "reason": "Consent relationships reveal care/privacy choices",
+      "replacement": "Use opaque subject/policy handles."
+    },
+    {
+      "zome": "consent_integrity",
+      "variant": "PatientToAccessRequests",
+      "current_visibility": "dht_link_operation",
+      "contains_patient_or_clinical_correlation": true,
+      "desired_topology_class": "opaque_scoped_index",
+      "risk": "critical",
+      "reason": "Access-request activity reveals who seeks health data",
+      "replacement": "Use protected audit/capability context."
+    },
+    {
+      "zome": "consent_integrity",
+      "variant": "PatientToAccessLogs",
+      "current_visibility": "dht_link_operation",
+      "contains_patient_or_clinical_correlation": true,
+      "desired_topology_class": "opaque_scoped_index",
+      "risk": "critical",
+      "reason": "Access-log topology reveals data-access activity",
+      "replacement": "Use protected detailed audit + opaque commitments."
+    },
+    {
+      "zome": "consent_integrity",
+      "variant": "ConsentToLogs",
+      "current_visibility": "dht_link_operation",
+      "contains_patient_or_clinical_correlation": true,
+      "desired_topology_class": "opaque_scoped_index",
+      "risk": "high",
+      "reason": "Links consent to access events",
+      "replacement": "Use opaque policy/audit handles."
+    },
+    {
+      "zome": "consent_integrity",
+      "variant": "PatientToEmergencyAccess",
+      "current_visibility": "dht_link_operation",
+      "contains_patient_or_clinical_correlation": true,
+      "desired_topology_class": "opaque_scoped_index",
+      "risk": "critical",
+      "reason": "Emergency-access existence can reveal crisis/acute care",
+      "replacement": "Use protected emergency audit with opaque commitment."
+    },
+    {
+      "zome": "consent_integrity",
+      "variant": "PatientToDocuments",
+      "current_visibility": "dht_link_operation",
+      "contains_patient_or_clinical_correlation": true,
+      "desired_topology_class": "opaque_scoped_index",
+      "risk": "high",
+      "reason": "Authorization-document relationship reveals legal/care activity",
+      "replacement": "Use protected document/capability handles."
+    },
+    {
+      "zome": "consent_integrity",
+      "variant": "GranteeToConsents",
+      "current_visibility": "dht_link_operation",
+      "contains_patient_or_clinical_correlation": true,
+      "desired_topology_class": "opaque_scoped_index",
+      "risk": "critical",
+      "reason": "Grantee-consent relation exposes who has access to whose health data",
+      "replacement": "Use pairwise/scoped opaque capability handles."
+    },
+    {
+      "zome": "consent_integrity",
+      "variant": "ActiveConsents",
+      "current_visibility": "dht_link_operation",
+      "contains_patient_or_clinical_correlation": true,
+      "desired_topology_class": "remove_global_index",
+      "risk": "critical",
+      "reason": "Global active-consent enumeration exposes relationship/access state",
+      "replacement": "Resolve active state through scoped capability/policy state."
+    },
+    {
+      "zome": "consent_integrity",
+      "variant": "RevokedConsents",
+      "current_visibility": "dht_link_operation",
+      "contains_patient_or_clinical_correlation": true,
+      "desired_topology_class": "remove_global_index",
+      "risk": "critical",
+      "reason": "Global revoked-consent enumeration exposes privacy decisions/conflicts",
+      "replacement": "Use scoped revocation commitments."
+    },
+    {
+      "zome": "consent_integrity",
+      "variant": "ConsentUpdates",
+      "current_visibility": "dht_link_operation",
+      "contains_patient_or_clinical_correlation": true,
+      "desired_topology_class": "opaque_scoped_index",
+      "risk": "high",
+      "reason": "Consent update history is sensitive policy state",
+      "replacement": "Use protected policy lineage."
+    },
+    {
+      "zome": "consent_integrity",
+      "variant": "PatientToDelegations",
+      "current_visibility": "dht_link_operation",
+      "contains_patient_or_clinical_correlation": true,
+      "desired_topology_class": "opaque_scoped_index",
+      "risk": "critical",
+      "reason": "Delegation relationships expose who can act for a patient",
+      "replacement": "Use protected attenuable capability graph."
+    },
+    {
+      "zome": "consent_integrity",
+      "variant": "DelegateToDelegations",
+      "current_visibility": "dht_link_operation",
+      "contains_patient_or_clinical_correlation": true,
+      "desired_topology_class": "opaque_scoped_index",
+      "risk": "critical",
+      "reason": "Delegate-centric reverse lookup exposes patient authority relationships",
+      "replacement": "Use pairwise/scoped opaque capability handles."
+    },
+    {
+      "zome": "consent_integrity",
+      "variant": "ActiveDelegations",
+      "current_visibility": "dht_link_operation",
+      "contains_patient_or_clinical_correlation": true,
+      "desired_topology_class": "remove_global_index",
+      "risk": "critical",
+      "reason": "Global active-delegation enumeration exposes authority state",
+      "replacement": "Use scoped capability validation."
+    },
+    {
+      "zome": "consent_integrity",
+      "variant": "PatientToNotifications",
+      "current_visibility": "dht_link_operation",
+      "contains_patient_or_clinical_correlation": true,
+      "desired_topology_class": "opaque_scoped_index",
+      "risk": "high",
+      "reason": "Notification activity can reveal access/care events",
+      "replacement": "Use protected/local notification index."
+    },
+    {
+      "zome": "consent_integrity",
+      "variant": "PatientToNotificationPreferences",
+      "current_visibility": "dht_link_operation",
+      "contains_patient_or_clinical_correlation": true,
+      "desired_topology_class": "private_local_index",
+      "risk": "high",
+      "reason": "Notification preferences are personal settings without DHT discovery need",
+      "replacement": "Keep in local/private CareVault state."
+    },
+    {
+      "zome": "consent_integrity",
+      "variant": "PatientToDigests",
+      "current_visibility": "dht_link_operation",
+      "contains_patient_or_clinical_correlation": true,
+      "desired_topology_class": "private_local_index",
+      "risk": "high",
+      "reason": "Notification digests summarize private activity",
+      "replacement": "Keep protected/local; share only by explicit projection."
+    },
+    {
+      "zome": "consent_integrity",
+      "variant": "UnreadNotifications",
+      "current_visibility": "dht_link_operation",
+      "contains_patient_or_clinical_correlation": true,
+      "desired_topology_class": "remove_global_index",
+      "risk": "high",
+      "reason": "Global unread-state anchor leaks activity and should be client-local",
+      "replacement": "Keep unread state local/private."
+    },
+    {
+      "zome": "consent_integrity",
+      "variant": "PatientToCareTeams",
+      "current_visibility": "dht_link_operation",
+      "contains_patient_or_clinical_correlation": true,
+      "desired_topology_class": "opaque_scoped_index",
+      "risk": "critical",
+      "reason": "Care-team membership is a sensitive relationship graph",
+      "replacement": "Use protected relationship capabilities/opaque handles."
+    },
+    {
+      "zome": "consent_integrity",
+      "variant": "CareTeamToMembers",
+      "current_visibility": "dht_link_operation",
+      "contains_patient_or_clinical_correlation": true,
+      "desired_topology_class": "opaque_scoped_index",
+      "risk": "critical",
+      "reason": "Team membership exposes care relationships",
+      "replacement": "Use protected/scoped member handles."
+    },
+    {
+      "zome": "consent_integrity",
+      "variant": "TemplateToTeams",
+      "current_visibility": "dht_link_operation",
+      "contains_patient_or_clinical_correlation": true,
+      "desired_topology_class": "private_local_index",
+      "risk": "moderate",
+      "reason": "Template usage can correlate specific care teams",
+      "replacement": "Keep template application local/protected; templates themselves may be public."
+    },
+    {
+      "zome": "consent_integrity",
+      "variant": "SystemTemplates",
+      "current_visibility": "dht_link_operation",
+      "contains_patient_or_clinical_correlation": false,
+      "desired_topology_class": "intentionally_public",
+      "risk": "low",
+      "reason": "Generic care-team templates are system/public configuration",
+      "replacement": "Retain only generic non-patient templates publicly."
+    },
+    {
+      "zome": "consent_integrity",
+      "variant": "ActiveCareTeams",
+      "current_visibility": "dht_link_operation",
+      "contains_patient_or_clinical_correlation": true,
+      "desired_topology_class": "remove_global_index",
+      "risk": "critical",
+      "reason": "Global active-care-team enumeration exposes treatment relationships",
+      "replacement": "Resolve active state in protected relationship/capability state."
+    },
+    {
+      "zome": "consent_integrity",
+      "variant": "PatientToEncryptedEntries",
+      "current_visibility": "dht_link_operation",
+      "contains_patient_or_clinical_correlation": true,
+      "desired_topology_class": "opaque_scoped_index",
+      "risk": "critical",
+      "reason": "Ciphertext still leaks patient-to-entry count/timing correlation",
+      "replacement": "Use opaque context-handle to envelope-ID index."
+    },
+    {
+      "zome": "consent_integrity",
+      "variant": "PatientToKeyBundles",
+      "current_visibility": "dht_link_operation",
+      "contains_patient_or_clinical_correlation": true,
+      "desired_topology_class": "opaque_scoped_index",
+      "risk": "critical",
+      "reason": "Patient-key relationship enables identity/key correlation",
+      "replacement": "Use scoped opaque key-discovery handles/capability."
+    },
+    {
+      "zome": "consent_integrity",
+      "variant": "EntryToDecryptionAudits",
+      "current_visibility": "dht_link_operation",
+      "contains_patient_or_clinical_correlation": true,
+      "desired_topology_class": "opaque_scoped_index",
+      "risk": "critical",
+      "reason": "Decryption audit topology reveals which protected records were accessed",
+      "replacement": "Use protected audit chain with opaque commitments."
+    },
+    {
+      "zome": "consent_integrity",
+      "variant": "ActiveKeyBundle",
+      "current_visibility": "dht_link_operation",
+      "contains_patient_or_clinical_correlation": true,
+      "desired_topology_class": "remove_global_index",
+      "risk": "critical",
+      "reason": "Global active-key index can re-identify subject/key epochs",
+      "replacement": "Resolve key epoch through scoped capability/key-discovery context."
+    },
+    {
+      "zome": "bridge_integrity",
+      "variant": "IdentityToRegistrations",
+      "current_visibility": "dht_link_operation",
+      "contains_patient_or_clinical_correlation": true,
+      "desired_topology_class": "split_required",
+      "risk": "high",
+      "reason": "Identity-to-hApp registration correlation may reveal health participation",
+      "replacement": "Separate intentionally public service registration from protected subject registration."
+    },
+    {
+      "zome": "bridge_integrity",
+      "variant": "QueryToResponses",
+      "current_visibility": "dht_link_operation",
+      "contains_patient_or_clinical_correlation": true,
+      "desired_topology_class": "opaque_scoped_index",
+      "risk": "critical",
+      "reason": "Health query/response relationships reveal requested data/activity",
+      "replacement": "Use opaque request/response handles inside capability scope."
+    },
+    {
+      "zome": "bridge_integrity",
+      "variant": "ProviderToVerifications",
+      "current_visibility": "dht_link_operation",
+      "contains_patient_or_clinical_correlation": false,
+      "desired_topology_class": "split_required",
+      "risk": "moderate",
+      "reason": "Public provider verification outcome may be useful, while request/evidence may be sensitive",
+      "replacement": "Separate public credential assertion from protected verification workflow."
+    },
+    {
+      "zome": "bridge_integrity",
+      "variant": "EntityToClaims",
+      "current_visibility": "dht_link_operation",
+      "contains_patient_or_clinical_correlation": true,
+      "desired_topology_class": "split_required",
+      "risk": "critical",
+      "reason": "Health claims may concern diagnosis/treatment/outcome or public provider/research claims",
+      "replacement": "Separate public non-patient claims from protected patient/clinical claims."
+    },
+    {
+      "zome": "bridge_integrity",
+      "variant": "EntityToReputation",
+      "current_visibility": "dht_link_operation",
+      "contains_patient_or_clinical_correlation": true,
+      "desired_topology_class": "split_required",
+      "risk": "high",
+      "reason": "Reputation relation may reveal health entity participation and mixes authority domains",
+      "replacement": "Separate public professional/system reputation from protected patient-linked contexts."
+    },
+    {
+      "zome": "bridge_integrity",
+      "variant": "PendingQueries",
+      "current_visibility": "dht_link_operation",
+      "contains_patient_or_clinical_correlation": true,
+      "desired_topology_class": "remove_global_index",
+      "risk": "critical",
+      "reason": "Global pending health-query enumeration leaks active requests",
+      "replacement": "Use capability-scoped/private queue."
+    },
+    {
+      "zome": "bridge_integrity",
+      "variant": "ActiveRegistrations",
+      "current_visibility": "dht_link_operation",
+      "contains_patient_or_clinical_correlation": true,
+      "desired_topology_class": "split_required",
+      "risk": "high",
+      "reason": "Some service registrations may be public; subject health participation should not be",
+      "replacement": "Separate public service registry from protected participant state."
+    },
+    {
+      "zome": "bridge_integrity",
+      "variant": "ClaimsByType",
+      "current_visibility": "dht_link_operation",
+      "contains_patient_or_clinical_correlation": true,
+      "desired_topology_class": "split_required",
+      "risk": "critical",
+      "reason": "Type index can expose diagnosis/treatment/adverse-event claim classes",
+      "replacement": "Public-index only explicitly public claim classes; protect clinical claim classes."
+    },
+    {
+      "zome": "bridge_integrity",
+      "variant": "DispatchRateLimit",
+      "current_visibility": "dht_link_operation",
+      "contains_patient_or_clinical_correlation": true,
+      "desired_topology_class": "private_local_index",
+      "risk": "moderate",
+      "reason": "Per-agent dispatch activity is operational security metadata",
+      "replacement": "Keep local/private or opaque non-semantic rate-limit state."
+    }
+  ]
+}
