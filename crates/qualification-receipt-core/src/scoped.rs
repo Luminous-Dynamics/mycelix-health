@@ -50,6 +50,10 @@ impl QualificationLineageBinding {
 pub struct ScopedQualificationStatement {
     inner: strict::GovernedStatement,
     binding: QualificationLineageBinding,
+    kind: ReceiptKind,
+    deployment_evidence: Option<DeploymentEvidenceDigest>,
+    issued_at_micros: i64,
+    expires_at_micros: i64,
 }
 
 impl ScopedQualificationStatement {
@@ -87,7 +91,14 @@ impl ScopedQualificationStatement {
             binding.admission_scope,
             binding.claim_profile,
         )?;
-        Ok(Self { inner, binding })
+        Ok(Self {
+            inner,
+            binding,
+            kind,
+            deployment_evidence,
+            issued_at_micros,
+            expires_at_micros,
+        })
     }
 
     pub fn transcript_bytes(&self) -> Vec<u8> {
@@ -96,6 +107,22 @@ impl ScopedQualificationStatement {
 
     pub fn binding(&self) -> QualificationLineageBinding {
         self.binding
+    }
+
+    pub fn kind(&self) -> ReceiptKind {
+        self.kind
+    }
+
+    pub fn deployment_evidence(&self) -> Option<DeploymentEvidenceDigest> {
+        self.deployment_evidence
+    }
+
+    pub fn issued_at_micros(&self) -> i64 {
+        self.issued_at_micros
+    }
+
+    pub fn expires_at_micros(&self) -> i64 {
+        self.expires_at_micros
     }
 
     pub fn sequence(&self) -> u64 {
@@ -107,6 +134,10 @@ impl ScopedQualificationStatement {
 pub struct VerifiedQualification {
     inner: strict::GovernedQualification,
     binding: QualificationLineageBinding,
+    kind: ReceiptKind,
+    deployment_evidence: Option<DeploymentEvidenceDigest>,
+    issued_at_micros: i64,
+    expires_at_micros: i64,
 }
 
 impl VerifiedQualification {
@@ -129,6 +160,22 @@ impl VerifiedQualification {
     pub fn binding(&self) -> QualificationLineageBinding {
         self.binding
     }
+
+    pub fn kind(&self) -> ReceiptKind {
+        self.kind
+    }
+
+    pub fn deployment_evidence(&self) -> Option<DeploymentEvidenceDigest> {
+        self.deployment_evidence
+    }
+
+    pub fn issued_at_micros(&self) -> i64 {
+        self.issued_at_micros
+    }
+
+    pub fn expires_at_micros(&self) -> i64 {
+        self.expires_at_micros
+    }
 }
 
 pub fn verify_qualification(
@@ -139,6 +186,10 @@ pub fn verify_qualification(
     now_micros: i64,
 ) -> Result<VerifiedQualification, GovernedVerificationError> {
     let binding = statement.binding;
+    let kind = statement.kind;
+    let deployment_evidence = statement.deployment_evidence;
+    let issued_at_micros = statement.issued_at_micros;
+    let expires_at_micros = statement.expires_at_micros;
     let inner = strict::verify_governed_qualification(
         statement.inner,
         commitment,
@@ -146,7 +197,14 @@ pub fn verify_qualification(
         attestations,
         now_micros,
     )?;
-    Ok(VerifiedQualification { inner, binding })
+    Ok(VerifiedQualification {
+        inner,
+        binding,
+        kind,
+        deployment_evidence,
+        issued_at_micros,
+        expires_at_micros,
+    })
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -326,5 +384,14 @@ mod tests {
         let value = verified(3, 40);
         assert_eq!(value.binding(), binding(3));
         assert_eq!(value.receipt_digest(), oid!(ReceiptDigest, 40));
+    }
+
+    #[test]
+    fn verified_metadata_needed_by_adapter_profiles_is_read_only_and_preserved() {
+        let value = verified(3, 40);
+        assert_eq!(value.kind(), ReceiptKind::P0ClosureQualification);
+        assert_eq!(value.deployment_evidence(), Some(oid!(DeploymentEvidenceDigest, 5)));
+        assert_eq!(value.issued_at_micros(), 10);
+        assert_eq!(value.expires_at_micros(), 1_000);
     }
 }
