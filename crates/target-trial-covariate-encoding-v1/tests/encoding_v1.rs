@@ -462,6 +462,22 @@ fn source_fact_set_must_match_exact_selected_snapshot_set() {
 }
 
 #[test]
+fn patient_rebinding_changes_snapshot_identity_and_fails_closed() {
+    let fixture = fixture(Some(ClinicalValue::Integer(120)));
+    let encoding_policy = policy(&fixture.baseline, CovariateEncodingRuleV1::Integer, 40);
+    let mut rebound = fixture.source_fact.clone().unwrap();
+    rebound.subject.id = "patient-2".to_string();
+    assert!(matches!(
+        build_encoded_baseline_covariate_matrix_v1(
+            &fixture.baseline,
+            &[encoding_policy],
+            &[rebound],
+        ),
+        Err(CovariateEncodingV1Error::SourceFactSetMismatch)
+    ));
+}
+
+#[test]
 fn value_variant_and_quantity_unit_mismatch_fail_closed() {
     let integer = fixture(Some(ClinicalValue::Integer(120)));
     let wrong_variant = policy(&integer.baseline, CovariateEncodingRuleV1::Decimal, 36);
