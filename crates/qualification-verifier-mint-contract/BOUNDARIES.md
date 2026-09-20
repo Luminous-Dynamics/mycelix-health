@@ -21,6 +21,9 @@ A successful exact-head qualifier may establish only:
 
 It does **not** establish:
 
+- cryptographic correctness of the caller-supplied request commitment;
+- cryptographic correctness of the generic state commitment or its derivation-evidence commitment;
+- cryptographic correctness of the underlying-evidence commitment;
 - Ed25519 verification;
 - ML-DSA-65 verification;
 - current verifier enrollment/trust;
@@ -35,9 +38,11 @@ It does **not** establish:
 - #224/#222/#220 qualification by implication;
 - Patient-v2 activation, clinical validity or regulatory compliance.
 
+Those commitment-correctness checks belong to the real verifier/admission tranches. In 009A the commitments are authority-bearing bytes whose exact placement is frozen, not claims that their preimages were independently verified.
+
 ## Authority rule
 
-`VerifierMintReceiptV1` is a portable container, not authority. It intentionally has no `Verified` prefix. A later verifier must authenticate both hybrid signatures over `VerifierMintStatementV1::signing_transcript()` and separately prove challenge freshness/current verifier identity before any private production token can be minted.
+`VerifierMintReceiptV1` is a portable container, not authority. It intentionally has no `Verified` prefix. A later verifier must authenticate both hybrid signatures over `VerifierMintStatementV1::signing_transcript()` and separately prove commitment correctness, challenge freshness/current verifier identity, and trusted-time requirements before any private production token can be minted.
 
 ## Privacy boundary
 
