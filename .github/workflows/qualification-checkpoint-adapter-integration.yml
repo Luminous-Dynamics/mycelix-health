@@ -1,0 +1,200 @@
+name: Qualification Checkpoint Adapter Integration
+
+on:
+  pull_request:
+    branches:
+      - 'feat/qualification-lineage-checkpoint-v1'
+    paths:
+      - 'crates/qualification-receipt-core/**'
+      - 'crates/qualification-adapter-profile-core/**'
+      - 'crates/qualification-checkpoint-adapter-core/**'
+      - 'scripts/qualification-receipt.py'
+      - 'scripts/qualification-receipt-profile.py'
+      - 'scripts/qualification-lineage-checkpoint.py'
+      - 'scripts/qualification-lineage-checkpoint-admission.py'
+      - 'scripts/test-qualification-receipt.py'
+      - 'scripts/test-qualification-receipt-profile.py'
+      - 'scripts/test-qualification-lineage-checkpoint.py'
+      - 'scripts/test-qualification-lineage-checkpoint-admission.py'
+      - 'docs/security/QUALIFICATION_CHECKPOINT_ADAPTER_INTEGRATION_V1.md'
+      - 'docs/security/QUALIFICATION_CHECKPOINT_ADAPTER_INTEGRATION_V1_STATUS.md'
+      - '.github/workflows/qualification-checkpoint-adapter-integration.yml'
+  push:
+    branches:
+      - 'feat/qualification-checkpoint-adapter-integration-v1'
+
+permissions:
+  contents: read
+
+jobs:
+  qualify-checkpoint-adapter-integration:
+    name: Qualify governed #217 head -> exact #208 token integration
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Check out exact stacked subject
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+
+      - name: Install exact Rust toolchain
+        run: |
+          rustup toolchain install 1.96.0 --profile minimal --component rustfmt,clippy
+          rustc +1.96.0 -Vv
+          cargo +1.96.0 -V
+          python3 --version
+          openssl version
+
+      - name: Freeze preflight identities
+        run: |
+          git rev-parse HEAD | tee /tmp/subject.sha
+          sha256sum \
+            crates/qualification-receipt-core/Cargo.toml \
+            crates/qualification-receipt-core/Cargo.lock \
+            crates/qualification-receipt-core/src/lib.rs \
+            crates/qualification-receipt-core/src/model.rs \
+            crates/qualification-receipt-core/src/strict.rs \
+            crates/qualification-receipt-core/src/scoped.rs \
+            crates/qualification-adapter-profile-core/Cargo.toml \
+            crates/qualification-adapter-profile-core/Cargo.lock \
+            crates/qualification-adapter-profile-core/src/lib.rs \
+            crates/qualification-checkpoint-adapter-core/Cargo.toml \
+            crates/qualification-checkpoint-adapter-core/Cargo.lock \
+            crates/qualification-checkpoint-adapter-core/README.md \
+            crates/qualification-checkpoint-adapter-core/BOUNDARIES.md \
+            crates/qualification-checkpoint-adapter-core/SOURCE_STATUS.md \
+            crates/qualification-checkpoint-adapter-core/src/lib.rs \
+            scripts/qualification-receipt.py \
+            scripts/qualification-receipt-profile.py \
+            scripts/qualification-lineage-checkpoint.py \
+            scripts/qualification-lineage-checkpoint-admission.py \
+            scripts/test-qualification-receipt.py \
+            scripts/test-qualification-receipt-profile.py \
+            scripts/test-qualification-lineage-checkpoint.py \
+            scripts/test-qualification-lineage-checkpoint-admission.py \
+            docs/security/QUALIFICATION_CHECKPOINT_ADAPTER_INTEGRATION_V1.md \
+            docs/security/QUALIFICATION_CHECKPOINT_ADAPTER_INTEGRATION_V1_STATUS.md \
+            | tee /tmp/checkpoint-adapter.before.sha256
+
+      - name: Static product-boundary guards
+        run: |
+          grep -q 'mycelix-qualification-adapter-profile-core' crates/qualification-checkpoint-adapter-core/Cargo.toml
+          grep -q 'mycelix-qualification-receipt-core' crates/qualification-checkpoint-adapter-core/Cargo.toml
+          grep -q 'VerifiedQualificationHeadCheckpoint' crates/qualification-checkpoint-adapter-core/src/lib.rs
+          grep -q 'mycelix-health-verified-qualification-head-checkpoint-v1' crates/qualification-checkpoint-adapter-core/src/lib.rs
+          grep -q 'ProfileMatchCommitmentMismatch' crates/qualification-checkpoint-adapter-core/src/lib.rs
+          grep -q 'checkpoint_bundle_digest' crates/qualification-checkpoint-adapter-core/src/lib.rs
+          grep -q 'lineage_state_commitment' crates/qualification-checkpoint-adapter-core/src/lib.rs
+          grep -q 'verified_head_digest' crates/qualification-checkpoint-adapter-core/src/lib.rs
+          grep -q 'QUAL-EVID-005/#216' crates/qualification-checkpoint-adapter-core/README.md
+          grep -q 'SOURCE-STAGED / UNEXECUTED' crates/qualification-checkpoint-adapter-core/SOURCE_STATUS.md
+          ! grep -nE '^pub use .*VerifiedLineageHead|pub struct VerifiedLineageHead|pub fn from_checkpoint_adapter' crates/qualification-checkpoint-adapter-core/src/lib.rs
+          ! grep -n 'verified: bool' crates/qualification-checkpoint-adapter-core/src/lib.rs
+          ! grep -n 'AnyQualification' crates/qualification-checkpoint-adapter-core/src/lib.rs
+
+      - name: Compile Python sources
+        run: |
+          python3 -m py_compile \
+            scripts/qualification-receipt.py \
+            scripts/qualification-receipt-profile.py \
+            scripts/qualification-lineage-checkpoint.py \
+            scripts/qualification-lineage-checkpoint-admission.py \
+            scripts/test-qualification-receipt.py \
+            scripts/test-qualification-receipt-profile.py \
+            scripts/test-qualification-lineage-checkpoint.py \
+            scripts/test-qualification-lineage-checkpoint-admission.py
+
+      - name: Run governed qualification Ed25519 tests
+        run: python3 scripts/test-qualification-receipt.py
+
+      - name: Run exact #208 profile-match tests
+        run: python3 scripts/test-qualification-receipt-profile.py
+
+      - name: Run governed current-head checkpoint tests
+        run: python3 scripts/test-qualification-lineage-checkpoint.py
+
+      - name: Run strict checkpoint admission/tamper tests
+        run: python3 scripts/test-qualification-lineage-checkpoint-admission.py
+
+      - name: Check receipt-core formatting
+        run: cargo +1.96.0 fmt --manifest-path crates/qualification-receipt-core/Cargo.toml -- --check
+
+      - name: Test receipt core
+        run: cargo +1.96.0 test --locked --manifest-path crates/qualification-receipt-core/Cargo.toml
+
+      - name: Clippy receipt core
+        run: cargo +1.96.0 clippy --locked --manifest-path crates/qualification-receipt-core/Cargo.toml --all-targets -- -D warnings
+
+      - name: Check QUAL-EVID-002 adapter formatting
+        run: cargo +1.96.0 fmt --manifest-path crates/qualification-adapter-profile-core/Cargo.toml -- --check
+
+      - name: Test QUAL-EVID-002 adapter core
+        run: cargo +1.96.0 test --locked --manifest-path crates/qualification-adapter-profile-core/Cargo.toml
+
+      - name: Clippy QUAL-EVID-002 adapter core
+        run: cargo +1.96.0 clippy --locked --manifest-path crates/qualification-adapter-profile-core/Cargo.toml --all-targets -- -D warnings
+
+      - name: Check product checkpoint adapter metadata
+        run: |
+          cargo +1.96.0 metadata --locked --no-deps --format-version 1 \
+            --manifest-path crates/qualification-checkpoint-adapter-core/Cargo.toml \
+            > /tmp/checkpoint-adapter.metadata.json
+          test "$(jq -r '.packages | length' /tmp/checkpoint-adapter.metadata.json)" = "1"
+          test "$(jq -r '.packages[0].name' /tmp/checkpoint-adapter.metadata.json)" = "mycelix-qualification-checkpoint-adapter-core"
+
+      - name: Check product checkpoint adapter formatting
+        run: cargo +1.96.0 fmt --manifest-path crates/qualification-checkpoint-adapter-core/Cargo.toml -- --check
+
+      - name: Test product checkpoint adapter core
+        run: cargo +1.96.0 test --locked --manifest-path crates/qualification-checkpoint-adapter-core/Cargo.toml
+
+      - name: Clippy product checkpoint adapter core
+        run: cargo +1.96.0 clippy --locked --manifest-path crates/qualification-checkpoint-adapter-core/Cargo.toml --all-targets -- -D warnings
+
+      - name: Verify postflight immutability
+        run: |
+          test "$(git rev-parse HEAD)" = "$(cat /tmp/subject.sha)"
+          sha256sum \
+            crates/qualification-receipt-core/Cargo.toml \
+            crates/qualification-receipt-core/Cargo.lock \
+            crates/qualification-receipt-core/src/lib.rs \
+            crates/qualification-receipt-core/src/model.rs \
+            crates/qualification-receipt-core/src/strict.rs \
+            crates/qualification-receipt-core/src/scoped.rs \
+            crates/qualification-adapter-profile-core/Cargo.toml \
+            crates/qualification-adapter-profile-core/Cargo.lock \
+            crates/qualification-adapter-profile-core/src/lib.rs \
+            crates/qualification-checkpoint-adapter-core/Cargo.toml \
+            crates/qualification-checkpoint-adapter-core/Cargo.lock \
+            crates/qualification-checkpoint-adapter-core/README.md \
+            crates/qualification-checkpoint-adapter-core/BOUNDARIES.md \
+            crates/qualification-checkpoint-adapter-core/SOURCE_STATUS.md \
+            crates/qualification-checkpoint-adapter-core/src/lib.rs \
+            scripts/qualification-receipt.py \
+            scripts/qualification-receipt-profile.py \
+            scripts/qualification-lineage-checkpoint.py \
+            scripts/qualification-lineage-checkpoint-admission.py \
+            scripts/test-qualification-receipt.py \
+            scripts/test-qualification-receipt-profile.py \
+            scripts/test-qualification-lineage-checkpoint.py \
+            scripts/test-qualification-lineage-checkpoint-admission.py \
+            docs/security/QUALIFICATION_CHECKPOINT_ADAPTER_INTEGRATION_V1.md \
+            docs/security/QUALIFICATION_CHECKPOINT_ADAPTER_INTEGRATION_V1_STATUS.md \
+            > /tmp/checkpoint-adapter.after.sha256
+          diff -u /tmp/checkpoint-adapter.before.sha256 /tmp/checkpoint-adapter.after.sha256
+          git diff --exit-code
+
+      - name: Evidence summary
+        if: always()
+        run: |
+          {
+            echo '## QUAL-EVID-006 checkpoint adapter integration evidence'
+            echo
+            echo "- subject: $(git rev-parse HEAD)"
+            echo '- parent: QUAL-EVID-004/#217 stack'
+            echo "- rustc: $(rustc +1.96.0 --version 2>/dev/null || echo unavailable)"
+            echo "- openssl: $(openssl version 2>/dev/null || echo unavailable)"
+            echo '- scope: exact already-verified #217 head -> exact #208 product authority token semantics'
+            echo '- invariant: product-facing crate exports no raw VerifiedLineageHead / verified: bool current-head seam'
+            echo '- invariant: lineage/receipt/policy/trust/deployment/profile-match/head-time must all match exactly'
+            echo '- invariant: local receipt admissibility + #212 consumption freshness remain independently required'
+            echo '- invariant: resulting token preserves checkpoint-bundle/epoch/profile-match/lineage-state/head provenance'
+            echo '- non-claim: no independent #217 signature verification, no #216 rollback anchor, no Patient-v2 activation'
+          } >> "$GITHUB_STEP_SUMMARY"
