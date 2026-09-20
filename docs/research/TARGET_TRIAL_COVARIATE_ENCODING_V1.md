@@ -1,6 +1,6 @@
 # Target-Trial Baseline Covariate Encoding V1
 
-**Status:** research-only source contract. This branch is not compile-qualified or causally qualified.
+**Status:** research-only source-frozen contract. Authored tests are not executable qualification evidence.
 
 ## Purpose
 
@@ -86,7 +86,7 @@ Therefore:
 - substituted fact → reject;
 - extra unreferenced fact → reject;
 - duplicate supplied snapshot → reject;
-- cross-patient fact → reject.
+- cross-patient fact/rebinding → reject because the canonical snapshot identity changes.
 
 Missing matrix cells require no source fact and remain explicit `Missing` values.
 
@@ -105,6 +105,16 @@ Missing matrix cells require no source fact and remain explicit `Missing` values
 - exact encoded value or explicit missingness.
 
 Identity uses serializer-independent domain-separated binary framing.
+
+## Deserialized-value validation
+
+Canonical identity is available only after validating the encoded value itself.
+
+`DecimalBits` and `QuantityUcumExact.value_bits` are converted back with `f64::from_bits` for finiteness validation. NaN and ±infinity fail closed before an encoded-matrix digest can be issued.
+
+`QuantityUcumExact` also requires a non-empty unit code in the serialized artifact.
+
+This is independent of rebuild verification from source `ClinicalFact` values.
 
 ## Missingness
 
@@ -131,19 +141,35 @@ Imputation, if ever used, must be a separate evidence-bound research layer.
 
 and requires the rebuilt identity to equal the supplied serialized matrix identity.
 
-## Required hardening before source-freeze
+## Canonical representation
 
-Before this tranche is called source-frozen:
+Rows and columns remain strictly ordered under the inherited baseline-matrix coordinate system.
 
-1. add end-to-end tests using real verified baseline-matrix objects;
-2. test Boolean, Integer, Decimal and exact-UCUM Quantity rules;
-3. test missingness preservation;
-4. test source-fact omission/extra/substitution;
-5. test patient substitution;
-6. test policy/measurement-policy mismatch;
-7. test UCUM-unit mismatch;
-8. test canonical row/column rejection;
-9. independently reject non-finite `DecimalBits` / quantity bit patterns after deserialization.
+A deserialized encoded matrix with reordered rows or columns is rejected before identity rather than silently normalized during hashing.
+
+## Authored adversarial source cases
+
+The authored source tests cover:
+
+1. exact Integer encoding;
+2. exact Boolean encoding;
+3. exact finite Decimal IEEE-754 bits;
+4. exact finite UCUM Quantity bits and unit code;
+5. explicit `Missing` preserved without a source fact;
+6. missing selected source fact rejected;
+7. extra unreferenced source fact rejected;
+8. patient-rebound source fact rejected via changed snapshot identity;
+9. value-variant mismatch rejected;
+10. UCUM-unit mismatch rejected;
+11. upstream measurement-policy substitution rejected;
+12. tampered serialized value rejected by rebuild verification;
+13. NaN decimal bits rejected before identity;
+14. infinite quantity bits rejected before identity;
+15. empty quantity unit rejected before identity;
+16. noncanonical encoded column order rejected;
+17. noncanonical encoded row order rejected.
+
+These are authored tests only until executed in a qualified environment.
 
 ## Non-claims
 
@@ -164,10 +190,12 @@ This artifact does **not** establish:
 
 ## Downstream
 
-Once this layer is source-frozen and executed, downstream research can add, in order:
+Downstream research should proceed in order:
 
 1. explicit missingness diagnostics;
 2. positivity/overlap diagnostics;
 3. baseline balance diagnostics;
 4. explicit imputation/adjustment contracts when required;
 5. estimator admission and execution receipts.
+
+None of those downstream stages may reinterpret the encoded matrix's missing values or feature semantics implicitly.
