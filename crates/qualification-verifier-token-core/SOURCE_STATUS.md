@@ -1,6 +1,6 @@
 # Source Status
 
-Current state: **SOURCE-STAGED / UNEXECUTED / CI NOT YET OBSERVED / NO PASS CLAIM**
+Current state: **SOURCE-STAGED / CI REQUESTED / NO PASS CLAIM**
 
 QUAL-EVID-008 Phase A currently contains:
 
@@ -12,7 +12,8 @@ QUAL-EVID-008 Phase A currently contains:
 - verifier-bound anchored qualification head;
 - verifier-bound #208 product authority gate/token;
 - unit tests for exact semantic mapping and fail-closed recovery/transcript behavior;
-- planned downstream compile-fail qualification proving private-field construction is rejected.
+- external compile-fail fixture proving ordinary downstream safe Rust cannot construct an input authority token;
+- a second compile-fail target proving a lower #220 anchored head cannot be relabeled as `VerifierAnchoredQualificationHead`.
 
 No production mint API exists. This is intentional until actual generic-witness and trusted-time verifier implementations are integrated.
 
