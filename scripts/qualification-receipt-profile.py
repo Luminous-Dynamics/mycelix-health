@@ -12,6 +12,7 @@ import argparse
 import importlib.util
 import json
 import pathlib
+import struct
 from typing import Any
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
@@ -19,6 +20,9 @@ SPEC = importlib.util.spec_from_file_location("qualification_receipt", ROOT / "s
 assert SPEC and SPEC.loader
 Q = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(Q)
+
+PROFILE_MATCH_DOMAIN = b"MYCELIX-HEALTH-QUALIFICATION-PROFILE-MATCH-V1\0"
+PROFILE208_SEAM_ID = 3
 
 
 class ProfileMatchError(ValueError):
@@ -58,6 +62,33 @@ def validate_profile(profile: dict[str, Any]) -> dict[str, Any]:
     if not isinstance(maximum, int) or isinstance(maximum, bool) or maximum <= 0:
         fail("qualification adapter profile max_consumption_age_micros must be positive")
     return profile
+
+
+def profile_match_transcript(identity: dict[str, Any]) -> bytes:
+    """Canonical non-authority profile-match commitment for later checkpoint binding."""
+    version = identity.get("contract_version")
+    matched = identity.get("matched_at_micros")
+    if not isinstance(version, int) or version <= 0 or version > 0xFFFF:
+        fail("profile-match contract_version is invalid")
+    if not isinstance(matched, int) or isinstance(matched, bool):
+        fail("profile-match matched_at_micros is invalid")
+    out = bytearray(PROFILE_MATCH_DOMAIN)
+    out += struct.pack(">H", 1)
+    out.append(PROFILE208_SEAM_ID)
+    out += Q.hex32(identity.get("profile_digest_sha256"), "profile_digest_sha256")
+    out += Q.hex32(identity.get("qualification_bundle_digest_sha256"), "qualification_bundle_digest_sha256")
+    out += Q.hex32(identity.get("receipt_digest_sha256"), "receipt_digest_sha256")
+    out += Q.hex32(identity.get("contract_digest"), "contract_digest")
+    out += struct.pack(">H", version)
+    out += Q.hex32(identity.get("qualification_lineage"), "qualification_lineage")
+    out += Q.hex32(identity.get("subject_digest"), "subject_digest")
+    out += Q.hex32(identity.get("context_digest"), "context_digest")
+    out += Q.hex32(identity.get("claim_profile_digest"), "claim_profile_digest")
+    out += Q.hex32(identity.get("governance_policy_digest"), "governance_policy_digest")
+    out += Q.hex32(identity.get("trust_store_digest"), "trust_store_digest")
+    out += Q.hex32(identity.get("deployment_evidence_digest"), "deployment_evidence_digest")
+    out += struct.pack(">q", matched)
+    return bytes(out)
 
 
 def match_verified_bundle(
@@ -113,7 +144,7 @@ def match_verified_bundle(
         "deployment_evidence_digest": statement["deployment_evidence_digest"],
         "matched_at_micros": verification_time_micros,
     }
-    digest = Q.sha256_bytes(Q.canonical_json_bytes(identity))
+    digest = Q.sha256_bytes(profile_match_transcript(identity))
     return {
         "schema_version": 1,
         "report_kind": "mycelix-health-qualification-profile-match-v1",
@@ -123,6 +154,7 @@ def match_verified_bundle(
         "claims": {
             "governed_bundle_independently_verified": True,
             "exact_adapter_profile_fields_match": True,
+            "domain_separated_profile_match_commitment": True,
             "receipt_current_under_profile_age": True,
             "current_lineage_head_not_established": True,
             "product_seam_authority_not_established": True,
