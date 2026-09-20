@@ -12,5 +12,8 @@ publish = false
 [dependencies]
 mycelix-qualification-anti-rollback-anchor-core = { path = "../qualification-anti-rollback-anchor-core" }
 
+[dev-dependencies]
+mycelix-qualification-product-authority-core = { path = "../qualification-product-authority-core" }
+
 [lib]
 path = "src/lib.rs"
