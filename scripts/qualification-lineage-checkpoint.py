@@ -816,6 +816,10 @@ def admit_checkpoint(
                 existing.get("checkpoint_epoch") == statement["checkpoint_epoch"]
                 and existing.get("checkpoint_nonce") == statement["checkpoint_nonce"]
             ):
+                if verification_time_micros > previous_time:
+                    replay_store = dict(store)
+                    replay_store["latest_time_micros"] = verification_time_micros
+                    _durable_replace_json(store_path, replay_store)
                 return "IdempotentReplay"
             fail("conflicting checkpoint replay")
     if statement["checkpoint_nonce"] in set(store["used_checkpoint_nonces"]):
@@ -868,6 +872,9 @@ def emit_verified_head(
     verify_checkpoint_bundle(bundle, policy, trust_store, now_micros)
     statement = bundle["statement"]
     store = _load_store(store_path, statement["lineage_binding"])
+    previous_time = store.get("latest_time_micros")
+    if previous_time is not None and now_micros < previous_time:
+        fail("checkpoint store clock rollback")
     if store["latest_checkpoint_digest_sha256"] != bundle["checkpoint_digest_sha256"]:
         fail("checkpoint is not the durable current checkpoint")
     if store.get("fork_locked"):
@@ -879,6 +886,10 @@ def emit_verified_head(
     record = store["accepted_checkpoints"][-1]
     if record["profile_match_commitment_sha256"] != statement["profile_match_commitment_sha256"]:
         fail("durable checkpoint/profile-match commitment mismatch")
+    if previous_time is None or now_micros > previous_time:
+        observed_store = dict(store)
+        observed_store["latest_time_micros"] = now_micros
+        _durable_replace_json(store_path, observed_store)
     identity = {
         "lineage_binding": statement["lineage_binding"],
         "lineage_binding_digest_sha256": statement["lineage_binding_digest_sha256"],
