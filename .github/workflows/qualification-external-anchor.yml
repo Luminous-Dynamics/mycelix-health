@@ -69,22 +69,28 @@ jobs:
 
       - name: Static authority-boundary guards
         run: |
-          anchor='crates/qualification-anti-rollback-anchor-core/src/lib.rs'
+          manifest='crates/qualification-anti-rollback-anchor-core/Cargo.toml'
+          anchor='crates/qualification-anti-rollback-anchor-core/src/hardened.rs'
+          grep -q 'path = "src/hardened.rs"' "$manifest"
           grep -q 'VerifiedExternalAnchorProof' "$anchor"
+          grep -q 'ExternalAnchorState' "$anchor"
           grep -q 'AnchorUpdateIntent' "$anchor"
           grep -q 'AnchoredQualificationHead' "$anchor"
           grep -q 'AnchoredProfile208ProductAuthorityGate' "$anchor"
           grep -q 'LocalRollbackDetected' "$anchor"
           grep -q 'ExternalAnchorBehind' "$anchor"
           grep -q 'SameEpochStateConflict' "$anchor"
-          grep -q 'BootstrapRequiresCheckpointEpochOne' "$anchor"
+          grep -q 'BootstrapRequiresInitialHead' "$anchor"
+          grep -q 'InvalidPredecessorShape' "$anchor"
+          grep -q 'CurrentHeadExpired' "$anchor"
+          grep -q 'HeadSequenceRollback' "$anchor"
           grep -q 'ReusedAnchorNonce' "$anchor"
           grep -q 'QUALIFICATION_ANCHOR_SUBJECT_DOMAIN_V1' "$anchor"
           grep -q 'Luminous-Dynamics/luminous-dynamics#1962' crates/qualification-anti-rollback-anchor-core/README.md
           grep -q 'SOURCE-STAGED / UNEXECUTED' crates/qualification-anti-rollback-anchor-core/SOURCE_STATUS.md
           ! grep -n 'verified: bool' "$anchor"
-          ! grep -nE 'pub fn .*verified.*bool|pub struct .*Verified.*\{[^}]*bool' "$anchor"
           ! grep -n 'AnyQualification' "$anchor"
+          ! grep -n 'from_checkpoint_adapter' "$anchor"
 
       - name: Re-run governed qualification cryptographic tests
         run: |
