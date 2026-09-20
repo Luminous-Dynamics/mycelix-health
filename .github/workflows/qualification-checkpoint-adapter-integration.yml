@@ -8,6 +8,7 @@ on:
       - 'crates/qualification-receipt-core/**'
       - 'crates/qualification-adapter-profile-core/**'
       - 'crates/qualification-checkpoint-adapter-core/**'
+      - 'crates/qualification-product-authority-core/**'
       - 'scripts/qualification-receipt.py'
       - 'scripts/qualification-receipt-profile.py'
       - 'scripts/qualification-lineage-checkpoint.py'
@@ -28,7 +29,7 @@ permissions:
 
 jobs:
   qualify-checkpoint-adapter-integration:
-    name: Qualify governed #217 head -> exact #208 token integration
+    name: Qualify governed #214/#217 evidence -> exact #208 product token
     runs-on: ubuntu-24.04
     steps:
       - name: Check out exact stacked subject
@@ -45,22 +46,14 @@ jobs:
       - name: Freeze preflight identities
         run: |
           git rev-parse HEAD | tee /tmp/subject.sha
+          find \
+            crates/qualification-receipt-core \
+            crates/qualification-adapter-profile-core \
+            crates/qualification-checkpoint-adapter-core \
+            crates/qualification-product-authority-core \
+            -type f -print0 | sort -z | xargs -0 sha256sum \
+            > /tmp/checkpoint-adapter.before.sha256
           sha256sum \
-            crates/qualification-receipt-core/Cargo.toml \
-            crates/qualification-receipt-core/Cargo.lock \
-            crates/qualification-receipt-core/src/lib.rs \
-            crates/qualification-receipt-core/src/model.rs \
-            crates/qualification-receipt-core/src/strict.rs \
-            crates/qualification-receipt-core/src/scoped.rs \
-            crates/qualification-adapter-profile-core/Cargo.toml \
-            crates/qualification-adapter-profile-core/Cargo.lock \
-            crates/qualification-adapter-profile-core/src/lib.rs \
-            crates/qualification-checkpoint-adapter-core/Cargo.toml \
-            crates/qualification-checkpoint-adapter-core/Cargo.lock \
-            crates/qualification-checkpoint-adapter-core/README.md \
-            crates/qualification-checkpoint-adapter-core/BOUNDARIES.md \
-            crates/qualification-checkpoint-adapter-core/SOURCE_STATUS.md \
-            crates/qualification-checkpoint-adapter-core/src/lib.rs \
             scripts/qualification-receipt.py \
             scripts/qualification-receipt-profile.py \
             scripts/qualification-lineage-checkpoint.py \
@@ -71,23 +64,31 @@ jobs:
             scripts/test-qualification-lineage-checkpoint-admission.py \
             docs/security/QUALIFICATION_CHECKPOINT_ADAPTER_INTEGRATION_V1.md \
             docs/security/QUALIFICATION_CHECKPOINT_ADAPTER_INTEGRATION_V1_STATUS.md \
-            | tee /tmp/checkpoint-adapter.before.sha256
+            >> /tmp/checkpoint-adapter.before.sha256
 
-      - name: Static product-boundary guards
+      - name: Static final product-boundary guards
         run: |
-          grep -q 'mycelix-qualification-adapter-profile-core' crates/qualification-checkpoint-adapter-core/Cargo.toml
-          grep -q 'mycelix-qualification-receipt-core' crates/qualification-checkpoint-adapter-core/Cargo.toml
-          grep -q 'VerifiedQualificationHeadCheckpoint' crates/qualification-checkpoint-adapter-core/src/lib.rs
-          grep -q 'mycelix-health-verified-qualification-head-checkpoint-v1' crates/qualification-checkpoint-adapter-core/src/lib.rs
-          grep -q 'ProfileMatchCommitmentMismatch' crates/qualification-checkpoint-adapter-core/src/lib.rs
-          grep -q 'checkpoint_bundle_digest' crates/qualification-checkpoint-adapter-core/src/lib.rs
-          grep -q 'lineage_state_commitment' crates/qualification-checkpoint-adapter-core/src/lib.rs
-          grep -q 'verified_head_digest' crates/qualification-checkpoint-adapter-core/src/lib.rs
-          grep -q 'QUAL-EVID-005/#216' crates/qualification-checkpoint-adapter-core/README.md
-          grep -q 'SOURCE-STAGED / UNEXECUTED' crates/qualification-checkpoint-adapter-core/SOURCE_STATUS.md
-          ! grep -nE '^pub use .*VerifiedLineageHead|pub struct VerifiedLineageHead|pub fn from_checkpoint_adapter' crates/qualification-checkpoint-adapter-core/src/lib.rs
-          ! grep -n 'verified: bool' crates/qualification-checkpoint-adapter-core/src/lib.rs
-          ! grep -n 'AnyQualification' crates/qualification-checkpoint-adapter-core/src/lib.rs
+          final='crates/qualification-product-authority-core/src/lib.rs'
+          lower='crates/qualification-checkpoint-adapter-core/src/lib.rs'
+          grep -q 'VerifiedProfile208Match' "$final"
+          grep -q 'VerifiedCurrentHead208' "$final"
+          grep -q 'Profile208ProductAuthorityToken' "$final"
+          grep -q 'HeadProfileMatchMismatch' "$final"
+          grep -q 'ProfileMatchInFuture' "$final"
+          grep -q 'HeadVerifiedBeforeProfileMatch' "$final"
+          grep -q 'VerifiedQualificationHeadCheckpoint' "$lower"
+          grep -q 'mycelix-health-verified-qualification-head-checkpoint-v1' "$lower"
+          grep -q 'checkpoint_bundle_digest' "$lower"
+          grep -q 'lineage_state_commitment' "$lower"
+          grep -q 'verified_head_digest' "$lower"
+          grep -q 'QUAL-EVID-005/#216' crates/qualification-product-authority-core/README.md
+          grep -q 'SOURCE-STAGED / UNEXECUTED' crates/qualification-product-authority-core/SOURCE_STATUS.md
+          ! grep -nE '^pub use .*VerifiedLineageHead|pub struct VerifiedLineageHead|pub fn from_checkpoint_adapter' "$final"
+          ! grep -n 'verified: bool' "$final"
+          ! grep -n 'expected_profile_match:' "$final"
+          ! grep -n 'AnyQualification' "$final"
+          ! grep -nE '^pub use .*VerifiedLineageHead|pub struct VerifiedLineageHead|pub fn from_checkpoint_adapter' "$lower"
+          ! grep -n 'verified: bool' "$lower"
 
       - name: Compile Python sources
         run: |
@@ -113,60 +114,51 @@ jobs:
       - name: Run strict checkpoint admission/tamper tests
         run: python3 scripts/test-qualification-lineage-checkpoint-admission.py
 
-      - name: Check receipt-core formatting
-        run: cargo +1.96.0 fmt --manifest-path crates/qualification-receipt-core/Cargo.toml -- --check
+      - name: Check/test/Clippy receipt core
+        run: |
+          cargo +1.96.0 fmt --manifest-path crates/qualification-receipt-core/Cargo.toml -- --check
+          cargo +1.96.0 test --locked --manifest-path crates/qualification-receipt-core/Cargo.toml
+          cargo +1.96.0 clippy --locked --manifest-path crates/qualification-receipt-core/Cargo.toml --all-targets -- -D warnings
 
-      - name: Test receipt core
-        run: cargo +1.96.0 test --locked --manifest-path crates/qualification-receipt-core/Cargo.toml
+      - name: Check/test/Clippy QUAL-EVID-002 adapter core
+        run: |
+          cargo +1.96.0 fmt --manifest-path crates/qualification-adapter-profile-core/Cargo.toml -- --check
+          cargo +1.96.0 test --locked --manifest-path crates/qualification-adapter-profile-core/Cargo.toml
+          cargo +1.96.0 clippy --locked --manifest-path crates/qualification-adapter-profile-core/Cargo.toml --all-targets -- -D warnings
 
-      - name: Clippy receipt core
-        run: cargo +1.96.0 clippy --locked --manifest-path crates/qualification-receipt-core/Cargo.toml --all-targets -- -D warnings
-
-      - name: Check QUAL-EVID-002 adapter formatting
-        run: cargo +1.96.0 fmt --manifest-path crates/qualification-adapter-profile-core/Cargo.toml -- --check
-
-      - name: Test QUAL-EVID-002 adapter core
-        run: cargo +1.96.0 test --locked --manifest-path crates/qualification-adapter-profile-core/Cargo.toml
-
-      - name: Clippy QUAL-EVID-002 adapter core
-        run: cargo +1.96.0 clippy --locked --manifest-path crates/qualification-adapter-profile-core/Cargo.toml --all-targets -- -D warnings
-
-      - name: Check product checkpoint adapter metadata
+      - name: Check/test/Clippy checkpoint adapter core
         run: |
           cargo +1.96.0 metadata --locked --no-deps --format-version 1 \
             --manifest-path crates/qualification-checkpoint-adapter-core/Cargo.toml \
             > /tmp/checkpoint-adapter.metadata.json
           test "$(jq -r '.packages | length' /tmp/checkpoint-adapter.metadata.json)" = "1"
           test "$(jq -r '.packages[0].name' /tmp/checkpoint-adapter.metadata.json)" = "mycelix-qualification-checkpoint-adapter-core"
+          cargo +1.96.0 fmt --manifest-path crates/qualification-checkpoint-adapter-core/Cargo.toml -- --check
+          cargo +1.96.0 test --locked --manifest-path crates/qualification-checkpoint-adapter-core/Cargo.toml
+          cargo +1.96.0 clippy --locked --manifest-path crates/qualification-checkpoint-adapter-core/Cargo.toml --all-targets -- -D warnings
 
-      - name: Check product checkpoint adapter formatting
-        run: cargo +1.96.0 fmt --manifest-path crates/qualification-checkpoint-adapter-core/Cargo.toml -- --check
-
-      - name: Test product checkpoint adapter core
-        run: cargo +1.96.0 test --locked --manifest-path crates/qualification-checkpoint-adapter-core/Cargo.toml
-
-      - name: Clippy product checkpoint adapter core
-        run: cargo +1.96.0 clippy --locked --manifest-path crates/qualification-checkpoint-adapter-core/Cargo.toml --all-targets -- -D warnings
+      - name: Check/test/Clippy final product authority core
+        run: |
+          cargo +1.96.0 metadata --locked --no-deps --format-version 1 \
+            --manifest-path crates/qualification-product-authority-core/Cargo.toml \
+            > /tmp/product-authority.metadata.json
+          test "$(jq -r '.packages | length' /tmp/product-authority.metadata.json)" = "1"
+          test "$(jq -r '.packages[0].name' /tmp/product-authority.metadata.json)" = "mycelix-qualification-product-authority-core"
+          cargo +1.96.0 fmt --manifest-path crates/qualification-product-authority-core/Cargo.toml -- --check
+          cargo +1.96.0 test --locked --manifest-path crates/qualification-product-authority-core/Cargo.toml
+          cargo +1.96.0 clippy --locked --manifest-path crates/qualification-product-authority-core/Cargo.toml --all-targets -- -D warnings
 
       - name: Verify postflight immutability
         run: |
           test "$(git rev-parse HEAD)" = "$(cat /tmp/subject.sha)"
+          find \
+            crates/qualification-receipt-core \
+            crates/qualification-adapter-profile-core \
+            crates/qualification-checkpoint-adapter-core \
+            crates/qualification-product-authority-core \
+            -type f -print0 | sort -z | xargs -0 sha256sum \
+            > /tmp/checkpoint-adapter.after.sha256
           sha256sum \
-            crates/qualification-receipt-core/Cargo.toml \
-            crates/qualification-receipt-core/Cargo.lock \
-            crates/qualification-receipt-core/src/lib.rs \
-            crates/qualification-receipt-core/src/model.rs \
-            crates/qualification-receipt-core/src/strict.rs \
-            crates/qualification-receipt-core/src/scoped.rs \
-            crates/qualification-adapter-profile-core/Cargo.toml \
-            crates/qualification-adapter-profile-core/Cargo.lock \
-            crates/qualification-adapter-profile-core/src/lib.rs \
-            crates/qualification-checkpoint-adapter-core/Cargo.toml \
-            crates/qualification-checkpoint-adapter-core/Cargo.lock \
-            crates/qualification-checkpoint-adapter-core/README.md \
-            crates/qualification-checkpoint-adapter-core/BOUNDARIES.md \
-            crates/qualification-checkpoint-adapter-core/SOURCE_STATUS.md \
-            crates/qualification-checkpoint-adapter-core/src/lib.rs \
             scripts/qualification-receipt.py \
             scripts/qualification-receipt-profile.py \
             scripts/qualification-lineage-checkpoint.py \
@@ -177,7 +169,7 @@ jobs:
             scripts/test-qualification-lineage-checkpoint-admission.py \
             docs/security/QUALIFICATION_CHECKPOINT_ADAPTER_INTEGRATION_V1.md \
             docs/security/QUALIFICATION_CHECKPOINT_ADAPTER_INTEGRATION_V1_STATUS.md \
-            > /tmp/checkpoint-adapter.after.sha256
+            >> /tmp/checkpoint-adapter.after.sha256
           diff -u /tmp/checkpoint-adapter.before.sha256 /tmp/checkpoint-adapter.after.sha256
           git diff --exit-code
 
@@ -185,16 +177,16 @@ jobs:
         if: always()
         run: |
           {
-            echo '## QUAL-EVID-006 checkpoint adapter integration evidence'
+            echo '## QUAL-EVID-006 final product authority evidence'
             echo
             echo "- subject: $(git rev-parse HEAD)"
             echo '- parent: QUAL-EVID-004/#217 stack'
             echo "- rustc: $(rustc +1.96.0 --version 2>/dev/null || echo unavailable)"
             echo "- openssl: $(openssl version 2>/dev/null || echo unavailable)"
-            echo '- scope: exact already-verified #217 head -> exact #208 product authority token semantics'
-            echo '- invariant: product-facing crate exports no raw VerifiedLineageHead / verified: bool current-head seam'
-            echo '- invariant: lineage/receipt/policy/trust/deployment/profile-match/head-time must all match exactly'
-            echo '- invariant: local receipt admissibility + #212 consumption freshness remain independently required'
-            echo '- invariant: resulting token preserves checkpoint-bundle/epoch/profile-match/lineage-state/head provenance'
-            echo '- non-claim: no independent #217 signature verification, no #216 rollback anchor, no Patient-v2 activation'
+            echo '- scope: exact #214 profile artifact + #217 current-head artifact -> exact #208 typed product token'
+            echo '- invariant: final product API exports no raw VerifiedLineageHead / verified: bool seam'
+            echo '- invariant: final product gate accepts no caller-selected bare expected profile-match digest'
+            echo '- invariant: profile/head/qualification lineage, receipt, policy, trust, deployment and commitment identities agree exactly'
+            echo '- invariant: local receipt admissibility + #212 freshness/time semantics remain independently required'
+            echo '- non-claim: no native Rust Ed25519 verification, no #216 rollback anchor, no Patient-v2 activation'
           } >> "$GITHUB_STEP_SUMMARY"
