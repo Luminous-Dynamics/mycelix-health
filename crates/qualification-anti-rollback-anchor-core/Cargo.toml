@@ -1,0 +1,17 @@
+[workspace]
+
+[package]
+name = "mycelix-qualification-anti-rollback-anchor-core"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.96"
+license = "AGPL-3.0-or-later"
+description = "Backend-neutral external anti-rollback reconciliation for Mycelix Health qualification heads"
+publish = false
+
+[dependencies]
+mycelix-qualification-product-authority-core = { path = "../qualification-product-authority-core" }
+mycelix-qualification-receipt-core = { path = "../qualification-receipt-core" }
+
+[lib]
+path = "src/lib.rs"
