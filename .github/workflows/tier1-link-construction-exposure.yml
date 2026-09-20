@@ -1,0 +1,113 @@
+name: Tier-1 Link Construction Exposure Guard
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'zomes/patient/coordinator/src/lib.rs'
+      - 'zomes/provider/coordinator/src/lib.rs'
+      - 'zomes/records/coordinator/src/lib.rs'
+      - 'zomes/prescriptions/coordinator/src/lib.rs'
+      - 'zomes/consent/coordinator/src/lib.rs'
+      - 'zomes/bridge/coordinator/src/lib.rs'
+      - 'docs/security/tier1_link_construction_known_exposures.json'
+      - 'scripts/check_tier1_link_construction_known_exposures.py'
+      - '.github/workflows/tier1-link-construction-exposure.yml'
+  push:
+    branches:
+      - 'audit/tier1-link-construction-exposure-v1'
+    paths:
+      - 'zomes/patient/coordinator/src/lib.rs'
+      - 'zomes/provider/coordinator/src/lib.rs'
+      - 'zomes/records/coordinator/src/lib.rs'
+      - 'zomes/prescriptions/coordinator/src/lib.rs'
+      - 'zomes/consent/coordinator/src/lib.rs'
+      - 'zomes/bridge/coordinator/src/lib.rs'
+      - 'docs/security/tier1_link_construction_known_exposures.json'
+      - 'scripts/check_tier1_link_construction_known_exposures.py'
+      - '.github/workflows/tier1-link-construction-exposure.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  characterize-known-exposures:
+    name: Guard reviewed legacy link-construction exposures
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Check out exact subject
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+
+      - name: Freeze preflight identities
+        run: |
+          git rev-parse HEAD | tee /tmp/subject.sha
+          python3 --version
+          sha256sum \
+            docs/security/tier1_link_construction_known_exposures.json \
+            scripts/check_tier1_link_construction_known_exposures.py \
+            zomes/patient/coordinator/src/lib.rs \
+            zomes/provider/coordinator/src/lib.rs \
+            zomes/records/coordinator/src/lib.rs \
+            zomes/prescriptions/coordinator/src/lib.rs \
+            zomes/consent/coordinator/src/lib.rs \
+            zomes/bridge/coordinator/src/lib.rs \
+            | tee /tmp/construction.before.sha256
+
+      - name: Verify pristine reviewed exposure set
+        run: python3 scripts/check_tier1_link_construction_known_exposures.py
+
+      - name: Prove added raw-DID-tag exposure is rejected
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          path = Path('zomes/patient/coordinator/src/lib.rs')
+          text = path.read_text(encoding='utf-8')
+          needle = '''    create_link(
+              input.patient_hash.clone(),
+              did_anchor.clone(),
+              LinkTypes::PatientToDID,
+              input.did.as_bytes().to_vec(),
+          )?;'''.replace('              ', '        ')
+          if text.count(needle) != 1:
+              raise SystemExit('could not locate exact PatientToDID construction canary block')
+          path.write_text(text.replace(needle, needle + '\n\n' + needle, 1), encoding='utf-8')
+          PY
+
+          if python3 scripts/check_tier1_link_construction_known_exposures.py; then
+            echo 'ERROR: known-exposure guard accepted an additional raw DID tag construction' >&2
+            exit 1
+          fi
+
+          git checkout -- zomes/patient/coordinator/src/lib.rs
+          git diff --exit-code
+          python3 scripts/check_tier1_link_construction_known_exposures.py
+
+      - name: Verify postflight immutability
+        run: |
+          test "$(git rev-parse HEAD)" = "$(cat /tmp/subject.sha)"
+          sha256sum \
+            docs/security/tier1_link_construction_known_exposures.json \
+            scripts/check_tier1_link_construction_known_exposures.py \
+            zomes/patient/coordinator/src/lib.rs \
+            zomes/provider/coordinator/src/lib.rs \
+            zomes/records/coordinator/src/lib.rs \
+            zomes/prescriptions/coordinator/src/lib.rs \
+            zomes/consent/coordinator/src/lib.rs \
+            zomes/bridge/coordinator/src/lib.rs \
+            > /tmp/construction.after.sha256
+          diff -u /tmp/construction.before.sha256 /tmp/construction.after.sha256
+          git diff --exit-code
+
+      - name: Evidence summary
+        if: always()
+        run: |
+          {
+            echo '## Tier-1 known link-construction exposure evidence'
+            echo
+            echo "- subject: $(git rev-parse HEAD)"
+            echo '- scope: exact known-exposure source-pattern drift only'
+            echo '- reviewed exposure patterns: 18'
+            echo '- negative canary: a second raw DID link-tag construction must be rejected'
+            echo '- non-claim: legacy exposures remain unsafe until migrated; no DHT confidentiality claim'
+            echo '- follow-on: full balanced-parser create_link call-site census under #200'
+          } >> "$GITHUB_STEP_SUMMARY"
