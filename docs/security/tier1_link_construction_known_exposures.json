@@ -1,0 +1,172 @@
+{
+  "schema_version": 1,
+  "subject": {
+    "base_commit": "111340010702acbdab2e85211af97b4a8099db22",
+    "scope": "known construction-level metadata exposures in packaged Tier-1 coordinators; containment only",
+    "known_exposure_pattern_count": 18
+  },
+  "patterns": [
+    {
+      "id": "patient.global_all_patients_create",
+      "file": "zomes/patient/coordinator/src/lib.rs",
+      "regex": "create_link\\(\\s*patients_anchor,\\s*patient_hash,\\s*LinkTypes::AllPatients,\\s*\\(\\)\\s*\\)",
+      "expected_count": 1,
+      "severity": "critical",
+      "reason": "Creates a global patient enumeration edge.",
+      "replacement": "No v2 AllPatients directory; use capability-delivered scoped locator."
+    },
+    {
+      "id": "patient.raw_did_link_tag",
+      "file": "zomes/patient/coordinator/src/lib.rs",
+      "regex": "LinkTypes::PatientToDID,\\s*input\\.did\\.as_bytes\\(\\)\\.to_vec\\(\\)",
+      "expected_count": 1,
+      "severity": "critical",
+      "reason": "Carries the raw DID bytes in a DHT link tag.",
+      "replacement": "Protected identity binding; no subject-derived public tag."
+    },
+    {
+      "id": "patient.did_reverse_index",
+      "file": "zomes/patient/coordinator/src/lib.rs",
+      "regex": "create_link\\(\\s*did_anchor,\\s*input\\.patient_hash\\.clone\\(\\),\\s*LinkTypes::DIDToPatient",
+      "expected_count": 1,
+      "severity": "critical",
+      "reason": "Creates clear DID-derived reverse patient discovery.",
+      "replacement": "Remove global reverse index; use protected identity proof/capability."
+    },
+    {
+      "id": "provider.clear_provider_patient_edge",
+      "file": "zomes/provider/coordinator/src/lib.rs",
+      "regex": "create_link\\(\\s*relationship\\.provider_hash\\.clone\\(\\),\\s*relationship\\.patient_hash\\.clone\\(\\),\\s*LinkTypes::ProviderToPatients",
+      "expected_count": 1,
+      "severity": "critical",
+      "reason": "Directly publishes care-relationship topology between provider and patient hashes.",
+      "replacement": "Capability-scoped opaque relationship handle."
+    },
+    {
+      "id": "records.global_critical_results",
+      "file": "zomes/records/coordinator/src/lib.rs",
+      "regex": "create_link\\(\\s*critical_anchor,\\s*(?:result_hash|imaging_hash),\\s*LinkTypes::CriticalResults",
+      "expected_count": 2,
+      "severity": "critical",
+      "reason": "Publishes global critical-result membership.",
+      "replacement": "Protected alert delivery; no global critical-results clinical anchor."
+    },
+    {
+      "id": "records.clear_patient_encrypted_record_edges",
+      "file": "zomes/records/coordinator/src/lib.rs",
+      "regex": "create_link\\(\\s*input\\.(?:lab_result\\.)?patient_hash\\.clone\\(\\),\\s*(?:record_hash|record_hash),\\s*LinkTypes::PatientToEncryptedRecords",
+      "expected_count": 3,
+      "severity": "critical",
+      "reason": "Ciphertext is still indexed directly from a clear patient hash, exposing count/timing correlation.",
+      "replacement": "Opaque locator -> protected manifest; record membership remains encrypted."
+    },
+    {
+      "id": "prescriptions.global_controlled_substances",
+      "file": "zomes/prescriptions/coordinator/src/lib.rs",
+      "regex": "create_link\\(\\s*controlled_anchor,\\s*rx_hash(?:\\.clone\\(\\))?,\\s*LinkTypes::ControlledSubstances",
+      "expected_count": 2,
+      "severity": "critical",
+      "reason": "Creates global controlled-substance membership topology.",
+      "replacement": "Protected policy/alert path; no global clinical anchor."
+    },
+    {
+      "id": "consent.global_active_consents",
+      "file": "zomes/consent/coordinator/src/lib.rs",
+      "regex": "create_link\\(active_anchor,\\s*consent_hash,\\s*LinkTypes::ActiveConsents",
+      "expected_count": 1,
+      "severity": "critical",
+      "reason": "Creates a global active-consent state index.",
+      "replacement": "Scoped capability/policy state."
+    },
+    {
+      "id": "consent.global_revoked_consents",
+      "file": "zomes/consent/coordinator/src/lib.rs",
+      "regex": "LinkTypes::RevokedConsents",
+      "expected_count": 1,
+      "severity": "critical",
+      "reason": "Creates global revoked-consent state topology.",
+      "replacement": "Opaque revocation commitments scoped to capabilities."
+    },
+    {
+      "id": "consent.delegate_identity_anchor",
+      "file": "zomes/consent/coordinator/src/lib.rs",
+      "regex": "Anchor\\(format!\\(\\\"delegate:\\{:\\?\\}\\\",\\s*delegation\\.delegate\\)\\)",
+      "expected_count": 1,
+      "severity": "critical",
+      "reason": "Derives a distributed delegation index directly from delegate identity.",
+      "replacement": "Pairwise/scoped opaque capability handle."
+    },
+    {
+      "id": "consent.global_active_delegations",
+      "file": "zomes/consent/coordinator/src/lib.rs",
+      "regex": "LinkTypes::ActiveDelegations",
+      "expected_count": 1,
+      "severity": "critical",
+      "reason": "Creates global active-delegation topology.",
+      "replacement": "Scoped capability validation without global active list."
+    },
+    {
+      "id": "consent.patient_derived_unread_anchor",
+      "file": "zomes/consent/coordinator/src/lib.rs",
+      "regex": "Anchor\\(format!\\(\\\"unread:\\{:\\?\\}\\\",\\s*notification\\.patient_hash\\)\\)",
+      "expected_count": 1,
+      "severity": "high",
+      "reason": "Unread notification anchor is derived from patient identity/activity.",
+      "replacement": "Keep unread state local/private."
+    },
+    {
+      "id": "consent.patient_derived_active_care_team_anchor",
+      "file": "zomes/consent/coordinator/src/lib.rs",
+      "regex": "\\\"active_care_teams:\\{:\\?\\}\\\"",
+      "expected_count": 1,
+      "severity": "critical",
+      "reason": "Active-care-team anchor encodes stable patient-derived relationship context.",
+      "replacement": "Protected care relationship/capability state."
+    },
+    {
+      "id": "consent.patient_did_key_anchors",
+      "file": "zomes/consent/coordinator/src/lib.rs",
+      "regex": "anchor_hash\\(&format!\\(\\\"patient_keys:\\{\\}\\\",\\s*(?:patient_did|input\\.patient_did)\\)\\)",
+      "expected_count": 3,
+      "severity": "critical",
+      "reason": "Key discovery anchors are deterministically derived from a patient DID.",
+      "replacement": "Scoped opaque key/locator discovery bound to capability."
+    },
+    {
+      "id": "consent.global_active_key_bundle",
+      "file": "zomes/consent/coordinator/src/lib.rs",
+      "regex": "create_link\\(\\s*active_anchor,\\s*action_hash\\.clone\\(\\),\\s*LinkTypes::ActiveKeyBundle",
+      "expected_count": 1,
+      "severity": "critical",
+      "reason": "Creates a global active-key-bundle membership index.",
+      "replacement": "Key epoch discovery via scoped locator/capability context."
+    },
+    {
+      "id": "bridge.semantic_rate_limit_tag",
+      "file": "zomes/bridge/coordinator/src/lib.rs",
+      "regex": "LinkTypes::DispatchRateLimit,\\s*target_fn\\.as_bytes\\(\\)\\.to_vec\\(\\)",
+      "expected_count": 1,
+      "severity": "moderate",
+      "reason": "Link tag carries the exact invoked bridge function name.",
+      "replacement": "Local rate-limit state or non-semantic opaque bucket where distributed state is required."
+    },
+    {
+      "id": "bridge.global_pending_queries",
+      "file": "zomes/bridge/coordinator/src/lib.rs",
+      "regex": "create_link\\(pending_anchor,\\s*query_hash,\\s*LinkTypes::PendingQueries",
+      "expected_count": 1,
+      "severity": "critical",
+      "reason": "Creates a global index of active health-data queries.",
+      "replacement": "Capability-scoped/private queue."
+    },
+    {
+      "id": "bridge.semantic_claim_type_anchor",
+      "file": "zomes/bridge/coordinator/src/lib.rs",
+      "regex": "anchor_hash\\(&format!\\(\\\"claims_\\{:\\?\\}\\\",\\s*claim\\.claim_type\\)\\)",
+      "expected_count": 1,
+      "severity": "critical",
+      "reason": "Claim-type anchor can publicly classify diagnosis/treatment/outcome/adverse-event claims.",
+      "replacement": "Only intentionally public claim classes may use public semantic indexes; protect clinical claims."
+    }
+  ]
+}
