@@ -1,0 +1,15 @@
+[package]
+name = "mycelix-target-trial-missingness-diagnostics-v1"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Research-only measurement of baseline covariate missingness for target-trial emulation"
+
+[dependencies]
+mycelix-target-trial-covariate-encoding-v1 = { path = "../target-trial-covariate-encoding-v1" }
+blake3 = "1.8.5"
+serde = { workspace = true }
+thiserror = { workspace = true }
+
+[lints]
+workspace = true
