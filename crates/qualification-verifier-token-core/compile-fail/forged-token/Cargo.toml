@@ -1,0 +1,10 @@
+[workspace]
+
+[package]
+name = "forged-verifier-token-attempt"
+version = "0.0.0"
+edition = "2024"
+publish = false
+
+[dependencies]
+mycelix-qualification-verifier-token-core = { path = "../.." }
