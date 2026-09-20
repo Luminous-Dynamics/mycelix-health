@@ -10,3 +10,6 @@ mod core;
 mod recovery;
 
 pub use recovery::*;
+
+#[cfg(test)]
+mod recovery_integration_tests;
