@@ -4,7 +4,7 @@ Current state: **SOURCE-STAGED / UNEXECUTED / CI REQUESTED / NO PASS CLAIM**
 
 QUAL-EVID-005/#216 is source-staged with:
 
-- hardened public crate root `src/hardened.rs`;
+- one compiled public crate root: `src/hardened.rs`;
 - reconstructible privacy-minimal external anchor state;
 - backend-neutral verified-proof adapter boundary;
 - prepare/finalize/restart reconciliation semantics;
@@ -12,7 +12,7 @@ QUAL-EVID-005/#216 is source-staged with:
 - stronger anchored #208 product-authority gate;
 - adversarial unit tests and exact Rust 1.96 qualification workflows.
 
-`src/lib.rs` is an earlier draft retained only as branch history/source context; `Cargo.toml` does not compile it.
+The earlier draft implementation was removed before PR so reviewers have one authority-bearing source file.
 
 No successful exact-head workflow has been observed for this subject yet.
 
