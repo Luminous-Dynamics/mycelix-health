@@ -4,119 +4,130 @@ Status: source-staged reference. Tracks QUAL-EVID-006 / #218.
 
 ## Purpose
 
-This contract removes the final public `verified: bool` current-head hop from the first Patient-v2 qualification vertical slice.
+This contract removes the final public raw-currentness hop from the first Patient-v2 qualification vertical slice.
 
-The integrated Rust crate consumes the exact identity emitted by QUAL-EVID-004/#217 and independently cross-checks it against the governed qualification, exact #208 profile, local qualification ledger, expected QUAL-EVID-003/#214 profile-match commitment, and current consumption time.
+The final design uses two layers above the unchanged QUAL-EVID-002/#212 reference:
 
 ```text
-#217 governed verified head
-        +
-#210/#214 governed qualification
-        +
-#212 exact #208 product profile
-        +
-local admissibility/current time
+#212 adapter-profile reference
         ↓
-Profile208CompositionCommitmentToken
+qualification-checkpoint-adapter-core
+        ↓
+qualification-product-authority-core
+        ↓
+exact #208 product token
 ```
+
+The checkpoint-adapter layer binds the exact identity emitted by QUAL-EVID-004/#217 into the lower #212 semantics. The final product-authority layer additionally consumes the exact QUAL-EVID-003/#214 profile-match artifact, preventing a caller from supplying a bare "expected profile-match" digest.
+
+## Final product theorem
+
+```text
+#214 governed profile-match artifact
+        +
+#217 governed current-head artifact
+        +
+#210 governed qualification
+        +
+#210 local receipt admissibility
+        +
+#212 exact profile/freshness semantics
+        +
+monotonic product-consumption time
+        ↓
+Profile208ProductAuthorityToken
+```
+
+Every term is independently required.
+
+## Exact #214 artifact vocabulary
+
+`VerifiedProfile208Match` binds:
+
+- schema/report kind;
+- exact `Patient208CompositionCommitment` seam identity;
+- adapter-profile digest;
+- qualification-bundle digest;
+- exact qualification receipt;
+- exact semantic `QualificationLineageBinding`;
+- governance-policy digest;
+- trust-store digest;
+- deployment-evidence digest;
+- profile-match time;
+- exact domain-separated profile-match commitment.
+
+The final gate requires this artifact to match the configured #208 profile and governed qualification exactly.
 
 ## Exact #217 artifact vocabulary
 
-The public `VerifiedQualificationHeadCheckpoint` binds:
+The internal integration type `VerifiedQualificationHeadCheckpoint` and final product wrapper `VerifiedCurrentHead208` bind:
 
 - schema version `1`;
 - report kind `mycelix-health-verified-qualification-head-checkpoint-v1`;
 - exact semantic `QualificationLineageBinding`;
 - lineage-binding digest;
-- head receipt digest;
-- head receipt sequence;
-- checkpoint digest;
-- signed checkpoint-bundle digest;
-- checkpoint epoch;
+- head receipt digest + sequence;
+- checkpoint digest + signed checkpoint-bundle digest + epoch;
 - exact #214 profile-match commitment;
 - lineage-state commitment;
 - governance-policy digest;
 - trust-store digest;
 - deployment-evidence digest;
-- checkpoint verification time;
-- checkpoint expiry;
+- checkpoint verification time + expiry;
 - verified-head report digest.
 
-The type contains no `verified` flag.
+No type in the final product crate contains a `verified: bool` authority field.
 
-Construction rejects unknown schema/report kind, zero head sequence, zero checkpoint epoch, and non-positive verification windows.
+## Cross-artifact checks
 
-## Product-seam checks
+Before conversion, the final gate requires:
 
-Before conversion the integrated #208 gate requires:
+- profile artifact profile digest equals the configured #208 profile;
+- profile semantic lineage equals the profile and qualification lineage;
+- profile receipt equals the governed qualification receipt;
+- profile policy/trust/deployment equal the qualification identities;
+- profile-match time lies inside the qualification lifetime and is not in the future;
+- head lineage/receipt/policy/trust/deployment equal the profile artifact;
+- head profile-match commitment equals the exact #214 artifact commitment;
+- checkpoint verification does not precede the profile match;
+- head is current at consumption time.
 
-- qualification kind is `CompositionCommitmentQualification`;
-- checkpoint semantic lineage equals qualification lineage;
-- checkpoint policy equals qualification policy;
-- checkpoint trust store equals qualification trust store;
-- checkpoint deployment equals qualification deployment;
-- checkpoint receipt equals qualification receipt;
-- checkpoint profile-match commitment equals the independently supplied expected #214 commitment;
-- checkpoint verification time is not in the future;
-- checkpoint has not expired.
-
-The private QUAL-EVID-002 gate then independently rechecks:
-
-- exact adapter-profile semantic lineage;
-- exact profile policy/trust/deployment;
-- local qualification-ledger binding;
-- local receipt admissibility;
-- receipt issuance/expiry;
-- stricter profile consumption age;
-- monotonic consumption time.
+The lower #218 checkpoint integration then requires the same head identity to match the governed qualification, and QUAL-EVID-002 independently rechecks profile binding, ledger admissibility, receipt freshness and monotonic consumption time.
 
 ## Public API boundary
 
-The original `src/lib.rs` remains source-staged as the QUAL-EVID-002 implementation and is compiled inside a private `legacy` module.
+`mycelix-qualification-adapter-profile-core` remains the unchanged QUAL-EVID-002 reference and still contains its explicitly non-production raw current-head adapter.
 
-`Cargo.toml` now points the crate root to `src/integrated.rs`.
+`mycelix-qualification-checkpoint-adapter-core` confines that lower adapter behind a complete #217 artifact check.
 
-Therefore this symbol is not exported from the product-facing crate:
-
-```text
-VerifiedLineageHead::from_checkpoint_adapter(..., verified: bool)
-```
-
-The private call is used only after the stronger #217 artifact has passed all public integration checks.
+`mycelix-qualification-product-authority-core` is the intended product-facing API. It does not re-export the lower current-head type, takes no verification boolean, and takes no caller-selected bare expected profile-match digest.
 
 ## Token provenance
 
-The resulting non-cloneable `Profile208CompositionCommitmentToken` retains:
+`Profile208ProductAuthorityToken` preserves:
 
-- receipt/profile/semantic-lineage identity;
+- governed receipt/profile/semantic-lineage identity;
 - policy/trust/deployment identity;
-- checkpoint digest;
-- lineage-binding digest;
-- head sequence;
-- checkpoint-bundle digest;
-- checkpoint epoch;
-- #214 profile-match commitment;
+- qualification-bundle provenance;
+- profile-match commitment + match time;
+- checkpoint digest/bundle/epoch;
 - lineage-state commitment;
-- verified-head digest;
-- head verification/expiry time;
-- qualification issuance/expiry time.
+- verified-head digest and validity window.
 
-This prevents downstream #208 composition from reducing current-head authority to an unexplained boolean or single opaque hash.
+Downstream #208 composition therefore receives a typed authority result with explainable evidence ancestry rather than an unexplained `true` value.
 
-## Explicit trust boundary
+## Explicit adapter boundary
 
-This Rust integration does **not** independently verify #217's Ed25519 checkpoint signatures or durable checkpoint store. `from_qualified_checkpoint_report(...)` is the typed adapter boundary for a report already emitted by the independently qualified #217 verifier.
+The Rust wrappers do **not** independently verify #214/#217 Ed25519 signatures. Their `from_qualified_*_report(...)` constructors are typed adapter boundaries for strict reports already emitted by the independently governed Python/OpenSSL verifier stack.
 
-That is stronger than a naked boolean because the complete authority-bearing identity must match, but it remains an adapter boundary.
-
-A future native verifier may move #217 verification into Rust without changing the #208 token theorem.
+A future native verifier may internalize those cryptographic checks without changing the final #208 token theorem.
 
 ## Remaining rollback blocker
 
 QUAL-EVID-005/#216 remains required before claiming whole-volume rollback resistance.
 
 ```text
-exact #217 artifact consumption
+exact signed-artifact consumption
 != external anti-rollback anchoring
 ```
 
@@ -125,7 +136,7 @@ exact #217 artifact consumption
 This subject does not establish:
 
 - the truth of the underlying qualification theorem;
-- checkpoint-signature verification inside Rust;
+- native Rust Ed25519 verification;
 - external anti-rollback protection;
 - trusted production clock correctness;
 - production private-key custody;
