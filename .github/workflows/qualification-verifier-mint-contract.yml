@@ -1,0 +1,112 @@
+name: Qualification Verifier Mint Contract
+
+on:
+  pull_request:
+    paths:
+      - 'crates/qualification-verifier-mint-contract/**'
+      - '.github/workflows/qualification-verifier-mint-contract.yml'
+  push:
+    branches:
+      - 'feat/qualification-verifier-mint-contract-v1'
+
+permissions:
+  contents: read
+
+jobs:
+  qualify-verifier-mint-contract:
+    name: Qualify portable request and signed-statement contract
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Check out exact subject
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+
+      - name: Install exact Rust toolchain
+        run: |
+          rustup toolchain install 1.96.0 --profile minimal --component rustfmt,clippy
+          rustc +1.96.0 -Vv
+          cargo +1.96.0 -V
+
+      - name: Freeze exact source identity
+        run: |
+          git rev-parse HEAD | tee /tmp/subject.sha
+          find crates/qualification-verifier-mint-contract \
+            -type d -name target -prune -o -type f -print0 \
+            | sort -z | xargs -0 sha256sum > /tmp/contract.before.sha256
+
+      - name: Static contract and non-authority guards
+        run: |
+          core='crates/qualification-verifier-mint-contract/src/lib.rs'
+          readme='crates/qualification-verifier-mint-contract/README.md'
+          boundaries='crates/qualification-verifier-mint-contract/BOUNDARIES.md'
+          status='crates/qualification-verifier-mint-contract/SOURCE_STATUS.md'
+          manifest='crates/qualification-verifier-mint-contract/Cargo.toml'
+          vectors='crates/qualification-verifier-mint-contract/tests/vectors.rs'
+
+          grep -q 'MYCELIX-HEALTH-QUALIFICATION-VERIFIER-MINT-REQUEST-V1' "$core"
+          grep -q 'MYCELIX-HEALTH-QUALIFICATION-VERIFIER-MINT-STATEMENT-V1' "$core"
+          grep -q 'pub struct VerifierMintRequestV1' "$core"
+          grep -q 'pub struct VerifierMintStatementV1' "$core"
+          grep -q 'pub struct VerifierMintReceiptV1' "$core"
+          grep -q 'pub struct HybridVerifierSignatureV1' "$core"
+          grep -q 'Ed25519MlDsa65' "$core"
+          grep -q '313' "$vectors"
+          grep -q '990' "$vectors"
+          grep -q 'receipt construction is not verification' "$readme" || grep -q 'does not.*verify' "$readme"
+          grep -q 'does \*\*not\*\* establish' "$boundaries"
+          grep -q 'SOURCE-STAGED' "$status"
+
+          ! grep -nE 'pub struct Verified|pub enum Verified|pub type Verified' "$core"
+          ! grep -nE 'ed25519-dalek|ml-dsa|pqcrypto|openssl|ring|rustls' "$manifest"
+          ! grep -n 'serde' "$manifest"
+          ! grep -n 'unsafe {' "$core"
+
+      - name: Verify dependency-free locked metadata
+        run: |
+          cargo +1.96.0 metadata --locked --no-deps --format-version 1 \
+            --manifest-path crates/qualification-verifier-mint-contract/Cargo.toml \
+            > /tmp/contract.metadata.json
+          test "$(jq -r '.packages | length' /tmp/contract.metadata.json)" = "1"
+          test "$(jq -r '.packages[0].dependencies | length' /tmp/contract.metadata.json)" = "0"
+          test "$(jq -r '.packages[0].name' /tmp/contract.metadata.json)" = "mycelix-qualification-verifier-mint-contract"
+
+      - name: Format contract
+        run: |
+          cargo +1.96.0 fmt \
+            --manifest-path crates/qualification-verifier-mint-contract/Cargo.toml \
+            -- --check
+
+      - name: Test contract and frozen vectors
+        run: |
+          cargo +1.96.0 test --locked \
+            --manifest-path crates/qualification-verifier-mint-contract/Cargo.toml
+
+      - name: Clippy contract
+        run: |
+          cargo +1.96.0 clippy --locked \
+            --manifest-path crates/qualification-verifier-mint-contract/Cargo.toml \
+            --all-targets -- -D warnings
+
+      - name: Verify postflight source immutability
+        run: |
+          test "$(git rev-parse HEAD)" = "$(cat /tmp/subject.sha)"
+          find crates/qualification-verifier-mint-contract \
+            -type d -name target -prune -o -type f -print0 \
+            | sort -z | xargs -0 sha256sum > /tmp/contract.after.sha256
+          diff -u /tmp/contract.before.sha256 /tmp/contract.after.sha256
+          git diff --exit-code
+
+      - name: Evidence summary
+        if: always()
+        run: |
+          {
+            echo '## Qualification verifier-mint contract evidence'
+            echo
+            echo "- subject: $(git rev-parse HEAD)"
+            echo "- rustc: $(rustc +1.96.0 --version 2>/dev/null || echo unavailable)"
+            echo '- scope: portable canonical request + signed-statement contract only'
+            echo '- frozen vector: request = 313 bytes'
+            echo '- frozen vector: statement = 990 bytes'
+            echo '- invariant: receipt construction is not signature verification or product authority'
+            echo '- non-claim: request/state commitment cryptographic correctness is not established by this crate'
+            echo '- non-claim: challenge freshness/single-use, endpoint identity, trusted time, and token minting remain later tranches'
+          } >> "$GITHUB_STEP_SUMMARY"
