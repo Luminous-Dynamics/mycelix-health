@@ -1,11 +1,10 @@
 #![forbid(unsafe_code)]
 //! Reference semantics for the final Patient-v2 cutover composition boundary.
 //!
-//! This crate does not implement migration, activation, signatures, trusted
-//! time, Holochain persistence, or distributed atomicity. It freezes the
-//! cross-receipt coherence and durable activation-commit theorem from
-//! PATIENT-PRIV-007.
+//! This crate composes already-verified lower-layer receipts. It does not perform
+//! migration, activation, signature verification, trusted time, Holochain I/O,
+//! hashing, or distributed transactions.
 
-mod model;
+mod canonical;
 
-pub use model::*;
+pub use canonical::*;
