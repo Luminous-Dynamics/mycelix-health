@@ -1,0 +1,108 @@
+name: Tier-1 create_link Census
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'dna/dna.yaml'
+      - 'zomes/patient/coordinator/src/lib.rs'
+      - 'zomes/provider/coordinator/src/lib.rs'
+      - 'zomes/records/coordinator/src/lib.rs'
+      - 'zomes/prescriptions/coordinator/src/lib.rs'
+      - 'zomes/consent/coordinator/src/lib.rs'
+      - 'zomes/bridge/coordinator/src/lib.rs'
+      - 'scripts/census_tier1_create_links.py'
+      - '.github/workflows/tier1-create-link-census.yml'
+  push:
+    branches:
+      - 'audit/tier1-create-link-census-v1'
+    paths:
+      - 'dna/dna.yaml'
+      - 'zomes/patient/coordinator/src/lib.rs'
+      - 'zomes/provider/coordinator/src/lib.rs'
+      - 'zomes/records/coordinator/src/lib.rs'
+      - 'zomes/prescriptions/coordinator/src/lib.rs'
+      - 'zomes/consent/coordinator/src/lib.rs'
+      - 'zomes/bridge/coordinator/src/lib.rs'
+      - 'scripts/census_tier1_create_links.py'
+      - '.github/workflows/tier1-create-link-census.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  census:
+    name: Enumerate packaged Tier-1 create_link constructions
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Check out exact subject
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+
+      - name: Freeze exact source identities
+        run: |
+          git rev-parse HEAD | tee /tmp/subject.sha
+          python3 --version
+          sha256sum \
+            dna/dna.yaml \
+            scripts/census_tier1_create_links.py \
+            zomes/patient/coordinator/src/lib.rs \
+            zomes/provider/coordinator/src/lib.rs \
+            zomes/records/coordinator/src/lib.rs \
+            zomes/prescriptions/coordinator/src/lib.rs \
+            zomes/consent/coordinator/src/lib.rs \
+            zomes/bridge/coordinator/src/lib.rs \
+            | tee /tmp/census.before.sha256
+
+      - name: Qualify scanner fixture
+        run: python3 scripts/census_tier1_create_links.py --self-test
+
+      - name: Generate exact packaged census
+        run: |
+          python3 scripts/census_tier1_create_links.py --pretty > /tmp/tier1-create-link-census.json
+          jq -e '.schema_version == 1' /tmp/tier1-create-link-census.json >/dev/null
+          jq -e '.coordinator_count == 6' /tmp/tier1-create-link-census.json >/dev/null
+          test "$(jq '.calls | length' /tmp/tier1-create-link-census.json)" = "$(jq '.create_link_call_count' /tmp/tier1-create-link-census.json)"
+          jq -e '[.calls[].callsite_id] | length == (unique | length)' /tmp/tier1-create-link-census.json >/dev/null
+          jq -e '[.calls[].link_type] | all(type == "string" and length > 0)' /tmp/tier1-create-link-census.json >/dev/null
+
+      - name: Print census for review
+        run: |
+          echo 'Counts by packaged coordinator:'
+          jq '.counts_by_zome' /tmp/tier1-create-link-census.json
+          echo
+          echo 'Call sites:'
+          jq -r '.calls[] | [.callsite_id, .line, .link_type, .base_expr, .target_expr, .tag_expr] | @tsv' /tmp/tier1-create-link-census.json
+
+      - name: Verify postflight immutability
+        run: |
+          test "$(git rev-parse HEAD)" = "$(cat /tmp/subject.sha)"
+          sha256sum \
+            dna/dna.yaml \
+            scripts/census_tier1_create_links.py \
+            zomes/patient/coordinator/src/lib.rs \
+            zomes/provider/coordinator/src/lib.rs \
+            zomes/records/coordinator/src/lib.rs \
+            zomes/prescriptions/coordinator/src/lib.rs \
+            zomes/consent/coordinator/src/lib.rs \
+            zomes/bridge/coordinator/src/lib.rs \
+            > /tmp/census.after.sha256
+          diff -u /tmp/census.before.sha256 /tmp/census.after.sha256
+          git diff --exit-code
+
+      - name: Evidence summary
+        if: always()
+        run: |
+          {
+            echo '## Tier-1 create_link census evidence'
+            echo
+            echo "- subject: $(git rev-parse HEAD)"
+            echo '- scope: scanner + exact raw call-site enumeration only'
+            if test -f /tmp/tier1-create-link-census.json; then
+              echo "- packaged coordinators: $(jq -r '.coordinator_count' /tmp/tier1-create-link-census.json)"
+              echo "- create_link calls: $(jq -r '.create_link_call_count' /tmp/tier1-create-link-census.json)"
+              echo '- counts:'
+              jq -r '.counts_by_zome | to_entries[] | "  - \(.key): \(.value)"' /tmp/tier1-create-link-census.json
+            fi
+            echo '- non-claim: raw census is not privacy classification or DHT confidentiality evidence'
+            echo '- next: freeze reviewed base/target/tag classification snapshot under #200'
+          } >> "$GITHUB_STEP_SUMMARY"
