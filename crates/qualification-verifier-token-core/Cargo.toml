@@ -1,0 +1,18 @@
+[workspace]
+
+[package]
+name = "mycelix-qualification-verifier-token-core"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.96"
+license = "AGPL-3.0-or-later"
+description = "Private-field verifier token boundary for Health qualification anti-rollback authority"
+publish = false
+
+[dependencies]
+mycelix-qualification-generic-transparency-adapter-core = { path = "../qualification-generic-transparency-adapter-core" }
+mycelix-qualification-anti-rollback-anchor-core = { path = "../qualification-anti-rollback-anchor-core" }
+mycelix-qualification-receipt-core = { path = "../qualification-receipt-core" }
+
+[lib]
+path = "src/lib.rs"
