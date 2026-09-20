@@ -1,0 +1,13 @@
+[workspace]
+
+[package]
+name = "mycelix-patient-v2-migration-result-core"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.96"
+license = "AGPL-3.0-or-later"
+description = "Reference semantics binding frozen Patient v1 state to a verified protected-v2 migration destination"
+publish = false
+
+[lib]
+path = "src/lib.rs"
