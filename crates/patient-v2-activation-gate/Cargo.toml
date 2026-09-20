@@ -1,0 +1,13 @@
+[workspace]
+
+[package]
+name = "mycelix-patient-v2-activation-gate"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.96"
+license = "AGPL-3.0-or-later"
+description = "Fail-closed reference semantics for Patient v2 activation qualification"
+publish = false
+
+[lib]
+path = "src/lib.rs"
