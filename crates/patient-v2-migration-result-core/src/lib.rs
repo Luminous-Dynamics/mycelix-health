@@ -8,5 +8,6 @@
 //! accept a migration result.
 
 mod model;
+mod strict;
 
-pub use model::*;
+pub use strict::*;
