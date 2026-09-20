@@ -1,12 +1,10 @@
 #![forbid(unsafe_code)]
 //! Fail-closed reference semantics for Patient v2 activation qualification.
 //!
-//! This crate does not inspect GitHub, run CI, verify signatures, hash WASM, or
-//! activate a Holochain DNA. It freezes evidence aggregation, cutover freeze,
-//! migration rehearsal, activation authority, and post-activation fail-closed
-//! read/write semantics so individually valid artifacts cannot silently become
-//! deployment authority.
+//! The core separates evidence qualification, a write-blocking cutover freeze,
+//! migration rehearsal, explicit activation authority, and actual activation.
+//! It does not itself verify CI/signatures, perform migration, or activate a DNA.
 
-mod model_v2;
+mod core;
 
-pub use model_v2::*;
+pub use core::*;
