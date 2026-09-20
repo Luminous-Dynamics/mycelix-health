@@ -5,10 +5,11 @@
 //! durable/distributed ledger persistence, and hash computation are adapter
 //! theorems outside this crate.
 
-// The low-level model intentionally contains adapter-only helpers that are not
-// part of the external crate API. The strict module is the only public surface.
+// The low-level model and governed verifier remain crate-private. Only the
+// semantic-scope-bound wrapper is externally exported.
 #[allow(dead_code)]
 mod model;
 mod strict;
+mod scoped;
 
-pub use strict::*;
+pub use scoped::*;
