@@ -94,17 +94,31 @@ jobs:
             --manifest-path crates/qualification-verifier-token-core/Cargo.toml \
             --all-targets -- -D warnings
 
-      - name: Prove downstream safe Rust cannot forge a token
+      - name: Prove downstream safe Rust cannot forge an input token
         run: |
           set +e
           cargo +1.96.0 check --locked \
             --manifest-path crates/qualification-verifier-token-core/compile-fail/forged-token/Cargo.toml \
+            --bin forged-verifier-token-attempt \
             2> /tmp/forged-token.stderr
           status=$?
           set -e
           test "$status" -ne 0
           grep -Eq 'private field|field .* is private|E0451' /tmp/forged-token.stderr
           cat /tmp/forged-token.stderr
+
+      - name: Prove lower anchored heads cannot be relabeled
+        run: |
+          set +e
+          cargo +1.96.0 check --locked \
+            --manifest-path crates/qualification-verifier-token-core/compile-fail/forged-token/Cargo.toml \
+            --bin relabel-head \
+            2> /tmp/relabel-head.stderr
+          status=$?
+          set -e
+          test "$status" -ne 0
+          grep -Eq 'private field|field .* is private|E0451' /tmp/relabel-head.stderr
+          cat /tmp/relabel-head.stderr
 
       - name: Verify postflight source immutability
         run: |
