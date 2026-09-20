@@ -42,10 +42,6 @@ macro_rules! opaque32 {
                 }
                 Ok(Self(bytes))
             }
-
-            fn bytes(&self) -> &[u8; 32] {
-                &self.0
-            }
         }
 
         impl fmt::Debug for $ty {
@@ -365,9 +361,13 @@ impl ManifestRegistry {
         manifest_id: ManifestEnvelopeId,
         manifest: &ProtectedManifestV1,
     ) -> Result<ManifestRegistration, ManifestRegistryError> {
-        if let Some((_, _, existing_id)) = self.registrations.iter().find(|(context, generation, _)| {
-            *context == manifest.context && *generation == manifest.generation
-        }) {
+        if let Some((_, _, existing_id)) = self
+            .registrations
+            .iter()
+            .find(|(context, generation, _)| {
+                *context == manifest.context && *generation == manifest.generation
+            })
+        {
             return if *existing_id == manifest_id {
                 Ok(ManifestRegistration::Idempotent)
             } else {
@@ -376,9 +376,12 @@ impl ManifestRegistry {
         }
 
         if manifest.generation > 1 {
-            let prior = self.registrations.iter().find(|(context, generation, _)| {
-                *context == manifest.context && *generation == manifest.generation - 1
-            });
+            let prior = self
+                .registrations
+                .iter()
+                .find(|(context, generation, _)| {
+                    *context == manifest.context && *generation == manifest.generation - 1
+                });
             let Some((_, _, prior_id)) = prior else {
                 return Err(ManifestRegistryError::MissingPriorGeneration);
             };
@@ -395,7 +398,9 @@ impl ManifestRegistry {
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum RotationError {
-    GenerationNotIncreasing,
+    GenerationOverflow,
+    GenerationNotNext,
+    IssuedBeforeCurrent,
     ExpiryExtended,
     InvalidGrant,
 }
@@ -411,8 +416,15 @@ pub fn rotate_locator(
     issued_at_micros: i64,
     expires_at_micros: i64,
 ) -> Result<PrivateLocatorGrantV1, RotationError> {
-    if new_generation <= current.generation {
-        return Err(RotationError::GenerationNotIncreasing);
+    let expected_generation = current
+        .generation
+        .checked_add(1)
+        .ok_or(RotationError::GenerationOverflow)?;
+    if new_generation != expected_generation {
+        return Err(RotationError::GenerationNotNext);
+    }
+    if issued_at_micros < current.issued_at_micros {
+        return Err(RotationError::IssuedBeforeCurrent);
     }
     if expires_at_micros > current.expires_at_micros {
         return Err(RotationError::ExpiryExtended);
@@ -618,17 +630,36 @@ mod tests {
     #[test]
     fn manifest_rejects_empty_and_duplicate_selectors() {
         let empty = ProtectedManifestV1::new(
-            subject(10), context(3), policy(4), capability(5), audience(6),
-            CarePurpose::Treatment, provenance(11), 1, 100, 1000,
-            ManifestCompleteness::CompleteForProjection, vec![], None,
+            subject(10),
+            context(3),
+            policy(4),
+            capability(5),
+            audience(6),
+            CarePurpose::Treatment,
+            provenance(11),
+            1,
+            100,
+            1000,
+            ManifestCompleteness::CompleteForProjection,
+            vec![],
+            None,
         );
         assert!(matches!(empty, Err(ManifestError::EmptySelector)));
 
         let duplicate = ProtectedManifestV1::new(
-            subject(10), context(3), policy(4), capability(5), audience(6),
-            CarePurpose::Treatment, provenance(11), 1, 100, 1000,
+            subject(10),
+            context(3),
+            policy(4),
+            capability(5),
+            audience(6),
+            CarePurpose::Treatment,
+            provenance(11),
+            1,
+            100,
+            1000,
             ManifestCompleteness::CompleteForProjection,
-            vec![envelope(12), envelope(12)], None,
+            vec![envelope(12), envelope(12)],
+            None,
         );
         assert!(matches!(duplicate, Err(ManifestError::DuplicateObject)));
     }
@@ -636,27 +667,54 @@ mod tests {
     #[test]
     fn manifest_lineage_requires_predecessor_after_genesis() {
         let bad_genesis = ProtectedManifestV1::new(
-            subject(10), context(3), policy(4), capability(5), audience(6),
-            CarePurpose::Treatment, provenance(11), 1, 100, 1000,
+            subject(10),
+            context(3),
+            policy(4),
+            capability(5),
+            audience(6),
+            CarePurpose::Treatment,
+            provenance(11),
+            1,
+            100,
+            1000,
             ManifestCompleteness::CompleteForProjection,
-            vec![envelope(12)], Some(manifest_id(1)),
+            vec![envelope(12)],
+            Some(manifest_id(1)),
         );
         assert!(matches!(bad_genesis, Err(ManifestError::GenesisHasPredecessor)));
 
         let bad_second = ProtectedManifestV1::new(
-            subject(10), context(3), policy(4), capability(5), audience(6),
-            CarePurpose::Treatment, provenance(11), 2, 100, 1000,
+            subject(10),
+            context(3),
+            policy(4),
+            capability(5),
+            audience(6),
+            CarePurpose::Treatment,
+            provenance(11),
+            2,
+            100,
+            1000,
             ManifestCompleteness::CompleteForProjection,
-            vec![envelope(12)], None,
+            vec![envelope(12)],
+            None,
         );
-        assert!(matches!(bad_second, Err(ManifestError::NonGenesisMissingPredecessor)));
+        assert!(matches!(
+            bad_second,
+            Err(ManifestError::NonGenesisMissingPredecessor)
+        ));
     }
 
     #[test]
     fn locator_cannot_be_reused_across_contexts() {
         let mut registry = LocatorRegistry::default();
-        assert_eq!(registry.register(locator(1), context(3)), Ok(LocatorRegistration::Created));
-        assert_eq!(registry.register(locator(1), context(3)), Ok(LocatorRegistration::Idempotent));
+        assert_eq!(
+            registry.register(locator(1), context(3)),
+            Ok(LocatorRegistration::Created)
+        );
+        assert_eq!(
+            registry.register(locator(1), context(3)),
+            Ok(LocatorRegistration::Idempotent)
+        );
         assert_eq!(
             registry.register(locator(1), context(9)),
             Err(LocatorRegistryError::CrossContextReuse)
@@ -721,19 +779,32 @@ mod tests {
         assert_eq!(rotated.purpose, current.purpose);
         assert_eq!(rotated.key_epoch, current.key_epoch);
         assert_eq!(rotated.generation, 2);
-        assert_eq!(
+        assert!(matches!(
             rotate_locator(&current, locator(8), manifest_id(9), 2, 200, 1001),
             Err(RotationError::ExpiryExtended)
-        );
+        ));
     }
 
     #[test]
-    fn rotation_generation_must_increase() {
+    fn rotation_generation_must_be_exactly_next() {
         let current = grant();
-        assert_eq!(
+        assert!(matches!(
+            rotate_locator(&current, locator(8), manifest_id(9), 3, 200, 900),
+            Err(RotationError::GenerationNotNext)
+        ));
+        assert!(matches!(
             rotate_locator(&current, locator(8), manifest_id(9), 1, 200, 900),
-            Err(RotationError::GenerationNotIncreasing)
-        );
+            Err(RotationError::GenerationNotNext)
+        ));
+    }
+
+    #[test]
+    fn rotation_cannot_move_issuance_time_backwards() {
+        let current = grant();
+        assert!(matches!(
+            rotate_locator(&current, locator(8), manifest_id(9), 2, 99, 900),
+            Err(RotationError::IssuedBeforeCurrent)
+        ));
     }
 
     #[test]
@@ -741,13 +812,22 @@ mod tests {
         // Compile-time property: neither private type derives Debug. This test
         // verifies the public opaque IDs remain redacted instead of requiring
         // sensitive private structures to be formattable.
-        assert_eq!(format!("{:?}", manifest_id(2)), "ManifestEnvelopeId([redacted])");
+        assert_eq!(
+            format!("{:?}", manifest_id(2)),
+            "ManifestEnvelopeId([redacted])"
+        );
     }
 
     #[test]
     fn same_person_can_use_distinct_locators_in_distinct_contexts() {
         let mut registry = LocatorRegistry::default();
-        assert_eq!(registry.register(locator(1), context(3)), Ok(LocatorRegistration::Created));
-        assert_eq!(registry.register(locator(2), context(4)), Ok(LocatorRegistration::Created));
+        assert_eq!(
+            registry.register(locator(1), context(3)),
+            Ok(LocatorRegistration::Created)
+        );
+        assert_eq!(
+            registry.register(locator(2), context(4)),
+            Ok(LocatorRegistration::Created)
+        );
     }
 }
