@@ -1,0 +1,92 @@
+name: Patient v2 Migration Result Reference
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'crates/patient-v2-migration-result-core/**'
+      - '.github/workflows/patient-v2-migration-result-reference.yml'
+  push:
+    branches:
+      - 'feat/patient-v2-migration-result-core-v1'
+    paths:
+      - 'crates/patient-v2-migration-result-core/**'
+      - '.github/workflows/patient-v2-migration-result-reference.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  qualify-patient-v2-migration-result:
+    name: Qualify frozen-source to protected-destination semantics
+    runs-on: ubuntu-24.04
+    defaults:
+      run:
+        working-directory: crates/patient-v2-migration-result-core
+    steps:
+      - name: Check out exact subject
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+
+      - name: Install exact Rust toolchain
+        run: |
+          rustup toolchain install 1.96.0 --profile minimal --component rustfmt,clippy
+          rustc +1.96.0 -Vv
+          cargo +1.96.0 -V
+
+      - name: Freeze preflight identities
+        run: |
+          git rev-parse HEAD | tee /tmp/subject.sha
+          sha256sum Cargo.toml Cargo.lock README.md src/lib.rs src/model.rs src/strict.rs | tee /tmp/migration.before.sha256
+          cargo +1.96.0 metadata --locked --no-deps --format-version 1 > /tmp/migration.metadata.json
+          test "$(jq -r '.packages | length' /tmp/migration.metadata.json)" = "1"
+          test "$(jq -r '.packages[0].name' /tmp/migration.metadata.json)" = "mycelix-patient-v2-migration-result-core"
+
+      - name: Static theorem guards
+        run: |
+          grep -q 'IncompleteRouteAccounting' src/model.rs
+          grep -q 'TopologyNotVerified' src/model.rs
+          grep -q 'ExactIdempotentReplay' src/model.rs
+          grep -q 'SameGenerationConflict' src/model.rs
+          grep -q 'NotLatestGeneration' src/model.rs
+          grep -q 'PostMigrationAbortReceipt' src/model.rs
+          grep -q 'FrozenLineageAbandoned' src/strict.rs
+          grep -q 'abandoned_lineage_never_reveals_older_generation_as_activatable' src/strict.rs
+          if grep -Eq 'erase_peer|dht_erased|force_activate|force_migration' src/model.rs src/strict.rs; then
+            echo 'unexpected erasure/force claim or API' >&2
+            exit 1
+          fi
+
+      - name: Check formatting
+        run: cargo +1.96.0 fmt -- --check
+
+      - name: Run tests
+        run: cargo +1.96.0 test --locked
+
+      - name: Run Clippy
+        run: cargo +1.96.0 clippy --locked --all-targets -- -D warnings
+
+      - name: Verify postflight immutability
+        run: |
+          test "$(git rev-parse HEAD)" = "$(cat /tmp/subject.sha)"
+          sha256sum Cargo.toml Cargo.lock README.md src/lib.rs src/model.rs src/strict.rs > /tmp/migration.after.sha256
+          diff -u /tmp/migration.before.sha256 /tmp/migration.after.sha256
+          git diff --exit-code -- Cargo.toml Cargo.lock README.md src/lib.rs src/model.rs src/strict.rs
+
+      - name: Evidence summary
+        if: always()
+        run: |
+          {
+            echo '## Patient v2 migration-result reference evidence'
+            echo
+            echo "- subject: $(git rev-parse HEAD)"
+            echo "- runner: ubuntu-24.04"
+            echo "- rustc: $(rustc +1.96.0 --version)"
+            echo "- cargo: $(cargo +1.96.0 --version)"
+            echo '- scope: production-migration receipt / generation / quarantine semantics only'
+            echo '- invariant: receipt binds exact frozen source context and protected destination identity'
+            echo '- invariant: unresolved routes or unverified payload/topology deny'
+            echo '- invariant: exact replay is idempotent; same-generation divergent output conflicts'
+            echo '- invariant: only latest active generation is activation-eligible'
+            echo '- invariant: abandoned frozen lineage cannot reactivate an older generation or accept new migration output'
+            echo '- non-claim: no migration execution, crypto, signature, trusted-time, DHT erasure, activation, or regulatory qualification'
+          } >> "$GITHUB_STEP_SUMMARY"
