@@ -3,8 +3,8 @@
 //!
 //! This reference consumes `VerifiedQualification` values from
 //! `mycelix-qualification-receipt-core`. It does not verify signatures, compute
-//! receipt/profile hashes, load governance policy, provide trusted time, or
-//! durably persist the seam-consumption clock.
+//! receipt/profile/checkpoint hashes, load governance policy, provide trusted
+//! time, or durably persist the seam-consumption clock/current-head checkpoint.
 
 use core::fmt;
 use mycelix_qualification_receipt_core as qual;
@@ -46,6 +46,66 @@ impl AdapterProfileDigest {
 impl fmt::Debug for AdapterProfileDigest {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_str("AdapterProfileDigest([redacted])")
+    }
+}
+
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct LineageCheckpointDigest([u8; 32]);
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum LineageCheckpointDigestError {
+    AllZero,
+}
+
+impl LineageCheckpointDigest {
+    pub fn new(bytes: [u8; 32]) -> Result<Self, LineageCheckpointDigestError> {
+        if bytes == [0; 32] {
+            return Err(LineageCheckpointDigestError::AllZero);
+        }
+        Ok(Self(bytes))
+    }
+}
+
+impl fmt::Debug for LineageCheckpointDigest {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str("LineageCheckpointDigest([redacted])")
+    }
+}
+
+/// External checkpoint assertion for the current receipt at one exact semantic
+/// qualification lineage.
+///
+/// `verified` is an adapter assertion in this reference. Production must bind it
+/// to a qualified durable/checkpoint verifier rather than UI or caller state.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct VerifiedLineageHead {
+    binding: qual::QualificationLineageBinding,
+    receipt_digest: qual::ReceiptDigest,
+    checkpoint_digest: LineageCheckpointDigest,
+    verified: bool,
+}
+
+impl VerifiedLineageHead {
+    pub fn from_checkpoint_adapter(
+        binding: qual::QualificationLineageBinding,
+        receipt_digest: qual::ReceiptDigest,
+        checkpoint_digest: LineageCheckpointDigest,
+        verified: bool,
+    ) -> Self {
+        Self {
+            binding,
+            receipt_digest,
+            checkpoint_digest,
+            verified,
+        }
+    }
+
+    pub fn receipt_digest(&self) -> qual::ReceiptDigest {
+        self.receipt_digest
+    }
+
+    pub fn checkpoint_digest(&self) -> LineageCheckpointDigest {
+        self.checkpoint_digest
     }
 }
 
@@ -126,17 +186,22 @@ pub enum AdapterConversionError {
     PolicyMismatch,
     TrustStoreMismatch,
     DeploymentEvidenceMismatch,
+    HeadNotVerified,
+    HeadBindingMismatch,
+    ReceiptNotCurrentHead,
     ReceiptNotAdmissible,
     ReceiptNotYetValid,
     ReceiptExpired,
+    ReceiptAgeOverflow,
     ReceiptTooOld,
 }
 
 /// Non-cloneable typed authority token for the exact #208 composition seam.
 ///
-/// It preserves qualification provenance but intentionally exposes no generic
-/// constructor. Production integration should consume this token (or a strictly
-/// stronger successor), not `VerifiedQualification` directly.
+/// It preserves qualification and current-head provenance but intentionally
+/// exposes no generic constructor. Production integration should consume this
+/// token (or a strictly stronger successor), not `VerifiedQualification`
+/// directly.
 pub struct Profile208CompositionCommitmentToken {
     receipt_digest: qual::ReceiptDigest,
     profile_digest: AdapterProfileDigest,
@@ -144,6 +209,7 @@ pub struct Profile208CompositionCommitmentToken {
     policy_digest: qual::GovernancePolicyDigest,
     trust_store_digest: qual::TrustStoreDigest,
     deployment_evidence: qual::DeploymentEvidenceDigest,
+    lineage_checkpoint: LineageCheckpointDigest,
     issued_at_micros: i64,
     expires_at_micros: i64,
 }
@@ -155,6 +221,7 @@ impl fmt::Debug for Profile208CompositionCommitmentToken {
             .field("receipt_digest", &self.receipt_digest)
             .field("profile_digest", &self.profile_digest)
             .field("binding", &self.binding)
+            .field("lineage_checkpoint", &self.lineage_checkpoint)
             .field("issued_at_micros", &self.issued_at_micros)
             .field("expires_at_micros", &self.expires_at_micros)
             .finish_non_exhaustive()
@@ -188,6 +255,10 @@ impl Profile208CompositionCommitmentToken {
 
     pub fn deployment_evidence(&self) -> qual::DeploymentEvidenceDigest {
         self.deployment_evidence
+    }
+
+    pub fn lineage_checkpoint(&self) -> LineageCheckpointDigest {
+        self.lineage_checkpoint
     }
 
     pub fn issued_at_micros(&self) -> i64 {
@@ -240,12 +311,13 @@ impl Profile208CompositionCommitmentGate {
     /// composition-commitment authority token.
     ///
     /// This performs an independent product-seam check after generic receipt
-    /// verification and requires the receipt to remain active in the exact
-    /// semantic-lineage ledger at consumption time.
+    /// verification and requires both local ledger admissibility and an exact
+    /// externally verified current-lineage-head checkpoint.
     pub fn convert(
         &mut self,
         qualification: &qual::VerifiedQualification,
         ledger: &qual::QualificationLedger,
+        current_head: VerifiedLineageHead,
         now_micros: i64,
     ) -> Result<Profile208CompositionCommitmentToken, AdapterConversionError> {
         self.observe_time(now_micros)?;
@@ -268,15 +340,25 @@ impl Profile208CompositionCommitmentGate {
         if qualification.deployment_evidence() != Some(self.profile.deployment_evidence) {
             return Err(AdapterConversionError::DeploymentEvidenceMismatch);
         }
+        if !current_head.verified {
+            return Err(AdapterConversionError::HeadNotVerified);
+        }
+        if current_head.binding != self.profile.binding {
+            return Err(AdapterConversionError::HeadBindingMismatch);
+        }
+        if current_head.receipt_digest != qualification.receipt_digest() {
+            return Err(AdapterConversionError::ReceiptNotCurrentHead);
+        }
         if now_micros < qualification.issued_at_micros() {
             return Err(AdapterConversionError::ReceiptNotYetValid);
         }
         if now_micros >= qualification.expires_at_micros() {
             return Err(AdapterConversionError::ReceiptExpired);
         }
-        if now_micros - qualification.issued_at_micros()
-            > self.profile.max_consumption_age_micros
-        {
+        let receipt_age = now_micros
+            .checked_sub(qualification.issued_at_micros())
+            .ok_or(AdapterConversionError::ReceiptAgeOverflow)?;
+        if receipt_age > self.profile.max_consumption_age_micros {
             return Err(AdapterConversionError::ReceiptTooOld);
         }
         if !ledger.is_admissible(qualification.receipt_digest()) {
@@ -290,6 +372,7 @@ impl Profile208CompositionCommitmentGate {
             policy_digest: qualification.policy_digest(),
             trust_store_digest: qualification.trust_store_digest(),
             deployment_evidence: self.profile.deployment_evidence,
+            lineage_checkpoint: current_head.checkpoint_digest,
             issued_at_micros: qualification.issued_at_micros(),
             expires_at_micros: qualification.expires_at_micros(),
         })
@@ -435,8 +518,17 @@ mod tests {
         ledger
     }
 
+    fn head(qualification: &qual::VerifiedQualification) -> VerifiedLineageHead {
+        VerifiedLineageHead::from_checkpoint_adapter(
+            qualification.binding(),
+            qualification.receipt_digest(),
+            LineageCheckpointDigest::new(bytes(91)).unwrap(),
+            true,
+        )
+    }
+
     #[test]
-    fn exact_active_composition_receipt_converts_to_one_typed_token() {
+    fn exact_active_current_head_converts_to_one_typed_token() {
         let qualification = verified(
             qual::ReceiptKind::CompositionCommitmentQualification,
             3,
@@ -449,11 +541,14 @@ mod tests {
         );
         let ledger = admitted(&qualification);
         let mut gate = Profile208CompositionCommitmentGate::new(profile(3, 500));
-        let token = gate.convert(&qualification, &ledger, 200).unwrap();
+        let token = gate
+            .convert(&qualification, &ledger, head(&qualification), 200)
+            .unwrap();
         assert_eq!(token.seam(), AdapterSeamId::Patient208CompositionCommitment);
         assert_eq!(token.receipt_digest(), oid!(ReceiptDigest, 40));
         assert_eq!(token.policy_digest(), oid!(GovernancePolicyDigest, 7));
         assert_eq!(token.deployment_evidence(), oid!(DeploymentEvidenceDigest, 5));
+        assert_eq!(token.lineage_checkpoint(), LineageCheckpointDigest::new(bytes(91)).unwrap());
     }
 
     #[test]
@@ -471,7 +566,8 @@ mod tests {
         let ledger = admitted(&qualification);
         let mut gate = Profile208CompositionCommitmentGate::new(profile(3, 500));
         assert_eq!(
-            gate.convert(&qualification, &ledger, 200).map(|_| ()),
+            gate.convert(&qualification, &ledger, head(&qualification), 200)
+                .map(|_| ()),
             Err(AdapterConversionError::WrongReceiptKind)
         );
     }
@@ -491,7 +587,8 @@ mod tests {
         let ledger = admitted(&qualification);
         let mut gate = Profile208CompositionCommitmentGate::new(profile(3, 500));
         assert_eq!(
-            gate.convert(&qualification, &ledger, 200).map(|_| ()),
+            gate.convert(&qualification, &ledger, head(&qualification), 200)
+                .map(|_| ()),
             Err(AdapterConversionError::LineageBindingMismatch)
         );
     }
@@ -511,7 +608,8 @@ mod tests {
         let ledger = admitted(&wrong_policy);
         let mut gate = Profile208CompositionCommitmentGate::new(profile(3, 500));
         assert_eq!(
-            gate.convert(&wrong_policy, &ledger, 200).map(|_| ()),
+            gate.convert(&wrong_policy, &ledger, head(&wrong_policy), 200)
+                .map(|_| ()),
             Err(AdapterConversionError::PolicyMismatch)
         );
 
@@ -528,7 +626,8 @@ mod tests {
         let ledger = admitted(&wrong_trust);
         let mut gate = Profile208CompositionCommitmentGate::new(profile(3, 500));
         assert_eq!(
-            gate.convert(&wrong_trust, &ledger, 200).map(|_| ()),
+            gate.convert(&wrong_trust, &ledger, head(&wrong_trust), 200)
+                .map(|_| ()),
             Err(AdapterConversionError::TrustStoreMismatch)
         );
 
@@ -545,8 +644,52 @@ mod tests {
         let ledger = admitted(&wrong_deployment);
         let mut gate = Profile208CompositionCommitmentGate::new(profile(3, 500));
         assert_eq!(
-            gate.convert(&wrong_deployment, &ledger, 200).map(|_| ()),
+            gate.convert(
+                &wrong_deployment,
+                &ledger,
+                head(&wrong_deployment),
+                200,
+            )
+            .map(|_| ()),
             Err(AdapterConversionError::DeploymentEvidenceMismatch)
+        );
+    }
+
+    #[test]
+    fn unverified_or_stale_head_cannot_authorize_the_seam() {
+        let qualification = verified(
+            qual::ReceiptKind::CompositionCommitmentQualification,
+            3,
+            40,
+            7,
+            8,
+            5,
+            10,
+            1_000,
+        );
+        let ledger = admitted(&qualification);
+        let unverified = VerifiedLineageHead::from_checkpoint_adapter(
+            qualification.binding(),
+            qualification.receipt_digest(),
+            LineageCheckpointDigest::new(bytes(91)).unwrap(),
+            false,
+        );
+        let mut gate = Profile208CompositionCommitmentGate::new(profile(3, 500));
+        assert_eq!(
+            gate.convert(&qualification, &ledger, unverified, 200)
+                .map(|_| ()),
+            Err(AdapterConversionError::HeadNotVerified)
+        );
+
+        let stale = VerifiedLineageHead::from_checkpoint_adapter(
+            qualification.binding(),
+            oid!(ReceiptDigest, 41),
+            LineageCheckpointDigest::new(bytes(92)).unwrap(),
+            true,
+        );
+        assert_eq!(
+            gate.convert(&qualification, &ledger, stale, 200).map(|_| ()),
+            Err(AdapterConversionError::ReceiptNotCurrentHead)
         );
     }
 
@@ -575,13 +718,14 @@ mod tests {
             .unwrap();
         let mut gate = Profile208CompositionCommitmentGate::new(profile(3, 500));
         assert_eq!(
-            gate.convert(&qualification, &ledger, 200).map(|_| ()),
+            gate.convert(&qualification, &ledger, head(&qualification), 200)
+                .map(|_| ()),
             Err(AdapterConversionError::ReceiptNotAdmissible)
         );
     }
 
     #[test]
-    fn seam_rechecks_expiry_and_stricter_consumption_age() {
+    fn seam_rechecks_expiry_stricter_age_and_clock_rollback() {
         let qualification = verified(
             qual::ReceiptKind::CompositionCommitmentQualification,
             3,
@@ -596,17 +740,23 @@ mod tests {
 
         let mut age_gate = Profile208CompositionCommitmentGate::new(profile(3, 50));
         assert_eq!(
-            age_gate.convert(&qualification, &ledger, 200).map(|_| ()),
+            age_gate
+                .convert(&qualification, &ledger, head(&qualification), 200)
+                .map(|_| ()),
             Err(AdapterConversionError::ReceiptTooOld)
         );
 
         let mut expiry_gate = Profile208CompositionCommitmentGate::new(profile(3, 5_000));
         assert_eq!(
-            expiry_gate.convert(&qualification, &ledger, 1_000).map(|_| ()),
+            expiry_gate
+                .convert(&qualification, &ledger, head(&qualification), 1_000)
+                .map(|_| ()),
             Err(AdapterConversionError::ReceiptExpired)
         );
         assert_eq!(
-            expiry_gate.convert(&qualification, &ledger, 200).map(|_| ()),
+            expiry_gate
+                .convert(&qualification, &ledger, head(&qualification), 200)
+                .map(|_| ()),
             Err(AdapterConversionError::ClockRollback)
         );
     }
@@ -636,7 +786,8 @@ mod tests {
         let ledger = admitted(&wrong);
         let mut gate = Profile208CompositionCommitmentGate::new(profile(3, 500));
         assert_eq!(
-            gate.convert(&qualification, &ledger, 200).map(|_| ()),
+            gate.convert(&qualification, &ledger, head(&qualification), 200)
+                .map(|_| ()),
             Err(AdapterConversionError::LedgerBindingMismatch)
         );
     }
