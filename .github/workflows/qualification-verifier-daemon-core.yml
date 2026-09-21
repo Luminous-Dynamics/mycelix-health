@@ -1,0 +1,176 @@
+name: Qualification Verifier Daemon Core
+
+on:
+  pull_request:
+    paths:
+      - 'crates/qualification-verifier-daemon-core/**'
+      - '.github/workflows/qualification-verifier-daemon-core.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: qualification-verifier-daemon-core-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  qualify-daemon-core:
+    name: Linux singleton lease and bounded RPC framing
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Check out exact subject
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+
+      - name: Record host
+        run: |
+          uname -a | tee /tmp/uname.txt
+          stat -f -c '%T' . | tee /tmp/filesystem.txt
+          id | tee /tmp/id.txt
+
+      - name: Install exact Rust toolchain
+        run: |
+          rustup toolchain install 1.96.0 --profile minimal --component rustfmt,clippy
+          rustc +1.96.0 -Vv
+          cargo +1.96.0 -V
+
+      - name: Freeze exact source identity
+        run: |
+          git rev-parse HEAD | tee /tmp/subject.sha
+          {
+            find crates/qualification-verifier-daemon-core \
+              -type d -name target -prune -o \
+              -type f ! -name Cargo.lock -print0
+            printf '%s\0' .github/workflows/qualification-verifier-daemon-core.yml
+          } | sort -z | xargs -0 sha256sum > /tmp/daemon.before.sha256
+
+      - name: Guard lease, framing, and non-claims
+        run: |
+          manifest='crates/qualification-verifier-daemon-core/Cargo.toml'
+          core='crates/qualification-verifier-daemon-core/src/lib.rs'
+          boundaries='crates/qualification-verifier-daemon-core/BOUNDARIES.md'
+          status='crates/qualification-verifier-daemon-core/SOURCE_STATUS.md'
+
+          grep -q 'fs2 = "=0.4.3"' "$manifest"
+          grep -q 'try_lock_exclusive' "$core"
+          grep -q 'RUNTIME_MODE_V1: u32 = 0o700' "$core"
+          grep -q 'LOCK_MODE_V1: u32 = 0o600' "$core"
+          grep -q 'SOCKET_MODE_V1: u32 = 0o600' "$core"
+          grep -q 'REQUEST_DOMAIN_V1' "$core"
+          grep -q 'RESPONSE_DOMAIN_V1' "$core"
+          grep -q 'MAX_RPC_PAYLOAD_V1: usize = 64 \* 1024' "$core"
+          grep -q 'decode_request_header_v1' "$core"
+          grep -q 'private' "$boundaries"
+          grep -q 'peer credentials' "$boundaries"
+          grep -q 'SOURCE-STAGED' "$status"
+          ! grep -nE 'TcpListener|TcpStream|0\.0\.0\.0|127\.0\.0\.1' "$core" "$manifest"
+          ! grep -nE 'pub fn (listener|unix_listener|accept|raw_listener)\b' "$core"
+          ! grep -nE 'serde_json|json!' "$core" "$manifest"
+
+      - name: Generate and identify standalone dependency graph
+        run: |
+          test ! -e crates/qualification-verifier-daemon-core/Cargo.lock
+          cargo +1.96.0 generate-lockfile \
+            --manifest-path crates/qualification-verifier-daemon-core/Cargo.toml
+          sha256sum crates/qualification-verifier-daemon-core/Cargo.lock \
+            | tee /tmp/generated-lock.sha256
+          cp crates/qualification-verifier-daemon-core/Cargo.lock /tmp/Cargo.lock
+
+      - name: Preserve generated lockfile evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: qualification-verifier-daemon-core-lock
+          path: /tmp/Cargo.lock
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Verify locked metadata
+        run: |
+          cargo +1.96.0 metadata --locked --no-deps --format-version 1 \
+            --manifest-path crates/qualification-verifier-daemon-core/Cargo.toml \
+            > /tmp/daemon.metadata.json
+          test "$(jq -r '.packages | length' /tmp/daemon.metadata.json)" = "1"
+          test "$(jq -r '.packages[0].name' /tmp/daemon.metadata.json)" = \
+            'mycelix-qualification-verifier-daemon-core'
+
+      - name: Format exact daemon core
+        run: |
+          cargo +1.96.0 fmt \
+            --manifest-path crates/qualification-verifier-daemon-core/Cargo.toml \
+            -- --check
+
+      - name: Test singleton, filesystem, and RPC semantics
+        run: |
+          cargo +1.96.0 test --locked \
+            --manifest-path crates/qualification-verifier-daemon-core/Cargo.toml
+
+      - name: Clippy exact daemon core
+        run: |
+          cargo +1.96.0 clippy --locked \
+            --manifest-path crates/qualification-verifier-daemon-core/Cargo.toml \
+            --all-targets -- -D warnings
+
+      - name: Prove outside code cannot access raw listener
+        run: |
+          tmp="$(mktemp -d)"
+          cat > "$tmp/Cargo.toml" <<EOF
+          [package]
+          name = "daemon-listener-escape-attempt"
+          version = "0.0.0"
+          edition = "2024"
+
+          [dependencies]
+          daemon = { package = "mycelix-qualification-verifier-daemon-core", path = "$GITHUB_WORKSPACE/crates/qualification-verifier-daemon-core" }
+          EOF
+          mkdir -p "$tmp/src"
+          cat > "$tmp/src/main.rs" <<'EOF'
+          use daemon::VerifierDaemonLeaseV1;
+
+          fn escape(lease: VerifierDaemonLeaseV1) {
+              let _ = lease._listener;
+          }
+
+          fn main() {}
+          EOF
+
+          set +e
+          cargo +1.96.0 check --manifest-path "$tmp/Cargo.toml" > /tmp/listener-escape.out 2>&1
+          rc=$?
+          set -e
+          test "$rc" -ne 0
+          grep -Eq 'private|field.*_listener' /tmp/listener-escape.out
+
+      - name: Verify source immutability and lock stability
+        run: |
+          test "$(git rev-parse HEAD)" = "$(cat /tmp/subject.sha)"
+          sha256sum -c /tmp/generated-lock.sha256
+          {
+            find crates/qualification-verifier-daemon-core \
+              -type d -name target -prune -o \
+              -type f ! -name Cargo.lock -print0
+            printf '%s\0' .github/workflows/qualification-verifier-daemon-core.yml
+          } | sort -z | xargs -0 sha256sum > /tmp/daemon.after.sha256
+          diff -u /tmp/daemon.before.sha256 /tmp/daemon.after.sha256
+          rm crates/qualification-verifier-daemon-core/Cargo.lock
+          git diff --exit-code
+
+      - name: Evidence summary
+        if: always()
+        run: |
+          {
+            echo '## Qualification verifier daemon-core evidence'
+            echo
+            echo "- subject: $(git rev-parse HEAD)"
+            echo "- rustc: $(rustc +1.96.0 --version 2>/dev/null || echo unavailable)"
+            echo "- host: $(cat /tmp/uname.txt 2>/dev/null || echo unavailable)"
+            echo "- filesystem: $(cat /tmp/filesystem.txt 2>/dev/null || echo unavailable)"
+            if test -f /tmp/generated-lock.sha256; then
+              echo "- generated lock: $(cat /tmp/generated-lock.sha256)"
+            fi
+            echo '- process: kernel advisory singleton lease; PID metadata non-authoritative'
+            echo '- filesystem: runtime 0700; lock/socket 0600; final symlink/type/owner checks'
+            echo '- endpoint: Unix-domain socket only; stale cleanup under held lease'
+            echo '- RPC: domain/version/op/request-id/u32-length bounded binary framing'
+            echo '- non-claim: peer credentials/capability authentication remain 009C4B'
+            echo '- non-claim: same-UID hostile filesystem races and ancestor-path races are not established'
+          } >> "$GITHUB_STEP_SUMMARY"
