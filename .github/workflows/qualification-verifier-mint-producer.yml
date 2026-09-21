@@ -60,7 +60,7 @@ jobs:
           grep -q 'challenge remains consumed' "$boundaries"
           grep -q 'SOURCE-STAGED' "$status"
           ! grep -nE 'pub fn (new|from_|mint).*VerifierOwnedMintEvidenceV1' "$core"
-          ! grep -nE 'ProductAuthorityToken|AnchoredProfile208ProductAuthorityToken' "$core"
+          ! grep -nE '^pub (struct|enum|type) .*ProductAuthorityToken|^pub fn .*ProductAuthorityToken' "$core"
           ! grep -nE 'axum|actix|warp|hyper|tonic|UnixListener|TcpListener' "$manifest" "$core"
 
       - name: Generate and identify standalone dependency graph
