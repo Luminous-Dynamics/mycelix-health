@@ -4,13 +4,13 @@ Current state: **SOURCE-STAGED / UNEXECUTED / NO PASS CLAIM**.
 
 The authoring environment does not provide Cargo/rustc/rustfmt, so no local compiler, formatter, Clippy or Rust test PASS is claimed.
 
-The authoritative crate root for this branch is:
+The sole authoritative crate source for this branch is:
 
 ```text
 src/hardened.rs
 ```
 
-`Cargo.toml` must continue to point `[lib] path` at that file. The earlier `src/lib.rs` construction draft is not part of the compiled theorem and should not be treated as authority evidence.
+`Cargo.toml` must continue to point `[lib] path` at that file. The earlier construction draft has been removed from the branch so there is no competing producer implementation in the qualification subject.
 
 The dedicated exact-head workflow is the first executable authority for this producer-engine subject.
 
