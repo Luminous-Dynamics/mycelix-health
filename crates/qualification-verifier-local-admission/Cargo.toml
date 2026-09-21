@@ -1,0 +1,18 @@
+[package]
+name = "mycelix-qualification-verifier-local-admission"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.96"
+license = "MIT OR Apache-2.0"
+publish = false
+
+[dependencies]
+hmac = "=0.12.1"
+nix = { version = "=0.31.3", features = ["socket"] }
+rand = "=0.8.7"
+sha2 = "=0.10.9"
+thiserror = "=1.0.69"
+zeroize = "=1.8.1"
+mycelix-qualification-verifier-daemon-core = { path = "../qualification-verifier-daemon-core" }
+
+[workspace]
