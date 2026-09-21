@@ -1,0 +1,14 @@
+[package]
+name = "mycelix-qualification-verifier-durable-producer"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.96"
+license = "MIT OR Apache-2.0"
+publish = false
+
+[dependencies]
+mycelix-qualification-verifier-mint-contract = { path = "../qualification-verifier-mint-contract" }
+mycelix-qualification-verifier-mint-producer = { path = "../qualification-verifier-mint-producer" }
+mycelix-qualification-verifier-freshness-store = { path = "../qualification-verifier-freshness-store" }
+
+[workspace]
