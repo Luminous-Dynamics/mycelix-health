@@ -1,0 +1,169 @@
+name: Qualification Verifier Mint Producer
+
+on:
+  pull_request:
+    paths:
+      - 'crates/qualification-verifier-mint-contract/**'
+      - 'crates/qualification-verifier-mint-hybrid-crypto/**'
+      - 'crates/qualification-verifier-mint-producer/**'
+      - '.github/workflows/qualification-verifier-mint-producer.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: qualification-verifier-mint-producer-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  qualify-producer:
+    name: One-time challenge -> hybrid provider receipt
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Check out exact subject
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+
+      - name: Install exact Rust toolchain
+        run: |
+          rustup toolchain install 1.96.0 --profile minimal --component rustfmt,clippy
+          rustc +1.96.0 -Vv
+          cargo +1.96.0 -V
+
+      - name: Freeze exact source identity
+        run: |
+          git rev-parse HEAD | tee /tmp/subject.sha
+          {
+            find crates/qualification-verifier-mint-producer \
+              -type d -name target -prune -o \
+              -type f ! -name Cargo.lock -print0
+            printf '%s\0' .github/workflows/qualification-verifier-mint-producer.yml
+          } | sort -z | xargs -0 sha256sum > /tmp/producer.before.sha256
+
+      - name: Guard producer theorem and non-claims
+        run: |
+          manifest='crates/qualification-verifier-mint-producer/Cargo.toml'
+          core='crates/qualification-verifier-mint-producer/src/hardened.rs'
+          boundaries='crates/qualification-verifier-mint-producer/BOUNDARIES.md'
+          status='crates/qualification-verifier-mint-producer/SOURCE_STATUS.md'
+
+          grep -q 'path = "src/hardened.rs"' "$manifest"
+          test ! -e crates/qualification-verifier-mint-producer/src/lib.rs
+          grep -q 'ChallengeUnknownOrConsumed' "$core"
+          grep -q 'EvidenceRequestMismatch' "$core"
+          grep -q 'EvidenceHealthStateMismatch' "$core"
+          grep -q 'ClockRollback' "$core"
+          grep -q 'verify_mint_signatures_v1' "$core"
+          grep -q 'bind_verified_mint_to_enrollment_v1' "$core"
+          grep -q 'PRODUCER-ATTESTATION-V1' "$core"
+          grep -q 'no public production constructor' "$boundaries"
+          grep -q 'challenge remains consumed' "$boundaries"
+          grep -q 'SOURCE-STAGED' "$status"
+          ! grep -nE 'pub fn (new|from_|mint).*VerifierOwnedMintEvidenceV1' "$core"
+          ! grep -nE '^pub (struct|enum|type) .*ProductAuthorityToken|^pub fn .*ProductAuthorityToken' "$core"
+          ! grep -nE 'axum|actix|warp|hyper|tonic|UnixListener|TcpListener' "$manifest" "$core"
+
+      - name: Generate and identify standalone dependency graph
+        run: |
+          test ! -e crates/qualification-verifier-mint-producer/Cargo.lock
+          cargo +1.96.0 generate-lockfile \
+            --manifest-path crates/qualification-verifier-mint-producer/Cargo.toml
+          sha256sum crates/qualification-verifier-mint-producer/Cargo.lock \
+            | tee /tmp/generated-lock.sha256
+          cp crates/qualification-verifier-mint-producer/Cargo.lock /tmp/Cargo.lock
+
+      - name: Preserve generated lockfile evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: qualification-verifier-mint-producer-lock
+          path: /tmp/Cargo.lock
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Verify locked metadata
+        run: |
+          cargo +1.96.0 metadata --locked --no-deps --format-version 1 \
+            --manifest-path crates/qualification-verifier-mint-producer/Cargo.toml \
+            > /tmp/producer.metadata.json
+          test "$(jq -r '.packages | length' /tmp/producer.metadata.json)" = "1"
+          test "$(jq -r '.packages[0].name' /tmp/producer.metadata.json)" = \
+            'mycelix-qualification-verifier-mint-producer'
+
+      - name: Format exact producer subject
+        run: |
+          cargo +1.96.0 fmt \
+            --manifest-path crates/qualification-verifier-mint-producer/Cargo.toml \
+            -- --check
+
+      - name: Test producer state machine and real hybrid signing
+        run: |
+          cargo +1.96.0 test --locked \
+            --manifest-path crates/qualification-verifier-mint-producer/Cargo.toml
+
+      - name: Clippy producer with warnings denied
+        run: |
+          cargo +1.96.0 clippy --locked \
+            --manifest-path crates/qualification-verifier-mint-producer/Cargo.toml \
+            --all-targets -- -D warnings
+
+      - name: Prove external safe code cannot mint verifier-owned evidence
+        run: |
+          tmp="$(mktemp -d)"
+          cat > "$tmp/Cargo.toml" <<EOF
+          [package]
+          name = "producer-forgery-attempt"
+          version = "0.0.0"
+          edition = "2024"
+
+          [dependencies]
+          producer = { package = "mycelix-qualification-verifier-mint-producer", path = "$GITHUB_WORKSPACE/crates/qualification-verifier-mint-producer" }
+          EOF
+          mkdir -p "$tmp/src"
+          cat > "$tmp/src/main.rs" <<'EOF'
+          use producer::VerifierOwnedMintEvidenceV1;
+
+          fn main() {
+              let _forged = VerifierOwnedMintEvidenceV1 {};
+          }
+          EOF
+
+          set +e
+          cargo +1.96.0 check --manifest-path "$tmp/Cargo.toml" > /tmp/forgery.out 2>&1
+          rc=$?
+          set -e
+          test "$rc" -ne 0
+          grep -Eq 'private|cannot construct' /tmp/forgery.out
+
+      - name: Verify source immutability and lock stability
+        run: |
+          test "$(git rev-parse HEAD)" = "$(cat /tmp/subject.sha)"
+          sha256sum -c /tmp/generated-lock.sha256
+          {
+            find crates/qualification-verifier-mint-producer \
+              -type d -name target -prune -o \
+              -type f ! -name Cargo.lock -print0
+            printf '%s\0' .github/workflows/qualification-verifier-mint-producer.yml
+          } | sort -z | xargs -0 sha256sum > /tmp/producer.after.sha256
+          diff -u /tmp/producer.before.sha256 /tmp/producer.after.sha256
+          rm crates/qualification-verifier-mint-producer/Cargo.lock
+          git diff --exit-code
+
+      - name: Evidence summary
+        if: always()
+        run: |
+          {
+            echo '## Qualification verifier mint producer evidence'
+            echo
+            echo "- subject: $(git rev-parse HEAD)"
+            echo "- rustc: $(rustc +1.96.0 --version 2>/dev/null || echo unavailable)"
+            if test -f /tmp/generated-lock.sha256; then
+              echo "- generated lock: $(cat /tmp/generated-lock.sha256)"
+            fi
+            echo '- ordering: consume challenge before request/evidence/crypto processing'
+            echo '- crypto: Ed25519 AND ML-DSA-65 statement signing + 009B self-verification'
+            echo '- provider: separate hybrid attestation binds receipt + freshness + policy commitments'
+            echo '- evidence boundary: no public constructor for VerifierOwnedMintEvidenceV1'
+            echo '- non-claim: in-memory challenge/time state is not restart-persistent'
+            echo '- non-claim: transport/process identity and key custody remain a daemon child'
+            echo '- non-claim: product-side receipt verification/private token mint remains 009D'
+          } >> "$GITHUB_STEP_SUMMARY"
