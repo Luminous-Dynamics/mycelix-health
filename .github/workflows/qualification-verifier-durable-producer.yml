@@ -1,0 +1,175 @@
+name: Qualification Verifier Durable Producer Integration
+
+on:
+  pull_request:
+    paths:
+      - 'crates/qualification-verifier-mint-contract/**'
+      - 'crates/qualification-verifier-mint-hybrid-crypto/**'
+      - 'crates/qualification-verifier-mint-producer/**'
+      - 'crates/qualification-verifier-freshness-store/**'
+      - 'crates/qualification-verifier-durable-producer/**'
+      - '.github/workflows/qualification-verifier-durable-producer.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: qualification-verifier-durable-producer-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  qualify-durable-producer:
+    name: Durable consume before producer delegation
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Check out exact subject
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+
+      - name: Install exact Rust toolchain
+        run: |
+          rustup toolchain install 1.96.0 --profile minimal --component rustfmt,clippy
+          rustc +1.96.0 -Vv
+          cargo +1.96.0 -V
+
+      - name: Freeze exact source identity
+        run: |
+          git rev-parse HEAD | tee /tmp/subject.sha
+          {
+            find crates/qualification-verifier-durable-producer \
+              -type d -name target -prune -o \
+              -type f ! -name Cargo.lock -print0
+            printf '%s\0' .github/workflows/qualification-verifier-durable-producer.yml
+          } | sort -z | xargs -0 sha256sum > /tmp/durable.before.sha256
+
+      - name: Guard durable ordering and public boundary
+        run: |
+          core='crates/qualification-verifier-durable-producer/src/lib.rs'
+          boundaries='crates/qualification-verifier-durable-producer/BOUNDARIES.md'
+          status='crates/qualification-verifier-durable-producer/SOURCE_STATUS.md'
+
+          grep -q 'DurableQualificationVerifierMintProducerV1' "$core"
+          grep -q 'consume_challenge(challenge, now_micros)' "$core"
+          grep -q 'delegate(&mut self.producer)' "$core"
+          grep -q 'PoisonedAfterPartialIssue' "$core"
+          grep -q 'PolicyGenerationMismatch' "$core"
+          grep -q 'KeyLineageMismatch' "$core"
+          grep -q 'DurableChallengeExpired' "$core"
+          grep -q 'no in-memory-only fallback' "$boundaries"
+          grep -q 'SOURCE-STAGED' "$status"
+          ! grep -nE 'pub fn (producer|store|freshness_store|inner_producer)\b' "$core"
+          ! grep -nE 'Deref<Target *= *producer::QualificationVerifierMintProducerV1' "$core"
+
+          consume_line="$(grep -n 'consume_challenge(challenge, now_micros)' "$core" | head -1 | cut -d: -f1)"
+          delegate_line="$(grep -n 'delegate(&mut self.producer)' "$core" | head -1 | cut -d: -f1)"
+          test -n "$consume_line"
+          test -n "$delegate_line"
+          test "$consume_line" -lt "$delegate_line"
+
+      - name: Generate and identify standalone dependency graph
+        run: |
+          test ! -e crates/qualification-verifier-durable-producer/Cargo.lock
+          cargo +1.96.0 generate-lockfile \
+            --manifest-path crates/qualification-verifier-durable-producer/Cargo.toml
+          sha256sum crates/qualification-verifier-durable-producer/Cargo.lock \
+            | tee /tmp/generated-lock.sha256
+          cp crates/qualification-verifier-durable-producer/Cargo.lock /tmp/Cargo.lock
+
+      - name: Preserve generated lockfile evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: qualification-verifier-durable-producer-lock
+          path: /tmp/Cargo.lock
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Verify locked metadata
+        run: |
+          cargo +1.96.0 metadata --locked --no-deps --format-version 1 \
+            --manifest-path crates/qualification-verifier-durable-producer/Cargo.toml \
+            > /tmp/durable.metadata.json
+          test "$(jq -r '.packages | length' /tmp/durable.metadata.json)" = "1"
+          test "$(jq -r '.packages[0].name' /tmp/durable.metadata.json)" = \
+            'mycelix-qualification-verifier-durable-producer'
+
+      - name: Format exact integration subject
+        run: |
+          cargo +1.96.0 fmt \
+            --manifest-path crates/qualification-verifier-durable-producer/Cargo.toml \
+            -- --check
+
+      - name: Test durable ordering state machine
+        run: |
+          cargo +1.96.0 test --locked \
+            --manifest-path crates/qualification-verifier-durable-producer/Cargo.toml
+
+      - name: Clippy integration with warnings denied
+        run: |
+          cargo +1.96.0 clippy --locked \
+            --manifest-path crates/qualification-verifier-durable-producer/Cargo.toml \
+            --all-targets -- -D warnings
+
+      - name: Prove outside code cannot reach raw lower producer
+        run: |
+          tmp="$(mktemp -d)"
+          cat > "$tmp/Cargo.toml" <<EOF
+          [package]
+          name = "durable-producer-escape-attempt"
+          version = "0.0.0"
+          edition = "2024"
+
+          [dependencies]
+          durable = { package = "mycelix-qualification-verifier-durable-producer", path = "$GITHUB_WORKSPACE/crates/qualification-verifier-durable-producer" }
+          EOF
+          mkdir -p "$tmp/src"
+          cat > "$tmp/src/main.rs" <<'EOF'
+          use durable::DurableQualificationVerifierMintProducerV1;
+
+          fn escape(wrapper: DurableQualificationVerifierMintProducerV1) {
+              let _ = wrapper.producer;
+          }
+
+          fn main() {}
+          EOF
+
+          set +e
+          cargo +1.96.0 check --manifest-path "$tmp/Cargo.toml" > /tmp/escape.out 2>&1
+          rc=$?
+          set -e
+          test "$rc" -ne 0
+          grep -Eq 'private|field.*producer' /tmp/escape.out
+
+      - name: Verify source immutability and lock stability
+        run: |
+          test "$(git rev-parse HEAD)" = "$(cat /tmp/subject.sha)"
+          sha256sum -c /tmp/generated-lock.sha256
+          {
+            find crates/qualification-verifier-durable-producer \
+              -type d -name target -prune -o \
+              -type f ! -name Cargo.lock -print0
+            printf '%s\0' .github/workflows/qualification-verifier-durable-producer.yml
+          } | sort -z | xargs -0 sha256sum > /tmp/durable.after.sha256
+          diff -u /tmp/durable.before.sha256 /tmp/durable.after.sha256
+          rm crates/qualification-verifier-durable-producer/Cargo.lock
+          git diff --exit-code
+
+      - name: Evidence summary
+        if: always()
+        run: |
+          {
+            echo '## Durable producer integration evidence'
+            echo
+            echo "- subject: $(git rev-parse HEAD)"
+            echo "- rustc: $(rustc +1.96.0 --version 2>/dev/null || echo unavailable)"
+            if test -f /tmp/generated-lock.sha256; then
+              echo "- generated lock: $(cat /tmp/generated-lock.sha256)"
+            fi
+            echo '- ordering: #234 durable consume precedes #232 producer delegation'
+            echo '- issue: challenge returned only after exact nonce/window durable persistence'
+            echo '- failure: producer failure does not restore durable challenge'
+            echo '- identity: durable policy generation + key lineage must match signer'
+            echo '- restart profile: outstanding pre-restart challenges are not implicitly rehydrated'
+            echo '- non-claim: parent #232/#234 do not inherit independent PASS status'
+            echo '- non-claim: external rollback resistance remains #216/#221'
+            echo '- non-claim: positive real-evidence mint awaits concrete verifier-evidence integration'
+          } >> "$GITHUB_STEP_SUMMARY"
