@@ -1,0 +1,152 @@
+name: Qualification Verifier Freshness Store
+
+on:
+  pull_request:
+    paths:
+      - 'crates/qualification-verifier-mint-contract/**'
+      - 'crates/qualification-verifier-freshness-store/**'
+      - '.github/workflows/qualification-verifier-freshness-store.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: qualification-verifier-freshness-store-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  qualify-freshness-store:
+    name: Persist one-time freshness across restart
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Check out exact subject
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+
+      - name: Install exact Rust toolchain
+        run: |
+          rustup toolchain install 1.96.0 --profile minimal --component rustfmt,clippy
+          rustc +1.96.0 -Vv
+          cargo +1.96.0 -V
+          uname -a
+          stat -f -c 'filesystem=%T' "$GITHUB_WORKSPACE"
+
+      - name: Freeze exact source identity
+        run: |
+          git rev-parse HEAD | tee /tmp/subject.sha
+          {
+            find crates/qualification-verifier-freshness-store \
+              -type d -name target -prune -o \
+              -type f ! -name Cargo.lock -print0
+            printf '%s\0' .github/workflows/qualification-verifier-freshness-store.yml
+          } | sort -z | xargs -0 sha256sum > /tmp/freshness.before.sha256
+
+      - name: Guard exact local durability theorem
+        run: |
+          core='crates/qualification-verifier-freshness-store/src/lib.rs'
+          readme='crates/qualification-verifier-freshness-store/README.md'
+          boundaries='crates/qualification-verifier-freshness-store/BOUNDARIES.md'
+          status='crates/qualification-verifier-freshness-store/SOURCE_STATUS.md'
+
+          grep -q 'EVENT_DIGEST_DOMAIN_V1' "$core"
+          grep -q 'previous_digest' "$core"
+          grep -q 'ChallengePreviouslyConsumed' "$core"
+          grep -q 'ChallengeReplay' "$core"
+          grep -q 'TimeRollback' "$core"
+          grep -q 'PolicyGenerationNotContiguous' "$core"
+          grep -q 'PolicyRotationDidNotChangeKeyLineage' "$core"
+          grep -q 'file.sync_all()' "$core"
+          grep -q 'fs::rename' "$core"
+          grep -q 'File::open(parent)?.sync_all()' "$core"
+          grep -q 'whole_volume_rollback_is_an_explicit_nonclaim' "$core"
+          grep -q 'single-writer' "$readme"
+          grep -q 'malicious local writer' "$boundaries"
+          grep -q 'SOURCE-STAGED' "$status"
+
+          # External anti-rollback handoff must retain every semantic head field.
+          for field in \
+            lineage_id sequence head_digest security_time_floor_micros \
+            policy_generation key_lineage_commitment; do
+            grep -q "$field" "$boundaries"
+          done
+
+          # Local freshness persistence must not become a signing-key or PHI store.
+          ! grep -niE 'ed25519.*secret|ml[_-]?dsa.*secret|signing_key|patient(_id)?|therapy|spiritual|diagnosis' "$core"
+          ! grep -niE 'ProductAuthorityToken|ProviderAuthenticatedMintReceipt|VerifierOwnedMintEvidence' "$core"
+
+      - name: Generate and identify standalone dependency graph
+        run: |
+          test ! -e crates/qualification-verifier-freshness-store/Cargo.lock
+          cargo +1.96.0 generate-lockfile \
+            --manifest-path crates/qualification-verifier-freshness-store/Cargo.toml
+          sha256sum crates/qualification-verifier-freshness-store/Cargo.lock \
+            | tee /tmp/generated-lock.sha256
+          cp crates/qualification-verifier-freshness-store/Cargo.lock /tmp/Cargo.lock
+
+      - name: Preserve generated lockfile evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: qualification-verifier-freshness-store-lock
+          path: /tmp/Cargo.lock
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Verify locked metadata
+        run: |
+          cargo +1.96.0 metadata --locked --no-deps --format-version 1 \
+            --manifest-path crates/qualification-verifier-freshness-store/Cargo.toml \
+            > /tmp/freshness.metadata.json
+          test "$(jq -r '.packages | length' /tmp/freshness.metadata.json)" = "1"
+          test "$(jq -r '.packages[0].name' /tmp/freshness.metadata.json)" = \
+            'mycelix-qualification-verifier-freshness-store'
+
+      - name: Format exact freshness store subject
+        run: |
+          cargo +1.96.0 fmt \
+            --manifest-path crates/qualification-verifier-freshness-store/Cargo.toml \
+            -- --check
+
+      - name: Test restart durability and explicit rollback boundary
+        run: |
+          cargo +1.96.0 test --locked \
+            --manifest-path crates/qualification-verifier-freshness-store/Cargo.toml
+
+      - name: Clippy freshness store with warnings denied
+        run: |
+          cargo +1.96.0 clippy --locked \
+            --manifest-path crates/qualification-verifier-freshness-store/Cargo.toml \
+            --all-targets -- -D warnings
+
+      - name: Verify source immutability and lock stability
+        run: |
+          test "$(git rev-parse HEAD)" = "$(cat /tmp/subject.sha)"
+          sha256sum -c /tmp/generated-lock.sha256
+          {
+            find crates/qualification-verifier-freshness-store \
+              -type d -name target -prune -o \
+              -type f ! -name Cargo.lock -print0
+            printf '%s\0' .github/workflows/qualification-verifier-freshness-store.yml
+          } | sort -z | xargs -0 sha256sum > /tmp/freshness.after.sha256
+          diff -u /tmp/freshness.before.sha256 /tmp/freshness.after.sha256
+          rm crates/qualification-verifier-freshness-store/Cargo.lock
+          git diff --exit-code
+
+      - name: Evidence summary
+        if: always()
+        run: |
+          {
+            echo '## Qualification verifier freshness store evidence'
+            echo
+            echo "- subject: $(git rev-parse HEAD)"
+            echo "- rustc: $(rustc +1.96.0 --version 2>/dev/null || echo unavailable)"
+            echo "- runner: $(uname -a)"
+            echo "- filesystem: $(stat -f -c '%T' "$GITHUB_WORKSPACE" 2>/dev/null || echo unavailable)"
+            if test -f /tmp/generated-lock.sha256; then
+              echo "- generated lock: $(cat /tmp/generated-lock.sha256)"
+            fi
+            echo '- theorem: event-chain replay + durable consume survives normal crash/restart'
+            echo '- policy/time: sequence, time floor, policy generation and key lineage are non-regressing under the local API/history'
+            echo '- non-claim: whole-volume rollback and hostile local rewrite require an independent monotonic authority'
+            echo '- non-claim: single-writer/exclusive process ownership is required'
+            echo '- non-claim: exact qualification applies only to this Ubuntu Linux runner/filesystem execution'
+          } >> "$GITHUB_STEP_SUMMARY"
