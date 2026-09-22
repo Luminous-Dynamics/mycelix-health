@@ -1,0 +1,82 @@
+name: SDK lock refresh once
+
+on:
+  push:
+    branches:
+      - ci/baseline-sdk-libsodium
+    paths:
+      - .github/workflows/sdk-lock-refresh-once.yml
+      - sdk/package.json
+
+permissions:
+  contents: write
+
+jobs:
+  refresh-lock:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Checkout exact branch head
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          fetch-depth: 3
+          persist-credentials: true
+
+      - name: Setup exact Node
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '20.20.2'
+          cache: npm
+          cache-dependency-path: sdk/package-lock.json
+
+      - name: Verify exact preconditions
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "head=$(git rev-parse HEAD)"
+          node --version
+          npm --version
+          test "$(git hash-object sdk/package-lock.json)" = "08488c772dd5e80dbd7a1d230eff0393a460d924"
+          node - <<'NODE'
+          const p = require('./sdk/package.json');
+          if (p.overrides?.['libsodium-wrappers'] !== '0.7.15') {
+            throw new Error('exact libsodium-wrappers 0.7.15 override missing');
+          }
+          NODE
+
+      - name: Generate lockfile with npm
+        working-directory: sdk
+        shell: bash
+        run: |
+          set -euo pipefail
+          sha256sum package-lock.json
+          npm install --package-lock-only --ignore-scripts
+          sha256sum package-lock.json
+          node - <<'NODE'
+          const lock = require('./package-lock.json');
+          const entry = lock.packages?.['node_modules/libsodium-wrappers'];
+          if (!entry || entry.version !== '0.7.15') {
+            throw new Error(`unexpected libsodium-wrappers resolution: ${entry?.version}`);
+          }
+          console.log(`resolved_libsodium_wrappers=${entry.version}`);
+          NODE
+
+      - name: Constrain generated delta
+        shell: bash
+        run: |
+          set -euo pipefail
+          changed="$(git diff --name-only)"
+          test "$changed" = "sdk/package-lock.json"
+          git diff --check -- sdk/package-lock.json
+          git diff -- sdk/package-lock.json
+
+      - name: Commit exact generated lock
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'mycelix-health-lock-bot'
+          git config user.email 'actions@users.noreply.github.com'
+          git add sdk/package-lock.json
+          test "$(git diff --cached --name-only)" = "sdk/package-lock.json"
+          git commit -m 'fix(sdk): refresh lock for libsodium wrapper pin'
+          git push origin HEAD:ci/baseline-sdk-libsodium
