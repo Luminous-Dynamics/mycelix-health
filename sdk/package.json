@@ -51,6 +51,9 @@
   "peerDependencies": {
     "@holochain/client": "0.20.0"
   },
+  "overrides": {
+    "libsodium-wrappers": "0.7.15"
+  },
   "engines": {
     "node": ">=18.0.0"
   },
