@@ -1,0 +1,208 @@
+schema: mycelix-health.comparability-phase-a-fixture.v1
+status: synthetic-only
+parents:
+  qualified_corpus_subject: 90b72a7248cfa84ee6cf426593909a407dbdd704
+  comparability_issue: 260
+nonclaims:
+  - no_real_provider_data
+  - no_real_assay_or_instrument_data
+  - no_patient_data
+  - no_raw_genomes_or_sequences
+  - no_pathogen_identity
+  - no_outbreak_declaration
+  - no_action_authority
+
+geographies:
+  - id: geo.catchment.alpha
+    kind: synthetic_catchment
+  - id: geo.catchment.beta
+    kind: synthetic_catchment
+
+measurement_profiles:
+  - id: profile.ww.a.v1
+    provider: provider.synthetic.alpha
+    metric: synthetic_concentration_index
+    unit: index_unit_v1
+    method_profile: method.synthetic.a.v1
+    normalization_profile: norm.synthetic.v1
+    detection_profile: detection.synthetic.v1
+    geography: geo.catchment.alpha
+
+  - id: profile.ww.b.v1
+    provider: provider.synthetic.alpha
+    metric: synthetic_concentration_index
+    unit: index_unit_v1
+    method_profile: method.synthetic.b.v1
+    normalization_profile: norm.synthetic.v1
+    detection_profile: detection.synthetic.v1
+    geography: geo.catchment.alpha
+
+  - id: profile.ww.a.norm-v2
+    provider: provider.synthetic.alpha
+    metric: synthetic_concentration_index
+    unit: index_unit_v1
+    method_profile: method.synthetic.a.v1
+    normalization_profile: norm.synthetic.v2
+    detection_profile: detection.synthetic.v1
+    geography: geo.catchment.alpha
+
+  - id: profile.ww.a.catchment-beta
+    provider: provider.synthetic.alpha
+    metric: synthetic_concentration_index
+    unit: index_unit_v1
+    method_profile: method.synthetic.a.v1
+    normalization_profile: norm.synthetic.v1
+    detection_profile: detection.synthetic.v1
+    geography: geo.catchment.beta
+
+  - id: profile.ww.a.detection-v2
+    provider: provider.synthetic.alpha
+    metric: synthetic_concentration_index
+    unit: index_unit_v1
+    method_profile: method.synthetic.a.v1
+    normalization_profile: norm.synthetic.v1
+    detection_profile: detection.synthetic.v2
+    geography: geo.catchment.alpha
+
+  - id: profile.genomic.tax-v1
+    provider: provider.synthetic.genomic
+    metric: synthetic_category_prevalence
+    unit: fraction_v1
+    method_profile: method.synthetic.aggregate-summary.v1
+    taxonomy_profile: taxonomy.synthetic.v1
+    geography: geo.catchment.alpha
+
+  - id: profile.genomic.tax-v2
+    provider: provider.synthetic.genomic
+    metric: synthetic_category_prevalence
+    unit: fraction_v1
+    method_profile: method.synthetic.aggregate-summary.v1
+    taxonomy_profile: taxonomy.synthetic.v2
+    geography: geo.catchment.alpha
+
+comparison_policies:
+  - id: policy.synthetic.compare-v1
+    authority: fixture_only
+    decision_domain: cross_method_comparability
+    required_supporting_evidence_kind: parallel_measurement_summary
+    conflicting_evidence_kind: calibration_not_established_notice
+    maximum_positive_disposition: comparable_under_profile
+    universal_equivalence_allowed: false
+
+series_segments:
+  - id: segment.stable.before
+    profile: profile.ww.a.v1
+    window: [2026-03-01T00:00:00Z, 2026-03-07T23:59:59Z]
+    values: [10.0, 10.5, 10.2]
+
+  - id: segment.stable.after
+    profile: profile.ww.a.v1
+    window: [2026-03-08T00:00:00Z, 2026-03-14T23:59:59Z]
+    values: [10.4, 10.3, 10.6]
+
+  - id: segment.method-b.after
+    profile: profile.ww.b.v1
+    window: [2026-03-08T00:00:00Z, 2026-03-14T23:59:59Z]
+    values: [10.4, 10.3, 10.6]
+
+  - id: segment.norm-v2.after-jump
+    profile: profile.ww.a.norm-v2
+    window: [2026-03-08T00:00:00Z, 2026-03-14T23:59:59Z]
+    values: [20.8, 20.6, 21.2]
+
+  - id: segment.catchment-beta.after
+    profile: profile.ww.a.catchment-beta
+    window: [2026-03-08T00:00:00Z, 2026-03-14T23:59:59Z]
+    values: [18.0, 18.5, 18.1]
+
+  - id: segment.detection-v2.after
+    profile: profile.ww.a.detection-v2
+    window: [2026-03-08T00:00:00Z, 2026-03-14T23:59:59Z]
+    measurement_states: [below_detection_limit, quantified, quantified]
+
+bridge_evidence:
+  - id: bridge.method-a-b.overlap
+    from_profile: profile.ww.a.v1
+    to_profile: profile.ww.b.v1
+    evidence_kind: parallel_measurement_summary
+    overlap_window: [2026-03-08T00:00:00Z, 2026-03-10T23:59:59Z]
+    paired_observation_count: 3
+    evidence_statement: synthetic_parallel_observations_concordant_under_fixture
+
+  - id: bridge.method-a-b.conflict
+    from_profile: profile.ww.a.v1
+    to_profile: profile.ww.b.v1
+    evidence_kind: calibration_not_established_notice
+    source_class: synthetic_method_documentation
+    evidence_statement: cross_method_calibration_not_established
+
+transforms:
+  - id: transform.method-a-to-b.synthetic-v1
+    from_profile: profile.ww.a.v1
+    to_profile: profile.ww.b.v1
+    transform_kind: synthetic_declared_mapping
+    validation_evidence: bridge.method-a-b.overlap
+    comparison_policy: policy.synthetic.compare-v1
+
+transitions:
+  - id: transition.stable-profile
+    before: segment.stable.before
+    after: segment.stable.after
+    transition_kind: same_exact_profile
+
+  - id: transition.method-change.no-bridge
+    before: segment.stable.before
+    after: segment.method-b.after
+    transition_kind: method_profile_changed
+    comparison_policy: policy.synthetic.compare-v1
+    bridge_evidence: null
+
+  - id: transition.method-change.with-bridge
+    before: segment.stable.before
+    after: segment.method-b.after
+    transition_kind: method_profile_changed
+    comparison_policy: policy.synthetic.compare-v1
+    bridge_evidence: bridge.method-a-b.overlap
+
+  - id: transition.method-change.with-transform
+    before: segment.stable.before
+    after: segment.method-b.after
+    transition_kind: method_profile_changed
+    comparison_policy: policy.synthetic.compare-v1
+    transform: transform.method-a-to-b.synthetic-v1
+
+  - id: transition.normalization-jump
+    before: segment.stable.before
+    after: segment.norm-v2.after-jump
+    transition_kind: normalization_profile_changed
+
+  - id: transition.catchment-change
+    before: segment.stable.before
+    after: segment.catchment-beta.after
+    transition_kind: coverage_frame_changed
+
+  - id: transition.detection-change
+    before: segment.stable.before
+    after: segment.detection-v2.after
+    transition_kind: detection_semantics_changed
+
+  - id: transition.taxonomy-change
+    before_profile: profile.genomic.tax-v1
+    after_profile: profile.genomic.tax-v2
+    transition_kind: taxonomy_profile_changed
+
+  - id: transition.conflicting-comparability
+    before: segment.stable.before
+    after: segment.method-b.after
+    transition_kind: method_profile_changed
+    comparison_policy: policy.synthetic.compare-v1
+    evidence:
+      - bridge.method-a-b.overlap
+      - bridge.method-a-b.conflict
+
+  - id: transition.unknown
+    before: segment.stable.before
+    after: segment.method-b.after
+    transition_kind: method_profile_changed
+    comparison_policy: policy.synthetic.compare-v1
+    evidence: unknown

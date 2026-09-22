@@ -1,0 +1,97 @@
+schema: mycelix-health.comparability-phase-a-expected.v1
+corpus: comparability-phase-a-v1.yaml
+
+comparability_expectations:
+  transition.stable-profile: comparable_under_profile
+  transition.method-change.no-bridge: insufficient_comparability_evidence
+  transition.method-change.with-bridge: comparable_under_profile
+  transition.method-change.with-transform: comparable_after_explicit_transform
+  transition.normalization-jump: discontinuous_series
+  transition.catchment-change: insufficient_comparability_evidence
+  transition.detection-change: insufficient_comparability_evidence
+  transition.taxonomy-change: insufficient_comparability_evidence
+  transition.conflicting-comparability: conflicting_comparability_evidence
+  transition.unknown: unknown
+
+assessment_bindings:
+  transition.method-change.no-bridge:
+    policy: policy.synthetic.compare-v1
+    evidence: []
+  transition.method-change.with-bridge:
+    policy: policy.synthetic.compare-v1
+    evidence:
+      - bridge.method-a-b.overlap
+  transition.method-change.with-transform:
+    policy: policy.synthetic.compare-v1
+    transform: transform.method-a-to-b.synthetic-v1
+  transition.conflicting-comparability:
+    policy: policy.synthetic.compare-v1
+    evidence:
+      - bridge.method-a-b.overlap
+      - bridge.method-a-b.conflict
+  transition.unknown:
+    policy: policy.synthetic.compare-v1
+    evidence: unknown
+
+composition_expectations:
+  transition.catchment-change:
+    requires:
+      - coverage_assessment
+  transition.detection-change:
+    requires:
+      - measurement_state_assessment
+  transition.taxonomy-change:
+    requires:
+      - taxonomy_mapping_or_comparability_assessment
+  transition.method-change.with-transform:
+    transformed_series_identity_must_differ: true
+    upstream_refs_must_remain_exact: true
+  transition.conflicting-comparability:
+    preserve_conflict: true
+    default_join_behavior: abstain_or_segment_under_profile
+
+forbidden_promotions:
+  - from: transition.method-change.no-bridge
+    to: biological_change
+  - from: transition.normalization-jump
+    to: biological_change
+  - from: transition.catchment-change
+    to: method_only_transition
+  - from: transition.detection-change
+    to: numeric_zero
+  - from: transition.taxonomy-change
+    to: prevalence_trend
+  - from: bridge.method-a-b.overlap
+    to: comparable_without_policy
+  - from: bridge.method-a-b.overlap
+    to: universal_method_equivalence
+  - from: transition.method-change.with-transform
+    to: same_series_identity
+  - from: transition.conflicting-comparability
+    to: comparable_under_profile
+  - from: transition.unknown
+    to: comparable_under_profile
+  - from: comparability_assessment
+    to: biological_truth
+  - from: comparability_assessment
+    to: outbreak_detected
+  - from: comparability_assessment
+    to: operational_authority
+
+claim_ceiling:
+  establishes:
+    - synthetic_method_transition_cases
+    - evidence_assessment_separation
+    - expected_comparability_dispositions
+    - forbidden_promotion_test_targets
+  does_not_establish:
+    - real_world_method_equivalence
+    - assay_validity
+    - biological_continuity
+    - epidemiological_performance
+    - pathogen_identity
+    - outbreak_status
+    - diagnosis
+    - treatment_guidance
+    - deployment_readiness
+    - operational_authority
