@@ -1,0 +1,274 @@
+name: SURV-CORPUS-002Q Comparability Corpus Qualification
+
+on:
+  push:
+    branches:
+      - qualify/surv-comparability-corpus-v1
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: surv-corpus-002q-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  qualify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Checkout exact qualifier head
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          fetch-depth: 4
+          persist-credentials: false
+
+      - name: Record exact environment and identities
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "qualifier_head=$(git rev-parse HEAD)"
+          echo "subject_head=$(git rev-parse HEAD^)"
+          echo "qualified_parent=$(git rev-parse HEAD^^)"
+          echo "qualifier_tree=$(git rev-parse HEAD^{tree})"
+          echo "subject_tree=$(git rev-parse HEAD^\^{tree})"
+          ruby --version
+          git --version
+          sha256sum \
+            fixtures/public-health/comparability-phase-a-v1.yaml \
+            fixtures/public-health/comparability-phase-a-v1.expected.yaml
+
+      - name: Verify exact ancestry, tree, and file scopes
+        shell: bash
+        env:
+          EXPECTED_SUBJECT: f4808d1b01d757282ad13861a919f4dbed4aed26
+          EXPECTED_SUBJECT_TREE: 5f47fd09380c6c80ac2dd24dcab684dfaee5873a
+          EXPECTED_PARENT: 90b72a7248cfa84ee6cf426593909a407dbdd704
+          WORKFLOW_PATH: .github/workflows/surv-corpus-002q.yml
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD^)" = "$EXPECTED_SUBJECT"
+          test "$(git rev-parse HEAD^\^{tree})" = "$EXPECTED_SUBJECT_TREE"
+          test "$(git rev-parse HEAD^^)" = "$EXPECTED_PARENT"
+
+          qualifier_files="$(git diff --name-only HEAD^..HEAD)"
+          test "$qualifier_files" = "$WORKFLOW_PATH"
+
+          subject_files="$(git diff --name-only HEAD^^..HEAD^ | sort)"
+          expected_files="$(printf '%s\n' \
+            'fixtures/public-health/comparability-phase-a-v1.expected.yaml' \
+            'fixtures/public-health/comparability-phase-a-v1.yaml' | sort)"
+          test "$subject_files" = "$expected_files"
+          git diff --check HEAD^^..HEAD^
+
+      - name: Parse YAML and verify comparability invariants
+        shell: bash
+        run: |
+          set -euo pipefail
+          ruby <<'RUBY'
+          require 'yaml'
+          require 'date'
+          require 'digest'
+
+          CORPUS = 'fixtures/public-health/comparability-phase-a-v1.yaml'
+          EXPECTED = 'fixtures/public-health/comparability-phase-a-v1.expected.yaml'
+          QUALIFIED_PARENT = '90b72a7248cfa84ee6cf426593909a407dbdd704'
+
+          load_yaml = lambda do |path|
+            if YAML.respond_to?(:unsafe_load_file)
+              YAML.unsafe_load_file(path)
+            else
+              YAML.load_file(path)
+            end
+          end
+
+          corpus = load_yaml.call(CORPUS)
+          expected = load_yaml.call(EXPECTED)
+          raise 'corpus must be a mapping' unless corpus.is_a?(Hash)
+          raise 'expected must be a mapping' unless expected.is_a?(Hash)
+          raise 'expected corpus filename drift' unless expected['corpus'] == File.basename(CORPUS)
+          raise 'qualified parent drift' unless corpus.dig('parents', 'qualified_corpus_subject') == QUALIFIED_PARENT
+
+          ids = []
+          walk = lambda do |node|
+            case node
+            when Hash
+              ids << node['id'] if node.key?('id')
+              node.each_value { |v| walk.call(v) }
+            when Array
+              node.each { |v| walk.call(v) }
+            end
+          end
+          walk.call(corpus)
+          duplicates = ids.group_by(&:itself).select { |_k, v| v.length > 1 }.keys
+          raise "duplicate ids: #{duplicates.inspect}" unless duplicates.empty?
+          id_set = ids.to_h { |id| [id, true] }
+
+          # Bridge evidence may contain evidence statements but must never carry its
+          # own admitted comparability disposition.
+          bridges = corpus.fetch('bridge_evidence')
+          bridges.each do |bridge|
+            raise "bridge self-disposition forbidden: #{bridge['id']}" if bridge.key?('disposition_claim')
+            raise "bridge evidence kind missing: #{bridge['id']}" unless bridge['evidence_kind'].is_a?(String)
+          end
+
+          policies = corpus.fetch('comparison_policies')
+          policy_ids = policies.map { |p| p['id'] }
+          raise 'expected comparison policy missing' unless policy_ids.include?('policy.synthetic.compare-v1')
+          policy = policies.find { |p| p['id'] == 'policy.synthetic.compare-v1' }
+          raise 'fixture policy must not permit universal equivalence' unless policy['universal_equivalence_allowed'] == false
+          raise 'fixture policy authority drift' unless policy['authority'] == 'fixture_only'
+
+          # Verify exact internal corpus references for fields owned by this corpus.
+          reference_keys = %w[
+            profile geography before after before_profile after_profile
+            bridge_evidence validation_evidence transform from_profile to_profile
+            comparison_policy policy
+          ]
+          unresolved_corpus = []
+          scan_corpus_refs = lambda do |node|
+            case node
+            when Hash
+              node.each do |k, v|
+                values = if reference_keys.include?(k.to_s)
+                  v.is_a?(Array) ? v : [v]
+                elsif k.to_s == 'evidence' && v.is_a?(Array)
+                  v
+                else
+                  []
+                end
+                values.each do |ref|
+                  next unless ref.is_a?(String)
+                  next if ref == 'unknown'
+                  if ref.match?(/\A(?:geo|profile|policy|segment|bridge|transform)\./) && !id_set[ref]
+                    unresolved_corpus << ref
+                  end
+                end
+                scan_corpus_refs.call(v)
+              end
+            when Array
+              node.each { |v| scan_corpus_refs.call(v) }
+            end
+          end
+          scan_corpus_refs.call(corpus)
+          raise "unresolved corpus refs: #{unresolved_corpus.uniq.inspect}" unless unresolved_corpus.empty?
+
+          prefix = /\A(?:geo|profile|policy|segment|bridge|transform|transition)\./
+          unresolved_expected = []
+          scan_expected_refs = lambda do |node|
+            case node
+            when Hash
+              node.each do |k, v|
+                unresolved_expected << k if k.is_a?(String) && k.match?(prefix) && !id_set[k]
+                scan_expected_refs.call(v)
+              end
+            when Array
+              node.each { |v| scan_expected_refs.call(v) }
+            when String
+              unresolved_expected << node if node.match?(prefix) && !id_set[node]
+            end
+          end
+          scan_expected_refs.call(expected)
+          raise "unresolved expected refs: #{unresolved_expected.uniq.inspect}" unless unresolved_expected.empty?
+
+          required = {
+            'transition.stable-profile' => 'comparable_under_profile',
+            'transition.method-change.no-bridge' => 'insufficient_comparability_evidence',
+            'transition.method-change.with-bridge' => 'comparable_under_profile',
+            'transition.method-change.with-transform' => 'comparable_after_explicit_transform',
+            'transition.normalization-jump' => 'discontinuous_series',
+            'transition.catchment-change' => 'insufficient_comparability_evidence',
+            'transition.detection-change' => 'insufficient_comparability_evidence',
+            'transition.taxonomy-change' => 'insufficient_comparability_evidence',
+            'transition.conflicting-comparability' => 'conflicting_comparability_evidence',
+            'transition.unknown' => 'unknown'
+          }
+          actual = expected.fetch('comparability_expectations')
+          required.each do |k, v|
+            raise "wrong/missing disposition for #{k}" unless actual[k] == v
+          end
+
+          bindings = expected.fetch('assessment_bindings')
+          positive = bindings.fetch('transition.method-change.with-bridge')
+          raise 'positive bridge assessment missing exact policy' unless positive['policy'] == 'policy.synthetic.compare-v1'
+          raise 'positive bridge assessment missing exact evidence' unless positive['evidence'] == ['bridge.method-a-b.overlap']
+          no_bridge = bindings.fetch('transition.method-change.no-bridge')
+          raise 'no-bridge assessment must bind exact policy' unless no_bridge['policy'] == 'policy.synthetic.compare-v1'
+          raise 'no-bridge assessment must have empty evidence' unless no_bridge['evidence'] == []
+
+          allowed_symbolic = %w[comparability_assessment]
+          forbidden = expected.fetch('forbidden_promotions')
+          forbidden.each do |entry|
+            src = entry['from'] || entry['source']
+            next if id_set[src] || allowed_symbolic.include?(src)
+            raise "undeclared forbidden-promotion source: #{src.inspect}"
+          end
+
+          required_pairs = [
+            ['transition.method-change.no-bridge', 'biological_change'],
+            ['transition.normalization-jump', 'biological_change'],
+            ['transition.catchment-change', 'method_only_transition'],
+            ['transition.detection-change', 'numeric_zero'],
+            ['transition.taxonomy-change', 'prevalence_trend'],
+            ['bridge.method-a-b.overlap', 'comparable_without_policy'],
+            ['bridge.method-a-b.overlap', 'universal_method_equivalence'],
+            ['transition.method-change.with-transform', 'same_series_identity'],
+            ['transition.conflicting-comparability', 'comparable_under_profile'],
+            ['transition.unknown', 'comparable_under_profile'],
+            ['comparability_assessment', 'biological_truth'],
+            ['comparability_assessment', 'outbreak_detected'],
+            ['comparability_assessment', 'operational_authority']
+          ]
+          pairs = forbidden.map { |e| [e['from'] || e['source'], e['to']] }
+          missing = required_pairs.reject { |pair| pairs.include?(pair) }
+          raise "missing forbidden promotions: #{missing.inspect}" unless missing.empty?
+
+          forbidden_keys = %w[
+            patient_id patient_name mrn dob exact_address household_id exact_coordinates
+            raw_sequence sequence_bytes fasta fastq read_set sample_level_genome
+            real_assay_payload real_instrument_payload
+          ]
+          bad_keys = []
+          scan_keys = lambda do |node|
+            case node
+            when Hash
+              node.each do |k, v|
+                bad_keys << k.to_s if forbidden_keys.include?(k.to_s)
+                scan_keys.call(v)
+              end
+            when Array
+              node.each { |v| scan_keys.call(v) }
+            end
+          end
+          scan_keys.call(corpus)
+          raise "forbidden sensitive/raw keys: #{bad_keys.uniq.inspect}" unless bad_keys.empty?
+
+          bytes = File.binread(CORPUS)
+          raise 'sequence-like payload detected' if bytes.match?(/[ACGTN]{32,}/)
+
+          puts "fixture_id_count=#{ids.length}"
+          puts "corpus_sha256=#{Digest::SHA256.file(CORPUS).hexdigest}"
+          puts "expected_sha256=#{Digest::SHA256.file(EXPECTED).hexdigest}"
+          puts 'evidence_assessment_separation=PASS'
+          puts 'corpus_reference_integrity=PASS'
+          puts 'expected_reference_integrity=PASS'
+          RUBY
+
+      - name: Qualification claim ceiling
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat <<'EOF'
+          SURV-CORPUS-002Q PASS means only:
+          - exact additive subject identity, tree, and ancestry were verified;
+          - the two synthetic YAML fixtures parsed;
+          - bridge evidence remained distinct from policy-bound assessment;
+          - fixture IDs and both corpus/expected references were internally consistent;
+          - required comparability dispositions and forbidden promotions remained frozen;
+          - prohibited sensitive/raw payload classes were absent.
+
+          It does NOT establish real-world method equivalence, assay validity,
+          biological continuity, epidemiological performance, outbreak status,
+          diagnosis, treatment guidance, deployment readiness, or action authority.
+          EOF
