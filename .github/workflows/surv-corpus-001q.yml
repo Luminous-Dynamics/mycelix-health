@@ -1,0 +1,234 @@
+name: SURV-CORPUS-001Q Phase-A Corpus Qualification
+
+on:
+  push:
+    branches:
+      - qualify/surv-corpus-001q
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: surv-corpus-001q-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  qualify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Checkout exact qualifier head
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          fetch-depth: 3
+          persist-credentials: false
+
+      - name: Record exact environment and subject identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "qualifier_head=$(git rev-parse HEAD)"
+          echo "subject_head=$(git rev-parse HEAD^)"
+          echo "subject_base=$(git rev-parse HEAD^^)"
+          echo "qualifier_tree=$(git rev-parse HEAD^{tree})"
+          echo "subject_tree=$(git rev-parse HEAD^^{tree})"
+          echo "subject_product_tree=$(git rev-parse HEAD^\^{tree})"
+          ruby --version
+          git --version
+          sha256sum \
+            docs/public-health/surveillance-multimodal-phase-a.md \
+            fixtures/public-health/README.md \
+            fixtures/public-health/multimodal-phase-a-v1.yaml \
+            fixtures/public-health/multimodal-phase-a-v1.expected.yaml
+
+      - name: Verify exact qualifier and subject ancestry
+        shell: bash
+        env:
+          EXPECTED_SUBJECT: 90b72a7248cfa84ee6cf426593909a407dbdd704
+          EXPECTED_BASE: 111340010702acbdab2e85211af97b4a8099db22
+          WORKFLOW_PATH: .github/workflows/surv-corpus-001q.yml
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD^)" = "$EXPECTED_SUBJECT"
+          test "$(git rev-parse HEAD^^)" = "$EXPECTED_BASE"
+
+          qualifier_files="$(git diff --name-only HEAD^..HEAD)"
+          test "$qualifier_files" = "$WORKFLOW_PATH"
+
+          subject_files="$(git diff --name-only HEAD^^..HEAD^ | sort)"
+          expected_files="$(printf '%s\n' \
+            'docs/public-health/surveillance-multimodal-phase-a.md' \
+            'fixtures/public-health/README.md' \
+            'fixtures/public-health/multimodal-phase-a-v1.expected.yaml' \
+            'fixtures/public-health/multimodal-phase-a-v1.yaml' | sort)"
+          test "$subject_files" = "$expected_files"
+
+          git diff --check HEAD^^..HEAD^
+
+      - name: Parse YAML and verify fixture/reference invariants
+        shell: bash
+        run: |
+          set -euo pipefail
+          ruby <<'RUBY'
+          require 'yaml'
+          require 'date'
+          require 'digest'
+
+          CORPUS = 'fixtures/public-health/multimodal-phase-a-v1.yaml'
+          EXPECTED = 'fixtures/public-health/multimodal-phase-a-v1.expected.yaml'
+
+          load_yaml = lambda do |path|
+            if YAML.respond_to?(:unsafe_load_file)
+              YAML.unsafe_load_file(path)
+            else
+              YAML.load_file(path)
+            end
+          end
+
+          corpus = load_yaml.call(CORPUS)
+          expected = load_yaml.call(EXPECTED)
+          raise 'corpus must be a mapping' unless corpus.is_a?(Hash)
+          raise 'expected must be a mapping' unless expected.is_a?(Hash)
+
+          ids = []
+          walk = lambda do |node|
+            case node
+            when Hash
+              ids << node['id'] if node.key?('id')
+              node.each_value { |v| walk.call(v) }
+            when Array
+              node.each { |v| walk.call(v) }
+            end
+          end
+          walk.call(corpus)
+
+          duplicates = ids.group_by(&:itself).select { |_k, v| v.length > 1 }.keys
+          raise "duplicate fixture ids: #{duplicates.inspect}" unless duplicates.empty?
+          id_set = ids.to_h { |id| [id, true] }
+
+          # Every fixture-looking reference in expected outcomes must resolve.
+          fixture_prefix = /\A(?:geo|src|measure|series|coverage|lineage|event|correction|genomic|ethics)\./
+          unresolved = []
+          scan_refs = lambda do |node|
+            case node
+            when Hash
+              node.each do |k, v|
+                unresolved << k if k.is_a?(String) && k.match?(fixture_prefix) && !id_set[k]
+                scan_refs.call(v)
+              end
+            when Array
+              node.each { |v| scan_refs.call(v) }
+            when String
+              unresolved << node if node.match?(fixture_prefix) && !id_set[node]
+            end
+          end
+          scan_refs.call(expected)
+          raise "unresolved fixture refs: #{unresolved.uniq.inspect}" unless unresolved.empty?
+
+          allowed_symbolic_sources = %w[
+            mirror_cluster
+            privacy_admissible
+            ethics_assessment
+            change_candidate
+            fused_hypothesis_bundle
+            recommendation
+          ]
+          forbidden_sections = []
+          collect_forbidden = lambda do |node|
+            case node
+            when Hash
+              node.each do |k, v|
+                forbidden_sections << v if k == 'forbidden_promotions' && v.is_a?(Array)
+                collect_forbidden.call(v)
+              end
+            when Array
+              node.each { |v| collect_forbidden.call(v) }
+            end
+          end
+          collect_forbidden.call(expected)
+          forbidden_sections.flatten.each do |entry|
+            next unless entry.is_a?(Hash)
+            src = entry['from'] || entry['source']
+            next if src.nil? || id_set[src] || allowed_symbolic_sources.include?(src)
+            raise "undeclared forbidden-promotion source: #{src.inspect}"
+          end
+
+          # Public fixture corpus must not acquire person-level identifier fields.
+          forbidden_keys = %w[
+            patient_id patient_name mrn dob exact_address household_id exact_coordinates
+            raw_sequence sequence_bytes fasta fastq read_set sample_level_genome
+          ]
+          bad_keys = []
+          scan_keys = lambda do |node|
+            case node
+            when Hash
+              node.each do |k, v|
+                bad_keys << k if forbidden_keys.include?(k.to_s)
+                scan_keys.call(v)
+              end
+            when Array
+              node.each { |v| scan_keys.call(v) }
+            end
+          end
+          scan_keys.call(corpus)
+          raise "forbidden sensitive/raw payload keys: #{bad_keys.uniq.inspect}" unless bad_keys.empty?
+
+          # The deliberately unsupported genomic fixture is metadata only.
+          raw_placeholder = nil
+          find_id = lambda do |node|
+            case node
+            when Hash
+              raw_placeholder = node if node['id'] == 'genomic.raw-sequence.unsupported'
+              node.each_value { |v| find_id.call(v) }
+            when Array
+              node.each { |v| find_id.call(v) }
+            end
+          end
+          find_id.call(corpus)
+          raise 'missing unsupported raw-sequence boundary fixture' unless raw_placeholder
+          allowed_raw_keys = %w[id source_profile payload_kind expected_boundary_result]
+          extra = raw_placeholder.keys.map(&:to_s) - allowed_raw_keys
+          raise "raw-sequence placeholder contains unexpected fields: #{extra.inspect}" unless extra.empty?
+          raise 'unsupported fixture must remain a raw_sequence marker' unless raw_placeholder['payload_kind'] == 'raw_sequence'
+          raise 'unsupported fixture must remain rejected' unless raw_placeholder['expected_boundary_result'] == 'reject'
+
+          bytes = File.binread(CORPUS)
+          raise 'sequence-like payload detected in synthetic corpus' if bytes.match?(/[ACGTN]{32,}/)
+
+          puts "fixture_id_count=#{ids.length}"
+          puts "corpus_sha256=#{Digest::SHA256.file(CORPUS).hexdigest}"
+          puts "expected_sha256=#{Digest::SHA256.file(EXPECTED).hexdigest}"
+          puts 'fixture_reference_integrity=PASS'
+          RUBY
+
+      - name: Verify claim-promotion guard phrases remain frozen
+        shell: bash
+        run: |
+          set -euo pipefail
+          expected='fixtures/public-health/multimodal-phase-a-v1.expected.yaml'
+          grep -Fq 'to: numeric_zero' "$expected"
+          grep -Fq 'to: independent_confirmations' "$expected"
+          grep -Fq 'to: ethics_approved' "$expected"
+          grep -Fq 'to: transmissibility_inference' "$expected"
+          grep -Fq 'to: outbreak_detected' "$expected"
+          grep -Fq 'to: authorization' "$expected"
+
+      - name: Qualification claim ceiling
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat <<'EOF'
+          SURV-CORPUS-001Q PASS means only:
+          - exact docs/fixture subject identity was verified;
+          - YAML parsed under the recorded runner environment;
+          - fixture IDs were unique;
+          - fixture-looking expected references resolved;
+          - prohibited sensitive/raw payload fields were absent;
+          - the unsupported raw-sequence case remained metadata-only;
+          - selected forbidden claim-promotion expectations remained frozen.
+
+          It does NOT establish scientific validity, provider truth, epidemiological
+          performance, pathogen identity, outbreak status, clinical validity,
+          ethical acceptability, deployment readiness, or action authority.
+          EOF
