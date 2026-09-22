@@ -1,0 +1,133 @@
+schema: mycelix-health.multimodal-phase-a-expected.v1
+corpus: multimodal-phase-a-v1.yaml
+
+profile_classification:
+  series.wastewater.alpha: lossless_existing_observation
+  series.syndromic.alpha: lossless_existing_observation
+  series.environment.alpha: loss_aware_projection
+  series.veterinary.alpha: loss_aware_projection
+  event.advisory.alpha: separate_evidence_kind
+  genomic.summary.alpha.v1: loss_aware_projection
+  genomic.raw-sequence.unsupported: reject
+
+measurement_expectations:
+  measure.quantified.ww.001: quantified
+  measure.bdl.ww.002: below_detection_limit
+  measure.not-measured.ww.003: not_measured
+  forbidden_promotions:
+    - from: measure.bdl.ww.002
+      to: numeric_zero
+    - from: measure.not-measured.ww.003
+      to: negative_evidence
+
+coverage_expectations:
+  coverage.catchment-only: known_partial_coverage
+  coverage.unknown-target: coverage_unknown
+  forbidden_promotions:
+    - from: coverage.catchment-only
+      to: city_wide_representative
+    - from: coverage.unknown-target
+      to: universal_scope
+
+lineage_expectations:
+  lineage.advisory-mirrors: shared_known
+  lineage.veterinary-vs-syndromic: unknown
+  forbidden_promotions:
+    - from: lineage.advisory-mirrors
+      to: independent_confirmations
+    - from: lineage.veterinary-vs-syndromic
+      to: independent_confirmations
+
+event_expectations:
+  canonical_event_candidates:
+    - event.advisory.alpha
+    - event.report.conflict.1
+  mirror_cluster:
+    root: event.advisory.alpha
+    members:
+      - event.report.mirror.1
+      - event.report.mirror.2
+    independent_event_contribution: 0
+  event.report.conflict.1: conflicting_evidence
+  forbidden_promotions:
+    - source: event.advisory.alpha
+      to: event_truth
+    - source: event.advisory.alpha
+      to: operational_authority
+    - source: mirror_cluster
+      to: multiple_independent_events
+
+correction_expectations:
+  correction.advisory.alpha.1:
+    historical_source_retained: true
+    replacement_retained: true
+    relation: clarifies
+    arrival_order_is_authority: false
+
+genomic_summary_expectations:
+  genomic.summary.alpha.v1:
+    accepted_boundary: aggregate_summary_only
+  genomic.summary.alpha.v2:
+    accepted_boundary: aggregate_summary_only
+    same_identity_as_v1: false
+  genomic.raw-sequence.unsupported:
+    accepted_boundary: false
+  forbidden_promotions:
+    - from: genomic.summary.alpha.v1
+      to: phenotype_inference
+    - from: genomic.summary.alpha.v1
+      to: severity_inference
+    - from: genomic.summary.alpha.v1
+      to: transmissibility_inference
+
+ethics_expectations:
+  ethics.public-trend-use: proportionate_under_profile
+  ethics.employment-use: purpose_mismatch
+  ethics.small-sensitive-community: needs_additional_review
+  forbidden_promotions:
+    - from: privacy_admissible
+      to: ethics_approved
+    - from: ethics_assessment
+      to: scientific_truth
+
+symthaea_expectations:
+  indicator_stream:
+    required_before_r1:
+      - semantic_series_binding
+      - sampling_admissibility_when_profile_requires
+      - coverage_characterization_when_profile_requires
+  event_stream:
+    enters_r1: false
+    enters_r2: false
+    earliest_joint_layer: competing_hypothesis
+  fusion:
+    preserves_conflicts: true
+    preserves_unknown_lineage: true
+    preserves_coverage_mismatch: true
+  settling:
+    fresh_evidence_is_settled: false
+    mirrored_agreement_is_independent: false
+  forbidden_promotions:
+    - from: change_candidate
+      to: outbreak_detected
+    - from: fused_hypothesis_bundle
+      to: emergency_authority
+    - from: recommendation
+      to: authorization
+
+claim_ceiling:
+  establishes:
+    - synthetic_fixture_semantics
+    - expected_typed_classifications
+    - forbidden_promotion_test_targets
+  does_not_establish:
+    - provider_truth
+    - epidemiological_performance
+    - pathogen_identity
+    - outbreak_status
+    - diagnosis
+    - treatment_guidance
+    - legal_compliance
+    - universal_ethical_acceptability
+    - deployment_readiness
+    - operational_authority
