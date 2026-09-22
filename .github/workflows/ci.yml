@@ -9,6 +9,10 @@ on:
 env:
   CARGO_TERM_COLOR: always
   RUST_BACKTRACE: 1
+  # Standalone mycelix-health builds reconstruct four path dependencies from the
+  # parent Mycelix repository. Pin that parent so an unchanged health commit does
+  # not silently acquire a different dependency graph when mycelix/main moves.
+  PARENT_MYCELIX_REF: ce7acdbd2afa6d40bcd669e14ba468b3214466c3
 
 jobs:
   # Rust workspace checks
@@ -26,9 +30,17 @@ jobs:
       # checkout of this repo alone (which is what CI does) has neither sibling
       # directory, so recreate both here — see CONTRACT.md's "Building this repo
       # standalone" section.
-      - name: Check out sibling crates/ and mycelix-core/ from parent mycelix repo
+      - name: Check out pinned sibling crates/ and mycelix-core/ from parent mycelix repo
+        shell: bash
         run: |
-          git clone --depth 1 https://github.com/Luminous-Dynamics/mycelix.git /tmp/mycelix-parent
+          set -euo pipefail
+          git init /tmp/mycelix-parent
+          git -C /tmp/mycelix-parent remote add origin https://github.com/Luminous-Dynamics/mycelix.git
+          git -C /tmp/mycelix-parent fetch --depth 1 origin "$PARENT_MYCELIX_REF"
+          git -C /tmp/mycelix-parent checkout --detach FETCH_HEAD
+          test "$(git -C /tmp/mycelix-parent rev-parse HEAD)" = "$PARENT_MYCELIX_REF"
+          echo "PARENT_MYCELIX_REF=$PARENT_MYCELIX_REF"
+
           mkdir -p ../crates ../mycelix-core ../mycelix-workspace/mycelix-core
           cp -r /tmp/mycelix-parent/crates/. ../crates/
           cp -r /tmp/mycelix-parent/mycelix-core/. ../mycelix-core/
@@ -37,8 +49,7 @@ jobs:
           # ../crates above) declares proofs-config / proofs-commitment as
           # `../../mycelix-workspace/mycelix-core/libs/...`. That path is correct
           # inside the mycelix repo, which carries mycelix-core at both the root and
-          # under mycelix-workspace/ -- this checkout recreated only the first, so
-          # clippy failed reading .../mycelix-workspace/mycelix-core/libs/proofs-commitment.
+          # under mycelix-workspace/ -- this checkout recreates both views.
           cp -r /tmp/mycelix-parent/mycelix-core/. ../mycelix-workspace/mycelix-core/
           rm -rf /tmp/mycelix-parent
 
@@ -76,9 +87,9 @@ jobs:
         # outside its own root into the parent mycelix repo, and `cargo fmt --all`
         # follows them -- so the gate was checking mycelix-fl, mycelix-zkp-core and
         # sovereign-profile, i.e. code this repo does not own, cannot fix, and which
-        # is re-cloned fresh from mycelix's main on every run. Any formatting drift
-        # over there turned this repo red for reasons no change here could resolve.
-        # The scoped form still covers all 41 of this workspace's own members.
+        # is reconstructed from the pinned parent on every run. Any formatting drift
+        # over there should not turn this repo red for code this repo does not own.
+        # The scoped form still covers this workspace's own members.
         run: cargo fmt -- --check
 
       - name: Run clippy
@@ -89,10 +100,8 @@ jobs:
 
       - name: Build release (all zomes)
         # The zome list is DERIVED from the workspace, not hardcoded. The previous
-        # hardcoded list had drifted badly: 26 of the 36 packages it named no longer
-        # existed (so the step failed outright on the first one, `sdoh`), while 12
-        # zomes that DO exist were never built here at all. Deriving it means the
-        # list cannot silently diverge from the repo again.
+        # hardcoded list had drifted badly; deriving it means the list cannot silently
+        # diverge from the repo again.
         run: |
           ARGS=$(cargo metadata --no-deps --format-version 1 \
             | jq -r '[.packages[] | select(.manifest_path | contains("/zomes/")) | "-p \(.name)"] | join(" ")')
@@ -100,14 +109,8 @@ jobs:
           cargo build --release $ARGS
       - name: Run tests
         # Tests run on the HOST target, not the wasm32 default that .cargo/config.toml
-        # forces. Zomes deploy as wasm, but their unit tests do not: building tests for
-        # wasm32 drags in dev-dependencies that cannot compile there --
-        #   error: Rayon cannot be used when targeting wasi32   (criterion)
-        #   error[E0433]: cannot find module or crate `imp`     (wait-timeout)
-        # -- so this step could never have run a single test. Verified locally against
-        # the host triple: 84 suites, 429 tests, 0 failures.
+        # forces. Zomes deploy as wasm, but their unit tests do not.
         run: cargo test --workspace --target "$(rustc -vV | awk '/^host:/{print $2}')"
-
 
   deny:
     runs-on: ubuntu-latest
@@ -115,32 +118,50 @@ jobs:
       - uses: actions/checkout@v4
 
       # cargo-deny builds the dependency graph, which means resolving this repo's
-      # four path dependencies -- and those reach OUTSIDE the repo root into the
-      # parent mycelix repo (../crates, ../mycelix-core), because this repo is
-      # designed to be consumed as mycelix's mycelix-health submodule. Without
-      # this step the job failed with:
-      #   failed to read `/github/crates/mycelix-bridge-common/Cargo.toml`
-      # The `rust` job above already does exactly this; `deny` was simply never
-      # given the same treatment. See CONTRACT.md's "Building this repo standalone".
-      - name: Check out sibling crates/ and mycelix-core/ from parent mycelix repo
+      # four path dependencies. Recreate the exact same pinned sibling layout used
+      # by the Rust job before running cargo-deny on the host runner.
+      - name: Check out pinned sibling crates/ and mycelix-core/ from parent mycelix repo
+        shell: bash
         run: |
-          git clone --depth 1 https://github.com/Luminous-Dynamics/mycelix.git /tmp/mycelix-parent
+          set -euo pipefail
+          git init /tmp/mycelix-parent
+          git -C /tmp/mycelix-parent remote add origin https://github.com/Luminous-Dynamics/mycelix.git
+          git -C /tmp/mycelix-parent fetch --depth 1 origin "$PARENT_MYCELIX_REF"
+          git -C /tmp/mycelix-parent checkout --detach FETCH_HEAD
+          test "$(git -C /tmp/mycelix-parent rev-parse HEAD)" = "$PARENT_MYCELIX_REF"
+          echo "PARENT_MYCELIX_REF=$PARENT_MYCELIX_REF"
+
           mkdir -p ../crates ../mycelix-core ../mycelix-workspace/mycelix-core
           cp -r /tmp/mycelix-parent/crates/. ../crates/
           cp -r /tmp/mycelix-parent/mycelix-core/. ../mycelix-core/
-          # mycelix-core is needed at TWO locations: this repo's own deps resolve
-          # ../mycelix-core, but the parent's crates/mycelix-zkp-core (copied into
-          # ../crates above) declares proofs-config / proofs-commitment as
-          # `../../mycelix-workspace/mycelix-core/libs/...`. That path is correct
-          # inside the mycelix repo, which carries mycelix-core at both the root and
-          # under mycelix-workspace/ -- this checkout recreated only the first, so
-          # clippy failed reading .../mycelix-workspace/mycelix-core/libs/proofs-commitment.
           cp -r /tmp/mycelix-parent/mycelix-core/. ../mycelix-workspace/mycelix-core/
           rm -rf /tmp/mycelix-parent
+          test -f ../crates/mycelix-bridge-common/Cargo.toml
+          test -d ../mycelix-core/libs/mycelix-fl
+          test -d ../mycelix-workspace/mycelix-core/libs
 
-      - uses: EmbarkStudios/cargo-deny-action@v2
-        with:
-          command: check
+      # The cargo-deny GitHub Action executes inside a Docker container that mounts
+      # only this repository as /github/workspace. Relative dependencies such as
+      # ../crates then resolve to /github/crates, which is not mounted, so graph
+      # construction fails before policy evaluation. Use the exact upstream binary
+      # on the host instead, where the reconstructed sibling layout is visible.
+      - name: Install checksum-pinned cargo-deny 0.20.2
+        shell: bash
+        run: |
+          set -euo pipefail
+          archive=/tmp/cargo-deny.tar.gz
+          url=https://github.com/EmbarkStudios/cargo-deny/releases/download/0.20.2/cargo-deny-0.20.2-x86_64-unknown-linux-musl.tar.gz
+          expected=9f12ed4c49936e09b48bf862b595cde2fe64fcbd9d74dfacac6131ca824c8d5f
+          curl --fail --location --silent --show-error "$url" -o "$archive"
+          actual="$(sha256sum "$archive" | awk '{print $1}')"
+          test "$actual" = "$expected"
+          mkdir -p /tmp/cargo-deny
+          tar -xzf "$archive" -C /tmp/cargo-deny --strip-components=1
+          test -x /tmp/cargo-deny/cargo-deny
+          /tmp/cargo-deny/cargo-deny --version
+
+      - name: Run cargo-deny on host workspace
+        run: /tmp/cargo-deny/cargo-deny check
 
   # TypeScript SDK
   sdk:
