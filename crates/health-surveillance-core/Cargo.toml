@@ -1,0 +1,11 @@
+[package]
+name = "health-surveillance-core"
+version = "0.1.0"
+edition = "2021"
+license = "AGPL-3.0-or-later"
+description = "Privacy-preserving aggregate public-health surveillance evidence contracts for Mycelix Health"
+
+[dependencies]
+serde = { workspace = true }
+sha2 = "0.10"
+thiserror = { workspace = true }
