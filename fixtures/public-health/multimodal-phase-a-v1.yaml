@@ -1,0 +1,236 @@
+schema: mycelix-health.multimodal-phase-a-fixture.v1
+status: synthetic-only
+nonclaims:
+  - no_real_provider_data
+  - no_patient_data
+  - no_raw_genomes_or_sequences
+  - no_pathogen_identity
+  - no_outbreak_declaration
+  - no_action_authority
+
+geographies:
+  - id: geo.catchment.alpha
+    kind: wastewater_catchment
+    precision: coarse
+  - id: geo.city.alpha
+    kind: municipality
+    precision: coarse
+  - id: geo.region.east
+    kind: municipal_region
+    precision: coarse
+
+source_profiles:
+  - id: src.wastewater.alpha.v1
+    family: wastewater_aggregate
+    acquisition_profile: synthetic-concentration-index-v1
+  - id: src.syndromic.alpha.v1
+    family: syndromic_aggregate
+    acquisition_profile: synthetic-utilization-rate-v1
+  - id: src.environment.alpha.v1
+    family: environmental_confounder
+    acquisition_profile: synthetic-air-quality-index-v1
+  - id: src.veterinary.alpha.v1
+    family: one_health_veterinary_aggregate
+    acquisition_profile: synthetic-animal-health-index-v1
+  - id: src.advisory.alpha.v1
+    family: official_advisory
+    acquisition_profile: synthetic-public-notice-v1
+  - id: src.genomic.alpha.v1
+    family: aggregate_genomic_summary
+    acquisition_profile: synthetic-category-prevalence-v1
+
+measurement_states:
+  - id: measure.quantified.ww.001
+    source_profile: src.wastewater.alpha.v1
+    geography: geo.catchment.alpha
+    metric: synthetic_concentration_index
+    unit: index_unit_v1
+    observed_at: 2026-01-01T00:00:00Z
+    state: quantified
+    estimate: 10.0
+    uncertainty: [9.0, 11.0]
+
+  - id: measure.bdl.ww.002
+    source_profile: src.wastewater.alpha.v1
+    geography: geo.catchment.alpha
+    metric: synthetic_concentration_index
+    unit: index_unit_v1
+    observed_at: 2026-01-08T00:00:00Z
+    state: below_detection_limit
+    source_limit_ref: limit.synthetic.ww.v1
+
+  - id: measure.not-measured.ww.003
+    source_profile: src.wastewater.alpha.v1
+    geography: geo.catchment.alpha
+    metric: synthetic_concentration_index
+    unit: index_unit_v1
+    observed_at: 2026-01-15T00:00:00Z
+    state: not_measured
+
+indicator_series:
+  - id: series.wastewater.alpha
+    source_profile: src.wastewater.alpha.v1
+    geography: geo.catchment.alpha
+    metric: synthetic_concentration_index
+    unit: index_unit_v1
+    points:
+      - [2026-01-01T00:00:00Z, 10.0]
+      - [2026-01-08T00:00:00Z, null]
+      - [2026-01-15T00:00:00Z, null]
+      - [2026-01-22T00:00:00Z, 11.0]
+      - [2026-01-29T00:00:00Z, 10.5]
+      - [2026-02-05T00:00:00Z, 18.0]
+
+  - id: series.syndromic.alpha
+    source_profile: src.syndromic.alpha.v1
+    geography: geo.city.alpha
+    metric: synthetic_utilization_rate
+    unit: rate_per_100k_v1
+    points:
+      - [2026-01-01T00:00:00Z, 100.0]
+      - [2026-01-08T00:00:00Z, 103.0]
+      - [2026-01-15T00:00:00Z, 101.0]
+      - [2026-01-22T00:00:00Z, 102.0]
+      - [2026-01-29T00:00:00Z, 100.0]
+      - [2026-02-05T00:00:00Z, 121.0]
+
+  - id: series.environment.alpha
+    source_profile: src.environment.alpha.v1
+    geography: geo.city.alpha
+    metric: synthetic_environmental_index
+    unit: index_unit_v1
+    points:
+      - [2026-01-01T00:00:00Z, 40.0]
+      - [2026-01-08T00:00:00Z, 42.0]
+      - [2026-01-15T00:00:00Z, 41.0]
+      - [2026-01-22T00:00:00Z, 43.0]
+      - [2026-01-29T00:00:00Z, 45.0]
+      - [2026-02-05T00:00:00Z, 75.0]
+
+  - id: series.veterinary.alpha
+    source_profile: src.veterinary.alpha.v1
+    geography: geo.region.east
+    metric: synthetic_animal_health_event_rate
+    unit: rate_per_1000_units_v1
+    points:
+      - [2026-01-01T00:00:00Z, 4.0]
+      - [2026-01-08T00:00:00Z, 5.0]
+      - [2026-01-15T00:00:00Z, 4.0]
+      - [2026-01-22T00:00:00Z, 5.0]
+      - [2026-01-29T00:00:00Z, 5.0]
+      - [2026-02-05T00:00:00Z, 9.0]
+
+coverage_cases:
+  - id: coverage.catchment-only
+    observation_scope: geo.catchment.alpha
+    target_scope: geo.city.alpha
+    disposition: known_partial_coverage
+    known_exclusions: [geo.region.east]
+
+  - id: coverage.unknown-target
+    observation_scope: geo.catchment.alpha
+    target_scope: null
+    disposition: coverage_unknown
+
+lineage_cases:
+  - id: lineage.advisory-mirrors
+    relation: shared_known
+    members: [event.advisory.alpha, event.report.mirror.1, event.report.mirror.2]
+
+  - id: lineage.veterinary-vs-syndromic
+    relation: unknown
+    members: [series.veterinary.alpha, series.syndromic.alpha]
+
+event_signals:
+  - id: event.advisory.alpha
+    source_profile: src.advisory.alpha.v1
+    kind: official_advisory
+    published_at: 2026-02-05T09:00:00Z
+    claimed_event_window: [2026-02-01T00:00:00Z, 2026-02-05T09:00:00Z]
+    geography_claim: geo.city.alpha
+    language: en
+    currentness: current
+
+  - id: event.report.mirror.1
+    kind: public_report
+    published_at: 2026-02-05T10:00:00Z
+    geography_claim: geo.city.alpha
+    language: en
+    dependency_root: event.advisory.alpha
+
+  - id: event.report.mirror.2
+    kind: public_report
+    published_at: 2026-02-05T11:00:00Z
+    geography_claim: geo.city.alpha
+    language: en
+    dependency_root: event.advisory.alpha
+
+  - id: event.report.conflict.1
+    kind: public_report
+    published_at: 2026-02-05T12:00:00Z
+    geography_claim: geo.region.east
+    language: en
+    dependency_root: unknown
+    relation_to_advisory: conflicting_claim
+
+corrections:
+  - id: correction.advisory.alpha.1
+    relation: clarifies
+    source: event.advisory.alpha
+    replacement: event.advisory.alpha.rev2
+
+  - id: event.advisory.alpha.rev2
+    source_profile: src.advisory.alpha.v1
+    kind: official_advisory
+    published_at: 2026-02-06T09:00:00Z
+    claimed_event_window: [2026-02-02T00:00:00Z, 2026-02-05T09:00:00Z]
+    geography_claim: geo.city.alpha
+    language: en
+    currentness: current
+
+genomic_summary_cases:
+  - id: genomic.summary.alpha.v1
+    source_profile: src.genomic.alpha.v1
+    geography: geo.city.alpha
+    window: [2026-01-01T00:00:00Z, 2026-01-31T23:59:59Z]
+    taxonomy_profile: synthetic-taxonomy-v1
+    denominator_semantics: classified_aggregate_units
+    denominator: 100
+    categories:
+      category_a: 70
+      category_b: 30
+
+  - id: genomic.summary.alpha.v2
+    source_profile: src.genomic.alpha.v1
+    geography: geo.city.alpha
+    window: [2026-01-01T00:00:00Z, 2026-01-31T23:59:59Z]
+    taxonomy_profile: synthetic-taxonomy-v2
+    denominator_semantics: classified_aggregate_units
+    denominator: 100
+    categories:
+      category_a_prime: 70
+      category_b: 30
+
+  - id: genomic.raw-sequence.unsupported
+    source_profile: src.genomic.alpha.v1
+    payload_kind: raw_sequence
+    expected_boundary_result: reject
+
+ethics_cases:
+  - id: ethics.public-trend-use
+    purpose: aggregate_public_health_trend_monitoring
+    geography: geo.city.alpha
+    privacy_admissible: true
+    expected_disposition: proportionate_under_profile
+
+  - id: ethics.employment-use
+    purpose: employment_or_eligibility_screening
+    geography: geo.city.alpha
+    privacy_admissible: true
+    expected_disposition: purpose_mismatch
+
+  - id: ethics.small-sensitive-community
+    purpose: public_health_trend_monitoring
+    geography: geo.catchment.alpha
+    privacy_admissible: true
+    expected_disposition: needs_additional_review
