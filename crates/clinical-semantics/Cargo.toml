@@ -1,0 +1,10 @@
+[package]
+name = "mycelix-clinical-semantics"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Typed clinical semantics and safety invariants for Mycelix-Health"
+
+[dependencies]
+serde = { workspace = true }
+thiserror = { workspace = true }

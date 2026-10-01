@@ -3,7 +3,70 @@ manifest_version: "0"
 name: health
 integrity:
   network_seed: ~
-  properties: ~
+  properties:
+    medication_activation:
+      schema_version: 1
+      # Fail closed by default. Production/test deployments must repack the DNA
+      # with explicit trusted AgentPubKeys before exact verifier authorizations validate.
+      root_authorities: []
+      # v1 exact-receipt verifier authorizations may live for at most 15 minutes.
+      # The integrity zome also hard-caps this value, so accidental packaging with a
+      # longer window fails validation rather than silently weakening the contract.
+      max_verifier_authorization_duration_micros: 900000000
+    medication_emergency:
+      schema_version: 1
+      # Emergency override trust is intentionally distinct from ordinary qualified
+      # activation trust. Empty by default: no emergency activation can validate
+      # until a deployment deliberately repacks the DNA with trusted root keys.
+      root_authorities: []
+      # Exact-receipt emergency verifier authorizations are also capped at 15 minutes.
+      # Deployments may choose a shorter value when repacking the DNA.
+      max_verifier_authorization_duration_micros: 900000000
+    medication_dispense:
+      schema_version: 1
+      # Fail closed by default. Deployments must explicitly pin allocator AgentPubKeys.
+      # The ordered list is part of the DNA hash; each MedicationRequest artifact maps
+      # deterministically to exactly one allocator by digest prefix modulo list length.
+      slot_allocators: []
+      # Exact refill-slot authorizations are short-lived and hard-capped by the
+      # integrity zome at five minutes. Deployments may choose a shorter value.
+      max_slot_authorization_duration_micros: 300000000
+    medication_administration:
+      schema_version: 1
+      # Clinician-administration attestation trust is intentionally independent of
+      # prescription, activation, emergency, and dispensing trust. Empty by default:
+      # no qualified performed-administration attestation can validate until a
+      # deployment deliberately repacks the DNA with trusted root AgentPubKeys.
+      root_authorities: []
+      # Exact receipt + attestation verifier authorizations are short-lived and
+      # hard-capped by the integrity zome at 15 minutes. Deployments may choose less.
+      max_verifier_authorization_duration_micros: 900000000
+    medication_administration_occurrence:
+      schema_version: 1
+      # Occurrence-classification trust is separate from administration publication
+      # trust. Empty by default: no administration->occurrence binding can validate
+      # until a deployment explicitly pins root AgentPubKeys and repacks the DNA.
+      root_authorities: []
+      # Exact occurrence-binding authorizations are short-lived and hard-capped by
+      # the integrity zome at 15 minutes. Deployments may choose a shorter window.
+      max_verifier_authorization_duration_micros: 900000000
+    clinical_causality:
+      schema_version: 1
+      # Causal-assessment publication trust is independent of observation,
+      # medication, administration, and research authority. Fail closed by default.
+      root_authorities: []
+      # Root authorizations approve one exact qualified receipt + one exact public
+      # projection and are hard-capped at 15 minutes by the integrity zome.
+      max_verifier_authorization_duration_micros: 900000000
+    population_accountant:
+      schema_version: 1
+      # Privacy-accountant trust is independent of research/release authority.
+      # Empty by default: interactive DP has no trusted budget state until a
+      # deployment deliberately repacks this DNA with trusted root AgentPubKeys.
+      root_authorities: []
+      # Roots authorize one exact verifier + one exact accountant state projection.
+      # The integrity zome hard-caps this at 15 minutes.
+      max_verifier_authorization_duration_micros: 900000000
   zomes:
     # Tier 1: MVP Core
     - name: patient_integrity
@@ -14,6 +77,24 @@ integrity:
       path: ../target/wasm32-unknown-unknown/release/records_integrity.wasm
     - name: prescriptions_integrity
       path: ../target/wasm32-unknown-unknown/release/prescriptions_integrity.wasm
+    - name: medication_activation_integrity
+      path: ../target/wasm32-unknown-unknown/release/medication_activation_integrity.wasm
+    - name: medication_emergency_integrity
+      path: ../target/wasm32-unknown-unknown/release/medication_emergency_integrity.wasm
+    - name: medication_dispense_integrity
+      path: ../target/wasm32-unknown-unknown/release/medication_dispense_integrity.wasm
+    - name: medication_administration_integrity
+      path: ../target/wasm32-unknown-unknown/release/medication_administration_integrity.wasm
+    - name: medication_administration_occurrence_integrity
+      path: ../target/wasm32-unknown-unknown/release/medication_administration_occurrence_integrity.wasm
+    - name: clinical_causality_integrity
+      path: ../target/wasm32-unknown-unknown/release/clinical_causality_integrity.wasm
+    - name: clinical_causality_index_integrity
+      path: ../target/wasm32-unknown-unknown/release/clinical_causality_index_integrity.wasm
+    - name: population_accountant_integrity
+      path: ../target/wasm32-unknown-unknown/release/population_accountant_integrity.wasm
+    - name: population_accountant_index_integrity
+      path: ../target/wasm32-unknown-unknown/release/population_accountant_index_integrity.wasm
     - name: consent_integrity
       path: ../target/wasm32-unknown-unknown/release/consent_integrity.wasm
     - name: bridge_integrity
@@ -40,6 +121,44 @@ coordinator:
         - name: prescriptions_integrity
         - name: patient_integrity
         - name: provider_integrity
+    - name: medication_activation
+      path: ../target/wasm32-unknown-unknown/release/medication_activation.wasm
+      dependencies:
+        - name: medication_activation_integrity
+    - name: medication_emergency
+      path: ../target/wasm32-unknown-unknown/release/medication_emergency.wasm
+      dependencies:
+        - name: medication_emergency_integrity
+    - name: medication_dispense
+      path: ../target/wasm32-unknown-unknown/release/medication_dispense.wasm
+      dependencies:
+        - name: medication_dispense_integrity
+    - name: medication_administration
+      path: ../target/wasm32-unknown-unknown/release/medication_administration.wasm
+      dependencies:
+        - name: medication_administration_integrity
+    - name: medication_administration_occurrence
+      path: ../target/wasm32-unknown-unknown/release/medication_administration_occurrence.wasm
+      dependencies:
+        - name: medication_administration_occurrence_integrity
+    - name: clinical_causality
+      path: ../target/wasm32-unknown-unknown/release/clinical_causality.wasm
+      dependencies:
+        - name: clinical_causality_integrity
+    - name: clinical_causality_index
+      path: ../target/wasm32-unknown-unknown/release/clinical_causality_index.wasm
+      dependencies:
+        - name: clinical_causality_index_integrity
+        - name: clinical_causality_integrity
+    - name: population_accountant
+      path: ../target/wasm32-unknown-unknown/release/population_accountant.wasm
+      dependencies:
+        - name: population_accountant_integrity
+    - name: population_accountant_index
+      path: ../target/wasm32-unknown-unknown/release/population_accountant_index.wasm
+      dependencies:
+        - name: population_accountant_index_integrity
+        - name: population_accountant_integrity
     - name: consent
       path: ../target/wasm32-unknown-unknown/release/consent.wasm
       dependencies:

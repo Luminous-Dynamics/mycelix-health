@@ -1,0 +1,21 @@
+[package]
+name = "population_accountant_integrity"
+version = "0.1.0"
+edition = "2021"
+license.workspace = true
+description = "DNA-rooted privacy accountant state integrity zome"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+hdi = { workspace = true }
+holochain_serialized_bytes = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+blake3 = "1.8.5"
+mycelix-clinical-integrity = { path = "../../../crates/clinical-integrity" }
+mycelix-clinical-population-release = { path = "../../../crates/clinical-population-release" }
+
+[features]
+default = []

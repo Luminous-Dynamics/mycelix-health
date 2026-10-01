@@ -1,0 +1,18 @@
+[package]
+name = "mycelix-medication-administration"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Evidence-bound clinician medication administration capabilities for Mycelix-Health"
+
+[dependencies]
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+mycelix-clinical-authority = { path = "../clinical-authority" }
+mycelix-clinical-integrity = { path = "../clinical-integrity" }
+mycelix-clinical-semantics = { path = "../clinical-semantics" }
+mycelix-medication-semantics = { path = "../medication-semantics" }
+mycelix-fhir-medication-semantics = { path = "../fhir-medication-semantics" }
+mycelix-medication-activation-state = { path = "../medication-activation-state" }
+mycelix-medication-dispense-state = { path = "../medication-dispense-state" }

@@ -1,0 +1,20 @@
+[package]
+name = "population_accountant_index_integrity"
+version = "0.1.0"
+edition = "2021"
+license.workspace = true
+description = "Canonical admission index for trusted population accountant state"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+hdi = { workspace = true }
+holochain_serialized_bytes = { workspace = true }
+serde = { workspace = true }
+mycelix-clinical-integrity = { path = "../../../crates/clinical-integrity" }
+mycelix-clinical-population-release = { path = "../../../crates/clinical-population-release" }
+population_accountant_integrity = { path = "../../population_accountant/integrity" }
+
+[features]
+default = []

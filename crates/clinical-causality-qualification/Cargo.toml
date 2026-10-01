@@ -1,0 +1,16 @@
+[package]
+name = "mycelix-clinical-causality-qualification"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Exact-target authority and evidence-trust qualification for clinical causal assessments"
+
+[dependencies]
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+mycelix-clinical-integrity = { path = "../clinical-integrity" }
+mycelix-clinical-causality = { path = "../clinical-causality" }
+mycelix-clinical-causality-trust = { path = "../clinical-causality-trust" }
+mycelix-clinical-authority = { path = "../clinical-authority" }
+mycelix-clinical-authority-policy = { path = "../clinical-authority-policy" }

@@ -1,0 +1,14 @@
+[package]
+name = "mycelix-medication-safety-assessment"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Evidence-bearing receipts for all medication safety outcomes in Mycelix-Health"
+
+[dependencies]
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+mycelix-clinical-integrity = { path = "../clinical-integrity" }
+mycelix-fhir-medication-semantics = { path = "../fhir-medication-semantics" }
+mycelix-medication-safety = { path = "../medication-safety" }

@@ -1,0 +1,13 @@
+[package]
+name = "mycelix-clinical-population-release-context"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Domain-separated scientific context binding for interactive population releases"
+
+[dependencies]
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+mycelix-clinical-integrity = { path = "../clinical-integrity" }
+mycelix-clinical-population-release = { path = "../clinical-population-release" }

@@ -1,0 +1,16 @@
+[package]
+name = "mycelix-medication-dispense-state"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Conflict-preserving finalized medication dispense read model for Mycelix-Health"
+
+[dependencies]
+serde = { workspace = true }
+thiserror = { workspace = true }
+holo_hash = { workspace = true }
+mycelix-clinical-integrity = { path = "../clinical-integrity" }
+medication_dispense_integrity = { path = "../../zomes/medication_dispense/integrity" }
+
+[dev-dependencies]
+hdi = { workspace = true }

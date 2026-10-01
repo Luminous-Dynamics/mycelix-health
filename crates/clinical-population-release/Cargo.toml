@@ -1,0 +1,13 @@
+[package]
+name = "mycelix-clinical-population-release"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Privacy-qualified release boundary for Mycelix-Health population evidence"
+
+[dependencies]
+blake3 = "1.8.5"
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+mycelix-clinical-integrity = { path = "../clinical-integrity" }
