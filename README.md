@@ -536,8 +536,8 @@ Apache 2.0 - See [LICENSE](LICENSE)
 
 ## Contact
 
-- **Website**: [mycelix.net](https://mycelix.net)
-- **Email**: health@mycelix.net
+- **Website**: [mycelix.luminousdynamics.io](https://mycelix.luminousdynamics.io)
+- **Email**: health@mycelix.luminousdynamics.io
 - **GitHub**: [Luminous-Dynamics/mycelix-health](https://github.com/Luminous-Dynamics/mycelix-health)
 
 ---
