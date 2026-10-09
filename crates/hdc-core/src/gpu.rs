@@ -603,7 +603,7 @@ mod tests {
                 let observed = similarities[query_index * database.len() + db_index];
                 assert!(
                     (observed - expected).abs() <= 1.0e-6,
-                    "GPU/CPU mismatch for query {query_index}, database {db_index}:                      observed={observed}, expected={expected}"
+                    "GPU/CPU mismatch at query {query_index}, database {db_index}: observed={observed}, expected={expected}"
                 );
             }
         }
