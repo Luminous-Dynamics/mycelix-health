@@ -1,0 +1,84 @@
+name: HDC GPU Vulkan parity qualification
+
+permissions:
+  contents: read
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+    paths:
+      - 'crates/hdc-core/**'
+      - '.github/workflows/hdc-gpu-vulkan-parity.yml'
+      - 'Cargo.toml'
+      - 'Cargo.lock'
+
+jobs:
+  hdc-gpu-vulkan-parity:
+    name: HDC GPU CPU-oracle parity (Vulkan)
+    if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      MYCELIX_REQUIRE_WGPU_ADAPTER: "1"
+      MYCELIX_REQUIRE_WGPU_VULKAN: "1"
+      RUST_BACKTRACE: "1"
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Assert exact qualification checkout
+        env:
+          EXPECTED_QUALIFICATION_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          ACTUAL_QUALIFICATION_SHA="$(git rev-parse HEAD)"
+          test "$ACTUAL_QUALIFICATION_SHA" = "$EXPECTED_QUALIFICATION_SHA"
+          mkdir -p .ci/gpu-vulkan-parity
+          {
+            echo "expected_head=$EXPECTED_QUALIFICATION_SHA"
+            echo "actual_head=$ACTUAL_QUALIFICATION_SHA"
+          } | tee .ci/gpu-vulkan-parity/qualification-head.txt
+
+      - name: Install Vulkan software runtime
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libvulkan1 mesa-vulkan-drivers vulkan-tools
+          vulkaninfo --summary 2>&1 | tee .ci/gpu-vulkan-parity/vulkaninfo-summary.txt
+          dpkg-query -W -f='${Package}\t${Version}\n' \
+            libvulkan1 mesa-vulkan-drivers vulkan-tools \
+            > .ci/gpu-vulkan-parity/vulkan-package-versions.txt
+
+      - uses: dtolnay/rust-toolchain@3db9de313aa3e84732d075f6fd8938cc0d6d4b58 # 1.96.0
+
+      - name: Run exact-head Vulkan CPU-oracle parity
+        run: |
+          set -o pipefail
+          cargo test --locked -p hdc-core --features gpu test_batch_similarity -- --nocapture \
+            2>&1 | tee .ci/gpu-vulkan-parity/hdc-gpu-vulkan-parity.log
+
+      - name: Seal qualification evidence
+        if: always()
+        env:
+          EXPECTED_QUALIFICATION_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          mkdir -p .ci/gpu-vulkan-parity
+          printf 'expected_head=%s\nactual_head=%s\n' \
+            "$EXPECTED_QUALIFICATION_SHA" "$(git rev-parse HEAD)" \
+            > .ci/gpu-vulkan-parity/qualification-head.txt
+          dpkg-query -W -f='${Package}\t${Version}\n' \
+            libvulkan1 mesa-vulkan-drivers vulkan-tools \
+            > .ci/gpu-vulkan-parity/vulkan-package-versions.txt 2>&1 || true
+          find .ci/gpu-vulkan-parity -maxdepth 1 -type f \
+            ! -name qualification-evidence.sha256 -print0 \
+            | sort -z | xargs -0 -r sha256sum \
+            > .ci/gpu-vulkan-parity/qualification-evidence.sha256
+
+      - name: Upload exact-head qualification evidence
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: hdc-gpu-vulkan-parity-${{ github.event.pull_request.head.sha || github.sha }}
+          if-no-files-found: error
+          path: .ci/gpu-vulkan-parity/
