@@ -99,14 +99,20 @@ pub struct GpuSimilarityEngine {
     queue: wgpu::Queue,
     pipeline: wgpu::ComputePipeline,
     bind_group_layout: wgpu::BindGroupLayout,
+    adapter_info: wgpu::AdapterInfo,
 }
 
 impl GpuSimilarityEngine {
     /// Create a new GPU similarity engine
     pub async fn new() -> Result<Self, GpuError> {
-        // Request high-performance adapter
+        Self::new_with_backends(wgpu::Backends::all()).await
+    }
+
+    async fn new_with_backends(backends: wgpu::Backends) -> Result<Self, GpuError> {
+        // The qualification test can pin this to Vulkan; normal callers retain
+        // the existing cross-platform backend selection behavior.
         let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor {
-            backends: wgpu::Backends::all(),
+            backends,
             ..Default::default()
         });
 
@@ -118,6 +124,7 @@ impl GpuSimilarityEngine {
             })
             .await
             .ok_or(GpuError::NoAdapter)?;
+        let adapter_info = adapter.get_info();
 
         let (device, queue) = adapter
             .request_device(
@@ -209,6 +216,7 @@ impl GpuSimilarityEngine {
             queue,
             pipeline,
             bind_group_layout,
+            adapter_info,
         })
     }
 
@@ -414,7 +422,11 @@ impl GpuSimilarityEngine {
 
     /// Get device info for debugging
     pub fn device_info(&self) -> String {
-        format!("GPU Device: {:?}", self.device.limits())
+        format!(
+            "GPU Adapter: {:?}; Device limits: {:?}",
+            self.adapter_info,
+            self.device.limits()
+        )
     }
 }
 
@@ -574,13 +586,29 @@ mod tests {
 
     #[test]
     fn test_batch_similarity() {
-        let engine = match sync::create_engine() {
-            Ok(e) => e,
-            Err(_) => {
-                println!("Skipping GPU test - no adapter");
+        let require_adapter = std::env::var_os("MYCELIX_REQUIRE_WGPU_ADAPTER").is_some();
+        let require_vulkan = std::env::var_os("MYCELIX_REQUIRE_WGPU_VULKAN").is_some();
+        let engine_result = if require_vulkan {
+            pollster::block_on(GpuSimilarityEngine::new_with_backends(wgpu::Backends::VULKAN))
+        } else {
+            sync::create_engine()
+        };
+        let engine = match engine_result {
+            Ok(engine) => engine,
+            Err(GpuError::NoAdapter) if !require_adapter => {
+                println!("GPU adapter unavailable; skip is allowed in generic environments");
                 return;
             }
+            Err(error) => panic!("GPU engine creation failed: {error}"),
         };
+        if require_vulkan {
+            assert_eq!(
+                engine.adapter_info.backend,
+                wgpu::Backend::Vulkan,
+                "Vulkan qualification must select the Vulkan backend"
+            );
+        }
+        println!("selected_adapter={:?}", engine.adapter_info);
 
         let seed = Seed::from_string("test");
         let queries: Vec<Hypervector> = (0..10)
