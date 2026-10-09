@@ -248,6 +248,24 @@ impl GpuSimilarityEngine {
                 )));
             }
         }
+        let output_size = u64::try_from(output_count)
+            .ok()
+            .and_then(|count| count.checked_mul(std::mem::size_of::<f32>() as u64))
+            .ok_or_else(|| GpuError::BufferError("similarity output byte size overflow".into()))?;
+        if output_size > u64::from(limits.max_storage_buffer_binding_size) {
+            return Err(GpuError::BufferError(format!(
+                "output buffer size {output_size} exceeds max_storage_buffer_binding_size {}",
+                limits.max_storage_buffer_binding_size
+            )));
+        }
+        let workgroup_size = 64_u32;
+        let num_workgroups = output_count_u32.div_ceil(workgroup_size);
+        if num_workgroups > limits.max_compute_workgroups_per_dimension {
+            return Err(GpuError::BufferError(format!(
+                "dispatch requires {num_workgroups} workgroups, device limit is {}",
+                limits.max_compute_workgroups_per_dimension
+            )));
+        }
 
         // Create buffers
         let query_buffer = self
@@ -266,16 +284,6 @@ impl GpuSimilarityEngine {
                 usage: wgpu::BufferUsages::STORAGE,
             });
 
-        let output_size = u64::try_from(output_count)
-            .ok()
-            .and_then(|count| count.checked_mul(std::mem::size_of::<f32>() as u64))
-            .ok_or_else(|| GpuError::BufferError("similarity output byte size overflow".into()))?;
-        if output_size > u64::from(limits.max_storage_buffer_binding_size) {
-            return Err(GpuError::BufferError(format!(
-                "output buffer size {output_size} exceeds max_storage_buffer_binding_size {}",
-                limits.max_storage_buffer_binding_size
-            )));
-        }
         let output_buffer = self.device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("Output Buffer"),
             size: output_size,
@@ -341,14 +349,6 @@ impl GpuSimilarityEngine {
             compute_pass.set_bind_group(0, &bind_group, &[]);
 
             // Dispatch workgroups: one thread per (query, db) pair
-            let workgroup_size = 64_u32;
-            let num_workgroups = output_count_u32.div_ceil(workgroup_size);
-            if num_workgroups > limits.max_compute_workgroups_per_dimension {
-                return Err(GpuError::BufferError(format!(
-                    "dispatch requires {num_workgroups} workgroups, device limit is {}",
-                    limits.max_compute_workgroups_per_dimension
-                )));
-            }
             compute_pass.dispatch_workgroups(num_workgroups, 1, 1);
         }
 
@@ -545,6 +545,16 @@ mod tests {
         assert!(checked_comparison_count(u32::MAX, 1).is_ok());
     }
 
+    fn reference_hamming_similarity(lhs: &Hypervector, rhs: &Hypervector) -> f32 {
+        let differing_bits: u32 = lhs
+            .as_bytes()
+            .iter()
+            .zip(rhs.as_bytes())
+            .map(|(&left, &right)| (left ^ right).count_ones())
+            .sum();
+        1.0 - differing_bits as f32 / (HYPERVECTOR_BYTES * 8) as f32
+    }
+
     #[test]
     fn test_gpu_engine_creation() {
         // This test requires a GPU, so it may fail in CI
@@ -585,11 +595,17 @@ mod tests {
 
         assert_eq!(similarities.len(), 10 * 100);
 
-        // Check that self-similarities are high (first 10 db entries match queries)
-        for i in 0..10 {
-            let self_sim = similarities[i * 100 + i];
-            println!("Self similarity {}: {}", i, self_sim);
-            // With random vectors, self-sim should be ~0.5 for different vectors
+        // Compare every GPU result with a CPU oracle. This checks vector word
+        // boundaries, bit-count normalization, pair indexing, and device output.
+        for (query_index, query) in queries.iter().enumerate() {
+            for (db_index, candidate) in database.iter().enumerate() {
+                let expected = reference_hamming_similarity(query, candidate);
+                let observed = similarities[query_index * database.len() + db_index];
+                assert!(
+                    (observed - expected).abs() <= 1.0e-6,
+                    "GPU/CPU mismatch for query {query_index}, database {db_index}:                      observed={observed}, expected={expected}"
+                );
+            }
         }
     }
 }
