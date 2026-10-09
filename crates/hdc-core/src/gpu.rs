@@ -54,20 +54,65 @@ impl std::fmt::Display for GpuError {
 
 impl std::error::Error for GpuError {}
 
+/// Pack each fixed-width hypervector into the u32-addressed layout used by WGSL.
+///
+/// Storage buffers are interpreted as array<u32>; each vector therefore needs its
+/// own four-byte-rounded stride. Padding bytes are zero and are excluded from the
+/// semantic bit count passed to the shader.
+fn pack_hypervectors_u32_aligned(vectors: &[Hypervector]) -> Result<Vec<u8>, GpuError> {
+    let stride = HYPERVECTOR_BYTES
+        .checked_add(3)
+        .map(|bytes| bytes & !3usize)
+        .ok_or_else(|| GpuError::BufferError("hypervector stride overflow".into()))?;
+    let total_size = stride
+        .checked_mul(vectors.len())
+        .ok_or_else(|| GpuError::BufferError("packed hypervector buffer size overflow".into()))?;
+    let mut packed = vec![0_u8; total_size];
+
+    for (index, vector) in vectors.iter().enumerate() {
+        let bytes = vector.as_bytes();
+        if bytes.len() != HYPERVECTOR_BYTES {
+            return Err(GpuError::BufferError(format!(
+                "hypervector {index} has {} bytes; expected {HYPERVECTOR_BYTES}",
+                bytes.len()
+            )));
+        }
+        let offset = index * stride;
+        packed[offset..offset + HYPERVECTOR_BYTES].copy_from_slice(bytes);
+    }
+
+    Ok(packed)
+}
+
+fn checked_comparison_count(query_count: u32, database_count: u32) -> Result<(u32, usize), GpuError> {
+    let count = query_count.checked_mul(database_count).ok_or_else(|| {
+        GpuError::BufferError("query_count * database_count exceeds the shader's u32 index space".into())
+    })?;
+    let count_usize = usize::try_from(count)
+        .map_err(|_| GpuError::BufferError("comparison count does not fit host usize".into()))?;
+    Ok((count, count_usize))
+}
+
 /// GPU-accelerated similarity computation engine
 pub struct GpuSimilarityEngine {
     device: wgpu::Device,
     queue: wgpu::Queue,
     pipeline: wgpu::ComputePipeline,
     bind_group_layout: wgpu::BindGroupLayout,
+    adapter_info: wgpu::AdapterInfo,
 }
 
 impl GpuSimilarityEngine {
     /// Create a new GPU similarity engine
     pub async fn new() -> Result<Self, GpuError> {
-        // Request high-performance adapter
+        Self::new_with_backends(wgpu::Backends::all()).await
+    }
+
+    async fn new_with_backends(backends: wgpu::Backends) -> Result<Self, GpuError> {
+        // The qualification test can pin this to Vulkan; normal callers retain
+        // the existing cross-platform backend selection behavior.
         let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor {
-            backends: wgpu::Backends::all(),
+            backends,
             ..Default::default()
         });
 
@@ -79,6 +124,7 @@ impl GpuSimilarityEngine {
             })
             .await
             .ok_or(GpuError::NoAdapter)?;
+        let adapter_info = adapter.get_info();
 
         let (device, queue) = adapter
             .request_device(
@@ -170,6 +216,7 @@ impl GpuSimilarityEngine {
             queue,
             pipeline,
             bind_group_layout,
+            adapter_info,
         })
     }
 
@@ -185,21 +232,48 @@ impl GpuSimilarityEngine {
             return Ok(Vec::new());
         }
 
-        let query_count = queries.len() as u32;
-        let db_count = database.len() as u32;
-        let output_count = (query_count * db_count) as usize;
+        let query_count = u32::try_from(queries.len()).map_err(|_| {
+            GpuError::BufferError("query count exceeds the shader's u32 index space".into())
+        })?;
+        let db_count = u32::try_from(database.len()).map_err(|_| {
+            GpuError::BufferError("database count exceeds the shader's u32 index space".into())
+        })?;
+        let (output_count_u32, output_count) = checked_comparison_count(query_count, db_count)?;
 
-        // Flatten query vectors
-        let query_data: Vec<u8> = queries
-            .iter()
-            .flat_map(|hv| hv.as_bytes().to_vec())
-            .collect();
+        // The shader indexes each Hypervector as array<u32>. With the current
+        // 1,250-byte HDC representation, flat concatenation would shift every
+        // vector after the first by two bytes and overrun the final vector.
+        let query_data = pack_hypervectors_u32_aligned(queries)?;
+        let db_data = pack_hypervectors_u32_aligned(database)?;
 
-        // Flatten database vectors
-        let db_data: Vec<u8> = database
-            .iter()
-            .flat_map(|hv| hv.as_bytes().to_vec())
-            .collect();
+        let limits = self.device.limits();
+        let max_storage_binding_size = limits.max_storage_buffer_binding_size as usize;
+        for (label, data) in [("query", &query_data), ("database", &db_data)] {
+            if data.len() > max_storage_binding_size {
+                return Err(GpuError::BufferError(format!(
+                    "{label} buffer size {} exceeds max_storage_buffer_binding_size {}",
+                    data.len(), limits.max_storage_buffer_binding_size
+                )));
+            }
+        }
+        let output_size = u64::try_from(output_count)
+            .ok()
+            .and_then(|count| count.checked_mul(std::mem::size_of::<f32>() as u64))
+            .ok_or_else(|| GpuError::BufferError("similarity output byte size overflow".into()))?;
+        if output_size > u64::from(limits.max_storage_buffer_binding_size) {
+            return Err(GpuError::BufferError(format!(
+                "output buffer size {output_size} exceeds max_storage_buffer_binding_size {}",
+                limits.max_storage_buffer_binding_size
+            )));
+        }
+        let workgroup_size = 64_u32;
+        let num_workgroups = output_count_u32.div_ceil(workgroup_size);
+        if num_workgroups > limits.max_compute_workgroups_per_dimension {
+            return Err(GpuError::BufferError(format!(
+                "dispatch requires {num_workgroups} workgroups, device limit is {}",
+                limits.max_compute_workgroups_per_dimension
+            )));
+        }
 
         // Create buffers
         let query_buffer = self
@@ -218,7 +292,6 @@ impl GpuSimilarityEngine {
                 usage: wgpu::BufferUsages::STORAGE,
             });
 
-        let output_size = (output_count * std::mem::size_of::<f32>()) as u64;
         let output_buffer = self.device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("Output Buffer"),
             size: output_size,
@@ -284,8 +357,6 @@ impl GpuSimilarityEngine {
             compute_pass.set_bind_group(0, &bind_group, &[]);
 
             // Dispatch workgroups: one thread per (query, db) pair
-            let workgroup_size = 64;
-            let num_workgroups = (output_count as u32 + workgroup_size - 1) / workgroup_size;
             compute_pass.dispatch_workgroups(num_workgroups, 1, 1);
         }
 
@@ -351,7 +422,11 @@ impl GpuSimilarityEngine {
 
     /// Get device info for debugging
     pub fn device_info(&self) -> String {
-        format!("GPU Device: {:?}", self.device.limits())
+        format!(
+            "GPU Adapter: {:?}; Device limits: {:?}",
+            self.adapter_info,
+            self.device.limits()
+        )
     }
 }
 
@@ -450,6 +525,49 @@ mod tests {
     use crate::Seed;
 
     #[test]
+    fn shader_upload_pads_each_hypervector_to_a_u32_stride() {
+        let seed = Seed::from_string("u32-stride-regression");
+        let vectors: Vec<Hypervector> = (0..3)
+            .map(|i| Hypervector::random(&seed, &format!("vector-{i}")))
+            .collect();
+        let packed = pack_hypervectors_u32_aligned(&vectors).unwrap();
+        let stride = HYPERVECTOR_BYTES.checked_add(3).unwrap() & !3usize;
+
+        assert_eq!(packed.len(), stride * vectors.len());
+        for (index, vector) in vectors.iter().enumerate() {
+            let start = index * stride;
+            assert_eq!(
+                &packed[start..start + HYPERVECTOR_BYTES],
+                vector.as_bytes(),
+                "vector {index} must start at its own aligned stride"
+            );
+            assert!(
+                packed[start + HYPERVECTOR_BYTES..start + stride]
+                    .iter()
+                    .all(|byte| *byte == 0),
+                "vector {index} padding must be zero-filled"
+            );
+        }
+    }
+
+    #[test]
+    fn comparison_count_rejects_shader_u32_overflow() {
+        assert_eq!(checked_comparison_count(3, 7).unwrap(), (21, 21));
+        assert!(checked_comparison_count(u32::MAX, 2).is_err());
+        assert!(checked_comparison_count(u32::MAX, 1).is_ok());
+    }
+
+    fn reference_hamming_similarity(lhs: &Hypervector, rhs: &Hypervector) -> f32 {
+        let differing_bits: u32 = lhs
+            .as_bytes()
+            .iter()
+            .zip(rhs.as_bytes())
+            .map(|(&left, &right)| (left ^ right).count_ones())
+            .sum();
+        1.0 - differing_bits as f32 / (HYPERVECTOR_BYTES * 8) as f32
+    }
+
+    #[test]
     fn test_gpu_engine_creation() {
         // This test requires a GPU, so it may fail in CI
         let result = sync::create_engine();
@@ -468,13 +586,29 @@ mod tests {
 
     #[test]
     fn test_batch_similarity() {
-        let engine = match sync::create_engine() {
-            Ok(e) => e,
-            Err(_) => {
-                println!("Skipping GPU test - no adapter");
+        let require_adapter = std::env::var_os("MYCELIX_REQUIRE_WGPU_ADAPTER").is_some();
+        let require_vulkan = std::env::var_os("MYCELIX_REQUIRE_WGPU_VULKAN").is_some();
+        let engine_result = if require_vulkan {
+            pollster::block_on(GpuSimilarityEngine::new_with_backends(wgpu::Backends::VULKAN))
+        } else {
+            sync::create_engine()
+        };
+        let engine = match engine_result {
+            Ok(engine) => engine,
+            Err(GpuError::NoAdapter) if !require_adapter => {
+                println!("GPU adapter unavailable; skip is allowed in generic environments");
                 return;
             }
+            Err(error) => panic!("GPU engine creation failed: {error}"),
         };
+        if require_vulkan {
+            assert_eq!(
+                engine.adapter_info.backend,
+                wgpu::Backend::Vulkan,
+                "Vulkan qualification must select the Vulkan backend"
+            );
+        }
+        println!("selected_adapter={:?}", engine.adapter_info);
 
         let seed = Seed::from_string("test");
         let queries: Vec<Hypervector> = (0..10)
@@ -489,11 +623,17 @@ mod tests {
 
         assert_eq!(similarities.len(), 10 * 100);
 
-        // Check that self-similarities are high (first 10 db entries match queries)
-        for i in 0..10 {
-            let self_sim = similarities[i * 100 + i];
-            println!("Self similarity {}: {}", i, self_sim);
-            // With random vectors, self-sim should be ~0.5 for different vectors
+        // Compare every GPU result with a CPU oracle. This checks vector word
+        // boundaries, bit-count normalization, pair indexing, and device output.
+        for (query_index, query) in queries.iter().enumerate() {
+            for (db_index, candidate) in database.iter().enumerate() {
+                let expected = reference_hamming_similarity(query, candidate);
+                let observed = similarities[query_index * database.len() + db_index];
+                assert!(
+                    (observed - expected).abs() <= 1.0e-6,
+                    "GPU/CPU mismatch at query {query_index}, database {db_index}: observed={observed}, expected={expected}"
+                );
+            }
         }
     }
 }
