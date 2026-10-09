@@ -54,6 +54,45 @@ impl std::fmt::Display for GpuError {
 
 impl std::error::Error for GpuError {}
 
+/// Pack each fixed-width hypervector into the u32-addressed layout used by WGSL.
+///
+/// Storage buffers are interpreted as array<u32>; each vector therefore needs its
+/// own four-byte-rounded stride. Padding bytes are zero and are excluded from the
+/// semantic bit count passed to the shader.
+fn pack_hypervectors_u32_aligned(vectors: &[Hypervector]) -> Result<Vec<u8>, GpuError> {
+    let stride = HYPERVECTOR_BYTES
+        .checked_add(3)
+        .map(|bytes| bytes & !3usize)
+        .ok_or_else(|| GpuError::BufferError("hypervector stride overflow".into()))?;
+    let total_size = stride
+        .checked_mul(vectors.len())
+        .ok_or_else(|| GpuError::BufferError("packed hypervector buffer size overflow".into()))?;
+    let mut packed = vec![0_u8; total_size];
+
+    for (index, vector) in vectors.iter().enumerate() {
+        let bytes = vector.as_bytes();
+        if bytes.len() != HYPERVECTOR_BYTES {
+            return Err(GpuError::BufferError(format!(
+                "hypervector {index} has {} bytes; expected {HYPERVECTOR_BYTES}",
+                bytes.len()
+            )));
+        }
+        let offset = index * stride;
+        packed[offset..offset + HYPERVECTOR_BYTES].copy_from_slice(bytes);
+    }
+
+    Ok(packed)
+}
+
+fn checked_comparison_count(query_count: u32, database_count: u32) -> Result<(u32, usize), GpuError> {
+    let count = query_count.checked_mul(database_count).ok_or_else(|| {
+        GpuError::BufferError("query_count * database_count exceeds the shader's u32 index space".into())
+    })?;
+    let count_usize = usize::try_from(count)
+        .map_err(|_| GpuError::BufferError("comparison count does not fit host usize".into()))?;
+    Ok((count, count_usize))
+}
+
 /// GPU-accelerated similarity computation engine
 pub struct GpuSimilarityEngine {
     device: wgpu::Device,
@@ -185,21 +224,30 @@ impl GpuSimilarityEngine {
             return Ok(Vec::new());
         }
 
-        let query_count = queries.len() as u32;
-        let db_count = database.len() as u32;
-        let output_count = (query_count * db_count) as usize;
+        let query_count = u32::try_from(queries.len()).map_err(|_| {
+            GpuError::BufferError("query count exceeds the shader's u32 index space".into())
+        })?;
+        let db_count = u32::try_from(database.len()).map_err(|_| {
+            GpuError::BufferError("database count exceeds the shader's u32 index space".into())
+        })?;
+        let (output_count_u32, output_count) = checked_comparison_count(query_count, db_count)?;
 
-        // Flatten query vectors
-        let query_data: Vec<u8> = queries
-            .iter()
-            .flat_map(|hv| hv.as_bytes().to_vec())
-            .collect();
+        // The shader indexes each Hypervector as array<u32>. With the current
+        // 1,250-byte HDC representation, flat concatenation would shift every
+        // vector after the first by two bytes and overrun the final vector.
+        let query_data = pack_hypervectors_u32_aligned(queries)?;
+        let db_data = pack_hypervectors_u32_aligned(database)?;
 
-        // Flatten database vectors
-        let db_data: Vec<u8> = database
-            .iter()
-            .flat_map(|hv| hv.as_bytes().to_vec())
-            .collect();
+        let limits = self.device.limits();
+        let max_storage_binding_size = limits.max_storage_buffer_binding_size as usize;
+        for (label, data) in [("query", &query_data), ("database", &db_data)] {
+            if data.len() > max_storage_binding_size {
+                return Err(GpuError::BufferError(format!(
+                    "{label} buffer size {} exceeds max_storage_buffer_binding_size {}",
+                    data.len(), limits.max_storage_buffer_binding_size
+                )));
+            }
+        }
 
         // Create buffers
         let query_buffer = self
@@ -218,7 +266,16 @@ impl GpuSimilarityEngine {
                 usage: wgpu::BufferUsages::STORAGE,
             });
 
-        let output_size = (output_count * std::mem::size_of::<f32>()) as u64;
+        let output_size = u64::try_from(output_count)
+            .ok()
+            .and_then(|count| count.checked_mul(std::mem::size_of::<f32>() as u64))
+            .ok_or_else(|| GpuError::BufferError("similarity output byte size overflow".into()))?;
+        if output_size > u64::from(limits.max_storage_buffer_binding_size) {
+            return Err(GpuError::BufferError(format!(
+                "output buffer size {output_size} exceeds max_storage_buffer_binding_size {}",
+                limits.max_storage_buffer_binding_size
+            )));
+        }
         let output_buffer = self.device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("Output Buffer"),
             size: output_size,
@@ -284,8 +341,14 @@ impl GpuSimilarityEngine {
             compute_pass.set_bind_group(0, &bind_group, &[]);
 
             // Dispatch workgroups: one thread per (query, db) pair
-            let workgroup_size = 64;
-            let num_workgroups = (output_count as u32 + workgroup_size - 1) / workgroup_size;
+            let workgroup_size = 64_u32;
+            let num_workgroups = output_count_u32.div_ceil(workgroup_size);
+            if num_workgroups > limits.max_compute_workgroups_per_dimension {
+                return Err(GpuError::BufferError(format!(
+                    "dispatch requires {num_workgroups} workgroups, device limit is {}",
+                    limits.max_compute_workgroups_per_dimension
+                )));
+            }
             compute_pass.dispatch_workgroups(num_workgroups, 1, 1);
         }
 
@@ -448,6 +511,39 @@ fn compute_similarity(@builtin(global_invocation_id) global_id: vec3<u32>) {
 mod tests {
     use super::*;
     use crate::Seed;
+
+    #[test]
+    fn shader_upload_pads_each_hypervector_to_a_u32_stride() {
+        let seed = Seed::from_string("u32-stride-regression");
+        let vectors: Vec<Hypervector> = (0..3)
+            .map(|i| Hypervector::random(&seed, &format!("vector-{i}")))
+            .collect();
+        let packed = pack_hypervectors_u32_aligned(&vectors).unwrap();
+        let stride = HYPERVECTOR_BYTES.checked_add(3).unwrap() & !3usize;
+
+        assert_eq!(packed.len(), stride * vectors.len());
+        for (index, vector) in vectors.iter().enumerate() {
+            let start = index * stride;
+            assert_eq!(
+                &packed[start..start + HYPERVECTOR_BYTES],
+                vector.as_bytes(),
+                "vector {index} must start at its own aligned stride"
+            );
+            assert!(
+                packed[start + HYPERVECTOR_BYTES..start + stride]
+                    .iter()
+                    .all(|byte| *byte == 0),
+                "vector {index} padding must be zero-filled"
+            );
+        }
+    }
+
+    #[test]
+    fn comparison_count_rejects_shader_u32_overflow() {
+        assert_eq!(checked_comparison_count(3, 7).unwrap(), (21, 21));
+        assert!(checked_comparison_count(u32::MAX, 2).is_err());
+        assert!(checked_comparison_count(u32::MAX, 1).is_ok());
+    }
 
     #[test]
     fn test_gpu_engine_creation() {
