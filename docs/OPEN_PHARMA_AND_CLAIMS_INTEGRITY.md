@@ -48,7 +48,12 @@ An evidence record should preserve, at minimum:
 
 Conflicting results must remain visible. Missing evidence is not negative evidence, and an absence of reported toxicity is not proof of safety.
 
-Potential public starting sources include the [Open Targets Platform](https://platform.opentargets.org/), [PubChem](https://pubchem.ncbi.nlm.nih.gov/), [ChEMBL](https://www.ebi.ac.uk/chembl/), published literature, public trial registries, WHO essential-medicines material, and relevant [SAHPRA pharmacovigilance guidance](https://www.sahpra.org.za/vigilance-guidelines/). Before ingestion, record each source's actual license and terms; do not assume that a public download can automatically be redistributed or used for every purpose.
+Potential public starting sources include the [Open Targets Platform](https://platform.opentargets.org/), [PubChem](https://pubchem.ncbi.nlm.nih.gov/), [ChEMBL](https://www.ebi.ac.uk/chembl/), published literature, public trial registries, WHO essential-medicines material, and relevant [SAHPRA pharmacovigilance guidance](https://www.sahpra.org.za/vigilance-guidelines/). Source admission must be recordable and licence-aware:
+
+- The [Open Targets Platform licence documentation](https://platform-docs.opentargets.org/licence) states that its platform data are CC0 1.0 and its codebases are Apache 2.0; preserve the distinction between the data and code licences.
+- [PubChem's download documentation](https://pubchem.ncbi.nlm.nih.gov/docs/downloads), updated 26 March 2026, says most data are downloadable but contributor licensing exceptions may apply. Capture source-level terms instead of assigning a blanket licence to all PubChem content.
+- [EMBL-EBI licensing guidance](https://www.ebi.ac.uk/licencing/) explains that data resources can have different governance and terms; do not assume that every hosted resource shares the same licence.
+- SAHPRA's [current pharmacovigilance guidance index](https://www.sahpra.org.za/vigilance-guidelines/) lists, among others, the human-medicine post-marketing adverse-reaction guideline updated 27 August 2026 (version 11) and the industry e-reporting guideline updated 19 August 2026 (version 1). Ingest only the applicable current version and preserve the regulatory jurisdiction and effective document identity.
 
 The [Open Source Pharma Foundation](https://www.ospfound.org/about.html) is a relevant ecosystem reference because it explicitly works toward open, affordable pharmaceutical research and development, with attention to unmet needs in the Global South.
 
@@ -203,7 +208,7 @@ References to start from:
 - [ChEMBL](https://www.ebi.ac.uk/chembl/) — curated bioactivity data.
 - [Open Source Pharma Foundation](https://www.ospfound.org/about.html) — open pharma ecosystem and unmet health needs.
 - [WHO: Ethics and governance of AI for health](https://www.who.int/publications/i/item/9789240029200) — human rights, autonomy, transparency, and accountability principles.
-- [FDA: AI for drug development](https://www.fda.gov/science-research/science-and-research-special-topics/artificial-intelligence-and-machine-learning-aiml-drug-development) — current FDA materials and risk-based credibility direction; consult the current status of each guidance because draft guidance is not binding law.
+- [FDA/EMA: Guiding Principles of Good AI Practice in Drug Development (January 2026)](https://www.fda.gov/media/189581/download) — joint lifecycle-oriented principles. Check the legal status of each related document; principles and draft guidance must not be described as binding requirements unless the applicable authority says so.
 - [SAHPRA: pharmacovigilance guidance](https://www.sahpra.org.za/vigilance-guidelines/) — South African medicine-safety obligations and guidance.
 - [South Africa: POPIA](https://www.gov.za/documents/protection-personal-information-act) — privacy law reference.
 
