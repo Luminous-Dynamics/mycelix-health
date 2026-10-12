@@ -42,6 +42,8 @@ pub struct ClaimLineV1 {
     pub beneficiary_ref: String,
     pub provider_ref: String,
     pub service_code: String,
+    /// ISO-4217-style three-letter currency code; only syntax is checked.
+    pub currency_code: String,
     /// ISO calendar date in YYYYMMDD form, interpreted under the source policy.
     pub service_date_yyyymmdd: u32,
     /// Monetary value in the smallest currency unit; currency is defined by
@@ -85,6 +87,7 @@ pub enum AnalysisReason {
     InvalidInputManifestDigest,
     InvalidPolicyDigest,
     InvalidCodeSetVersion,
+    InvalidCurrencyCode,
     LineCountLimitExceeded,
     DuplicateLineId,
     InvalidLineIdentifier,
@@ -99,6 +102,7 @@ pub enum AnalysisReason {
 pub enum SignalKind {
     PotentialDuplicateServiceLines,
     ReversalTargetNotFound,
+    ReversalTargetNotSubmitted,
 }
 
 /// The sole authority marker available in V1; signals cannot represent a
@@ -112,6 +116,7 @@ pub enum DecisionAuthority {
 pub enum SignalReason {
     MatchingBeneficiaryProviderServiceDateAndAmount,
     ReversalReferenceAbsentFromBundle,
+    ReversalTargetIsNotSubmittedLine,
 }
 
 /// A signal is a lead for review, never a finding of fraud or wrongdoing.
@@ -147,6 +152,7 @@ struct DuplicateKey {
     beneficiary_ref: String,
     provider_ref: String,
     service_code: String,
+    currency_code: String,
     service_date_yyyymmdd: u32,
     amount_minor_units: u64,
 }
@@ -215,6 +221,9 @@ pub fn evaluate(bundle: &ClaimEvidenceBundleV1) -> EvaluationReportV1 {
         {
             reasons.push(AnalysisReason::InvalidLineIdentifier);
         }
+        if !is_valid_currency_code(&line.currency_code) {
+            reasons.push(AnalysisReason::InvalidCurrencyCode);
+        }
         if !is_valid_date(line.service_date_yyyymmdd) {
             reasons.push(AnalysisReason::InvalidServiceDate);
         }
@@ -262,10 +271,8 @@ pub fn evaluate(bundle: &ClaimEvidenceBundleV1) -> EvaluationReportV1 {
             continue;
         }
         let target = line.reverses_line_id.as_deref().unwrap_or_default();
-        if by_id.contains_key(target) {
-            known_reversed_targets.insert(target.to_string());
-        } else {
-            signals.push(AnomalySignalV1 {
+        match by_id.get(target) {
+            None => signals.push(AnomalySignalV1 {
                 signal_key: format!("reversal_target_missing:{}", line.line_id),
                 kind: SignalKind::ReversalTargetNotFound,
                 reason: SignalReason::ReversalReferenceAbsentFromBundle,
@@ -274,7 +281,23 @@ pub fn evaluate(bundle: &ClaimEvidenceBundleV1) -> EvaluationReportV1 {
                 policy_digest: bundle.policy_digest.clone(),
                 line_ids: vec![line.line_id.clone()],
                 source_record_digests: vec![line.source_record_digest.clone()],
-            });
+            }),
+            Some(target_line) if target_line.status == ClaimLineStatus::Submitted => {
+                known_reversed_targets.insert(target.to_string());
+            }
+            Some(target_line) => signals.push(AnomalySignalV1 {
+                signal_key: format!("reversal_target_not_submitted:{}", line.line_id),
+                kind: SignalKind::ReversalTargetNotSubmitted,
+                reason: SignalReason::ReversalTargetIsNotSubmittedLine,
+                decision_authority: DecisionAuthority::NonAuthoritativeReviewLead,
+                input_manifest_digest: bundle.input_manifest_digest.clone(),
+                policy_digest: bundle.policy_digest.clone(),
+                line_ids: vec![line.line_id.clone(), target_line.line_id.clone()],
+                source_record_digests: vec![
+                    line.source_record_digest.clone(),
+                    target_line.source_record_digest.clone(),
+                ],
+            }),
         }
     }
 
@@ -292,6 +315,7 @@ pub fn evaluate(bundle: &ClaimEvidenceBundleV1) -> EvaluationReportV1 {
                 beneficiary_ref: line.beneficiary_ref.clone(),
                 provider_ref: line.provider_ref.clone(),
                 service_code: line.service_code.clone(),
+                currency_code: line.currency_code.clone(),
                 service_date_yyyymmdd: line.service_date_yyyymmdd,
                 amount_minor_units: line.amount_minor_units,
             })
@@ -385,6 +409,10 @@ fn is_identifier(value: &str) -> bool {
             .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_' | b'.'))
 }
 
+fn is_valid_currency_code(value: &str) -> bool {
+    value.len() == 3 && value.bytes().all(|byte| byte.is_ascii_uppercase())
+}
+
 fn is_sha256_hex(value: &str) -> bool {
     value.len() == 64
         && value
@@ -417,14 +445,15 @@ fn reason_sort_key(reason: &AnalysisReason) -> u8 {
         AnalysisReason::InvalidInputManifestDigest => 1,
         AnalysisReason::InvalidPolicyDigest => 2,
         AnalysisReason::InvalidCodeSetVersion => 3,
-        AnalysisReason::LineCountLimitExceeded => 4,
-        AnalysisReason::DuplicateLineId => 5,
-        AnalysisReason::InvalidLineIdentifier => 6,
-        AnalysisReason::InvalidServiceDate => 7,
-        AnalysisReason::InvalidSourceRecordDigest => 8,
-        AnalysisReason::InvalidReversalReference => 9,
-        AnalysisReason::PartialInput => 10,
-        AnalysisReason::UnknownInputCompleteness => 11,
+        AnalysisReason::InvalidCurrencyCode => 4,
+        AnalysisReason::LineCountLimitExceeded => 5,
+        AnalysisReason::DuplicateLineId => 6,
+        AnalysisReason::InvalidLineIdentifier => 7,
+        AnalysisReason::InvalidServiceDate => 8,
+        AnalysisReason::InvalidSourceRecordDigest => 9,
+        AnalysisReason::InvalidReversalReference => 10,
+        AnalysisReason::PartialInput => 11,
+        AnalysisReason::UnknownInputCompleteness => 12,
     }
 }
 
@@ -442,6 +471,7 @@ mod tests {
             beneficiary_ref: "beneficiary-demo-1".to_string(),
             provider_ref: "provider-demo-1".to_string(),
             service_code: "SVC-100".to_string(),
+            currency_code: "USD".to_string(),
             service_date_yyyymmdd: 20261010,
             amount_minor_units: 12_500,
             status: ClaimLineStatus::Submitted,
@@ -476,12 +506,14 @@ mod tests {
     }
 
     #[test]
-    fn different_amount_or_service_date_does_not_group() {
+    fn different_amount_date_or_currency_does_not_group() {
         let mut second = line("line-b");
         second.amount_minor_units += 1;
         let mut third = line("line-c");
         third.service_date_yyyymmdd += 1;
-        let report = evaluate(&bundle(vec![line("line-a"), second, third]));
+        let mut fourth = line("line-d");
+        fourth.currency_code = "ZAR".to_string();
+        let report = evaluate(&bundle(vec![line("line-a"), second, third, fourth]));
         assert!(report.signals.is_empty());
         assert_eq!(report.status, AnalysisStatus::Complete);
     }
@@ -510,6 +542,24 @@ mod tests {
         assert_eq!(report.signals.len(), 1);
         assert_eq!(report.signals[0].kind, SignalKind::ReversalTargetNotFound);
         assert_eq!(report.signals[0].line_ids, vec!["line-reversal".to_string()]);
+        assert_eq!(report.status, AnalysisStatus::Complete);
+    }
+
+    #[test]
+    fn reversal_target_that_is_not_a_submitted_line_is_flagged() {
+        let mut target = line("line-target");
+        target.status = ClaimLineStatus::Reversal;
+        target.reverses_line_id = Some("line-old".to_string());
+
+        let mut reversal = line("line-reversal");
+        reversal.status = ClaimLineStatus::Reversal;
+        reversal.reverses_line_id = Some("line-target".to_string());
+
+        let report = evaluate(&bundle(vec![target, reversal]));
+        assert!(report
+            .signals
+            .iter()
+            .any(|signal| signal.kind == SignalKind::ReversalTargetNotSubmitted));
         assert_eq!(report.status, AnalysisStatus::Complete);
     }
 
