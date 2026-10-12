@@ -19,7 +19,9 @@ This document proposes a staged research program. It does **not** claim that the
 
 | Component | Proposed responsibility | Must not become |
 |---|---|---|
-| **Sol-Atlas** | Index scientific datasets and publications; track source, version, license, retrieval time, schema, and cryptographic digest; make evidence discoverable and comparable. | An oracle that treats an indexed record as true merely because it was indexed. |
+| **Sol-Atlas** | Render and explore scientific datasets and publications, preserving source/version/license/retrieval metadata and stable provenance references. Biomedical evidence ingestion is a proposed extension, not an existing claimed capability. | An oracle that treats an indexed record as true merely because it was indexed. |
+  
+The Sol-Atlas integration seam is tracked separately in [ATLAS-DSCI-001](https://github.com/Luminous-Dynamics/sol-atlas-leptos/issues/99), building on its existing evidence-native terminal and EPI projection work.
 | **Symthaea** | Generate and rank research hypotheses; compare models and baselines; expose uncertainty, applicability limits, counter-evidence, and distribution shift; run reproducible analyses. | A prescriber, regulator, lab, court, insurer, or autonomous fraud adjudicator. |
 | **Mycelix** | Provide bounded collaboration, identity/credential evidence, consent and capability boundaries, signed decisions, provenance, and auditable correction/appeal history. | A universal trust score that decides clinical truth or guilt. |
 | **Mycelix-Health** | Own healthcare-specific contracts for medications, trials, laboratory evidence, pharmacovigilance, claims, patient consent, and review workflows. | A replacement for licensed clinical practice, ethics review, regulators, or qualified quality systems. |
