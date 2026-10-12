@@ -89,6 +89,7 @@ pub enum AnalysisReason {
     InvalidCodeSetVersion,
     InvalidCurrencyCode,
     LineCountLimitExceeded,
+    EmptyInput,
     DuplicateLineId,
     InvalidLineIdentifier,
     InvalidServiceDate,
@@ -180,6 +181,9 @@ pub fn evaluate(bundle: &ClaimEvidenceBundleV1) -> EvaluationReportV1 {
     }
     if bundle.lines.len() > MAX_CLAIM_LINES {
         reasons.push(AnalysisReason::LineCountLimitExceeded);
+    }
+    if bundle.lines.is_empty() {
+        reasons.push(AnalysisReason::EmptyInput);
     }
 
     if !reasons.is_empty() {
@@ -424,7 +428,7 @@ fn is_valid_date(value: u32) -> bool {
     let year = value / 10_000;
     let month = (value / 100) % 100;
     let day = value % 100;
-    if year == 0 || !(1..=12).contains(&month) {
+    if year == 0 || year > 9999 || !(1..=12).contains(&month) {
         return false;
     }
 
@@ -447,13 +451,14 @@ fn reason_sort_key(reason: &AnalysisReason) -> u8 {
         AnalysisReason::InvalidCodeSetVersion => 3,
         AnalysisReason::InvalidCurrencyCode => 4,
         AnalysisReason::LineCountLimitExceeded => 5,
-        AnalysisReason::DuplicateLineId => 6,
-        AnalysisReason::InvalidLineIdentifier => 7,
-        AnalysisReason::InvalidServiceDate => 8,
-        AnalysisReason::InvalidSourceRecordDigest => 9,
-        AnalysisReason::InvalidReversalReference => 10,
-        AnalysisReason::PartialInput => 11,
-        AnalysisReason::UnknownInputCompleteness => 12,
+        AnalysisReason::EmptyInput => 6,
+        AnalysisReason::DuplicateLineId => 7,
+        AnalysisReason::InvalidLineIdentifier => 8,
+        AnalysisReason::InvalidServiceDate => 9,
+        AnalysisReason::InvalidSourceRecordDigest => 10,
+        AnalysisReason::InvalidReversalReference => 11,
+        AnalysisReason::PartialInput => 12,
+        AnalysisReason::UnknownInputCompleteness => 13,
     }
 }
 
@@ -605,6 +610,24 @@ mod tests {
         let input_a = bundle(vec![line("line-b"), line("line-a"), line("line-d"), line("line-c")]);
         let input_b = bundle(vec![line("line-c"), line("line-a"), line("line-b"), line("line-d")]);
         assert_eq!(evaluate(&input_a), evaluate(&input_b));
+    }
+
+    #[test]
+    fn invalid_currency_code_fails_closed() {
+        let mut invalid = line("line-a");
+        invalid.currency_code = "usd".to_string();
+        let report = evaluate(&bundle(vec![invalid]));
+        assert_eq!(report.status, AnalysisStatus::Indeterminate);
+        assert!(report.reasons.contains(&AnalysisReason::InvalidCurrencyCode));
+        assert!(report.signals.is_empty());
+    }
+
+    #[test]
+    fn empty_input_is_indeterminate_not_a_clean_result() {
+        let report = evaluate(&bundle(Vec::new()));
+        assert_eq!(report.status, AnalysisStatus::Indeterminate);
+        assert!(report.reasons.contains(&AnalysisReason::EmptyInput));
+        assert!(report.signals.is_empty());
     }
 
     #[test]
