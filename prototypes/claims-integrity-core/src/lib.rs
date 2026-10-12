@@ -230,7 +230,7 @@ pub fn evaluate(bundle: &ClaimEvidenceBundleV1) -> EvaluationReportV1 {
                 Some(target) if is_identifier(target) && target != line.line_id => {}
                 _ => reasons.push(AnalysisReason::InvalidReversalReference),
             },
-            ClaimLineStatus::Submitted | ClaimLineStatus::Reversal => {}
+            ClaimLineStatus::Submitted => {}
         }
     }
 
