@@ -519,6 +519,10 @@ mod tests {
             .expect("same source inputs");
         assert_eq!(first, second);
         assert_eq!(first.price_class_id, "za-ndoh.sep");
+        assert_eq!(first.source_manifest_sha256, DIGEST_C);
+        assert_eq!(first.adapter_version_id, "ndoh-adapter-v1");
+        assert_eq!(first.parser_version_id, "strict-csv-parser-v1");
+        assert_eq!(first.ingestion_policy_sha256, DIGEST_B);
         assert_eq!(first.original_amount_minor, 1250);
         assert_eq!(first.normalized_amount_minor, 1250);
         assert_eq!(first.normalization_method_id, "identity-no-conversion-v1");
@@ -532,6 +536,26 @@ mod tests {
         assert_eq!(
             normalize_price_observation_v1(&manifest(), &scenario, &record()).unwrap_err(),
             SourceContractRejectionV1::InvalidPolicy
+        );
+    }
+
+    #[test]
+    fn invalid_ingestion_policy_digest_fails_closed() {
+        let mut scenario = policy();
+        scenario.policy_sha256 = "bad-digest".to_string();
+        assert_eq!(
+            normalize_price_observation_v1(&manifest(), &scenario, &record()).unwrap_err(),
+            SourceContractRejectionV1::InvalidPolicy
+        );
+    }
+
+    #[test]
+    fn invalid_complete_source_manifest_digest_fails_closed() {
+        let mut source = manifest();
+        source.source_manifest_sha256 = "bad-digest".to_string();
+        assert_eq!(
+            normalize_price_observation_v1(&source, &policy(), &record()).unwrap_err(),
+            SourceContractRejectionV1::InvalidSourceDigest
         );
     }
 
