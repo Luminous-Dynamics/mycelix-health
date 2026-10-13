@@ -276,6 +276,12 @@ pub fn map_fhir_r4_json(
             if !profile_matches(&value, CLAIM_RESPONSE_PROFILE_CANONICAL) {
                 global_issues.push(MappingIssueV1::UnsupportedProfile);
             }
+            if unsupported_meta_fields(&value) {
+                global_issues.push(MappingIssueV1::UnsupportedClaimContext);
+            }
+            if !required_claim_response_fields_present(&value) {
+                global_issues.push(MappingIssueV1::MissingRequiredClaimFields);
+            }
             if contains_extension(&value) {
                 global_issues.push(MappingIssueV1::UnsupportedResourceExtension);
             }
@@ -739,6 +745,56 @@ fn parse_iso_date(value: &str) -> Option<u32> {
     Some(year * 10_000 + month * 100 + day)
 }
 
+fn required_claim_response_fields_present(value: &Value) -> bool {
+    let status_valid = value
+        .get("status")
+        .and_then(Value::as_str)
+        .is_some_and(|status| {
+            matches!(status, "active" | "cancelled" | "draft" | "entered-in-error")
+        });
+    let has_type_coding = value
+        .get("type")
+        .and_then(|response_type| response_type.get("coding"))
+        .and_then(Value::as_array)
+        .is_some_and(|codings| {
+            codings.iter().any(|coding| {
+                coding
+                    .get("system")
+                    .and_then(Value::as_str)
+                    .is_some_and(|system| !system.trim().is_empty())
+                    && coding
+                        .get("code")
+                        .and_then(Value::as_str)
+                        .is_some_and(|code| !code.trim().is_empty())
+            })
+        });
+    let use_valid = value
+        .get("use")
+        .and_then(Value::as_str)
+        .is_some_and(|claim_use| {
+            matches!(claim_use, "claim" | "preauthorization" | "predetermination")
+        });
+    let has_patient = value
+        .get("patient")
+        .and_then(|patient| patient.get("reference"))
+        .and_then(Value::as_str)
+        .is_some_and(|reference| !reference.trim().is_empty());
+    let has_created = value
+        .get("created")
+        .and_then(Value::as_str)
+        .is_some_and(|created| !created.trim().is_empty() && created.len() <= 64);
+    let has_insurer = value
+        .get("insurer")
+        .and_then(|insurer| insurer.get("reference"))
+        .and_then(Value::as_str)
+        .is_some_and(|reference| !reference.trim().is_empty());
+    let has_outcome = value
+        .get("outcome")
+        .and_then(Value::as_str)
+        .is_some_and(|outcome| matches!(outcome, "queued" | "complete" | "error" | "partial"));
+    status_valid && has_type_coding && use_valid && has_patient && has_created && has_insurer && has_outcome
+}
+
 fn unsupported_claim_context_fields(value: &Value) -> bool {
     const ALLOWED: &[&str] = &[
         "resourceType",
@@ -1019,6 +1075,16 @@ mod tests {
                 "profile": [CLAIM_RESPONSE_PROFILE_CANONICAL]
             },
             "status": "active",
+            "type": {
+                "coding": [{
+                    "system": "http://terminology.hl7.org/CodeSystem/claim-type",
+                    "code": "professional"
+                }]
+            },
+            "use": "claim",
+            "patient": {"reference": "Patient/synthetic-patient-001"},
+            "created": "2026-10-12T10:00:00Z",
+            "insurer": {"reference": "Organization/synthetic-payer-001"},
             "outcome": "complete",
             "request": {"reference": "Claim/synthetic-claim-001"},
             "item": [{
