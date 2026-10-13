@@ -46,6 +46,16 @@ pub enum SourceReuseState {
     Prohibited,
 }
 
+/// Exact permitted purpose declared by an upstream, rights-reviewed manifest.
+/// Variants are not hierarchical: permission for one does not imply another.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
+pub enum SourceUseScopeV1 {
+    NonCommercialReference,
+    CommercialAnalysis,
+    PublicDisplay,
+    RawRedistribution,
+}
+
 /// Costs are per one normalized unit in the scenario currency's minor units.
 /// Their provenance and whether they are observed vs scenario-estimated must
 /// be documented in the caller's immutable manifest.
@@ -96,6 +106,8 @@ pub struct ProcurementPolicyV1 {
     pub minimum_supplier_count: usize,
     /// Zero means reliability history is optional, but remains visible as a warning.
     pub minimum_delivery_observations: u32,
+    /// Intended use the source permission must explicitly authorize.
+    pub required_source_use_scope: SourceUseScopeV1,
     /// Supplied by the canonical evidence layer; checked for SHA-256 syntax only.
     pub input_manifest_sha256: String,
     pub policy_sha256: String,
@@ -115,6 +127,8 @@ pub struct SupplyOfferV1 {
     pub authorization_evidence_sha256: String,
     pub licence_evidence_sha256: String,
     pub capacity_evidence_sha256: String,
+    pub source_permission_evidence_sha256: String,
+    pub permitted_source_use_scopes: Vec<SourceUseScopeV1>,
     pub source_reuse: SourceReuseState,
 
     pub quality_state: QualityEvidenceState,
@@ -149,6 +163,7 @@ pub enum OfferExclusionReason {
     PriceObservationFromFuture,
     PriceObservationExpired,
     SourceReuseNotPermitted,
+    SourceUseScopeNotPermitted,
     QualityNotQualified,
     QualityUnknown,
     MarketNotAuthorized,
@@ -522,6 +537,7 @@ fn evaluate_offer(
         offer.authorization_evidence_sha256.as_str(),
         offer.licence_evidence_sha256.as_str(),
         offer.capacity_evidence_sha256.as_str(),
+        offer.source_permission_evidence_sha256.as_str(),
     ]
     .into_iter()
     .all(is_sha256_hex)
@@ -531,6 +547,12 @@ fn evaluate_offer(
 
     if offer.source_reuse != SourceReuseState::Permitted {
         reasons.push(OfferExclusionReason::SourceReuseNotPermitted);
+    }
+    if !offer
+        .permitted_source_use_scopes
+        .contains(&policy.required_source_use_scope)
+    {
+        reasons.push(OfferExclusionReason::SourceUseScopeNotPermitted);
     }
     match offer.quality_state {
         QualityEvidenceState::Qualified => {}
@@ -706,6 +728,7 @@ mod tests {
             maximum_supplier_concentration_basis_points: 7000,
             minimum_supplier_count: 2,
             minimum_delivery_observations: 2,
+            required_source_use_scope: SourceUseScopeV1::CommercialAnalysis,
             input_manifest_sha256: DIGEST_A.to_string(),
             policy_sha256: DIGEST_B.to_string(),
         }
@@ -724,6 +747,8 @@ mod tests {
             authorization_evidence_sha256: DIGEST_A.to_string(),
             licence_evidence_sha256: DIGEST_A.to_string(),
             capacity_evidence_sha256: DIGEST_A.to_string(),
+            source_permission_evidence_sha256: DIGEST_B.to_string(),
+            permitted_source_use_scopes: vec![SourceUseScopeV1::CommercialAnalysis],
             source_reuse: SourceReuseState::Permitted,
             quality_state: QualityEvidenceState::Qualified,
             authorization_state: MarketAuthorizationState::Authorized,
@@ -831,6 +856,19 @@ mod tests {
         assert!(plan.offer_evaluations[0]
             .exclusion_reasons
             .contains(&OfferExclusionReason::PriceObservationExpired));
+    }
+
+    #[test]
+    fn permission_for_noncommercial_reference_does_not_authorize_commercial_analysis() {
+        let policy = policy();
+        let mut reference_only = offer("offer-a", "supplier-a", 10, 100);
+        reference_only.permitted_source_use_scopes =
+            vec![SourceUseScopeV1::NonCommercialReference];
+        let plan = plan_procurement_v1(&policy, &[reference_only]).expect("policy");
+        assert_eq!(plan.status, PlanStatusV1::InfeasibleWithinObservedOffers);
+        assert!(plan.offer_evaluations[0]
+            .exclusion_reasons
+            .contains(&OfferExclusionReason::SourceUseScopeNotPermitted));
     }
 
     #[test]
