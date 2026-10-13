@@ -47,14 +47,16 @@ Every source adapter must emit a versioned manifest before rows are processed:
 - Original file URL and filename; content digest; adapter version; parser version; row count; rejected-row count; and a deterministic parse-report digest.
 - Exact terms URL and retrieved terms revision/digest where possible.
 - Permission decision, reviewer/authority, permitted purpose, permitted geography, storage/caching rights, transformation rights, redistribution/display rights, commercial-use status, expiry/review date and any attribution obligations.
+- Rights review state and evidence digest, review date, and explicit permission-validity state: `PerpetualByTerms` only when the reviewed terms affirm no expiry, `ValidThrough(date)` when a date is stated, or `Unknown` (which must fail closed).
+- Required operations are enumerated independently of intended-use scope: bulk extraction, raw-byte storage, derived-record storage, transformation, publication of derived aggregates, and raw-record redistribution. A commercial-analysis permission does not automatically grant every one of those operations.
 - Source availability and freshness limits, known limitations, and contact/escalation route.
 - Whether original bytes may be retained. When not permitted, preserve only the metadata and evidence that are lawful to keep.
 
-Permission is scoped. A right to view a page is not presumed to grant bulk extraction; non-commercial reference use is not presumed to permit commercial analytics; permission to analyze records is not presumed to permit republishing them. Unknown, conflicting, expired or insufficient rights fail closed. The prototype now compares the policy's required scope with the offer's declared permitted scopes and checks a separate permission-evidence digest's syntax. Those fields remain assertions from the upstream rights review: the prototype cannot determine whether a licence text legally grants them.
+Permission is scoped. A right to view a page is not presumed to grant bulk extraction; non-commercial reference use is not presumed to permit commercial analytics; permission to analyze records is not presumed to permit republishing them. Unknown, conflicting, expired or insufficient rights fail closed. The prototype's typed source-ingestion gate now compares required use scope and every required operation with the rights-reviewed manifest, requires an explicit permission-validity state, and checks terms/permission/source digest syntax. Those fields remain assertions from the upstream rights review: the prototype cannot determine whether a licence text legally grants them.
 
 ## Canonical price observation
 
-Each parsed record should preserve, at minimum:
+Each parsed record should preserve, at minimum. The new `src/source_contract.rs` module checks typed records for conformance after parsing; it is not a web scraper or a general-purpose CSV parser, and its synthetic granted-rights fixture is not real permission:
 
 - Stable record identity and exact medicinal presentation identity; the source's original product and pack identifiers; ingredient(s), strength, dosage form, route where provided, pack size, unit count and normalization method/version.
 - Jurisdiction and submarket/channel; price class/type exactly as published; amount as a decimal-safe integer in explicitly named minor units (or a decimal representation with currency exponent); ISO currency code; tax and fee inclusions/exclusions; and quoted unit/pack basis.
