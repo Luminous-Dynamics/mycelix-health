@@ -22,7 +22,7 @@ A standalone, dependency-free Rust baseline for allocating synthetic normalized 
 6. Marks unmet demand or unsatisfied sourcing constraints as InfeasibleWithinObservedOffers. Missing offers/prices never become zero-cost success.
 7. Emits deterministic output for the same policy, manifest digests and offer set.
 
-The method is deliberately named DeterministicGreedyBaselineV1. It is not proven globally optimal, and a greedy run may be infeasible even when a different allocation exists. A separate verify_plan_v1 checker re-evaluates award gates and recomputes quantities, concentration, unit/extended cost, total cost, delivery arithmetic and status. A future exact/robust optimizer must pass that checker and compare itself against this baseline.
+The method is deliberately named DeterministicGreedyBaselineV1. It is not proven globally optimal, and a greedy run may be infeasible even when a different allocation exists. A separate verify_plan_v1 checker re-evaluates award gates and recomputes quantities, concentration, supplier count, unit/extended cost, total cost, delivery arithmetic and status. A future exact/robust optimizer must pass that checker and compare itself against this baseline.
 
 ## Cost accounting
 
