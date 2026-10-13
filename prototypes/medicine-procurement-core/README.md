@@ -16,14 +16,23 @@ A standalone, dependency-free Rust baseline for allocating synthetic normalized 
 ## What it does
 
 1. Validates scenario and digest syntax.
-2. Excludes offers failing product comparability, price freshness, source-reuse, quality, authorization, licensing, shelf-life, lead-time, capacity or policy gates, with machine-readable reasons.
-3. Sorts eligible offers by the transparent sum of declared per-unit lifecycle cost components.
-4. Seeds the required number of distinct suppliers at their selected offer minimum orders, then fills demand in cost order subject to offer availability and aggregate supplier-concentration caps.
-5. Reports allocated and unmet units, extended costs, excluded offers, delivery-history caveats and an expected on-time delivery estimate only when every selected offer has sufficient traceable rate evidence.
-6. Marks unmet demand or unsatisfied sourcing constraints as InfeasibleWithinObservedOffers. Missing offers/prices never become zero-cost success.
-7. Emits deterministic output for the same policy, manifest digests and offer set.
+2. Runs a typed, source-agnostic ingestion conformance gate in `src/source_contract.rs` before normalized price observations can enter a comparison.
+3. Excludes offers failing product comparability, price freshness, source-reuse, quality, authorization, licensing, shelf-life, lead-time, capacity or policy gates, with machine-readable reasons.
+4. Sorts eligible offers by the transparent sum of declared per-unit lifecycle cost components.
+5. Seeds the required number of distinct suppliers at their selected offer minimum orders, then fills demand in cost order subject to offer availability and aggregate supplier-concentration caps.
+6. Reports allocated and unmet units, extended costs, excluded offers, delivery-history caveats and an expected on-time delivery estimate only when every selected offer has sufficient traceable rate evidence.
+7. Marks unmet demand or unsatisfied sourcing constraints as InfeasibleWithinObservedOffers. Missing offers/prices never become zero-cost success.
+8. Emits deterministic output for the same policy, manifest digests and offer set.
 
 The method is deliberately named DeterministicGreedyBaselineV1. It is not proven globally optimal, and a greedy run may be infeasible even when a different allocation exists. A separate verify_plan_v1 checker re-evaluates award gates and recomputes quantities, concentration, supplier count, unit/extended cost, total cost, delivery arithmetic and status. A future exact/robust optimizer must pass that checker and compare itself against this baseline.
+
+## Source-ingestion conformance boundary
+
+`src/source_contract.rs` accepts typed source manifests and price observations from an upstream adapter; it is not a scraper or general CSV parser. It checks that the rights review is granted and current, the intended use scope and every required operation are explicitly permitted, and permission/terms/source digests have valid syntax. Permission validity must be explicitly declared as `PerpetualByTerms` or `ValidThrough(date)`; unknown validity fails closed.
+
+It preserves both the original amount/unit/class and the normalized amount/unit/class with normalization-method and evidence references. A different source unit requires an explicit conversion record and digest; the code does not perform conversions or validate the truth of upstream evidence. SEP, ex-manufacturer and logistics fee remain distinct classes. Expired, future-effective, undated, discontinued, withdrawn and unknown-status records can be retained with explicit temporal/listing status, but only an explicitly listed, current-as-of-date record is eligible for current **price comparison**. That status does not assert stock or supplier availability, and does not by itself create a procurement offer.
+
+The source conformance tests use invented records and a fictional granted-rights manifest. They do not represent actual permission from any publisher or legal determination for real data.
 
 ## Cost accounting
 
@@ -31,7 +40,7 @@ For each normalized unit, the baseline sums acquisition, freight, insurance, dut
 
 ## Tests and verification
 
-The source contains 28 uniquely named synthetic unit tests covering failed quality/authorization/licence gates, mismatched presentation/unit basis, reference-price-versus-quote and source-defined price-class mismatches, scoped source permission, malformed evidence digests, stale prices, missing delivery history, duplicate offer identities, aggregate overflow, input-order determinism, insufficient supply, concentration limits, invalid policy/date inputs, and tampered allocations/cost receipts. This is a source inventory, not evidence those tests have executed.
+The source contains 42 uniquely named synthetic unit tests covering failed quality/authorization/licence gates, mismatched presentation/unit basis, reference-price-versus-quote and source-defined price-class mismatches, scoped source permission, malformed evidence digests, stale prices, missing delivery history, duplicate offer identities, aggregate overflow, input-order determinism, insufficient supply, concentration limits, invalid policy/date inputs, and tampered allocations/cost receipts. This is a source inventory, not evidence those tests have executed.
 
 Run the following from the repository root:
 
