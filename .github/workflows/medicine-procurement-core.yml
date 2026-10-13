@@ -35,5 +35,18 @@ jobs:
         run: cargo fmt --manifest-path prototypes/medicine-procurement-core/Cargo.toml -- --check
       - name: Run unit and adversarial tests
         run: cargo test --manifest-path prototypes/medicine-procurement-core/Cargo.toml --locked
+      - name: Generate synthetic global scenario report
+        run: |
+          report="$RUNNER_TEMP/medicine-procurement-synthetic-report.csv"
+          cargo run --manifest-path prototypes/medicine-procurement-core/Cargo.toml --example synthetic_global_scenario --locked > "$report"
+          test "$(wc -l < "$report")" -eq 217
+          echo "Validated 216 synthetic scenario rows plus CSV header."
+      - name: Upload synthetic scenario report
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: medicine-procurement-synthetic-report-rust-${{ matrix.toolchain }}
+          path: ${{ runner.temp }}/medicine-procurement-synthetic-report.csv
+          if-no-files-found: error
+          retention-days: 14
       - name: Run Clippy
         run: cargo clippy --manifest-path prototypes/medicine-procurement-core/Cargo.toml --locked -- -D warnings
