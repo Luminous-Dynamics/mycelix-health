@@ -1,0 +1,41 @@
+name: FHIR Claim Adapter
+
+on:
+  pull_request:
+    paths:
+      - "prototypes/fhir-claim-adapter/**"
+      - "prototypes/claims-integrity-core/**"
+      - ".github/workflows/fhir-claim-adapter.yml"
+  push:
+    branches: [main, develop]
+    paths:
+      - "prototypes/fhir-claim-adapter/**"
+      - "prototypes/claims-integrity-core/**"
+      - ".github/workflows/fhir-claim-adapter.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: FHIR adapter (Rust ${{ matrix.toolchain }})
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        toolchain: ["1.96.0", "1.99.0"]
+    steps:
+      - name: Check out source
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@e2a55d2ffb04f378e9626c28d38b36d230d1e12f # toolchain input, pinned SHA
+        with:
+          toolchain: ${{ matrix.toolchain }}
+          components: rustfmt, clippy
+      - name: Check formatting
+        run: cargo fmt --manifest-path prototypes/fhir-claim-adapter/Cargo.toml -- --check
+      - name: Run unit and adversarial tests
+        run: cargo test --manifest-path prototypes/fhir-claim-adapter/Cargo.toml --locked
+      - name: Run Clippy
+        run: cargo clippy --manifest-path prototypes/fhir-claim-adapter/Cargo.toml --locked -- -D warnings
