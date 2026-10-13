@@ -13,8 +13,8 @@
 
 use medicine_procurement_core::{
     plan_procurement_v1, verify_plan_v1, LicenceTerritoryState, MarketAuthorizationState,
-    ProcurementPlanV1, ProcurementPolicyV1, QualityEvidenceState, SourceReuseState,
-    SourceUseScopeV1, SupplyOfferV1, UnitCostBreakdownV1,
+    PriceKindV1, ProcurementPlanV1, ProcurementPolicyV1, QualityEvidenceState,
+    SourceReuseState, SourceUseScopeV1, SupplyOfferV1, UnitCostBreakdownV1,
 };
 
 const DIGEST_A: &str = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
@@ -68,6 +68,8 @@ fn policy(
         medicine_presentation_id: medicine_id.to_string(),
         jurisdiction: region.to_string(),
         currency_code: "ZAR".to_string(),
+        required_price_kind: PriceKindV1::SupplierQuote,
+        required_price_class_id: "synthetic-supplier-quote-v1".to_string(),
         normalized_unit_basis: format!("synthetic-unit-{medicine_id}"),
         as_of_yyyymmdd: 20261013,
         demand_units: DEMAND_UNITS,
@@ -167,6 +169,8 @@ fn offers_for(
             jurisdiction: region.to_string(),
             currency_code: "ZAR".to_string(),
             unit_basis: unit_basis.clone(),
+            price_kind: PriceKindV1::SupplierQuote,
+            price_class_id: "synthetic-supplier-quote-v1".to_string(),
             price_observation_sha256: DIGEST_A.to_string(),
             quality_evidence_sha256: DIGEST_B.to_string(),
             authorization_evidence_sha256: DIGEST_A.to_string(),
