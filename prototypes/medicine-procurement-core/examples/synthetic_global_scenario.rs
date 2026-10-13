@@ -226,7 +226,7 @@ fn csv_row(
     let delta = resilient.total_allocated_cost_minor as i128
         - low_cost.total_allocated_cost_minor as i128;
     format!(
-        "{medicine_id},{region},{},{},{},{},{},{},{},{},{},{},{},{},0,0",
+        "{medicine_id},{region},{},{},{},{},{},{},{},{},{},{},{},{},{},0,0",
         stress.label(),
         raw_offer.offer_id,
         raw_offer.unit_cost.acquisition_minor,
@@ -245,7 +245,16 @@ fn csv_row(
 
 fn run() -> Result<(), String> {
     println!(
-        "medicine_id,region,stress,raw_lowest_offer_id,raw_lowest_acquisition_minor,raw_lowest_offer_eligible,lowest_eligible_allocated_units,lowest_eligible_total_cost_minor,lowest_eligible_supplier_count,resilient_allocated_units,resilient_total_cost_minor,resilient_supplier_count,resilience_cost_delta_minor,lowest_eligible_expected_on_time_bps,resilient_expected_on_time_bps,lowest_eligible_checker_violations,resilient_checker_violations"
+        "{}",
+        concat!(
+            "medicine_id,region,stress,raw_lowest_offer_id,raw_lowest_acquisition_minor,",
+            "raw_lowest_offer_eligible,lowest_eligible_allocated_units,",
+            "lowest_eligible_total_cost_minor,lowest_eligible_supplier_count,",
+            "resilient_allocated_units,resilient_total_cost_minor,resilient_supplier_count,",
+            "resilience_cost_delta_minor,lowest_eligible_expected_on_time_bps,",
+            "resilient_expected_on_time_bps,lowest_eligible_checker_violations,",
+            "resilient_checker_violations"
+        )
     );
 
     let mut rows = 0_usize;
@@ -316,11 +325,18 @@ fn run() -> Result<(), String> {
     }
     if raw_cheapest_unqualified != EXPECTED_ROWS {
         return Err(format!(
-            "expected the deliberately unqualified raw-lowest quote to be rejected in every row; observed {raw_cheapest_unqualified}/{EXPECTED_ROWS}"
+            concat!(
+                "expected the deliberately unqualified raw-lowest quote to be rejected ",
+                "in every row; observed {raw_cheapest_unqualified}/{EXPECTED_ROWS}"
+            )
         ));
     }
     eprintln!(
-        "synthetic-corpus-check: PASS rows={rows} medicines=12 regions=3 stress_cases=6 raw_lowest_unqualified={raw_cheapest_unqualified}; all 2 policy plans per row independently checked"
+        concat!(
+            "synthetic-corpus-check: PASS rows={rows} medicines=12 regions=3 stress_cases=6 ",
+            "raw_lowest_unqualified={raw_cheapest_unqualified}; ",
+            "both policy plans per row independently checked"
+        )
     );
     Ok(())
 }
