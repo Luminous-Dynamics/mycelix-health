@@ -1116,6 +1116,17 @@ mod tests {
         }
     }
 
+    fn profile_element<'a>(profile: &'a Value, path: &str) -> &'a Value {
+        profile["differential"]["element"]
+            .as_array()
+            .and_then(|elements| {
+                elements
+                    .iter()
+                    .find(|element| element["path"].as_str() == Some(path))
+            })
+            .expect("required profile element")
+    }
+
     fn map_fixture() -> ClaimAdapterOutputV1 {
         match map_fhir_r4_json(FIXTURE.as_bytes(), &context(), &policy())
             .expect("synthetic fixture should parse")
@@ -1475,6 +1486,542 @@ mod tests {
         }));
         assert_eq!(output.envelope.state, MappingStateV1::Indeterminate);
         assert!(output.bundle.lines.is_empty());
+    }
+
+    #[test]
+    fn claim_profile_matches_mapper_contract_and_has_unique_ordered_paths() {
+        const PROFILE: &str = include_str!(
+            "../profiles/synthetic-claim-review-v1.StructureDefinition.json"
+        );
+        let profile: Value = serde_json::from_str(PROFILE).expect("Claim profile JSON");
+        assert_eq!(profile["resourceType"], "StructureDefinition");
+        assert_eq!(profile["type"], "Claim");
+        assert_eq!(profile["fhirVersion"], "4.0.1");
+        assert_eq!(
+            profile["baseDefinition"],
+            "http://hl7.org/fhir/StructureDefinition/Claim"
+        );
+        assert_eq!(profile["url"], CLAIM_PROFILE_CANONICAL);
+
+        let elements = profile["differential"]["element"]
+            .as_array()
+            .expect("profile differential elements");
+        let mut paths = BTreeSet::new();
+        for element in elements {
+            let path = element["path"].as_str().expect("element path");
+            assert!(paths.insert(path.to_string()), "duplicate differential path: {path}");
+        }
+        assert_eq!(profile_element(&profile, "Claim.status")["fixedCode"], "active");
+        assert_eq!(profile_element(&profile, "Claim.use")["fixedCode"], "claim");
+        assert_eq!(profile_element(&profile, "Claim.insurer")["max"], "1");
+        assert_eq!(profile_element(&profile, "Claim.item.sequence")["min"], 1);
+        assert_eq!(profile_element(&profile, "Claim.item.productOrService")["min"], 1);
+        assert_eq!(profile_element(&profile, "Claim.item.net")["min"], 1);
+        assert_eq!(
+            profile_element(&profile, "Claim.item.serviced[x]")["type"][0]["code"],
+            "date"
+        );
+        let item_position = elements
+            .iter()
+            .position(|element| element["path"] == "Claim.item")
+            .expect("Claim.item path");
+        let total_position = elements
+            .iter()
+            .position(|element| element["path"] == "Claim.total")
+            .expect("Claim.total path");
+        assert!(item_position < total_position);
+        assert!(elements[item_position + 1..total_position]
+            .iter()
+            .all(|element| {
+                element["path"]
+                    .as_str()
+                    .is_some_and(|path| path.starts_with("Claim.item."))
+            }));
+    }
+
+    #[test]
+    fn claimresponse_profile_matches_reference_only_contract() {
+        const PROFILE: &str = include_str!(
+            "../profiles/synthetic-claimresponse-linkage-v1.StructureDefinition.json"
+        );
+        let profile: Value = serde_json::from_str(PROFILE)
+            .expect("ClaimResponse profile JSON");
+        assert_eq!(profile["resourceType"], "StructureDefinition");
+        assert_eq!(profile["type"], "ClaimResponse");
+        assert_eq!(profile["fhirVersion"], "4.0.1");
+        assert_eq!(
+            profile["baseDefinition"],
+            "http://hl7.org/fhir/StructureDefinition/ClaimResponse"
+        );
+        assert_eq!(profile["url"], CLAIM_RESPONSE_PROFILE_CANONICAL);
+
+        let elements = profile["differential"]["element"]
+            .as_array()
+            .expect("profile differential elements");
+        let mut paths = BTreeSet::new();
+        for element in elements {
+            let path = element["path"].as_str().expect("element path");
+            assert!(paths.insert(path.to_string()), "duplicate differential path: {path}");
+        }
+        assert_eq!(profile_element(&profile, "ClaimResponse.status")["min"], 1);
+        assert_eq!(profile_element(&profile, "ClaimResponse.outcome")["min"], 1);
+    }
+
+    #[test]
+    fn malformed_json_and_unsupported_resource_types_return_errors() {
+        assert_eq!(
+            map_fhir_r4_json(b"{oops", &context(), &policy()).unwrap_err(),
+            AdapterError::InvalidJson
+        );
+        assert_eq!(
+            map_fhir_r4_json(
+                br#"{"resourceType":"Patient"}"#,
+                &context(),
+                &policy()
+            )
+            .unwrap_err(),
+            AdapterError::UnsupportedResourceType
+        );
+    }
+}
+
+        match map_fhir_r4_json(FIXTURE.as_bytes(), &context(), &policy())
+            .expect("synthetic fixture should parse")
+        {
+            AdapterResultV1::Claim(output) => output,
+            AdapterResultV1::ClaimResponse(_) => panic!("fixture is a Claim"),
+        }
+    }
+
+    #[test]
+    fn supported_synthetic_claim_maps_to_review_only_bundle() {
+        let output = map_fixture();
+        assert_eq!(output.envelope.state, MappingStateV1::Complete);
+        assert_eq!(output.envelope.mapped_items.len(), 2);
+        assert_eq!(output.bundle.lines.len(), 2);
+        assert_eq!(output.bundle.lines[0].amount_minor_units, 12_500);
+        assert_eq!(output.bundle.lines[0].currency_code, "USD");
+        assert_eq!(output.bundle.lines[0].service_date_yyyymmdd, 20261010);
+        assert_eq!(output.envelope.mapped_items[0].coding_code, "SVC-100");
+        assert!(output.bundle.lines[0].service_code.starts_with("fhir-"));
+        assert_eq!(output.evaluation.status, AnalysisStatus::Complete);
+        assert_eq!(output.evaluation.signals.len(), 1);
+        assert_eq!(
+            output.evaluation.signals[0].kind,
+            SignalKind::PotentialDuplicateServiceLines
+        );
+        assert!(output
+            .evaluation
+            .signals
+            .iter()
+            .all(|signal| signal.decision_authority
+                == claims_integrity_core::DecisionAuthority::NonAuthoritativeReviewLead));
+    }
+
+    #[test]
+    fn claim_response_is_reference_only_and_never_a_service_line() {
+        let value = serde_json::json!({
+            "resourceType": "ClaimResponse",
+            "id": "synthetic-response-001",
+            "meta": {
+                "versionId": "7",
+                "lastUpdated": "2026-10-12T11:00:00Z",
+                "profile": [CLAIM_RESPONSE_PROFILE_CANONICAL]
+            },
+            "status": "active",
+            "type": {
+                "coding": [{
+                    "system": "http://terminology.hl7.org/CodeSystem/claim-type",
+                    "code": "professional"
+                }]
+            },
+            "use": "claim",
+            "patient": {"reference": "Patient/synthetic-patient-001"},
+            "created": "2026-10-12T10:00:00Z",
+            "insurer": {"reference": "Organization/synthetic-payer-001"},
+            "outcome": "complete",
+            "request": {"reference": "Claim/synthetic-claim-001"},
+            "item": [{
+                "itemSequence": 1,
+                "adjudication": [{
+                    "category": {"text": "benefit"},
+                    "amount": {"value": 125.0, "currency": "USD"}
+                }]
+            }]
+        });
+        let mut ctx = context();
+        ctx.linked_claim_ref = Some("claim-demo-001".to_string());
+        let raw = value.to_string();
+        let result = map_fhir_r4_json(raw.as_bytes(), &ctx, &policy()).expect("valid JSON");
+        let AdapterResultV1::ClaimResponse(response) = result else {
+            panic!("ClaimResponse must remain distinct");
+        };
+        assert_eq!(
+            response.linkage_state,
+            ClaimResponseLinkageStateV1::LinkedViaCallerSuppliedOpaqueRef
+        );
+        assert!(response.request_reference_present);
+        assert_eq!(response.linked_claim_ref.as_deref(), Some("claim-demo-001"));
+        assert!(!response.service_lines_mapped);
+        assert!(response.envelope.mapped_items.is_empty());
+        assert_eq!(response.envelope.state, MappingStateV1::ResponseReferenceOnly);
+    }
+
+    #[test]
+    fn service_period_is_not_coerced_to_single_date() {
+        let mut value: Value = serde_json::from_str(FIXTURE).expect("fixture JSON");
+        value["item"][0].as_object_mut().expect("item object").remove("servicedDate");
+        value["item"][0]["servicedPeriod"] = serde_json::json!({
+            "start": "2026-10-10",
+            "end": "2026-10-12"
+        });
+        let output = match map_fhir_r4_json(
+            value.to_string().as_bytes(),
+            &context(),
+            &policy()
+        ).expect("JSON should parse") {
+            AdapterResultV1::Claim(output) => output,
+            _ => panic!("expected Claim"),
+        };
+        assert_eq!(output.envelope.state, MappingStateV1::Partial);
+        assert_eq!(output.bundle.completeness, InputCompleteness::Partial);
+        assert_eq!(output.bundle.lines.len(), 1);
+        assert!(output.envelope.unmapped_items.iter().any(|item| {
+            item.reason == MappingIssueV1::ServicePeriodNotSupported
+                && item.item_sequence == Some(1)
+        }));
+        assert_eq!(output.evaluation.status, AnalysisStatus::Indeterminate);
+        assert_eq!(output.evaluation.scope, AnalysisScope::ObservedRecordsOnly);
+    }
+
+    #[test]
+    fn unknown_profile_fails_closed() {
+        let mut value: Value = serde_json::from_str(FIXTURE).expect("fixture JSON");
+        value["meta"]["profile"] = serde_json::json!(["http://example.org/unsupported-profile"]);
+        let output = match map_fhir_r4_json(
+            value.to_string().as_bytes(),
+            &context(),
+            &policy()
+        ).expect("valid JSON should produce a fail-closed result") {
+            AdapterResultV1::Claim(output) => output,
+            _ => panic!("expected Claim"),
+        };
+        assert_eq!(output.envelope.state, MappingStateV1::Indeterminate);
+        assert!(output.envelope.global_issues.contains(&MappingIssueV1::UnsupportedProfile));
+        assert!(output.bundle.lines.is_empty());
+        assert_eq!(output.evaluation.status, AnalysisStatus::Indeterminate);
+    }
+
+    #[test]
+    fn unknown_extensions_fail_closed() {
+        let mut value: Value = serde_json::from_str(FIXTURE).expect("fixture JSON");
+        value["item"][0]["extension"] = serde_json::json!([{
+            "url": "urn:example:unknown",
+            "valueString": "synthetic"
+        }]);
+        let output = match map_fhir_r4_json(
+            value.to_string().as_bytes(),
+            &context(),
+            &policy()
+        ).expect("valid JSON should produce a fail-closed result") {
+            AdapterResultV1::Claim(output) => output,
+            _ => panic!("expected Claim"),
+        };
+        assert!(output
+            .envelope
+            .global_issues
+            .contains(&MappingIssueV1::UnsupportedResourceExtension));
+        assert_eq!(output.envelope.state, MappingStateV1::Indeterminate);
+        assert!(output.bundle.lines.is_empty());
+    }
+
+    #[test]
+    fn unsupported_nested_coding_fields_fail_closed() {
+        let mut value: Value = serde_json::from_str(FIXTURE).expect("fixture JSON");
+        value["item"][0]["productOrService"]["text"] = serde_json::json!("synthetic display");
+        let output = match map_fhir_r4_json(
+            value.to_string().as_bytes(),
+            &context(),
+            &policy(),
+        )
+        .expect("valid JSON should produce an explicit loss report")
+        {
+            AdapterResultV1::Claim(output) => output,
+            _ => panic!("expected Claim"),
+        };
+        assert_eq!(output.envelope.state, MappingStateV1::Partial);
+        assert_eq!(output.bundle.completeness, InputCompleteness::Partial);
+        assert!(output.envelope.unmapped_items.iter().any(|item| {
+            item.reason == MappingIssueV1::UnsupportedItemFields
+                && item.unsupported_field_names.contains(&"productOrService".to_string())
+        }));
+        assert_eq!(output.evaluation.status, AnalysisStatus::Indeterminate);
+    }
+
+    #[test]
+    fn unsupported_modifier_is_not_silently_dropped() {
+        let mut value: Value = serde_json::from_str(FIXTURE).expect("fixture JSON");
+        value["item"][0]["modifier"] = serde_json::json!([{
+            "coding": [{"system": "urn:example:modifier", "code": "special"}]
+        }]);
+        let output = match map_fhir_r4_json(
+            value.to_string().as_bytes(),
+            &context(),
+            &policy()
+        ).expect("valid JSON should map with explicit loss report") {
+            AdapterResultV1::Claim(output) => output,
+            _ => panic!("expected Claim"),
+        };
+        assert_eq!(output.envelope.state, MappingStateV1::Partial);
+        assert!(output.envelope.unmapped_items.iter().any(|item| {
+            item.reason == MappingIssueV1::UnsupportedItemFields
+                && item.unsupported_field_names.contains(&"modifier".to_string())
+        }));
+        assert_eq!(output.evaluation.status, AnalysisStatus::Indeterminate);
+    }
+
+    #[test]
+    fn currencies_require_an_explicit_minor_unit_scale() {
+        let mut value: Value = serde_json::from_str(FIXTURE).expect("fixture JSON");
+        value["item"][0]["net"]["currency"] = serde_json::json!("EUR");
+        let output = match map_fhir_r4_json(
+            value.to_string().as_bytes(),
+            &context(),
+            &policy()
+        ).expect("valid JSON should map with explicit loss report") {
+            AdapterResultV1::Claim(output) => output,
+            _ => panic!("expected Claim"),
+        };
+        assert!(output.envelope.unmapped_items.iter().any(|item| {
+            item.reason == MappingIssueV1::UnsupportedCurrency
+                && item.item_sequence == Some(1)
+        }));
+        assert_eq!(output.envelope.state, MappingStateV1::Partial);
+    }
+
+    #[test]
+    fn excessive_decimal_precision_is_not_rounded() {
+        let raw = FIXTURE.replace("125.00", "125.001");
+        let output = match map_fhir_r4_json(
+            raw.as_bytes(),
+            &context(),
+            &policy()
+        ).expect("fixture variant should parse") {
+            AdapterResultV1::Claim(output) => output,
+            _ => panic!("expected Claim"),
+        };
+        assert!(output.envelope.unmapped_items.iter().any(|item| {
+            item.reason == MappingIssueV1::AmountPrecisionWouldBeLost
+        }));
+        assert_eq!(output.envelope.state, MappingStateV1::Partial);
+    }
+
+    #[test]
+    fn mapped_service_code_identity_includes_system_and_version() {
+        let base = map_fixture();
+        let mut changed: Value = serde_json::from_str(FIXTURE).expect("fixture JSON");
+        changed["item"][0]["productOrService"]["coding"][0]["system"] =
+            serde_json::json!("http://example.org/fhir/CodeSystem/other");
+        let changed = match map_fhir_r4_json(
+            changed.to_string().as_bytes(),
+            &context(),
+            &policy()
+        ).expect("valid JSON") {
+            AdapterResultV1::Claim(output) => output,
+            _ => panic!("expected Claim"),
+        };
+        assert_ne!(
+            base.bundle.lines[0].service_code,
+            changed.bundle.lines[0].service_code
+        );
+    }
+
+    #[test]
+    fn exact_payload_digest_changes_when_captured_bytes_change() {
+        let compact = serde_json::to_string(&serde_json::from_str::<Value>(FIXTURE).expect("JSON"))
+            .expect("compact serialization");
+        let first = match map_fhir_r4_json(
+            FIXTURE.as_bytes(),
+            &context(),
+            &policy()
+        ).expect("fixture") {
+            AdapterResultV1::Claim(output) => output,
+            _ => panic!("expected Claim"),
+        };
+        let second = match map_fhir_r4_json(
+            compact.as_bytes(),
+            &context(),
+            &policy()
+        ).expect("compacted fixture") {
+            AdapterResultV1::Claim(output) => output,
+            _ => panic!("expected Claim"),
+        };
+        assert_ne!(first.envelope.source_payload_sha256, second.envelope.source_payload_sha256);
+        assert_ne!(first.envelope.input_manifest_sha256, second.envelope.input_manifest_sha256);
+    }
+
+    #[test]
+    fn duplicate_item_sequences_fail_closed_for_the_whole_claim() {
+        let mut value: Value = serde_json::from_str(FIXTURE).expect("fixture JSON");
+        value["item"][1]["sequence"] = serde_json::json!(1);
+        let output = match map_fhir_r4_json(
+            value.to_string().as_bytes(),
+            &context(),
+            &policy()
+        ).expect("valid JSON") {
+            AdapterResultV1::Claim(output) => output,
+            _ => panic!("expected Claim"),
+        };
+        assert!(output.envelope.global_issues.contains(&MappingIssueV1::DuplicateSequence));
+        assert!(output.bundle.lines.is_empty());
+        assert_eq!(output.envelope.state, MappingStateV1::Indeterminate);
+    }
+
+    #[test]
+    fn preauthorization_is_not_mapped_as_rendered_service_lines() {
+        let mut value: Value = serde_json::from_str(FIXTURE).expect("fixture JSON");
+        value["use"] = serde_json::json!("preauthorization");
+        let output = match map_fhir_r4_json(
+            value.to_string().as_bytes(),
+            &context(),
+            &policy(),
+        )
+        .expect("valid JSON should produce a fail-closed result")
+        {
+            AdapterResultV1::Claim(output) => output,
+            _ => panic!("expected Claim"),
+        };
+        assert!(output
+            .envelope
+            .global_issues
+            .contains(&MappingIssueV1::UnsupportedClaimUse));
+        assert!(output.bundle.lines.is_empty());
+        assert_eq!(output.envelope.state, MappingStateV1::Indeterminate);
+    }
+
+    #[test]
+    fn missing_required_fhir_claim_context_fails_closed() {
+        let mut value: Value = serde_json::from_str(FIXTURE).expect("fixture JSON");
+        value.as_object_mut().expect("Claim object").remove("patient");
+        let output = match map_fhir_r4_json(
+            value.to_string().as_bytes(),
+            &context(),
+            &policy(),
+        )
+        .expect("valid JSON should produce a fail-closed result")
+        {
+            AdapterResultV1::Claim(output) => output,
+            _ => panic!("expected Claim"),
+        };
+        assert!(output
+            .envelope
+            .global_issues
+            .contains(&MappingIssueV1::MissingRequiredClaimFields));
+        assert!(output.bundle.lines.is_empty());
+        assert_eq!(output.envelope.state, MappingStateV1::Indeterminate);
+        assert_eq!(output.evaluation.status, AnalysisStatus::Indeterminate);
+    }
+
+    #[test]
+    fn invalid_dates_and_missing_net_are_explicitly_unmapped() {
+        let mut value: Value = serde_json::from_str(FIXTURE).expect("fixture JSON");
+        value["item"][0]["servicedDate"] = serde_json::json!("2026-02-30");
+        value["item"][1].as_object_mut().expect("item object").remove("net");
+        let output = match map_fhir_r4_json(
+            value.to_string().as_bytes(),
+            &context(),
+            &policy()
+        ).expect("valid JSON") {
+            AdapterResultV1::Claim(output) => output,
+            _ => panic!("expected Claim"),
+        };
+        assert!(output.envelope.unmapped_items.iter().any(|item| {
+            item.item_sequence == Some(1) && item.reason == MappingIssueV1::InvalidServiceDate
+        }));
+        assert!(output.envelope.unmapped_items.iter().any(|item| {
+            item.item_sequence == Some(2) && item.reason == MappingIssueV1::MissingNetMoney
+        }));
+        assert_eq!(output.envelope.state, MappingStateV1::Indeterminate);
+        assert!(output.bundle.lines.is_empty());
+    }
+
+    #[test]
+    fn claim_profile_matches_mapper_contract_and_has_unique_ordered_paths() {
+        const PROFILE: &str = include_str!(
+            "../profiles/synthetic-claim-review-v1.StructureDefinition.json"
+        );
+        let profile: Value = serde_json::from_str(PROFILE).expect("Claim profile JSON");
+        assert_eq!(profile["resourceType"], "StructureDefinition");
+        assert_eq!(profile["type"], "Claim");
+        assert_eq!(profile["fhirVersion"], "4.0.1");
+        assert_eq!(
+            profile["baseDefinition"],
+            "http://hl7.org/fhir/StructureDefinition/Claim"
+        );
+        assert_eq!(profile["url"], CLAIM_PROFILE_CANONICAL);
+
+        let elements = profile["differential"]["element"]
+            .as_array()
+            .expect("profile differential elements");
+        let mut paths = BTreeSet::new();
+        for element in elements {
+            let path = element["path"].as_str().expect("element path");
+            assert!(paths.insert(path.to_string()), "duplicate differential path: {path}");
+        }
+        assert_eq!(profile_element(&profile, "Claim.status")["fixedCode"], "active");
+        assert_eq!(profile_element(&profile, "Claim.use")["fixedCode"], "claim");
+        assert_eq!(profile_element(&profile, "Claim.insurer")["max"], "1");
+        assert_eq!(profile_element(&profile, "Claim.item.sequence")["min"], 1);
+        assert_eq!(profile_element(&profile, "Claim.item.productOrService")["min"], 1);
+        assert_eq!(profile_element(&profile, "Claim.item.net")["min"], 1);
+        assert_eq!(
+            profile_element(&profile, "Claim.item.serviced[x]")["type"][0]["code"],
+            "date"
+        );
+        let item_position = elements
+            .iter()
+            .position(|element| element["path"] == "Claim.item")
+            .expect("Claim.item path");
+        let total_position = elements
+            .iter()
+            .position(|element| element["path"] == "Claim.total")
+            .expect("Claim.total path");
+        assert!(item_position < total_position);
+        assert!(elements[item_position + 1..total_position]
+            .iter()
+            .all(|element| {
+                element["path"]
+                    .as_str()
+                    .is_some_and(|path| path.starts_with("Claim.item."))
+            }));
+    }
+
+    #[test]
+    fn claimresponse_profile_matches_reference_only_contract() {
+        const PROFILE: &str = include_str!(
+            "../profiles/synthetic-claimresponse-linkage-v1.StructureDefinition.json"
+        );
+        let profile: Value = serde_json::from_str(PROFILE)
+            .expect("ClaimResponse profile JSON");
+        assert_eq!(profile["resourceType"], "StructureDefinition");
+        assert_eq!(profile["type"], "ClaimResponse");
+        assert_eq!(profile["fhirVersion"], "4.0.1");
+        assert_eq!(
+            profile["baseDefinition"],
+            "http://hl7.org/fhir/StructureDefinition/ClaimResponse"
+        );
+        assert_eq!(profile["url"], CLAIM_RESPONSE_PROFILE_CANONICAL);
+
+        let elements = profile["differential"]["element"]
+            .as_array()
+            .expect("profile differential elements");
+        let mut paths = BTreeSet::new();
+        for element in elements {
+            let path = element["path"].as_str().expect("element path");
+            assert!(paths.insert(path.to_string()), "duplicate differential path: {path}");
+        }
+        assert_eq!(profile_element(&profile, "ClaimResponse.status")["min"], 1);
+        assert_eq!(profile_element(&profile, "ClaimResponse.outcome")["min"], 1);
     }
 
     #[test]
