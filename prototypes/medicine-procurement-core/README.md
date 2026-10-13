@@ -8,7 +8,7 @@ A standalone, dependency-free Rust baseline for allocating synthetic normalized 
 - An offer is eligible only when product presentation and unit basis exactly match; the price observation is current; source reuse is permitted; quality evidence is qualified; market authorization and licence territory are explicitly permitted; and capacity, lead time, shelf life and policy-required delivery history meet the policy.
 - Lower price can never compensate for a failed hard eligibility gate.
 - Price, quality, authorization, licensing, capacity and delivery reliability remain separate evidence dimensions.
-- Source digests are supplied by an upstream evidence layer and syntax-checked only. This crate does not fetch/authenticate source artifacts or verify that a digest matches bytes.
+- Source, rights, quality, authorization and capacity digests are supplied by an upstream evidence layer and syntax-checked only. This crate does not fetch/authenticate source artifacts or verify that a digest matches bytes. The policy declares an intended source-use scope; the offer must explicitly list that scope. This is a fail-closed consistency check, not legal verification of the declared permission.
 - Costs are per normalized medicine unit in one scenario currency. There is no implicit FX conversion, strength/form/package equivalence, dose conversion or clinical substitution.
 - Expected expiry/wastage and shortage-impact costs may be scenario estimates. The caller must record their provenance, uncertainty and assumptions in the input manifest.
 
@@ -30,7 +30,7 @@ For each normalized unit, the baseline sums acquisition, freight, insurance, dut
 
 ## Tests and verification
 
-The source contains 22 uniquely named synthetic unit tests covering failed quality/authorization/licence gates, mismatched presentation/unit basis, stale price, restricted source reuse, missing delivery history, duplicate offer identities, arithmetic overflow, input-order determinism, insufficient supply, concentration limits, invalid policy/date inputs, and rejection of manually injected ineligible allocations or altered cost receipts. This is a source inventory, not evidence those tests have executed.
+The source contains 24 uniquely named synthetic unit tests covering failed quality/authorization/licence gates, mismatched presentation/unit basis, stale price, restricted source reuse, missing delivery history, duplicate offer identities, arithmetic overflow, input-order determinism, insufficient supply, concentration limits, invalid policy/date inputs, and rejection of manually injected ineligible allocations or altered cost receipts. This is a source inventory, not evidence those tests have executed.
 
 Run the following from the repository root:
 
