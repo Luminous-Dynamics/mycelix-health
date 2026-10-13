@@ -16,6 +16,7 @@ The prototype intentionally makes no automated payment, coverage, care, sanction
 - ReversalTargetMismatch: flags a reversal that references a submitted line but disagrees on beneficiary, provider, service code, service date, currency, or full amount.
 - A referenced submitted line is excluded from duplicate grouping only when those service fields and the full amount match the reversal. An inconsistent reversal cannot hide a potential duplicate; ordinary matching reversal-plus-replacement flows still avoid an automatic duplicate signal.
 - Incomplete input still permits observed-record analysis, but the overall result is Indeterminate and scope is ObservedRecordsOnly; absence of a signal must not be interpreted as a clean result.
+- Every signal carries the ruleset version, code-set version, declared input completeness, manifest/policy digests, and line references whose source-record digests remain paired with the corresponding identifiers.
 
 The core deliberately avoids opaque risk scores and provider reputation scores.
 
