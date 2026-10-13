@@ -273,7 +273,11 @@ pub fn plan_procurement_v1(
     candidates.sort_by(|left, right| {
         left.unit_cost_minor
             .cmp(&right.unit_cost_minor)
-            .then_with(|| offers[left.offer_index].offer_id.cmp(&offers[right.offer_index].offer_id))
+            .then_with(|| {
+                offers[left.offer_index]
+                    .offer_id
+                    .cmp(&offers[right.offer_index].offer_id)
+            })
     });
     evaluations.sort_by(|left, right| {
         left.offer_id
@@ -677,6 +681,9 @@ fn is_valid_date(value: u32) -> bool {
     };
     (1..=last_day).contains(&day)
 }
+
+mod verify;
+pub use verify::{verify_plan_v1, PlanViolationV1};
 
 #[cfg(test)]
 mod tests {
