@@ -61,8 +61,12 @@ pub struct SourceManifestV1 {
     pub source_id: String,
     pub publisher_id: String,
     pub source_revision_id: String,
+    pub adapter_version_id: String,
+    pub parser_version_id: String,
     pub source_published_yyyymmdd: u32,
     pub source_snapshot_sha256: String,
+    /// Digest of the complete, immutable rights/source-manifest record.
+    pub source_manifest_sha256: String,
     pub terms_document_sha256: String,
     pub permission_evidence_sha256: String,
     pub rights_reviewer_id: String,
@@ -85,6 +89,8 @@ pub struct SourceIngestionPolicyV1 {
     pub required_price_class_id: String,
     pub required_currency_code: String,
     pub required_normalized_unit_basis: String,
+    /// Digest of the complete policy, including scope and required operations.
+    pub policy_sha256: String,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -142,7 +148,11 @@ pub struct NormalizedPriceObservationV1 {
     pub source_id: String,
     pub publisher_id: String,
     pub source_revision_id: String,
+    pub adapter_version_id: String,
+    pub parser_version_id: String,
     pub source_snapshot_sha256: String,
+    pub source_manifest_sha256: String,
+    pub ingestion_policy_sha256: String,
     pub source_record_id: String,
     pub source_record_sha256: String,
     pub rights_permission_evidence_sha256: String,
@@ -228,7 +238,11 @@ pub fn normalize_price_observation_v1(
         source_id: manifest.source_id.clone(),
         publisher_id: manifest.publisher_id.clone(),
         source_revision_id: manifest.source_revision_id.clone(),
+        adapter_version_id: manifest.adapter_version_id.clone(),
+        parser_version_id: manifest.parser_version_id.clone(),
         source_snapshot_sha256: manifest.source_snapshot_sha256.clone(),
+        source_manifest_sha256: manifest.source_manifest_sha256.clone(),
+        ingestion_policy_sha256: policy.policy_sha256.clone(),
         source_record_id: record.source_record_id.clone(),
         source_record_sha256: record.source_record_sha256.clone(),
         rights_permission_evidence_sha256: manifest.permission_evidence_sha256.clone(),
@@ -264,6 +278,7 @@ fn validate_ingestion_policy(
         || !is_identifier(&policy.required_normalized_unit_basis)
         || policy.required_price_kind == PriceKindV1::Unknown
         || policy.required_operations.is_empty()
+        || !is_sha256_hex(&policy.policy_sha256)
     {
         return Err(SourceContractRejectionV1::InvalidPolicy);
     }
@@ -277,6 +292,8 @@ fn validate_source_manifest(
     if !is_identifier(&manifest.source_id)
         || !is_identifier(&manifest.publisher_id)
         || !is_identifier(&manifest.source_revision_id)
+        || !is_identifier(&manifest.adapter_version_id)
+        || !is_identifier(&manifest.parser_version_id)
         || !is_valid_date(manifest.source_published_yyyymmdd)
         || manifest.source_published_yyyymmdd > policy.as_of_yyyymmdd
         || !is_identifier(&manifest.rights_reviewer_id)
@@ -285,6 +302,7 @@ fn validate_source_manifest(
     }
     if ![
         manifest.source_snapshot_sha256.as_str(),
+        manifest.source_manifest_sha256.as_str(),
         manifest.terms_document_sha256.as_str(),
         manifest.permission_evidence_sha256.as_str(),
     ]
@@ -441,6 +459,7 @@ mod tests {
             required_price_class_id: "za-ndoh.sep".to_string(),
             required_currency_code: "ZAR".to_string(),
             required_normalized_unit_basis: "tablet".to_string(),
+            policy_sha256: DIGEST_B.to_string(),
         }
     }
 
@@ -449,8 +468,11 @@ mod tests {
             source_id: "za-ndoh-medicine-prices".to_string(),
             publisher_id: "za-ndoh".to_string(),
             source_revision_id: "snapshot-20261001".to_string(),
+            adapter_version_id: "ndoh-adapter-v1".to_string(),
+            parser_version_id: "strict-csv-parser-v1".to_string(),
             source_published_yyyymmdd: 20261001,
             source_snapshot_sha256: DIGEST_A.to_string(),
+            source_manifest_sha256: DIGEST_C.to_string(),
             terms_document_sha256: DIGEST_B.to_string(),
             permission_evidence_sha256: DIGEST_C.to_string(),
             rights_reviewer_id: "reviewer-legal-01".to_string(),
