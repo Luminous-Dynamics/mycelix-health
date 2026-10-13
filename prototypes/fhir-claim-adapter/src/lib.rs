@@ -371,7 +371,10 @@ fn map_claim(
     if value.get("use").and_then(Value::as_str) != Some("claim") {
         global_issues.push(MappingIssueV1::UnsupportedClaimUse);
     }
-    if unsupported_claim_context_fields(value) || unsupported_meta_fields(value) {
+    if unsupported_claim_context_fields(value)
+        || unsupported_meta_fields(value)
+        || !supported_claim_nested_shapes(value)
+    {
         global_issues.push(MappingIssueV1::UnsupportedClaimContext);
     }
     if !required_claim_fields_present(value) {
@@ -542,9 +545,20 @@ fn map_item(
         ));
     };
 
-    let Some(codings) = item
-        .get("productOrService")
-        .and_then(|value| value.get("coding"))
+    let Some(product_or_service) = item.get("productOrService") else {
+        return Err(unmapped(
+            MappingIssueV1::MissingProductOrService,
+            Vec::new(),
+        ));
+    };
+    if !has_only_keys(product_or_service, &["coding"]) {
+        return Err(unmapped(
+            MappingIssueV1::UnsupportedItemFields,
+            vec!["productOrService".to_string()],
+        ));
+    }
+    let Some(codings) = product_or_service
+        .get("coding")
         .and_then(Value::as_array)
     else {
         return Err(unmapped(
@@ -556,6 +570,15 @@ fn map_item(
         return Err(unmapped(
             MappingIssueV1::MissingOrAmbiguousCoding,
             Vec::new(),
+        ));
+    }
+    if codings
+        .iter()
+        .any(|coding| !has_only_keys(coding, &["system", "version", "code"]))
+    {
+        return Err(unmapped(
+            MappingIssueV1::UnsupportedItemFields,
+            vec!["productOrService.coding".to_string()],
         ));
     }
     let coding = &codings[0];
@@ -589,6 +612,12 @@ fn map_item(
     let Some(net) = item.get("net") else {
         return Err(unmapped(MappingIssueV1::MissingNetMoney, Vec::new()));
     };
+    if !has_only_keys(net, &["value", "currency"]) {
+        return Err(unmapped(
+            MappingIssueV1::UnsupportedItemFields,
+            vec!["net".to_string()],
+        ));
+    }
     let Some(value_number) = net.get("value").and_then(Value::as_number) else {
         return Err(unmapped(MappingIssueV1::InvalidNetMoney, Vec::new()));
     };
@@ -796,6 +825,59 @@ fn required_claim_response_fields_present(value: &Value) -> bool {
         && has_created
         && has_insurer
         && has_outcome
+}
+
+fn has_only_keys(value: &Value, allowed: &[&str]) -> bool {
+    value
+        .as_object()
+        .is_some_and(|object| object.keys().all(|key| allowed.contains(&key.as_str())))
+}
+
+fn supported_reference_shape(value: &Value, key: &str) -> bool {
+    value.get(key).is_none_or(|reference| {
+        has_only_keys(reference, &["reference"])
+            && reference
+                .get("reference")
+                .and_then(Value::as_str)
+                .is_some_and(|reference| !reference.trim().is_empty())
+    })
+}
+
+fn supported_coding_concept_shape(value: &Value, key: &str) -> bool {
+    value.get(key).is_some_and(|concept| {
+        has_only_keys(concept, &["coding"])
+            && concept
+                .get("coding")
+                .and_then(Value::as_array)
+                .is_some_and(|codings| {
+                    !codings.is_empty()
+                        && codings.iter().all(|coding| {
+                            has_only_keys(coding, &["system", "version", "code"])
+                        })
+                })
+    })
+}
+
+fn supported_claim_nested_shapes(value: &Value) -> bool {
+    if !supported_reference_shape(value, "patient")
+        || !supported_reference_shape(value, "provider")
+        || !supported_reference_shape(value, "insurer")
+        || !supported_coding_concept_shape(value, "type")
+        || !supported_coding_concept_shape(value, "priority")
+    {
+        return false;
+    }
+    value
+        .get("insurance")
+        .and_then(Value::as_array)
+        .is_some_and(|insurance| {
+            insurance.iter().all(|entry| {
+                has_only_keys(entry, &["sequence", "focal", "coverage"])
+                    && entry.get("coverage").is_some_and(|coverage| {
+                        has_only_keys(coverage, &["reference"])
+                    })
+            })
+        })
 }
 
 fn unsupported_claim_context_fields(value: &Value) -> bool {
@@ -1183,6 +1265,29 @@ mod tests {
             .contains(&MappingIssueV1::UnsupportedResourceExtension));
         assert_eq!(output.envelope.state, MappingStateV1::Indeterminate);
         assert!(output.bundle.lines.is_empty());
+    }
+
+    #[test]
+    fn unsupported_nested_coding_fields_fail_closed() {
+        let mut value: Value = serde_json::from_str(FIXTURE).expect("fixture JSON");
+        value["item"][0]["productOrService"]["text"] = serde_json::json!("synthetic display");
+        let output = match map_fhir_r4_json(
+            value.to_string().as_bytes(),
+            &context(),
+            &policy(),
+        )
+        .expect("valid JSON should produce an explicit loss report")
+        {
+            AdapterResultV1::Claim(output) => output,
+            _ => panic!("expected Claim"),
+        };
+        assert_eq!(output.envelope.state, MappingStateV1::Partial);
+        assert_eq!(output.bundle.completeness, InputCompleteness::Partial);
+        assert!(output.envelope.unmapped_items.iter().any(|item| {
+            item.reason == MappingIssueV1::UnsupportedItemFields
+                && item.unsupported_field_names.contains(&"productOrService".to_string())
+        }));
+        assert_eq!(output.evaluation.status, AnalysisStatus::Indeterminate);
     }
 
     #[test]
