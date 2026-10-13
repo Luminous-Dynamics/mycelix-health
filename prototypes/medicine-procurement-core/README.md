@@ -1,0 +1,50 @@
+# Medicine Procurement Core (Prototype)
+
+A standalone, dependency-free Rust baseline for allocating synthetic normalized medicine units across qualified offers. It is a deterministic greedy baseline, not a global optimizer or purchasing authority.
+
+## Safety and scope
+
+- No prescribing, therapeutic substitution, patient-level allocation, EHR integration, live supplier connection, tender award, purchase order or payment authority.
+- An offer is eligible only when product presentation and unit basis exactly match; the price observation is current; source reuse is permitted; quality evidence is qualified; market authorization and licence territory are explicitly permitted; and capacity, lead time, shelf life and policy-required delivery history meet the policy.
+- Lower price can never compensate for a failed hard eligibility gate.
+- Price, quality, authorization, licensing, capacity and delivery reliability remain separate evidence dimensions.
+- Source digests are supplied by an upstream evidence layer and syntax-checked only. This crate does not fetch/authenticate source artifacts or verify that a digest matches bytes.
+- Costs are per normalized medicine unit in one scenario currency. There is no implicit FX conversion, strength/form/package equivalence, dose conversion or clinical substitution.
+- Expected expiry/wastage and shortage-impact costs may be scenario estimates. The caller must record their provenance, uncertainty and assumptions in the input manifest.
+
+## What it does
+
+1. Validates scenario and digest syntax.
+2. Excludes offers failing product comparability, price freshness, source-reuse, quality, authorization, licensing, shelf-life, lead-time, capacity or policy gates, with machine-readable reasons.
+3. Sorts eligible offers by the transparent sum of declared per-unit lifecycle cost components.
+4. Seeds the required number of distinct suppliers at their selected offer minimum orders, then fills demand in cost order subject to offer availability and aggregate supplier-concentration caps.
+5. Reports allocated and unmet units, extended costs, excluded offers, delivery-history caveats and an expected on-time delivery estimate only when every selected offer has sufficient traceable rate evidence.
+6. Marks unmet demand or unsatisfied sourcing constraints as InfeasibleWithinObservedOffers. Missing offers/prices never become zero-cost success.
+7. Emits deterministic output for the same policy, manifest digests and offer set.
+
+The method is deliberately named DeterministicGreedyBaselineV1. It is not proven globally optimal, and a greedy run may be infeasible even when a different allocation exists. A later exact/robust optimizer must compare itself against this baseline and pass a separate independent checker.
+
+## Cost accounting
+
+For each normalized unit, the baseline sums acquisition, freight, insurance, duties/tax, quality testing, storage/cold-chain, financing, expiry/wastage, and expected shortage impact. Amounts use the scenario currency's minor units with checked integer arithmetic. Different currencies and unit bases are not compared without an explicit normalization step. A current price observation does not prove that the quoted price is actually available.
+
+## Tests and verification
+
+Synthetic tests cover failed quality/authorization/licence gates, mismatched presentation/unit basis, stale price, restricted source reuse, missing delivery history, duplicate offer identities, arithmetic overflow, input-order determinism, insufficient supply, concentration limits and invalid policy/date inputs.
+
+Run the following from the repository root:
+
+    cargo fmt --manifest-path prototypes/medicine-procurement-core/Cargo.toml -- --check
+    cargo test --manifest-path prototypes/medicine-procurement-core/Cargo.toml --locked
+    cargo clippy --manifest-path prototypes/medicine-procurement-core/Cargo.toml --locked -- -D warnings
+
+A dedicated workflow tests Rust 1.96.0 and 1.99.0. Source-level test counts and queued CI are not pass evidence.
+
+## Next qualification steps
+
+- Add a frozen synthetic corpus with 10–20 medicine presentations and multiple supplier offers.
+- Add an independent checker that recomputes offer eligibility, allocation caps, costs and unmet demand from immutable inputs rather than trusting the allocator.
+- Compare lowest-quote, lowest-eligible-landed-cost and resilience-constrained scenarios, including supplier failure, FX and freight shocks.
+- Only then ingest carefully licensed public price observations with original price class, currency, unit, date, jurisdiction and source reuse terms preserved.
+
+Tracked in Mycelix-Health issue #273: https://github.com/Luminous-Dynamics/mycelix-health/issues/273
