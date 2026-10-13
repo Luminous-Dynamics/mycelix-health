@@ -8,7 +8,7 @@
 //! or authorize a clinical, coverage, payment, or enforcement decision.
 
 use claims_integrity_core::{
-    evaluate, AnalysisReportPlaceholder, ClaimEvidenceBundleV1, ClaimLineStatus, ClaimLineV1,
+    evaluate, ClaimEvidenceBundleV1, ClaimLineStatus, ClaimLineV1, EvaluationReportV1,
     EvaluationReportV1, InputCompleteness,
 };
 use serde_json::Value;
@@ -277,7 +277,11 @@ pub fn map_fhir_r4_json(
                 .and_then(|v| v.get("reference"))
                 .and_then(Value::as_str)
                 .is_some_and(|reference| !reference.trim().is_empty());
-            let linked_claim_ref = context.linked_claim_ref.clone();
+            let linked_claim_ref = if request_reference_present {
+                context.linked_claim_ref.clone()
+            } else {
+                None
+            };
             let linkage_state = if !request_reference_present {
                 global_issues.push(MappingIssueV1::ClaimResponseNotMappedToServiceLines);
                 ClaimResponseLinkageStateV1::SourceRequestMissing
@@ -629,7 +633,7 @@ enum DecimalError {
 }
 
 fn decimal_to_minor_units(value: &str, scale: u8) -> Result<u64, DecimalError> {
-    if value.is_empty() || value.starts_with('-') || value.starts_with('+') || value.contains(['e', 'E']) {
+    if value.is_empty() || value.starts_with('-') || value.starts_with('+') || value.contains('e') || value.contains('E') {
         return Err(DecimalError::InvalidOrOutOfRange);
     }
     if scale > 6 {
