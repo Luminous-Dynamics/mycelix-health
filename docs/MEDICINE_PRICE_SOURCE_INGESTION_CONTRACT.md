@@ -48,6 +48,7 @@ Every source adapter must emit a versioned manifest before rows are processed:
 - Exact terms URL and retrieved terms revision/digest where possible.
 - Permission decision, reviewer/authority, permitted purpose, permitted geography, storage/caching rights, transformation rights, redistribution/display rights, commercial-use status, expiry/review date and any attribution obligations.
 - Rights review state and evidence digest, review date, and explicit permission-validity state: `PerpetualByTerms` only when the reviewed terms affirm no expiry, `ValidThrough(date)` when a date is stated, or `Unknown` (which must fail closed).
+- A digest of the complete immutable source manifest, included in each normalized observation alongside the source snapshot digest and ingestion-policy digest. Receipts also retain adapter/parser version identifiers so normalizations can be reproduced from the same manifest and policy.
 - Required operations are enumerated independently of intended-use scope: bulk extraction, raw-byte storage, derived-record storage, transformation, publication of derived aggregates, and raw-record redistribution. A commercial-analysis permission does not automatically grant every one of those operations.
 - Source availability and freshness limits, known limitations, and contact/escalation route.
 - Whether original bytes may be retained. When not permitted, preserve only the metadata and evidence that are lawful to keep.
