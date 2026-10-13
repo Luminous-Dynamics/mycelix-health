@@ -687,6 +687,32 @@ mod tests {
     }
 
     #[test]
+    fn unknown_completeness_never_reports_complete_even_without_signals() {
+        let mut input = bundle(vec![line("line-a")]);
+        input.completeness = InputCompleteness::Unknown;
+        let report = evaluate(&input);
+
+        assert_eq!(report.status, AnalysisStatus::Indeterminate);
+        assert_eq!(report.scope, AnalysisScope::ObservedRecordsOnly);
+        assert_eq!(
+            report.reasons,
+            vec![AnalysisReason::UnknownInputCompleteness]
+        );
+        assert!(report.signals.is_empty());
+    }
+
+    #[test]
+    fn invalid_identifier_fails_closed_without_signals() {
+        let mut invalid = line("line-a");
+        invalid.provider_ref = "provider with spaces".to_string();
+        let report = evaluate(&bundle(vec![invalid]));
+
+        assert_eq!(report.status, AnalysisStatus::Indeterminate);
+        assert_eq!(report.reasons, vec![AnalysisReason::InvalidLineIdentifier]);
+        assert!(report.signals.is_empty());
+    }
+
+    #[test]
     fn malformed_digest_fails_closed_without_signals() {
         let mut input = bundle(vec![line("line-a"), line("line-b")]);
         input.policy_digest = "not-a-digest".to_string();
