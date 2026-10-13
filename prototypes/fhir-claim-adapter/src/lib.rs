@@ -367,7 +367,7 @@ fn map_claim(
 
     let may_map = global_issues.is_empty();
     if may_map {
-        let items = items.unwrap_or_default();
+        let items = items.expect("mapping gate requires a non-empty item array");
         let mut sequences = BTreeSet::new();
         let mut duplicate_sequence = false;
         for item in items {
@@ -860,10 +860,8 @@ mod tests {
         assert_eq!(output.bundle.lines[0].amount_minor_units, 12_500);
         assert_eq!(output.bundle.lines[0].currency_code, "USD");
         assert_eq!(output.bundle.lines[0].service_date_yyyymmdd, 20261010);
-        assert_ne!(
-            output.envelope.mapped_items[0].coding_system,
-            output.envelope.mapped_items[0].coding_code
-        );
+        assert_eq!(output.envelope.mapped_items[0].coding_code, "SVC-100");
+        assert!(output.bundle.lines[0].service_code.starts_with("fhir-"));
         assert_eq!(output.evaluation.status, AnalysisStatus::Complete);
         assert_eq!(output.evaluation.signals.len(), 1);
         assert_eq!(
