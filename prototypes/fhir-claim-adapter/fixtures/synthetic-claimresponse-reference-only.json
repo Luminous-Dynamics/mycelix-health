@@ -1,0 +1,31 @@
+{
+  "resourceType": "ClaimResponse",
+  "id": "synthetic-response-001",
+  "meta": {
+    "versionId": "7",
+    "lastUpdated": "2026-10-12T11:00:00Z",
+    "profile": [
+      "urn:luminous-dynamics:synthetic:fhir-r4:claimresponse-linkage-v1"
+    ]
+  },
+  "status": "active",
+  "type": {
+    "coding": [{
+      "system": "http://terminology.hl7.org/CodeSystem/claim-type",
+      "code": "professional"
+    }]
+  },
+  "use": "claim",
+  "patient": {"reference": "Patient/synthetic-patient-001"},
+  "created": "2026-10-12T10:00:00Z",
+  "insurer": {"reference": "Organization/synthetic-payer-001"},
+  "outcome": "complete",
+  "request": {"reference": "Claim/synthetic-claim-001"},
+  "item": [{
+    "itemSequence": 1,
+    "adjudication": [{
+      "category": {"text": "benefit"},
+      "amount": {"value": 125.0, "currency": "USD"}
+    }]
+  }]
+}

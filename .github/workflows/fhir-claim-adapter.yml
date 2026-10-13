@@ -1,0 +1,80 @@
+name: FHIR Claim Adapter
+
+on:
+  pull_request:
+    paths:
+      - "prototypes/fhir-claim-adapter/**"
+      - "prototypes/claims-integrity-core/**"
+      - ".github/workflows/fhir-claim-adapter.yml"
+  push:
+    branches: [main, develop]
+    paths:
+      - "prototypes/fhir-claim-adapter/**"
+      - "prototypes/claims-integrity-core/**"
+      - ".github/workflows/fhir-claim-adapter.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  validate-fhir-profiles:
+    name: Validate FHIR R4 profiles and synthetic fixture
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - name: Check out source
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - name: Install Java 17
+        uses: actions/setup-java@c5195efecf7bdfc987ee8bae7a71cb8b11521c00 # v4.7.1
+        with:
+          distribution: temurin
+          java-version: "17"
+      - name: Download pinned HL7 FHIR validator
+        env:
+          VALIDATOR_SHA256: 1178b6a3a3fe98d9cd9545cadee505274967332466001d857e4d8bed7138a5bc
+        run: |
+          curl --fail --location --proto '=https' --tlsv1.2 \
+            --output "$RUNNER_TEMP/validator_cli.jar" \
+            https://github.com/hapifhir/org.hl7.fhir.core/releases/download/7.0.1/validator_cli.jar
+          echo "$VALIDATOR_SHA256  $RUNNER_TEMP/validator_cli.jar" | sha256sum --check
+      - name: Validate StructureDefinition resources against FHIR R4
+        run: |
+          java -jar "$RUNNER_TEMP/validator_cli.jar" \
+            prototypes/fhir-claim-adapter/profiles/StructureDefinition-synthetic-claim-review-v1.json \
+            -version 4.0.1 -tx n/a
+          java -jar "$RUNNER_TEMP/validator_cli.jar" \
+            prototypes/fhir-claim-adapter/profiles/StructureDefinition-synthetic-claimresponse-linkage-v1.json \
+            -version 4.0.1 -tx n/a
+      - name: Validate synthetic resources against local profiles
+        run: |
+          java -jar "$RUNNER_TEMP/validator_cli.jar" \
+            prototypes/fhir-claim-adapter/fixtures/synthetic-claim-duplicate.json \
+            -version 4.0.1 -ig prototypes/fhir-claim-adapter/profiles \
+            -profile urn:luminous-dynamics:synthetic:fhir-r4:claim-review-v1 -tx n/a
+          java -jar "$RUNNER_TEMP/validator_cli.jar" \
+            prototypes/fhir-claim-adapter/fixtures/synthetic-claimresponse-reference-only.json \
+            -version 4.0.1 -ig prototypes/fhir-claim-adapter/profiles \
+            -profile urn:luminous-dynamics:synthetic:fhir-r4:claimresponse-linkage-v1 -tx n/a
+
+  test:
+    name: FHIR adapter (Rust ${{ matrix.toolchain }})
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        toolchain: ["1.96.0", "1.99.0"]
+    steps:
+      - name: Check out source
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@e2a55d2ffb04f378e9626c28d38b36d230d1e12f # toolchain input, pinned SHA
+        with:
+          toolchain: ${{ matrix.toolchain }}
+          components: rustfmt, clippy
+      - name: Check formatting
+        run: cargo fmt --manifest-path prototypes/fhir-claim-adapter/Cargo.toml -- --check
+      - name: Run unit and adversarial tests
+        run: cargo test --manifest-path prototypes/fhir-claim-adapter/Cargo.toml --locked
+      - name: Run Clippy
+        run: cargo clippy --manifest-path prototypes/fhir-claim-adapter/Cargo.toml --locked -- -D warnings
