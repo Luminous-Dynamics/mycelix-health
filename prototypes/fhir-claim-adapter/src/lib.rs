@@ -1491,7 +1491,7 @@ mod tests {
     #[test]
     fn claim_profile_matches_mapper_contract_and_has_unique_ordered_paths() {
         const PROFILE: &str = include_str!(
-            "../profiles/synthetic-claim-review-v1.StructureDefinition.json"
+            "../profiles/StructureDefinition-synthetic-claim-review-v1.json"
         );
         let profile: Value = serde_json::from_str(PROFILE).expect("Claim profile JSON");
         assert_eq!(profile["resourceType"], "StructureDefinition");
@@ -1542,7 +1542,7 @@ mod tests {
     #[test]
     fn claimresponse_profile_matches_reference_only_contract() {
         const PROFILE: &str = include_str!(
-            "../profiles/synthetic-claimresponse-linkage-v1.StructureDefinition.json"
+            "../profiles/StructureDefinition-synthetic-claimresponse-linkage-v1.json"
         );
         let profile: Value = serde_json::from_str(PROFILE)
             .expect("ClaimResponse profile JSON");
