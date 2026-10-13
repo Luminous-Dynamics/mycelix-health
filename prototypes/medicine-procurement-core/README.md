@@ -30,21 +30,19 @@ For each normalized unit, the baseline sums acquisition, freight, insurance, dut
 
 ## Tests and verification
 
-The source contains 19 uniquely named synthetic unit tests covering failed quality/authorization/licence gates, mismatched presentation/unit basis, stale price, restricted source reuse, missing delivery history, duplicate offer identities, arithmetic overflow, input-order determinism, insufficient supply, concentration limits, invalid policy/date inputs, and rejection of manually injected ineligible allocations or altered cost receipts. This is a source inventory, not evidence those tests have executed.
+The source contains 20 uniquely named synthetic unit tests covering failed quality/authorization/licence gates, mismatched presentation/unit basis, stale price, restricted source reuse, missing delivery history, duplicate offer identities, arithmetic overflow, input-order determinism, insufficient supply, concentration limits, invalid policy/date inputs, and rejection of manually injected ineligible allocations or altered cost receipts. This is a source inventory, not evidence those tests have executed.
 
 Run the following from the repository root:
 
     cargo fmt --manifest-path prototypes/medicine-procurement-core/Cargo.toml -- --check
     cargo test --manifest-path prototypes/medicine-procurement-core/Cargo.toml --locked
+    cargo run --manifest-path prototypes/medicine-procurement-core/Cargo.toml --example synthetic_global_scenario --locked > medicine-procurement-synthetic-report.csv
     cargo clippy --manifest-path prototypes/medicine-procurement-core/Cargo.toml --locked -- -D warnings
 
-A dedicated workflow tests Rust 1.96.0 and 1.99.0. Source-level test counts and queued CI are not pass evidence.
+The executable scenario corpus covers 12 synthetic presentation IDs, 3 hypothetical regions and 6 stress cases (216 rows). Each row compares the raw lowest acquisition quote, a lowest-eligible-landed-cost baseline and a two-supplier / 60%-concentration plan. Stress cases include one supplier failure, a 50% freight shock, extra expiry/wastage, loss of one supplier's quality evidence, and an explicitly synthetic 20% imported-cost shock. Both plans must pass the independent checker and fully satisfy the synthetic demand for the report to be emitted. CI checks the report row count and uploads the CSV artifact for 14 days on both configured toolchains.
 
-## Next qualification steps
+All corpus labels and costs are fictional; costs are synthetic ZAR minor units, not actual drug prices, price comparisons or savings estimates. The imported-cost case models a declared upstream cost shock, not currency conversion. Digest-shaped fixture values are sentinels, not authenticated source artifacts. Source-level test counts and queued CI are not pass evidence.
 
-- Add a frozen synthetic corpus with 10–20 medicine presentations and multiple supplier offers.
-- Extend the independent checker with property-based scenarios, corrupted manifests and duplicate/ambiguous source evidence.
-- Compare lowest-quote, lowest-eligible-landed-cost and resilience-constrained scenarios, including supplier failure, FX and freight shocks.
-- Only then ingest carefully licensed public price observations with original price class, currency, unit, date, jurisdiction and source reuse terms preserved.
+A dedicated workflow tests Rust 1.96.0 and 1.99.0. Remaining qualification steps are property-based/adversarial tests for corrupted manifests and ambiguous source evidence, plus ingestion of carefully licensed public price observations only after preserving price class, currency, package/unit basis, date, jurisdiction and source reuse terms.
 
 Tracked in Mycelix-Health issue #273: https://github.com/Luminous-Dynamics/mycelix-health/issues/273
