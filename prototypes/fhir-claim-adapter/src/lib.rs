@@ -285,9 +285,6 @@ pub fn map_fhir_r4_json(
             if contains_extension(&value) {
                 global_issues.push(MappingIssueV1::UnsupportedResourceExtension);
             }
-            if unsupported_meta_fields(&value) {
-                global_issues.push(MappingIssueV1::UnsupportedClaimContext);
-            }
             let request_reference_present = value
                 .get("request")
                 .and_then(|v| v.get("reference"))
@@ -812,6 +809,7 @@ fn unsupported_claim_context_fields(value: &Value) -> bool {
         "patient",
         "created",
         "provider",
+        "insurer",
         "priority",
         "insurance",
         "item",
