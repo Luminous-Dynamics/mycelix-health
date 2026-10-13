@@ -1,0 +1,13 @@
+[package]
+name = "fhir-claim-adapter"
+version = "0.1.0"
+edition = "2021"
+license = "AGPL-3.0-or-later"
+description = "Synthetic-only, fail-closed FHIR R4 Claim adapter for review-only claims evidence"
+
+[dependencies]
+claims-integrity-core = { path = "../claims-integrity-core" }
+serde_json = { version = "=1.0.150", features = ["arbitrary_precision"] }
+sha2 = "=0.10.9"
+
+[workspace]
