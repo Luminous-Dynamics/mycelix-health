@@ -649,6 +649,60 @@ mod tests {
     }
 
     #[test]
+    fn future_effective_record_is_preserved_but_not_comparison_eligible() {
+        let mut price = record();
+        price.effective_from_yyyymmdd = Some(20261015);
+        let normalized = normalize_price_observation_v1(&manifest(), &policy(), &price)
+            .expect("future-effective record remains explicit");
+        assert_eq!(normalized.temporal_state, PriceTemporalStateV1::FutureEffective);
+        assert!(!normalized.eligible_for_current_price_comparison);
+    }
+
+    #[test]
+    fn invalid_conversion_digest_is_rejected() {
+        let mut price = record();
+        price.source_unit_basis = "pack-of-10".to_string();
+        price.normalized_amount_minor = Some(125);
+        price.normalized_unit_basis = Some("tablet".to_string());
+        price.normalization_method_id = Some("pack-divide-v1".to_string());
+        price.normalization_evidence_sha256 = Some("not-a-sha256".to_string());
+        assert_eq!(
+            normalize_price_observation_v1(&manifest(), &policy(), &price).unwrap_err(),
+            SourceContractRejectionV1::InvalidNormalizationEvidence
+        );
+    }
+
+    #[test]
+    fn invalid_source_record_digest_is_rejected() {
+        let mut price = record();
+        price.source_record_sha256 = "invalid".to_string();
+        assert_eq!(
+            normalize_price_observation_v1(&manifest(), &policy(), &price).unwrap_err(),
+            SourceContractRejectionV1::InvalidSourceDigest
+        );
+    }
+
+    #[test]
+    fn permission_cannot_be_valid_through_a_date_before_its_review() {
+        let mut source = manifest();
+        source.rights_reviewed_yyyymmdd = Some(20261012);
+        source.permission_validity = SourcePermissionValidityV1::ValidThrough(20261011);
+        assert_eq!(
+            normalize_price_observation_v1(&source, &policy(), &record()).unwrap_err(),
+            SourceContractRejectionV1::RightsPermissionExpired
+        );
+    }
+
+    #[test]
+    fn explicit_perpetual_permission_can_pass_when_supported_by_terms() {
+        let mut source = manifest();
+        source.permission_validity = SourcePermissionValidityV1::PerpetualByTerms;
+        let normalized = normalize_price_observation_v1(&source, &policy(), &record())
+            .expect("fictional terms explicitly assert no expiry");
+        assert!(normalized.eligible_for_current_price_comparison);
+    }
+
+    #[test]
     fn unknown_listing_status_never_becomes_current_comparison_candidate() {
         let mut price = record();
         price.listing_status = SourceListingStatusV1::Unknown;
