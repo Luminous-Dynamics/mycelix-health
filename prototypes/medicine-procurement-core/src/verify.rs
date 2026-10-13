@@ -263,6 +263,7 @@ fn award_eligible_independently(
         offer.authorization_evidence_sha256.as_str(),
         offer.licence_evidence_sha256.as_str(),
         offer.capacity_evidence_sha256.as_str(),
+        offer.source_permission_evidence_sha256.as_str(),
     ]
     .into_iter()
     .all(is_sha256_hex);
@@ -290,6 +291,9 @@ fn award_eligible_independently(
         && date_is_current
         && evidence_digests_are_valid
         && offer.source_reuse == SourceReuseState::Permitted
+        && offer
+            .permitted_source_use_scopes
+            .contains(&policy.required_source_use_scope)
         && offer.quality_state == QualityEvidenceState::Qualified
         && offer.authorization_state == MarketAuthorizationState::Authorized
         && offer.licence_state == LicenceTerritoryState::Permitted
@@ -326,6 +330,7 @@ mod tests {
             maximum_supplier_concentration_basis_points: 7000,
             minimum_supplier_count: 2,
             minimum_delivery_observations: 2,
+            required_source_use_scope: SourceUseScopeV1::CommercialAnalysis,
             input_manifest_sha256: DIGEST_A.to_string(),
             policy_sha256: DIGEST_B.to_string(),
         }
@@ -344,6 +349,8 @@ mod tests {
             authorization_evidence_sha256: DIGEST_A.to_string(),
             licence_evidence_sha256: DIGEST_A.to_string(),
             capacity_evidence_sha256: DIGEST_A.to_string(),
+            source_permission_evidence_sha256: DIGEST_B.to_string(),
+            permitted_source_use_scopes: vec![SourceUseScopeV1::CommercialAnalysis],
             source_reuse: SourceReuseState::Permitted,
             quality_state: QualityEvidenceState::Qualified,
             authorization_state: MarketAuthorizationState::Authorized,
@@ -406,6 +413,41 @@ mod tests {
         plan.allocations[index].extended_cost_minor = (units as u128) * (low_unit_cost as u128);
         plan.allocations
             .sort_by(|left, right| left.offer_id.cmp(&right.offer_id));
+        plan.total_allocated_cost_minor = plan
+            .allocations
+            .iter()
+            .map(|allocation| allocation.extended_cost_minor)
+            .sum();
+
+        let violations = verify_plan_v1(&policy, &offers, &plan);
+        assert!(violations.contains(&PlanViolationV1::AllocatedOfferIneligible));
+    }
+
+    #[test]
+    fn independent_checker_rejects_permission_scope_tampering() {
+        let policy = policy();
+        let mut limited = offer("offer-limited", "supplier-limited", 5, 100);
+        limited.permitted_source_use_scopes =
+            vec![SourceUseScopeV1::NonCommercialReference];
+        let offers = vec![
+            limited.clone(),
+            offer("offer-b", "supplier-b", 20, 100),
+            offer("offer-c", "supplier-c", 21, 100),
+        ];
+        let mut plan = plan_procurement_v1(&policy, &offers).expect("policy");
+        let index = plan
+            .allocations
+            .iter()
+            .position(|allocation| allocation.offer_id == "offer-b")
+            .expect("eligible allocation");
+        let units = plan.allocations[index].allocated_units;
+        let limited_cost = limited.unit_cost.total_minor().expect("valid cost");
+        plan.allocations[index].offer_id = limited.offer_id.clone();
+        plan.allocations[index].supplier_id = limited.supplier_id.clone();
+        plan.allocations[index].unit_total_cost_minor = limited_cost;
+        plan.allocations[index].extended_cost_minor =
+            (units as u128) * (limited_cost as u128);
+        plan.allocations.sort_by(|left, right| left.offer_id.cmp(&right.offer_id));
         plan.total_allocated_cost_minor = plan
             .allocations
             .iter()
