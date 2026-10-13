@@ -40,7 +40,7 @@ AnomalySignalV1 carries input-manifest and policy digests, exact line references
     cargo test --manifest-path prototypes/claims-integrity-core/Cargo.toml --locked
     cargo clippy --manifest-path prototypes/claims-integrity-core/Cargo.toml -- -D warnings
 
-The crate has its own Cargo workspace on purpose so it can be tested without compiling the full Holochain healthcare workspace or resolving sibling repository dependencies. The synthetic test suite covers 14 behavior and fail-closed cases.
+The crate has its own Cargo workspace on purpose so it can be tested without compiling the full Holochain healthcare workspace or resolving sibling repository dependencies. The synthetic test suite contains 15 tests covering core behavior and fail-closed cases.
 
 ## Out of scope
 
