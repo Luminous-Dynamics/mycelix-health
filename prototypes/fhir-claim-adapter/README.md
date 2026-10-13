@@ -31,4 +31,7 @@ cargo test --manifest-path prototypes/fhir-claim-adapter/Cargo.toml --locked
 cargo clippy --manifest-path prototypes/fhir-claim-adapter/Cargo.toml --locked -- -D warnings
 ```
 
+
+Static source review finds 16 uniquely named synthetic unit tests. This is a test inventory, not a claim they have executed. The branch must pass its own CI and an external FHIR profile validator before this profile is treated as qualified.
+
 The workflow tests Rust 1.96.0 and 1.99.0. CI results, rather than the presence of a workflow or test source, determine qualification. No claim is made that this prototype is FHIR-complete or ready for clinical use.
