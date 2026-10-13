@@ -1,0 +1,39 @@
+name: Medicine Procurement Core
+
+on:
+  pull_request:
+    paths:
+      - "prototypes/medicine-procurement-core/**"
+      - ".github/workflows/medicine-procurement-core.yml"
+  push:
+    branches: [main, develop]
+    paths:
+      - "prototypes/medicine-procurement-core/**"
+      - ".github/workflows/medicine-procurement-core.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: Medicine procurement core (Rust ${{ matrix.toolchain }})
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        toolchain: ["1.96.0", "1.99.0"]
+    steps:
+      - name: Check out source
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@e2a55d2ffb04f378e9626c28d38b36d230d1e12f # toolchain input, pinned SHA
+        with:
+          toolchain: ${{ matrix.toolchain }}
+          components: rustfmt, clippy
+      - name: Check formatting
+        run: cargo fmt --manifest-path prototypes/medicine-procurement-core/Cargo.toml -- --check
+      - name: Run unit and adversarial tests
+        run: cargo test --manifest-path prototypes/medicine-procurement-core/Cargo.toml --locked
+      - name: Run Clippy
+        run: cargo clippy --manifest-path prototypes/medicine-procurement-core/Cargo.toml --locked -- -D warnings
