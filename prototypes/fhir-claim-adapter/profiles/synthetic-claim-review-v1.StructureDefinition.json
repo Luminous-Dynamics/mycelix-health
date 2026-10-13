@@ -207,11 +207,6 @@
         "min": 1
       },
       {
-        "id": "Claim.total",
-        "path": "Claim.total",
-        "max": "0"
-      },
-      {
         "id": "Claim.item.sequence",
         "path": "Claim.item.sequence",
         "min": 1,
@@ -323,6 +318,11 @@
       {
         "id": "Claim.item.detail",
         "path": "Claim.item.detail",
+        "max": "0"
+      },
+      {
+        "id": "Claim.total",
+        "path": "Claim.total",
         "max": "0"
       }
     ]
