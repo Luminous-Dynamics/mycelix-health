@@ -17,9 +17,14 @@ permissions:
 
 jobs:
   test:
-    name: Deterministic claims prototype
+    name: Deterministic claims prototype (Rust ${{ matrix.toolchain }})
     runs-on: ubuntu-24.04
     timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        # Match the repository baseline and check current stable explicitly.
+        toolchain: ["1.96.0", "1.99.0"]
     steps:
       - name: Check out source
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
@@ -27,7 +32,7 @@ jobs:
       - name: Install pinned Rust toolchain
         uses: dtolnay/rust-toolchain@3fc1e40d4c4ce3007de028907c886bc3996ce2ea # pinned action revision
         with:
-          toolchain: 1.96.0
+          toolchain: ${{ matrix.toolchain }}
           components: rustfmt, clippy
 
       - name: Check formatting
