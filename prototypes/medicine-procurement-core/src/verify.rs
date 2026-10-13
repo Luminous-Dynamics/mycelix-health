@@ -166,13 +166,26 @@ pub fn verify_plan_v1(
                 continue;
             }
         };
-        *supplier_units.entry(offer.supplier_id.clone()).or_default() +=
-            allocation.allocated_units;
+        let supplier_total = supplier_units.entry(offer.supplier_id.clone()).or_default();
+        match supplier_total.checked_add(allocation.allocated_units) {
+            Some(total) => *supplier_total = total,
+            None => violations.push(PlanViolationV1::ArithmeticOverflow),
+        }
 
         if let Some(rate) = offer.on_time_delivery_basis_points {
             if rate <= 10_000 {
-                reliability_weight +=
-                    (allocation.allocated_units as u128) * (rate as u128);
+                let rate_weight = (allocation.allocated_units as u128)
+                    .checked_mul(rate as u128);
+                reliability_weight = match rate_weight
+                    .and_then(|weight| reliability_weight.checked_add(weight))
+                {
+                    Some(total) => total,
+                    None => {
+                        violations.push(PlanViolationV1::ArithmeticOverflow);
+                        all_reliability_known = false;
+                        reliability_weight
+                    }
+                };
             } else {
                 all_reliability_known = false;
             }
@@ -414,6 +427,25 @@ mod tests {
         plan.supplier_count = 99;
         let violations = verify_plan_v1(&policy, &offers, &plan);
         assert!(violations.contains(&PlanViolationV1::ReportedSupplierCountMismatch));
+    }
+
+    #[test]
+    fn independent_checker_reports_aggregate_overflow_without_panicking() {
+        let policy = policy();
+        let offers = vec![
+            offer("offer-a", "supplier-a", 10, 100),
+            offer("offer-b", "supplier-b", 20, 100),
+        ];
+        let mut plan = plan_procurement_v1(&policy, &offers).expect("policy");
+        let mut malicious = plan.allocations[0].clone();
+        malicious.allocated_units = u64::MAX;
+        malicious.extended_cost_minor =
+            (u64::MAX as u128) * (malicious.unit_total_cost_minor as u128);
+        plan.allocations.push(malicious);
+
+        let violations = verify_plan_v1(&policy, &offers, &plan);
+        assert!(violations.contains(&PlanViolationV1::ArithmeticOverflow));
+        assert!(violations.contains(&PlanViolationV1::DuplicateAllocation));
     }
 
     #[test]
