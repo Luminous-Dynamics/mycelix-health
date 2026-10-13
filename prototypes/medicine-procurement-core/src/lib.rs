@@ -38,6 +38,17 @@ pub enum LicenceTerritoryState {
     Excluded,
 }
 
+/// Broad economic meaning of a price; source-specific basis is kept separately.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum PriceKindV1 {
+    PublishedReferencePrice,
+    SupplierQuote,
+    AwardedContractPrice,
+    TransactionPrice,
+    ReimbursementPrice,
+    Unknown,
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum SourceReuseState {
     Permitted,
@@ -96,6 +107,9 @@ pub struct ProcurementPolicyV1 {
     pub medicine_presentation_id: String,
     pub jurisdiction: String,
     pub currency_code: String,
+    /// Price meaning and exact source-defined basis to compare; unknown is invalid.
+    pub required_price_kind: PriceKindV1,
+    pub required_price_class_id: String,
     /// Exact unit basis, e.g. "tablet", "vial", or a versioned normalized pack unit.
     pub normalized_unit_basis: String,
     pub as_of_yyyymmdd: u32,
@@ -121,6 +135,8 @@ pub struct SupplyOfferV1 {
     pub jurisdiction: String,
     pub currency_code: String,
     pub unit_basis: String,
+    pub price_kind: PriceKindV1,
+    pub price_class_id: String,
 
     pub price_observation_sha256: String,
     pub quality_evidence_sha256: String,
@@ -162,6 +178,8 @@ pub enum OfferExclusionReason {
     InvalidDate,
     PriceObservationFromFuture,
     PriceObservationExpired,
+    UnknownPriceClass,
+    PriceClassMismatch,
     SourceReuseNotPermitted,
     SourceUseScopeNotPermitted,
     QualityNotQualified,
@@ -238,6 +256,7 @@ pub enum PolicyError {
     ZeroDemand,
     InvalidConcentrationPolicy,
     InvalidSupplierCount,
+    InvalidPriceClass,
     InvalidManifestDigest,
     InvalidPolicyDigest,
 }
@@ -500,6 +519,7 @@ fn evaluate_offer(
         offer.medicine_presentation_id.as_str(),
         offer.jurisdiction.as_str(),
         offer.unit_basis.as_str(),
+        offer.price_class_id.as_str(),
     ] {
         if !is_identifier(id) {
             reasons.push(OfferExclusionReason::InvalidIdentifier);
@@ -515,6 +535,13 @@ fn evaluate_offer(
     }
     if offer.currency_code != policy.currency_code {
         reasons.push(OfferExclusionReason::CurrencyMismatch);
+    }
+    if offer.price_kind == PriceKindV1::Unknown {
+        reasons.push(OfferExclusionReason::UnknownPriceClass);
+    } else if offer.price_kind != policy.required_price_kind
+        || offer.price_class_id != policy.required_price_class_id
+    {
+        reasons.push(OfferExclusionReason::PriceClassMismatch);
     }
     if offer.unit_basis != policy.normalized_unit_basis {
         reasons.push(OfferExclusionReason::UnitBasisMismatch);
@@ -659,6 +686,11 @@ fn validate_policy(policy: &ProcurementPolicyV1) -> Result<(), PolicyError> {
     if policy.minimum_supplier_count == 0 {
         return Err(PolicyError::InvalidSupplierCount);
     }
+    if policy.required_price_kind == PriceKindV1::Unknown
+        || !is_identifier(&policy.required_price_class_id)
+    {
+        return Err(PolicyError::InvalidPriceClass);
+    }
     if !is_sha256_hex(&policy.input_manifest_sha256) {
         return Err(PolicyError::InvalidManifestDigest);
     }
@@ -720,6 +752,8 @@ mod tests {
             medicine_presentation_id: "med-amoxicillin-500mg-capsule-21".to_string(),
             jurisdiction: "ZA".to_string(),
             currency_code: "ZAR".to_string(),
+            required_price_kind: PriceKindV1::SupplierQuote,
+            required_price_class_id: "synthetic-supplier-quote-v1".to_string(),
             normalized_unit_basis: "capsule".to_string(),
             as_of_yyyymmdd: 20261013,
             demand_units: 100,
@@ -742,6 +776,8 @@ mod tests {
             jurisdiction: "ZA".to_string(),
             currency_code: "ZAR".to_string(),
             unit_basis: "capsule".to_string(),
+            price_kind: PriceKindV1::SupplierQuote,
+            price_class_id: "synthetic-supplier-quote-v1".to_string(),
             price_observation_sha256: DIGEST_A.to_string(),
             quality_evidence_sha256: DIGEST_A.to_string(),
             authorization_evidence_sha256: DIGEST_A.to_string(),
@@ -869,6 +905,43 @@ mod tests {
         assert!(plan.offer_evaluations[0]
             .exclusion_reasons
             .contains(&OfferExclusionReason::SourceUseScopeNotPermitted));
+    }
+
+    #[test]
+    fn published_reference_price_is_not_eligible_as_a_supplier_quote() {
+        let mut reference = offer("offer-a", "supplier-a", 1, 100);
+        reference.price_kind = PriceKindV1::PublishedReferencePrice;
+        reference.price_class_id = "za-ndoh.sep".to_string();
+        let plan = plan_procurement_v1(&policy(), &[reference]).expect("policy");
+        assert_eq!(plan.status, PlanStatusV1::InfeasibleWithinObservedOffers);
+        assert!(plan.offer_evaluations[0]
+            .exclusion_reasons
+            .contains(&OfferExclusionReason::PriceClassMismatch));
+    }
+
+    #[test]
+    fn source_specific_price_classes_remain_distinct_within_reference_prices() {
+        let mut policy = policy();
+        policy.required_price_kind = PriceKindV1::PublishedReferencePrice;
+        policy.required_price_class_id = "za-ndoh.ex-manufacturer".to_string();
+        let mut sep = offer("offer-a", "supplier-a", 1, 100);
+        sep.price_kind = PriceKindV1::PublishedReferencePrice;
+        sep.price_class_id = "za-ndoh.sep".to_string();
+        let plan = plan_procurement_v1(&policy, &[sep]).expect("policy");
+        assert_eq!(plan.status, PlanStatusV1::InfeasibleWithinObservedOffers);
+        assert!(plan.offer_evaluations[0]
+            .exclusion_reasons
+            .contains(&OfferExclusionReason::PriceClassMismatch));
+    }
+
+    #[test]
+    fn unknown_price_kind_is_rejected_by_policy_validation() {
+        let mut policy = policy();
+        policy.required_price_kind = PriceKindV1::Unknown;
+        assert_eq!(
+            plan_procurement_v1(&policy, &[]).unwrap_err(),
+            PolicyError::InvalidPriceClass
+        );
     }
 
     #[test]
