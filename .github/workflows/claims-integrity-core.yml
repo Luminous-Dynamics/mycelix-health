@@ -1,0 +1,45 @@
+name: Claims Integrity Core
+
+on:
+  push:
+    branches: [main, develop]
+    paths:
+      - "prototypes/claims-integrity-core/**"
+      - ".github/workflows/claims-integrity-core.yml"
+  pull_request:
+    branches: [main, develop]
+    paths:
+      - "prototypes/claims-integrity-core/**"
+      - ".github/workflows/claims-integrity-core.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: Deterministic claims prototype (Rust ${{ matrix.toolchain }})
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        # Match the repository baseline and check current stable explicitly.
+        toolchain: ["1.96.0", "1.99.0"]
+    steps:
+      - name: Check out source
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      - name: Install pinned Rust toolchain
+        uses: dtolnay/rust-toolchain@e2a55d2ffb04f378e9626c28d38b36d230d1e12f # explicit toolchain input, pinned SHA
+        with:
+          toolchain: ${{ matrix.toolchain }}
+          components: rustfmt, clippy
+
+      - name: Check formatting
+        run: cargo fmt --manifest-path prototypes/claims-integrity-core/Cargo.toml -- --check
+
+      - name: Run unit and adversarial tests
+        run: cargo test --manifest-path prototypes/claims-integrity-core/Cargo.toml --locked
+
+      - name: Run Clippy
+        run: cargo clippy --manifest-path prototypes/claims-integrity-core/Cargo.toml --locked -- -D warnings
