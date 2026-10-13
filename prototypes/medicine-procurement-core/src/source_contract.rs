@@ -21,6 +21,14 @@ pub enum SourceRightsReviewStateV1 {
     Expired,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum SourcePermissionValidityV1 {
+    /// The reviewed terms explicitly assert that this permission has no expiry.
+    PerpetualByTerms,
+    ValidThrough(u32),
+    Unknown,
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub enum SourceOperationV1 {
     ReadPage,
@@ -60,7 +68,7 @@ pub struct SourceManifestV1 {
     pub rights_reviewer_id: String,
     pub rights_review_state: SourceRightsReviewStateV1,
     pub rights_reviewed_yyyymmdd: Option<u32>,
-    pub permission_valid_through_yyyymmdd: Option<u32>,
+    pub permission_validity: SourcePermissionValidityV1,
     pub permitted_use_scopes: Vec<SourceUseScopeV1>,
     pub permitted_operations: Vec<SourceOperationV1>,
     pub source_reuse_state: SourceReuseState,
@@ -109,6 +117,7 @@ pub enum SourceContractRejectionV1 {
     RightsNotGranted,
     RightsReviewMissing,
     RightsPermissionExpired,
+    RightsValidityUnknown,
     SourceReuseNotPermitted,
     UseScopeNotPermitted,
     OperationNotPermitted,
@@ -297,15 +306,16 @@ fn validate_source_manifest(
         .rights_reviewed_yyyymmdd
         .filter(|date| is_valid_date(*date) && *date <= policy.as_of_yyyymmdd)
         .ok_or(SourceContractRejectionV1::RightsReviewMissing)?;
-    if manifest
-        .permission_valid_through_yyyymmdd
-        .is_some_and(|date| {
-            !is_valid_date(date)
-                || date < policy.as_of_yyyymmdd
-                || date < reviewed_on
-        })
-    {
-        return Err(SourceContractRejectionV1::RightsPermissionExpired);
+    match manifest.permission_validity {
+        SourcePermissionValidityV1::PerpetualByTerms => {}
+        SourcePermissionValidityV1::ValidThrough(date) => {
+            if !is_valid_date(date) || date < policy.as_of_yyyymmdd || date < reviewed_on {
+                return Err(SourceContractRejectionV1::RightsPermissionExpired);
+            }
+        }
+        SourcePermissionValidityV1::Unknown => {
+            return Err(SourceContractRejectionV1::RightsValidityUnknown);
+        }
     }
     if manifest.source_reuse_state != SourceReuseState::Permitted {
         return Err(SourceContractRejectionV1::SourceReuseNotPermitted);
@@ -446,7 +456,7 @@ mod tests {
             rights_reviewer_id: "reviewer-legal-01".to_string(),
             rights_review_state: SourceRightsReviewStateV1::Granted,
             rights_reviewed_yyyymmdd: Some(20261010),
-            permission_valid_through_yyyymmdd: Some(20261231),
+            permission_validity: SourcePermissionValidityV1::ValidThrough(20261231),
             permitted_use_scopes: vec![SourceUseScopeV1::CommercialAnalysis],
             permitted_operations: vec![
                 SourceOperationV1::BulkExtract,
@@ -519,6 +529,16 @@ mod tests {
     }
 
     #[test]
+    fn unknown_permission_validity_fails_closed() {
+        let mut source = manifest();
+        source.permission_validity = SourcePermissionValidityV1::Unknown;
+        assert_eq!(
+            normalize_price_observation_v1(&source, &policy(), &record()).unwrap_err(),
+            SourceContractRejectionV1::RightsValidityUnknown
+        );
+    }
+
+    #[test]
     fn expired_rights_review_state_is_distinguished_from_pending() {
         let mut source = manifest();
         source.rights_review_state = SourceRightsReviewStateV1::Expired;
@@ -553,7 +573,7 @@ mod tests {
     #[test]
     fn expired_source_permission_is_rejected() {
         let mut source = manifest();
-        source.permission_valid_through_yyyymmdd = Some(20261013);
+        source.permission_validity = SourcePermissionValidityV1::ValidThrough(20261013);
         assert_eq!(
             normalize_price_observation_v1(&source, &policy(), &record()).unwrap_err(),
             SourceContractRejectionV1::RightsPermissionExpired
