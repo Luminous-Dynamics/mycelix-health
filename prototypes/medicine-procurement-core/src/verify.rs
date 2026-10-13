@@ -33,6 +33,8 @@ pub enum PlanViolationV1 {
     OfferEvaluationSetMismatch,
     OfferEvaluationEligibilityMismatch,
     OfferEvaluationCostMismatch,
+    OfferEvaluationReasonMismatch,
+    OfferEvaluationWarningMismatch,
     AllocatedUnitsMismatch,
     UnmetDemandMismatch,
     UnitCostMismatch,
@@ -112,11 +114,18 @@ pub fn verify_plan_v1(
             violations.push(PlanViolationV1::OfferEvaluationSetMismatch);
             continue;
         };
-        if evaluation.eligible != award_eligible_independently(policy, offer) {
+        let expected_evaluation = independent_offer_evaluation(policy, offer);
+        if evaluation.eligible != expected_evaluation.eligible {
             violations.push(PlanViolationV1::OfferEvaluationEligibilityMismatch);
         }
-        if evaluation.unit_total_cost_minor != offer.unit_cost.total_minor() {
+        if evaluation.unit_total_cost_minor != expected_evaluation.unit_total_cost_minor {
             violations.push(PlanViolationV1::OfferEvaluationCostMismatch);
+        }
+        if evaluation.exclusion_reasons != expected_evaluation.exclusion_reasons {
+            violations.push(PlanViolationV1::OfferEvaluationReasonMismatch);
+        }
+        if evaluation.warnings != expected_evaluation.warnings {
+            violations.push(PlanViolationV1::OfferEvaluationWarningMismatch);
         }
     }
 
@@ -276,6 +285,165 @@ pub fn verify_plan_v1(
     violations.sort();
     violations.dedup();
     violations
+}
+
+fn independent_offer_evaluation(
+    policy: &ProcurementPolicyV1,
+    offer: &SupplyOfferV1,
+) -> OfferEvaluationV1 {
+    let mut reasons = Vec::new();
+    let mut warnings = Vec::new();
+    let unit_cost = offer.unit_cost.total_minor();
+    let concentration_cap = ((policy.demand_units as u128)
+        * (policy.maximum_supplier_concentration_basis_points as u128)
+        / BASIS_POINTS) as u64;
+
+    for value in [
+        offer.offer_id.as_str(),
+        offer.supplier_id.as_str(),
+        offer.medicine_presentation_id.as_str(),
+        offer.jurisdiction.as_str(),
+        offer.unit_basis.as_str(),
+        offer.price_class_id.as_str(),
+    ] {
+        if !is_identifier(value) {
+            reasons.push(OfferExclusionReason::InvalidIdentifier);
+            break;
+        }
+    }
+
+    if offer.medicine_presentation_id != policy.medicine_presentation_id {
+        reasons.push(OfferExclusionReason::PresentationMismatch);
+    }
+    if offer.jurisdiction != policy.jurisdiction {
+        reasons.push(OfferExclusionReason::JurisdictionMismatch);
+    }
+    if offer.currency_code != policy.currency_code {
+        reasons.push(OfferExclusionReason::CurrencyMismatch);
+    }
+    match offer.price_kind {
+        PriceKindV1::Unknown => reasons.push(OfferExclusionReason::UnknownPriceClass),
+        kind if kind != policy.required_price_kind
+            || offer.price_class_id != policy.required_price_class_id =>
+        {
+            reasons.push(OfferExclusionReason::PriceClassMismatch);
+        }
+        _ => {}
+    }
+    if offer.unit_basis != policy.normalized_unit_basis {
+        reasons.push(OfferExclusionReason::UnitBasisMismatch);
+    }
+
+    if !is_valid_date(offer.price_observed_yyyymmdd)
+        || !is_valid_date(offer.price_valid_until_yyyymmdd)
+        || offer.price_valid_until_yyyymmdd < offer.price_observed_yyyymmdd
+    {
+        reasons.push(OfferExclusionReason::InvalidDate);
+    } else if offer.price_observed_yyyymmdd > policy.as_of_yyyymmdd {
+        reasons.push(OfferExclusionReason::PriceObservationFromFuture);
+    } else if offer.price_valid_until_yyyymmdd < policy.as_of_yyyymmdd {
+        reasons.push(OfferExclusionReason::PriceObservationExpired);
+    }
+
+    let digests_valid = [
+        offer.price_observation_sha256.as_str(),
+        offer.quality_evidence_sha256.as_str(),
+        offer.authorization_evidence_sha256.as_str(),
+        offer.licence_evidence_sha256.as_str(),
+        offer.capacity_evidence_sha256.as_str(),
+        offer.source_permission_evidence_sha256.as_str(),
+    ]
+    .into_iter()
+    .all(is_sha256_hex);
+    if !digests_valid {
+        reasons.push(OfferExclusionReason::InvalidEvidenceDigest);
+    }
+
+    if offer.source_reuse != SourceReuseState::Permitted {
+        reasons.push(OfferExclusionReason::SourceReuseNotPermitted);
+    }
+    if !offer
+        .permitted_source_use_scopes
+        .contains(&policy.required_source_use_scope)
+    {
+        reasons.push(OfferExclusionReason::SourceUseScopeNotPermitted);
+    }
+    match offer.quality_state {
+        QualityEvidenceState::Qualified => {}
+        QualityEvidenceState::Unknown => reasons.push(OfferExclusionReason::QualityUnknown),
+        QualityEvidenceState::Rejected => reasons.push(OfferExclusionReason::QualityNotQualified),
+    }
+    match offer.authorization_state {
+        MarketAuthorizationState::Authorized => {}
+        MarketAuthorizationState::Unknown => {
+            reasons.push(OfferExclusionReason::MarketAuthorizationUnknown)
+        }
+        MarketAuthorizationState::NotAuthorized => {
+            reasons.push(OfferExclusionReason::MarketNotAuthorized)
+        }
+    }
+    match offer.licence_state {
+        LicenceTerritoryState::Permitted => {}
+        LicenceTerritoryState::Unknown => {
+            reasons.push(OfferExclusionReason::LicenceTerritoryUnknown)
+        }
+        LicenceTerritoryState::Excluded => {
+            reasons.push(OfferExclusionReason::LicenceTerritoryExcluded)
+        }
+    }
+
+    if offer.available_units == 0 {
+        reasons.push(OfferExclusionReason::InvalidCapacity);
+    }
+    if offer.minimum_order_units == 0 || offer.minimum_order_units > offer.available_units {
+        reasons.push(OfferExclusionReason::InvalidMinimumOrder);
+    }
+    if offer.lead_time_days > policy.maximum_lead_time_days {
+        reasons.push(OfferExclusionReason::LeadTimeExceedsPolicy);
+    }
+    if offer.shelf_life_days_at_delivery < policy.minimum_shelf_life_days_at_delivery {
+        reasons.push(OfferExclusionReason::InsufficientShelfLife);
+    }
+    if offer.minimum_order_units > concentration_cap {
+        reasons.push(OfferExclusionReason::ConcentrationCapBelowMinimumOrder);
+    }
+    if unit_cost.is_none() {
+        reasons.push(OfferExclusionReason::CostArithmeticOverflow);
+    }
+
+    match (
+        offer.on_time_delivery_basis_points,
+        offer.delivery_observation_count,
+        offer.delivery_evidence_sha256.as_deref(),
+    ) {
+        (Some(rate), count, Some(digest))
+            if rate <= 10_000 && count > 0 && is_sha256_hex(digest) =>
+        {
+            if count < policy.minimum_delivery_observations {
+                reasons.push(OfferExclusionReason::DeliveryEvidenceInsufficient);
+            }
+        }
+        (None, 0, None) => {
+            if policy.minimum_delivery_observations > 0 {
+                reasons.push(OfferExclusionReason::DeliveryEvidenceInsufficient);
+            } else {
+                warnings.push(OfferWarning::DeliveryReliabilityUnavailable);
+            }
+        }
+        _ => reasons.push(OfferExclusionReason::DeliveryEvidenceInvalid),
+    }
+
+    reasons.sort();
+    reasons.dedup();
+    warnings.sort();
+
+    OfferEvaluationV1 {
+        offer_id: offer.offer_id.clone(),
+        eligible: reasons.is_empty(),
+        unit_total_cost_minor: unit_cost,
+        exclusion_reasons: reasons,
+        warnings,
+    }
 }
 
 fn award_eligible_independently(
@@ -530,6 +698,44 @@ mod tests {
 
         let violations = verify_plan_v1(&policy, &offers, &plan);
         assert!(violations.contains(&PlanViolationV1::AllocatedOfferIneligible));
+    }
+
+    #[test]
+    fn independent_checker_detects_tampered_exclusion_reasons() {
+        let policy = policy();
+        let mut cheapest = offer("offer-low", "supplier-low", 1, 100);
+        cheapest.quality_state = QualityEvidenceState::Unknown;
+        let offers = vec![
+            cheapest,
+            offer("offer-a", "supplier-a", 10, 100),
+            offer("offer-b", "supplier-b", 20, 100),
+        ];
+        let mut plan = plan_procurement_v1(&policy, &offers).expect("policy");
+        let evaluation = plan
+            .offer_evaluations
+            .iter_mut()
+            .find(|item| item.offer_id == "offer-low")
+            .expect("evaluation exists");
+        evaluation.exclusion_reasons.clear();
+        let violations = verify_plan_v1(&policy, &offers, &plan);
+        assert!(violations.contains(&PlanViolationV1::OfferEvaluationReasonMismatch));
+    }
+
+    #[test]
+    fn independent_checker_detects_tampered_delivery_warning() {
+        let mut policy = policy();
+        policy.minimum_delivery_observations = 0;
+        policy.minimum_supplier_count = 1;
+        policy.maximum_supplier_concentration_basis_points = 10_000;
+        let mut supplier = offer("offer-a", "supplier-a", 10, 100);
+        supplier.on_time_delivery_basis_points = None;
+        supplier.delivery_observation_count = 0;
+        supplier.delivery_evidence_sha256 = None;
+        let offers = vec![supplier];
+        let mut plan = plan_procurement_v1(&policy, &offers).expect("policy");
+        plan.offer_evaluations[0].warnings.clear();
+        let violations = verify_plan_v1(&policy, &offers, &plan);
+        assert!(violations.contains(&PlanViolationV1::OfferEvaluationWarningMismatch));
     }
 
     #[test]
