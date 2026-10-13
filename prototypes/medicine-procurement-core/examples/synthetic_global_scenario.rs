@@ -14,7 +14,7 @@
 use medicine_procurement_core::{
     plan_procurement_v1, verify_plan_v1, LicenceTerritoryState, MarketAuthorizationState,
     ProcurementPlanV1, ProcurementPolicyV1, QualityEvidenceState, SourceReuseState,
-    SupplyOfferV1, UnitCostBreakdownV1,
+    SourceUseScopeV1, SupplyOfferV1, UnitCostBreakdownV1,
 };
 
 const DIGEST_A: &str = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
@@ -76,6 +76,7 @@ fn policy(
         maximum_supplier_concentration_basis_points: concentration_basis_points,
         minimum_supplier_count,
         minimum_delivery_observations: 2,
+        required_source_use_scope: SourceUseScopeV1::CommercialAnalysis,
         input_manifest_sha256: DIGEST_A.to_string(),
         policy_sha256: policy_digest.to_string(),
     }
@@ -171,6 +172,8 @@ fn offers_for(
             authorization_evidence_sha256: DIGEST_A.to_string(),
             licence_evidence_sha256: DIGEST_B.to_string(),
             capacity_evidence_sha256: DIGEST_C.to_string(),
+            source_permission_evidence_sha256: DIGEST_B.to_string(),
+            permitted_source_use_scopes: vec![SourceUseScopeV1::CommercialAnalysis],
             source_reuse: SourceReuseState::Permitted,
             quality_state,
             authorization_state: MarketAuthorizationState::Authorized,
