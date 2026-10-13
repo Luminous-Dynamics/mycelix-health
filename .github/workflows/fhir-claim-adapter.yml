@@ -40,10 +40,10 @@ jobs:
       - name: Validate StructureDefinition resources against FHIR R4
         run: |
           java -jar "$RUNNER_TEMP/validator_cli.jar" \
-            prototypes/fhir-claim-adapter/profiles/synthetic-claim-review-v1.StructureDefinition.json \
+            prototypes/fhir-claim-adapter/profiles/StructureDefinition-synthetic-claim-review-v1.json \
             -version 4.0.1 -tx n/a
           java -jar "$RUNNER_TEMP/validator_cli.jar" \
-            prototypes/fhir-claim-adapter/profiles/synthetic-claimresponse-linkage-v1.StructureDefinition.json \
+            prototypes/fhir-claim-adapter/profiles/StructureDefinition-synthetic-claimresponse-linkage-v1.json \
             -version 4.0.1 -tx n/a
       - name: Validate synthetic Claim against the local profile
         run: |
