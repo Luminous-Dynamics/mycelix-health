@@ -9,6 +9,8 @@ Yes, many medicines can become substantially cheaper and more consistently avail
 
 The optimization target is therefore not the lowest quoted unit price. It is the lowest **total expected lifecycle cost subject to hard quality, legal, availability, resilience, and equity constraints**. A medicine that is cheapest at tender but repeatedly unavailable, too close to expiry, or not quality-assured is not a successful procurement.
 
+The first implementation slice is tracked in [medicine-procurement core PR #274](https://github.com/Luminous-Dynamics/mycelix-health/pull/274). It is a synthetic-data-first deterministic greedy baseline with an independent allocation verifier; its runner checks are queued, so it is not yet a qualified result or evidence of savings.
+
 ## Public evidence and the initial data baseline
 
 WHO defines essential medicines around priority health needs, efficacy/safety evidence, affordability and assured quality. WHO's 2025 Model List contains over 520 medicines, including 374 for children, and is intended to help countries focus selection, procurement and supply. It is a useful demand-prioritization reference, not a substitute for national formularies, guidelines or market authorization.
