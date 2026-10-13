@@ -29,6 +29,10 @@ pub enum PlanViolationV1 {
     SupplierConcentrationExceeded,
     SupplierCountBelowMinimum,
     ReportedSupplierCountMismatch,
+    MinimumSupplierCountMismatch,
+    OfferEvaluationSetMismatch,
+    OfferEvaluationEligibilityMismatch,
+    OfferEvaluationCostMismatch,
     AllocatedUnitsMismatch,
     UnmetDemandMismatch,
     UnitCostMismatch,
@@ -73,6 +77,9 @@ pub fn verify_plan_v1(
     if plan.demand_units != policy.demand_units {
         violations.push(PlanViolationV1::DemandMismatch);
     }
+    if plan.minimum_supplier_count != policy.minimum_supplier_count {
+        violations.push(PlanViolationV1::MinimumSupplierCountMismatch);
+    }
 
     let mut offer_counts: BTreeMap<&str, usize> = BTreeMap::new();
     for offer in offers {
@@ -85,6 +92,32 @@ pub fn verify_plan_v1(
         .collect();
     if offer_counts.values().any(|count| *count > 1) {
         violations.push(PlanViolationV1::DuplicateSourceOfferIdentity);
+    }
+
+    let mut evaluation_counts: BTreeMap<&str, usize> = BTreeMap::new();
+    for evaluation in &plan.offer_evaluations {
+        *evaluation_counts.entry(evaluation.offer_id.as_str()).or_default() += 1;
+    }
+    if evaluation_counts != offer_counts {
+        violations.push(PlanViolationV1::OfferEvaluationSetMismatch);
+    }
+    for evaluation in &plan.offer_evaluations {
+        let Some(count) = offer_counts.get(evaluation.offer_id.as_str()) else {
+            continue;
+        };
+        if *count != 1 {
+            continue;
+        }
+        let Some(offer) = unique_offers.get(evaluation.offer_id.as_str()).copied() else {
+            violations.push(PlanViolationV1::OfferEvaluationSetMismatch);
+            continue;
+        };
+        if evaluation.eligible != award_eligible_independently(policy, offer) {
+            violations.push(PlanViolationV1::OfferEvaluationEligibilityMismatch);
+        }
+        if evaluation.unit_total_cost_minor != offer.unit_cost.total_minor() {
+            violations.push(PlanViolationV1::OfferEvaluationCostMismatch);
+        }
     }
 
     let mut allocation_counts: BTreeMap<&str, usize> = BTreeMap::new();
@@ -497,6 +530,52 @@ mod tests {
 
         let violations = verify_plan_v1(&policy, &offers, &plan);
         assert!(violations.contains(&PlanViolationV1::AllocatedOfferIneligible));
+    }
+
+    #[test]
+    fn independent_checker_detects_tampered_minimum_supplier_count() {
+        let policy = policy();
+        let offers = vec![
+            offer("offer-a", "supplier-a", 10, 100),
+            offer("offer-b", "supplier-b", 20, 100),
+        ];
+        let mut plan = plan_procurement_v1(&policy, &offers).expect("policy");
+        plan.minimum_supplier_count = 1;
+        let violations = verify_plan_v1(&policy, &offers, &plan);
+        assert!(violations.contains(&PlanViolationV1::MinimumSupplierCountMismatch));
+    }
+
+    #[test]
+    fn independent_checker_detects_tampered_offer_evaluation() {
+        let policy = policy();
+        let offers = vec![
+            offer("offer-a", "supplier-a", 10, 100),
+            offer("offer-b", "supplier-b", 20, 100),
+        ];
+        let mut plan = plan_procurement_v1(&policy, &offers).expect("policy");
+        let evaluation = plan
+            .offer_evaluations
+            .iter_mut()
+            .find(|item| item.offer_id == "offer-a")
+            .expect("evaluation exists");
+        evaluation.eligible = false;
+        let violations = verify_plan_v1(&policy, &offers, &plan);
+        assert!(violations.contains(
+            &PlanViolationV1::OfferEvaluationEligibilityMismatch
+        ));
+    }
+
+    #[test]
+    fn independent_checker_detects_missing_offer_evaluation() {
+        let policy = policy();
+        let offers = vec![
+            offer("offer-a", "supplier-a", 10, 100),
+            offer("offer-b", "supplier-b", 20, 100),
+        ];
+        let mut plan = plan_procurement_v1(&policy, &offers).expect("policy");
+        plan.offer_evaluations.pop();
+        let violations = verify_plan_v1(&policy, &offers, &plan);
+        assert!(violations.contains(&PlanViolationV1::OfferEvaluationSetMismatch));
     }
 
     #[test]
