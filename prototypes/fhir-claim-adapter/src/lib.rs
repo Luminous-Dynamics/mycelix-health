@@ -9,7 +9,7 @@
 
 use claims_integrity_core::{
     evaluate, ClaimEvidenceBundleV1, ClaimLineStatus, ClaimLineV1, EvaluationReportV1,
-    EvaluationReportV1, InputCompleteness,
+    InputCompleteness,
 };
 use serde_json::Value;
 use sha2::{Digest, Sha256};
