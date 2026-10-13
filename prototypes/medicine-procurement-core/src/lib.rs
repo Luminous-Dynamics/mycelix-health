@@ -139,6 +139,7 @@ pub struct SupplyOfferV1 {
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub enum OfferExclusionReason {
     InvalidIdentifier,
+    InvalidEvidenceDigest,
     DuplicateOfferId,
     PresentationMismatch,
     JurisdictionMismatch,
@@ -525,7 +526,7 @@ fn evaluate_offer(
     .into_iter()
     .all(is_sha256_hex)
     {
-        reasons.push(OfferExclusionReason::InvalidIdentifier);
+        reasons.push(OfferExclusionReason::InvalidEvidenceDigest);
     }
 
     if offer.source_reuse != SourceReuseState::Permitted {
@@ -830,6 +831,20 @@ mod tests {
         assert!(plan.offer_evaluations[0]
             .exclusion_reasons
             .contains(&OfferExclusionReason::PriceObservationExpired));
+    }
+
+    #[test]
+    fn malformed_evidence_digest_has_a_specific_exclusion_reason() {
+        let mut malformed = offer("offer-a", "supplier-a", 10, 100);
+        malformed.quality_evidence_sha256 = "sha256-is-not-hex".to_string();
+        let plan = plan_procurement_v1(&policy(), &[malformed]).expect("policy");
+        assert_eq!(plan.status, PlanStatusV1::InfeasibleWithinObservedOffers);
+        assert!(plan.offer_evaluations[0]
+            .exclusion_reasons
+            .contains(&OfferExclusionReason::InvalidEvidenceDigest));
+        assert!(!plan.offer_evaluations[0]
+            .exclusion_reasons
+            .contains(&OfferExclusionReason::InvalidIdentifier));
     }
 
     #[test]
