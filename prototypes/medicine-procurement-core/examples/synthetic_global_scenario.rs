@@ -128,7 +128,7 @@ fn offers_for(
         match stress {
             StressCase::Baseline | StressCase::SupplierFailure | StressCase::EvidenceLoss => {}
             StressCase::FreightShock50Pct => {
-                costs.freight_minor += (costs.freight_minor + 1) / 2;
+                costs.freight_minor += costs.freight_minor.div_ceil(2);
             }
             StressCase::ExpiryWastageShock => costs.expiry_and_wastage_minor += 20,
             StressCase::ImportedCostShock20Pct if supplier_number >= 2 => {
@@ -201,8 +201,7 @@ fn checked_plan(
     if !violations.is_empty() {
         return Err(format!("{label}: independent checker rejected plan: {violations:?}"));
     }
-    if plan.status
-        != medicine_procurement_core::PlanStatusV1::FeasibleWithinObservedOffers
+    if plan.status != medicine_procurement_core::PlanStatusV1::FeasibleWithinObservedOffers
         || plan.allocated_units != policy.demand_units
         || plan.unmet_demand_units != 0
     {
@@ -238,8 +237,8 @@ fn csv_row(
         resilient.total_allocated_cost_minor,
         resilient.supplier_count,
         delta,
-        low_cost.expected_on_time_delivery_basis_points.unwrap_or(0),
-        resilient.expected_on_time_delivery_basis_points.unwrap_or(0),
+        low_cost.expected_on_time_delivery_basis_points.unwrap_or_default(),
+        resilient.expected_on_time_delivery_basis_points.unwrap_or_default(),
     )
 }
 
@@ -271,10 +270,8 @@ fn run() -> Result<(), String> {
                     region,
                     stress,
                 );
-                let lowest_policy =
-                    policy(&medicine_id, region, 1, 10_000, DIGEST_B);
-                let resilient_policy =
-                    policy(&medicine_id, region, 2, 6_000, DIGEST_C);
+                let lowest_policy = policy(&medicine_id, region, 1, 10_000, DIGEST_B);
+                let resilient_policy = policy(&medicine_id, region, 2, 6_000, DIGEST_C);
 
                 let lowest_plan = checked_plan(
                     &lowest_policy,
