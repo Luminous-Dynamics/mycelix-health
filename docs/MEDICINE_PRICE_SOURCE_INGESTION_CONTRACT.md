@@ -70,7 +70,7 @@ Never use a product-name string alone as a cross-market join key. Match strength
 ## Eligibility and comparison rules
 
 1. **Rights first.** Only pass a row to downstream processing when the source manifest authorizes this exact intended use. A valid content digest proves byte identity only, not lawful reuse, correctness or freshness.
-2. **Identity before price.** Require exact presentation and normalized unit-basis agreement. If package/unit conversion is required, retain the source quantity, formula, rounding policy, and reviewer-approved conversion receipt. Fail closed on unknown conversion.
+2. **Identity and price class before price.** Require exact presentation, normalized unit-basis, broad price-kind and source-defined price-class agreement. A published reference price is not a supplier quote; SEP, ex-manufacturer price and logistics fee must remain different strata. If package/unit conversion is required, retain the source quantity, formula, rounding policy, and reviewer-approved conversion receipt. Fail closed on unknown conversion.
 3. **Price classes stay separate.** Compare like-for-like jurisdiction, channel, price class, effective period and tax/fee treatment. An SEP and a tender award should appear in different strata unless a documented analytical question explicitly relates them.
 4. **No stock inference.** Registration/listing, historical price, supplier capacity, and observed availability are different records. A discontinued row is not an available offer. A quote is not a purchase.
 5. **Quality is a hard gate.** Link to a regulator decision, WHO prequalification/assessment evidence, or another policy-accepted evidence source. Preserve scope, date and product/manufacturer/site mapping. Unknown quality is not treated as pass.
