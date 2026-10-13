@@ -22,7 +22,7 @@ A standalone, dependency-free Rust baseline for allocating synthetic normalized 
 6. Marks unmet demand or unsatisfied sourcing constraints as InfeasibleWithinObservedOffers. Missing offers/prices never become zero-cost success.
 7. Emits deterministic output for the same policy, manifest digests and offer set.
 
-The method is deliberately named DeterministicGreedyBaselineV1. It is not proven globally optimal, and a greedy run may be infeasible even when a different allocation exists. A later exact/robust optimizer must compare itself against this baseline and pass a separate independent checker.
+The method is deliberately named DeterministicGreedyBaselineV1. It is not proven globally optimal, and a greedy run may be infeasible even when a different allocation exists. A separate verify_plan_v1 checker re-evaluates award gates and recomputes quantities, concentration, unit/extended cost, total cost, delivery arithmetic and status. A future exact/robust optimizer must pass that checker and compare itself against this baseline.
 
 ## Cost accounting
 
@@ -30,7 +30,7 @@ For each normalized unit, the baseline sums acquisition, freight, insurance, dut
 
 ## Tests and verification
 
-Synthetic tests cover failed quality/authorization/licence gates, mismatched presentation/unit basis, stale price, restricted source reuse, missing delivery history, duplicate offer identities, arithmetic overflow, input-order determinism, insufficient supply, concentration limits and invalid policy/date inputs.
+The source contains 19 uniquely named synthetic unit tests covering failed quality/authorization/licence gates, mismatched presentation/unit basis, stale price, restricted source reuse, missing delivery history, duplicate offer identities, arithmetic overflow, input-order determinism, insufficient supply, concentration limits, invalid policy/date inputs, and rejection of manually injected ineligible allocations or altered cost receipts. This is a source inventory, not evidence those tests have executed.
 
 Run the following from the repository root:
 
@@ -43,7 +43,7 @@ A dedicated workflow tests Rust 1.96.0 and 1.99.0. Source-level test counts and 
 ## Next qualification steps
 
 - Add a frozen synthetic corpus with 10–20 medicine presentations and multiple supplier offers.
-- Add an independent checker that recomputes offer eligibility, allocation caps, costs and unmet demand from immutable inputs rather than trusting the allocator.
+- Extend the independent checker with property-based scenarios, corrupted manifests and duplicate/ambiguous source evidence.
 - Compare lowest-quote, lowest-eligible-landed-cost and resilience-constrained scenarios, including supplier failure, FX and freight shocks.
 - Only then ingest carefully licensed public price observations with original price class, currency, unit, date, jurisdiction and source reuse terms preserved.
 
