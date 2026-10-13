@@ -28,6 +28,7 @@ pub enum PlanViolationV1 {
     OfferCapacityExceeded,
     SupplierConcentrationExceeded,
     SupplierCountBelowMinimum,
+    ReportedSupplierCountMismatch,
     AllocatedUnitsMismatch,
     UnmetDemandMismatch,
     UnitCostMismatch,
@@ -187,6 +188,9 @@ pub fn verify_plan_v1(
     }
     if supplier_units.len() < policy.minimum_supplier_count {
         violations.push(PlanViolationV1::SupplierCountBelowMinimum);
+    }
+    if plan.supplier_count != supplier_units.len() {
+        violations.push(PlanViolationV1::ReportedSupplierCountMismatch);
     }
     if recomputed_units != plan.allocated_units {
         violations.push(PlanViolationV1::AllocatedUnitsMismatch);
@@ -397,6 +401,19 @@ mod tests {
 
         let violations = verify_plan_v1(&policy, &offers, &plan);
         assert!(violations.contains(&PlanViolationV1::AllocatedOfferIneligible));
+    }
+
+    #[test]
+    fn independent_checker_detects_tampered_supplier_count() {
+        let policy = policy();
+        let offers = vec![
+            offer("offer-a", "supplier-a", 10, 100),
+            offer("offer-b", "supplier-b", 20, 100),
+        ];
+        let mut plan = plan_procurement_v1(&policy, &offers).expect("policy");
+        plan.supplier_count = 99;
+        let violations = verify_plan_v1(&policy, &offers, &plan);
+        assert!(violations.contains(&PlanViolationV1::ReportedSupplierCountMismatch));
     }
 
     #[test]
