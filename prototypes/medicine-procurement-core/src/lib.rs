@@ -741,7 +741,8 @@ mod source_contract;
 pub use source_contract::{
     normalize_price_observation_v1, NormalizedPriceObservationV1, PriceTemporalStateV1,
     SourceContractRejectionV1, SourceIngestionPolicyV1, SourceListingStatusV1,
-    SourceManifestV1, SourceOperationV1, SourcePriceRecordV1, SourceRightsReviewStateV1,
+    SourceManifestV1, SourceOperationV1, SourcePermissionValidityV1, SourcePriceRecordV1,
+    SourceRightsReviewStateV1,
 };
 
 mod verify;
