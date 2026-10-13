@@ -254,6 +254,7 @@ fn validate_ingestion_policy(
         || !is_currency_code(&policy.required_currency_code)
         || !is_identifier(&policy.required_normalized_unit_basis)
         || policy.required_price_kind == PriceKindV1::Unknown
+        || policy.required_operations.is_empty()
     {
         return Err(SourceContractRejectionV1::InvalidPolicy);
     }
@@ -283,17 +284,26 @@ fn validate_source_manifest(
     {
         return Err(SourceContractRejectionV1::InvalidSourceDigest);
     }
-    if manifest.rights_review_state != SourceRightsReviewStateV1::Granted {
-        return Err(SourceContractRejectionV1::RightsNotGranted);
+    match manifest.rights_review_state {
+        SourceRightsReviewStateV1::Granted => {}
+        SourceRightsReviewStateV1::Pending | SourceRightsReviewStateV1::Denied => {
+            return Err(SourceContractRejectionV1::RightsNotGranted);
+        }
+        SourceRightsReviewStateV1::Expired => {
+            return Err(SourceContractRejectionV1::RightsPermissionExpired);
+        }
     }
     let reviewed_on = manifest
         .rights_reviewed_yyyymmdd
         .filter(|date| is_valid_date(*date) && *date <= policy.as_of_yyyymmdd)
         .ok_or(SourceContractRejectionV1::RightsReviewMissing)?;
-    let _ = reviewed_on;
     if manifest
         .permission_valid_through_yyyymmdd
-        .is_some_and(|date| !is_valid_date(date) || date < policy.as_of_yyyymmdd)
+        .is_some_and(|date| {
+            !is_valid_date(date)
+                || date < policy.as_of_yyyymmdd
+                || date < reviewed_on
+        })
     {
         return Err(SourceContractRejectionV1::RightsPermissionExpired);
     }
@@ -484,6 +494,16 @@ mod tests {
     }
 
     #[test]
+    fn policy_must_name_at_least_one_required_source_operation() {
+        let mut scenario = policy();
+        scenario.required_operations.clear();
+        assert_eq!(
+            normalize_price_observation_v1(&manifest(), &scenario, &record()).unwrap_err(),
+            SourceContractRejectionV1::InvalidPolicy
+        );
+    }
+
+    #[test]
     fn pending_or_denied_rights_fail_closed() {
         let mut source = manifest();
         source.rights_review_state = SourceRightsReviewStateV1::Pending;
@@ -495,6 +515,16 @@ mod tests {
         assert_eq!(
             normalize_price_observation_v1(&source, &policy(), &record()).unwrap_err(),
             SourceContractRejectionV1::RightsNotGranted
+        );
+    }
+
+    #[test]
+    fn expired_rights_review_state_is_distinguished_from_pending() {
+        let mut source = manifest();
+        source.rights_review_state = SourceRightsReviewStateV1::Expired;
+        assert_eq!(
+            normalize_price_observation_v1(&source, &policy(), &record()).unwrap_err(),
+            SourceContractRejectionV1::RightsPermissionExpired
         );
     }
 
