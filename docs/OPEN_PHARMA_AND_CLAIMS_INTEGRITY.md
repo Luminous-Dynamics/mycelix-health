@@ -15,6 +15,18 @@ These goals should share an evidence and provenance layer, but must not be colla
 
 This document proposes a staged research program. It does **not** claim that the current software has discovered a medicine, validated a clinical predictor, or demonstrated fraud-detection performance.
 
+## Workstream 0 — Affordable, quality-assured medicines
+
+Open pharmaceutical research is only part of the access problem. Many established medicines already exist but remain too expensive, unavailable, or vulnerable to interrupted supply. We should work toward the **lowest sustainable quality-assured landed cost**, not simply the lowest quoted price.
+
+A dedicated proposal now covers an auditable medicine-affordability and resilient-procurement model: [Global Medicines Affordability and Resilient Procurement](GLOBAL_MEDICINES_AFFORDABILITY_AND_RESILIENT_PROCUREMENT.md), tracked in [MED-PRICE-001 / #273](https://github.com/Luminous-Dynamics/mycelix-health/issues/273).
+
+The initial implementation is synthetic-data-first. It will compare price-only, lowest-eligible-landed-cost and resilience-constrained procurement scenarios; normalize product presentation, currency, tender channel and logistics basis; hard-gate quality/regulatory/licensing eligibility; and account for demand uncertainty, expiry, stockout risk and supplier concentration. Public price data may be used only when source terms, date, product/unit comparability and evidence provenance are recorded.
+
+Useful existing mechanisms include quality-assured generic/biosimilar competition, pooled/regional procurement, transparent tenders, patent-pool licensing, and more reliable demand/distribution planning. None guarantees lower cost in every context; the simulator must disclose assumptions, risks and sensitivity rather than presenting hypothetical savings as realized outcomes. Clinical safety, GMP, market authorization, patent/licensing obligations and procurement law remain hard boundaries.
+
+Luminous stack boundary: Mycelix owns canonical evidence identity and decision receipts; Symthaea can propose forecasts and scenario analysis; Sol-Atlas can expose time/geography comparisons; Mycelix-Health owns medicine and procurement domain contracts. No single score decides both medicine quality and price, and no optimizer directly awards or pays a supplier.
+
 ## 2. Division of responsibility
 
 | Component | Proposed responsibility | Must not become |
