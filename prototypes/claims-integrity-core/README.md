@@ -13,7 +13,8 @@ The prototype intentionally makes no automated payment, coverage, care, sanction
 - PotentialDuplicateServiceLines: groups submitted lines that have the same beneficiary reference, provider reference, service code, service date, and amount. This is a review lead, not a finding. Legitimate repeated services can match these fields.
 - ReversalTargetNotFound: flags a reversal record whose referenced line is absent from the supplied evidence bundle.
 - ReversalTargetNotSubmitted: flags a reversal whose target exists but is itself not a submitted line.
-- Reversal records and known-reversed lines are excluded from duplicate grouping so an ordinary reversal followed by one replacement line does not automatically produce a duplicate signal.
+- ReversalTargetMismatch: flags a reversal that references a submitted line but disagrees on beneficiary, provider, service code, service date, currency, or full amount.
+- A referenced submitted line is excluded from duplicate grouping only when those service fields and the full amount match the reversal. An inconsistent reversal cannot hide a potential duplicate; ordinary matching reversal-plus-replacement flows still avoid an automatic duplicate signal.
 - Incomplete input still permits observed-record analysis, but the overall result is Indeterminate and scope is ObservedRecordsOnly; absence of a signal must not be interpreted as a clean result.
 
 The core deliberately avoids opaque risk scores and provider reputation scores.
@@ -38,7 +39,7 @@ AnomalySignalV1 carries input-manifest and policy digests, exact line references
     cargo test --manifest-path prototypes/claims-integrity-core/Cargo.toml --locked
     cargo clippy --manifest-path prototypes/claims-integrity-core/Cargo.toml -- -D warnings
 
-The crate has its own Cargo workspace on purpose so it can be tested without compiling the full Holochain healthcare workspace or resolving sibling repository dependencies. The synthetic test suite covers 13 behavior and fail-closed cases.
+The crate has its own Cargo workspace on purpose so it can be tested without compiling the full Holochain healthcare workspace or resolving sibling repository dependencies. The synthetic test suite covers 14 behavior and fail-closed cases.
 
 ## Out of scope
 
