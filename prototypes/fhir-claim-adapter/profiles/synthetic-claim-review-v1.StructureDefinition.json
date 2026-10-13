@@ -38,6 +38,41 @@
         "fixedUri": "urn:luminous-dynamics:synthetic:fhir-r4:claim-review-v1"
       },
       {
+        "id": "Claim.implicitRules",
+        "path": "Claim.implicitRules",
+        "max": "0"
+      },
+      {
+        "id": "Claim.language",
+        "path": "Claim.language",
+        "max": "0"
+      },
+      {
+        "id": "Claim.text",
+        "path": "Claim.text",
+        "max": "0"
+      },
+      {
+        "id": "Claim.contained",
+        "path": "Claim.contained",
+        "max": "0"
+      },
+      {
+        "id": "Claim.extension",
+        "path": "Claim.extension",
+        "max": "0"
+      },
+      {
+        "id": "Claim.modifierExtension",
+        "path": "Claim.modifierExtension",
+        "max": "0"
+      },
+      {
+        "id": "Claim.identifier",
+        "path": "Claim.identifier",
+        "max": "0"
+      },
+      {
         "id": "Claim.status",
         "path": "Claim.status",
         "min": 1,
@@ -49,6 +84,11 @@
         "path": "Claim.type",
         "min": 1,
         "max": "1"
+      },
+      {
+        "id": "Claim.subType",
+        "path": "Claim.subType",
+        "max": "0"
       },
       {
         "id": "Claim.use",
@@ -64,10 +104,25 @@
         "max": "1"
       },
       {
+        "id": "Claim.billablePeriod",
+        "path": "Claim.billablePeriod",
+        "max": "0"
+      },
+      {
         "id": "Claim.created",
         "path": "Claim.created",
         "min": 1,
         "max": "1"
+      },
+      {
+        "id": "Claim.enterer",
+        "path": "Claim.enterer",
+        "max": "0"
+      },
+      {
+        "id": "Claim.insurer",
+        "path": "Claim.insurer",
+        "max": "0"
       },
       {
         "id": "Claim.provider",
@@ -80,70 +135,6 @@
         "path": "Claim.priority",
         "min": 1,
         "max": "1"
-      },
-      {
-        "id": "Claim.insurance",
-        "path": "Claim.insurance",
-        "min": 1
-      },
-      {
-        "id": "Claim.item",
-        "path": "Claim.item",
-        "min": 1
-      },
-      {
-        "id": "Claim.item.sequence",
-        "path": "Claim.item.sequence",
-        "min": 1,
-        "max": "1"
-      },
-      {
-        "id": "Claim.item.productOrService",
-        "path": "Claim.item.productOrService",
-        "min": 1,
-        "max": "1"
-      },
-      {
-        "id": "Claim.item.serviced[x]",
-        "path": "Claim.item.serviced[x]",
-        "min": 1,
-        "max": "1",
-        "type": [
-          {
-            "code": "date"
-          }
-        ]
-      },
-      {
-        "id": "Claim.item.net",
-        "path": "Claim.item.net",
-        "min": 1,
-        "max": "1"
-      },
-      {
-        "id": "Claim.identifier",
-        "path": "Claim.identifier",
-        "max": "0"
-      },
-      {
-        "id": "Claim.subType",
-        "path": "Claim.subType",
-        "max": "0"
-      },
-      {
-        "id": "Claim.billablePeriod",
-        "path": "Claim.billablePeriod",
-        "max": "0"
-      },
-      {
-        "id": "Claim.enterer",
-        "path": "Claim.enterer",
-        "max": "0"
-      },
-      {
-        "id": "Claim.insurer",
-        "path": "Claim.insurer",
-        "max": "0"
       },
       {
         "id": "Claim.fundsReserve",
@@ -201,9 +192,19 @@
         "max": "0"
       },
       {
+        "id": "Claim.insurance",
+        "path": "Claim.insurance",
+        "min": 1
+      },
+      {
         "id": "Claim.accident",
         "path": "Claim.accident",
         "max": "0"
+      },
+      {
+        "id": "Claim.item",
+        "path": "Claim.item",
+        "min": 1
       },
       {
         "id": "Claim.total",
@@ -211,34 +212,10 @@
         "max": "0"
       },
       {
-        "id": "Claim.implicitRules",
-        "path": "Claim.implicitRules",
-        "max": "0"
-      },
-      {
-        "id": "Claim.language",
-        "path": "Claim.language",
-        "max": "0"
-      },
-      {
-        "id": "Claim.text",
-        "path": "Claim.text",
-        "max": "0"
-      },
-      {
-        "id": "Claim.contained",
-        "path": "Claim.contained",
-        "max": "0"
-      },
-      {
-        "id": "Claim.extension",
-        "path": "Claim.extension",
-        "max": "0"
-      },
-      {
-        "id": "Claim.modifierExtension",
-        "path": "Claim.modifierExtension",
-        "max": "0"
+        "id": "Claim.item.sequence",
+        "path": "Claim.item.sequence",
+        "min": 1,
+        "max": "1"
       },
       {
         "id": "Claim.item.careTeamSequence",
@@ -271,6 +248,12 @@
         "max": "0"
       },
       {
+        "id": "Claim.item.productOrService",
+        "path": "Claim.item.productOrService",
+        "min": 1,
+        "max": "1"
+      },
+      {
         "id": "Claim.item.modifier",
         "path": "Claim.item.modifier",
         "max": "0"
@@ -279,6 +262,17 @@
         "id": "Claim.item.programCode",
         "path": "Claim.item.programCode",
         "max": "0"
+      },
+      {
+        "id": "Claim.item.serviced[x]",
+        "path": "Claim.item.serviced[x]",
+        "min": 1,
+        "max": "1",
+        "type": [
+          {
+            "code": "date"
+          }
+        ]
       },
       {
         "id": "Claim.item.location[x]",
@@ -299,6 +293,12 @@
         "id": "Claim.item.factor",
         "path": "Claim.item.factor",
         "max": "0"
+      },
+      {
+        "id": "Claim.item.net",
+        "path": "Claim.item.net",
+        "min": 1,
+        "max": "1"
       },
       {
         "id": "Claim.item.udi",
