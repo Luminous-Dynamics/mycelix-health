@@ -1163,39 +1163,13 @@ mod tests {
 
     #[test]
     fn claim_response_is_reference_only_and_never_a_service_line() {
-        let value = serde_json::json!({
-            "resourceType": "ClaimResponse",
-            "id": "synthetic-response-001",
-            "meta": {
-                "versionId": "7",
-                "lastUpdated": "2026-10-12T11:00:00Z",
-                "profile": [CLAIM_RESPONSE_PROFILE_CANONICAL]
-            },
-            "status": "active",
-            "type": {
-                "coding": [{
-                    "system": "http://terminology.hl7.org/CodeSystem/claim-type",
-                    "code": "professional"
-                }]
-            },
-            "use": "claim",
-            "patient": {"reference": "Patient/synthetic-patient-001"},
-            "created": "2026-10-12T10:00:00Z",
-            "insurer": {"reference": "Organization/synthetic-payer-001"},
-            "outcome": "complete",
-            "request": {"reference": "Claim/synthetic-claim-001"},
-            "item": [{
-                "itemSequence": 1,
-                "adjudication": [{
-                    "category": {"text": "benefit"},
-                    "amount": {"value": 125.0, "currency": "USD"}
-                }]
-            }]
-        });
+        const RESPONSE_FIXTURE: &str = include_str!(
+            "../fixtures/synthetic-claimresponse-reference-only.json"
+        );
         let mut ctx = context();
         ctx.linked_claim_ref = Some("claim-demo-001".to_string());
-        let raw = value.to_string();
-        let result = map_fhir_r4_json(raw.as_bytes(), &ctx, &policy()).expect("valid JSON");
+        let result =
+            map_fhir_r4_json(RESPONSE_FIXTURE.as_bytes(), &ctx, &policy()).expect("valid JSON");
         let AdapterResultV1::ClaimResponse(response) = result else {
             panic!("ClaimResponse must remain distinct");
         };
