@@ -683,10 +683,10 @@ mod tests {
     }
 
     #[test]
-    fn permission_cannot_be_valid_through_a_date_before_its_review() {
+    fn future_rights_review_date_is_rejected() {
         let mut source = manifest();
-        source.rights_reviewed_yyyymmdd = Some(20261012);
-        source.permission_validity = SourcePermissionValidityV1::ValidThrough(20261011);
+        source.rights_reviewed_yyyymmdd = Some(20261015);
+        source.permission_validity = SourcePermissionValidityV1::ValidThrough(20261231);
         assert_eq!(
             normalize_price_observation_v1(&source, &policy(), &record()).unwrap_err(),
             SourceContractRejectionV1::RightsPermissionExpired
