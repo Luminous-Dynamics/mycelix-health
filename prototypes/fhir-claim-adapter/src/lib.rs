@@ -792,7 +792,13 @@ fn required_claim_response_fields_present(value: &Value) -> bool {
         .get("outcome")
         .and_then(Value::as_str)
         .is_some_and(|outcome| matches!(outcome, "queued" | "complete" | "error" | "partial"));
-    status_valid && has_type_coding && use_valid && has_patient && has_created && has_insurer && has_outcome
+    status_valid
+        && has_type_coding
+        && use_valid
+        && has_patient
+        && has_created
+        && has_insurer
+        && has_outcome
 }
 
 fn unsupported_claim_context_fields(value: &Value) -> bool {
