@@ -1,0 +1,330 @@
+{
+  "resourceType": "StructureDefinition",
+  "id": "synthetic-claim-review-v1",
+  "url": "urn:luminous-dynamics:synthetic:fhir-r4:claim-review-v1",
+  "version": "1.0.0",
+  "name": "SyntheticClaimReviewV1",
+  "title": "Synthetic FHIR R4 Claim Review Subset",
+  "status": "draft",
+  "experimental": true,
+  "date": "2026-10-13",
+  "publisher": "Luminous Dynamics",
+  "description": "A deliberately narrow, synthetic-only FHIR R4 Claim profile for validating the offline fhir-claim-adapter prototype. Not suitable for clinical or payer production use.",
+  "fhirVersion": "4.0.1",
+  "kind": "resource",
+  "abstract": false,
+  "type": "Claim",
+  "baseDefinition": "http://hl7.org/fhir/StructureDefinition/Claim",
+  "derivation": "constraint",
+  "differential": {
+    "element": [
+      {
+        "id": "Claim",
+        "path": "Claim",
+        "constraint": [
+          {
+            "key": "claim-review-one-focal",
+            "severity": "error",
+            "human": "Exactly one insurance entry must be focal.",
+            "expression": "insurance.where(focal = true).count() = 1"
+          }
+        ]
+      },
+      {
+        "id": "Claim.meta.profile",
+        "path": "Claim.meta.profile",
+        "min": 1,
+        "max": "1",
+        "fixedUri": "urn:luminous-dynamics:synthetic:fhir-r4:claim-review-v1"
+      },
+      {
+        "id": "Claim.implicitRules",
+        "path": "Claim.implicitRules",
+        "max": "0"
+      },
+      {
+        "id": "Claim.language",
+        "path": "Claim.language",
+        "max": "0"
+      },
+      {
+        "id": "Claim.text",
+        "path": "Claim.text",
+        "max": "0"
+      },
+      {
+        "id": "Claim.contained",
+        "path": "Claim.contained",
+        "max": "0"
+      },
+      {
+        "id": "Claim.extension",
+        "path": "Claim.extension",
+        "max": "0"
+      },
+      {
+        "id": "Claim.modifierExtension",
+        "path": "Claim.modifierExtension",
+        "max": "0"
+      },
+      {
+        "id": "Claim.identifier",
+        "path": "Claim.identifier",
+        "max": "0"
+      },
+      {
+        "id": "Claim.status",
+        "path": "Claim.status",
+        "min": 1,
+        "max": "1",
+        "fixedCode": "active"
+      },
+      {
+        "id": "Claim.type",
+        "path": "Claim.type",
+        "min": 1,
+        "max": "1"
+      },
+      {
+        "id": "Claim.subType",
+        "path": "Claim.subType",
+        "max": "0"
+      },
+      {
+        "id": "Claim.use",
+        "path": "Claim.use",
+        "min": 1,
+        "max": "1",
+        "fixedCode": "claim"
+      },
+      {
+        "id": "Claim.patient",
+        "path": "Claim.patient",
+        "min": 1,
+        "max": "1"
+      },
+      {
+        "id": "Claim.billablePeriod",
+        "path": "Claim.billablePeriod",
+        "max": "0"
+      },
+      {
+        "id": "Claim.created",
+        "path": "Claim.created",
+        "min": 1,
+        "max": "1"
+      },
+      {
+        "id": "Claim.enterer",
+        "path": "Claim.enterer",
+        "max": "0"
+      },
+      {
+        "id": "Claim.insurer",
+        "path": "Claim.insurer",
+        "max": "1"
+      },
+      {
+        "id": "Claim.provider",
+        "path": "Claim.provider",
+        "min": 1,
+        "max": "1"
+      },
+      {
+        "id": "Claim.priority",
+        "path": "Claim.priority",
+        "min": 1,
+        "max": "1"
+      },
+      {
+        "id": "Claim.fundsReserve",
+        "path": "Claim.fundsReserve",
+        "max": "0"
+      },
+      {
+        "id": "Claim.related",
+        "path": "Claim.related",
+        "max": "0"
+      },
+      {
+        "id": "Claim.prescription",
+        "path": "Claim.prescription",
+        "max": "0"
+      },
+      {
+        "id": "Claim.originalPrescription",
+        "path": "Claim.originalPrescription",
+        "max": "0"
+      },
+      {
+        "id": "Claim.payee",
+        "path": "Claim.payee",
+        "max": "0"
+      },
+      {
+        "id": "Claim.referral",
+        "path": "Claim.referral",
+        "max": "0"
+      },
+      {
+        "id": "Claim.facility",
+        "path": "Claim.facility",
+        "max": "0"
+      },
+      {
+        "id": "Claim.careTeam",
+        "path": "Claim.careTeam",
+        "max": "0"
+      },
+      {
+        "id": "Claim.supportingInfo",
+        "path": "Claim.supportingInfo",
+        "max": "0"
+      },
+      {
+        "id": "Claim.diagnosis",
+        "path": "Claim.diagnosis",
+        "max": "0"
+      },
+      {
+        "id": "Claim.procedure",
+        "path": "Claim.procedure",
+        "max": "0"
+      },
+      {
+        "id": "Claim.insurance",
+        "path": "Claim.insurance",
+        "min": 1
+      },
+      {
+        "id": "Claim.accident",
+        "path": "Claim.accident",
+        "max": "0"
+      },
+      {
+        "id": "Claim.item",
+        "path": "Claim.item",
+        "min": 1
+      },
+      {
+        "id": "Claim.item.sequence",
+        "path": "Claim.item.sequence",
+        "min": 1,
+        "max": "1"
+      },
+      {
+        "id": "Claim.item.careTeamSequence",
+        "path": "Claim.item.careTeamSequence",
+        "max": "0"
+      },
+      {
+        "id": "Claim.item.diagnosisSequence",
+        "path": "Claim.item.diagnosisSequence",
+        "max": "0"
+      },
+      {
+        "id": "Claim.item.procedureSequence",
+        "path": "Claim.item.procedureSequence",
+        "max": "0"
+      },
+      {
+        "id": "Claim.item.informationSequence",
+        "path": "Claim.item.informationSequence",
+        "max": "0"
+      },
+      {
+        "id": "Claim.item.revenue",
+        "path": "Claim.item.revenue",
+        "max": "0"
+      },
+      {
+        "id": "Claim.item.category",
+        "path": "Claim.item.category",
+        "max": "0"
+      },
+      {
+        "id": "Claim.item.productOrService",
+        "path": "Claim.item.productOrService",
+        "min": 1,
+        "max": "1"
+      },
+      {
+        "id": "Claim.item.modifier",
+        "path": "Claim.item.modifier",
+        "max": "0"
+      },
+      {
+        "id": "Claim.item.programCode",
+        "path": "Claim.item.programCode",
+        "max": "0"
+      },
+      {
+        "id": "Claim.item.serviced[x]",
+        "path": "Claim.item.serviced[x]",
+        "min": 1,
+        "max": "1",
+        "type": [
+          {
+            "code": "date"
+          }
+        ]
+      },
+      {
+        "id": "Claim.item.location[x]",
+        "path": "Claim.item.location[x]",
+        "max": "0"
+      },
+      {
+        "id": "Claim.item.quantity",
+        "path": "Claim.item.quantity",
+        "max": "0"
+      },
+      {
+        "id": "Claim.item.unitPrice",
+        "path": "Claim.item.unitPrice",
+        "max": "0"
+      },
+      {
+        "id": "Claim.item.factor",
+        "path": "Claim.item.factor",
+        "max": "0"
+      },
+      {
+        "id": "Claim.item.net",
+        "path": "Claim.item.net",
+        "min": 1,
+        "max": "1"
+      },
+      {
+        "id": "Claim.item.udi",
+        "path": "Claim.item.udi",
+        "max": "0"
+      },
+      {
+        "id": "Claim.item.bodySite",
+        "path": "Claim.item.bodySite",
+        "max": "0"
+      },
+      {
+        "id": "Claim.item.subSite",
+        "path": "Claim.item.subSite",
+        "max": "0"
+      },
+      {
+        "id": "Claim.item.encounter",
+        "path": "Claim.item.encounter",
+        "max": "0"
+      },
+      {
+        "id": "Claim.item.detail",
+        "path": "Claim.item.detail",
+        "max": "0"
+      },
+      {
+        "id": "Claim.total",
+        "path": "Claim.total",
+        "max": "0"
+      }
+    ]
+  }
+}
