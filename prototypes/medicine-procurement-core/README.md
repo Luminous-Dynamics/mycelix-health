@@ -40,7 +40,7 @@ For each normalized unit, the baseline sums acquisition, freight, insurance, dut
 
 ## Tests and verification
 
-The source contains 45 uniquely named synthetic unit tests covering failed quality/authorization/licence gates, mismatched presentation/unit basis, reference-price-versus-quote and source-defined price-class mismatches, scoped source permission, malformed evidence digests, stale prices, missing delivery history, duplicate offer identities, aggregate overflow, input-order determinism, insufficient supply, concentration limits, invalid policy/date inputs, tampered allocations/cost receipts and offer-summary fields, missing evaluations, and source-rights/normalization failures. This is a source inventory, not evidence those tests have executed.
+The source contains 50 uniquely named synthetic unit tests covering failed quality/authorization/licence gates, mismatched presentation/unit basis, reference-price-versus-quote and source-defined price-class mismatches, scoped source permission, malformed evidence digests, stale prices, missing delivery history, duplicate offer identities, aggregate overflow, input-order determinism, insufficient supply, concentration limits, invalid policy/date inputs, tampered allocations/cost receipts and offer-summary fields, missing evaluations, and source-rights/normalization failures, unknown rights validity, future-effective prices and invalid source-record evidence digests. This is a source inventory, not evidence those tests have executed.
 
 Run the following from the repository root:
 
