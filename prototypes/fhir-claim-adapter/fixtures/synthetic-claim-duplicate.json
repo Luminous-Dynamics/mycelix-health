@@ -17,6 +17,12 @@
   "patient": {"reference": "Patient/synthetic-patient-001"},
   "created": "2026-10-12",
   "provider": {"reference": "Organization/synthetic-provider-001"},
+  "priority": {
+    "coding": [{
+      "system": "http://terminology.hl7.org/CodeSystem/processpriority",
+      "code": "normal"
+    }]
+  },
   "insurer": {"reference": "Organization/synthetic-payer-001"},
   "insurance": [{
     "sequence": 1,
