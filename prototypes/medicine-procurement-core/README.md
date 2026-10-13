@@ -24,7 +24,7 @@ A standalone, dependency-free Rust baseline for allocating synthetic normalized 
 7. Marks unmet demand or unsatisfied sourcing constraints as InfeasibleWithinObservedOffers. Missing offers/prices never become zero-cost success.
 8. Emits deterministic output for the same policy, manifest digests and offer set.
 
-The method is deliberately named DeterministicGreedyBaselineV1. It is not proven globally optimal, and a greedy run may be infeasible even when a different allocation exists. A separate verify_plan_v1 checker re-evaluates award gates and recomputes quantities, concentration, supplier count, unit/extended cost, total cost, delivery arithmetic and status. It also checks the receipt's minimum-supplier-count field and independently validates the presence, eligibility and unit-cost summary for each offer evaluation. A future exact/robust optimizer must pass that checker and compare itself against this baseline.
+The method is deliberately named DeterministicGreedyBaselineV1. It is not proven globally optimal, and a greedy run may be infeasible even when a different allocation exists. A separate verify_plan_v1 checker re-evaluates award gates and recomputes quantities, concentration, supplier count, unit/extended cost, total cost, delivery arithmetic and status. It also checks the receipt's minimum-supplier-count field and independently validates the presence, eligibility, unit-cost, exclusion-reason and warning summaries for each offer evaluation. A future exact/robust optimizer must pass that checker and compare itself against this baseline.
 
 ## Source-ingestion conformance boundary
 
@@ -40,7 +40,7 @@ For each normalized unit, the baseline sums acquisition, freight, insurance, dut
 
 ## Tests and verification
 
-The source contains 52 uniquely named synthetic unit tests covering failed quality/authorization/licence gates, mismatched presentation/unit basis, reference-price-versus-quote and source-defined price-class mismatches, scoped source permission, malformed evidence digests, stale prices, missing delivery history, duplicate offer identities, aggregate overflow, input-order determinism, insufficient supply, concentration limits, invalid policy/date inputs, tampered allocations/cost receipts and offer-summary fields, missing evaluations, and source-rights/normalization failures, unknown rights validity, future-effective prices and invalid source-record evidence digests. This is a source inventory, not evidence those tests have executed.
+The source contains 54 uniquely named synthetic unit tests covering failed quality/authorization/licence gates, mismatched presentation/unit basis, reference-price-versus-quote and source-defined price-class mismatches, scoped source permission, malformed evidence digests, stale prices, missing delivery history, duplicate offer identities, aggregate overflow, input-order determinism, insufficient supply, concentration limits, invalid policy/date inputs, tampered allocations/cost receipts and offer-summary fields, missing evaluations, tampered rejection reasons/warnings, and source-rights/normalization failures, unknown rights validity, future-effective prices and invalid source-record evidence digests. This is a source inventory, not evidence those tests have executed.
 
 Run the following from the repository root:
 
