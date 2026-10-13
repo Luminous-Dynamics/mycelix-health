@@ -32,6 +32,6 @@ cargo clippy --manifest-path prototypes/fhir-claim-adapter/Cargo.toml --locked -
 ```
 
 
-Static source review finds 18 uniquely named synthetic unit tests, including tests that bind mapper expectations to both local profile files and check differential paths for duplicates/order. This is a test inventory, not a claim they have executed. The dedicated workflow runs the official HL7 FHIR Validator CLI 7.0.1 against both profile resources and validates the synthetic Claim against the local Claim profile; the JAR download is SHA-256 pinned. This configuration still needs a successful exact-head run before either profile is treated as qualified.
+Static source review finds 18 uniquely named synthetic unit tests, including tests that bind mapper expectations to both local profile files and check differential paths for duplicates/order. This is a test inventory, not a claim they have executed. The dedicated workflow runs the official HL7 FHIR Validator CLI 7.0.1 against both profile resources, then validates the synthetic Claim and ClaimResponse fixtures against their respective local profiles; the JAR download is SHA-256 pinned. This configuration still needs a successful exact-head run before either profile is treated as qualified.
 
 The workflow tests Rust 1.96.0 and 1.99.0. CI results, rather than the presence of a workflow or test source, determine qualification. No claim is made that this prototype is FHIR-complete or ready for clinical use.
