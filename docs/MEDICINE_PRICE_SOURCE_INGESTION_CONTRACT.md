@@ -58,6 +58,7 @@ Each parsed record should preserve, at minimum:
 
 - Stable record identity and exact medicinal presentation identity; the source's original product and pack identifiers; ingredient(s), strength, dosage form, route where provided, pack size, unit count and normalization method/version.
 - Jurisdiction and submarket/channel; price class/type exactly as published; amount as a decimal-safe integer in explicitly named minor units (or a decimal representation with currency exponent); ISO currency code; tax and fee inclusions/exclusions; and quoted unit/pack basis.
+- A typed broad price meaning and a source-defined price-class identifier, kept separately. The class identifier must distinguish specific bases such as `za-ndoh.sep`, `za-ndoh.ex-manufacturer`, and `za-ndoh.logistics-fee`; a broad `published_reference_price` category alone is not sufficient for comparison.
 - Effective-from/effective-to dates, observed/publication date, source update date, and source's discontinued/withdrawn status.
 - Status class: `published_reference_price`, `quoted_offer`, `awarded_contract_price`, `transaction_price`, `reimbursement_price`, or `unknown_price_class`. Never conflate these classes.
 - Separate assertions for registered/authorized in destination market, quality status, licensing territory, supplier identity, stock/available quantity, quote validity, lead time and shelf life. Each assertion carries source and timestamp; none is inferred from a price row.
