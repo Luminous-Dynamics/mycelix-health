@@ -30,7 +30,7 @@ For each normalized unit, the baseline sums acquisition, freight, insurance, dut
 
 ## Tests and verification
 
-The source contains 20 uniquely named synthetic unit tests covering failed quality/authorization/licence gates, mismatched presentation/unit basis, stale price, restricted source reuse, missing delivery history, duplicate offer identities, arithmetic overflow, input-order determinism, insufficient supply, concentration limits, invalid policy/date inputs, and rejection of manually injected ineligible allocations or altered cost receipts. This is a source inventory, not evidence those tests have executed.
+The source contains 22 uniquely named synthetic unit tests covering failed quality/authorization/licence gates, mismatched presentation/unit basis, stale price, restricted source reuse, missing delivery history, duplicate offer identities, arithmetic overflow, input-order determinism, insufficient supply, concentration limits, invalid policy/date inputs, and rejection of manually injected ineligible allocations or altered cost receipts. This is a source inventory, not evidence those tests have executed.
 
 Run the following from the repository root:
 
@@ -44,5 +44,7 @@ The executable scenario corpus covers 12 synthetic presentation IDs, 3 hypotheti
 All corpus labels and costs are fictional; costs are synthetic ZAR minor units, not actual drug prices, price comparisons or savings estimates. The imported-cost case models a declared upstream cost shock, not currency conversion. Digest-shaped fixture values are sentinels, not authenticated source artifacts. Source-level test counts and queued CI are not pass evidence.
 
 A dedicated workflow tests Rust 1.96.0 and 1.99.0. Remaining qualification steps are property-based/adversarial tests for corrupted manifests and ambiguous source evidence, plus ingestion of carefully licensed public price observations only after preserving price class, currency, package/unit basis, date, jurisdiction and source reuse terms.
+
+Before live price ingestion, review the rights and data contract in [Medicine Price Source Ingestion Contract v1](../../docs/MEDICINE_PRICE_SOURCE_INGESTION_CONTRACT.md). In particular, South Africa's NDoH website terms require prior written permission for commercial use; downloadable is not the same as licensed for commercial analysis or redistribution.
 
 Tracked in Mycelix-Health issue #273: https://github.com/Luminous-Dynamics/mycelix-health/issues/273
