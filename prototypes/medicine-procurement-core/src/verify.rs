@@ -287,6 +287,10 @@ fn award_eligible_independently(
         && offer.medicine_presentation_id == policy.medicine_presentation_id
         && offer.jurisdiction == policy.jurisdiction
         && offer.currency_code == policy.currency_code
+        && offer.price_kind == policy.required_price_kind
+        && offer.price_kind != PriceKindV1::Unknown
+        && is_identifier(&offer.price_class_id)
+        && offer.price_class_id == policy.required_price_class_id
         && offer.unit_basis == policy.normalized_unit_basis
         && date_is_current
         && evidence_digests_are_valid
@@ -322,6 +326,8 @@ mod tests {
             medicine_presentation_id: "med-amoxicillin-500mg-capsule-21".to_string(),
             jurisdiction: "ZA".to_string(),
             currency_code: "ZAR".to_string(),
+            required_price_kind: PriceKindV1::SupplierQuote,
+            required_price_class_id: "synthetic-supplier-quote-v1".to_string(),
             normalized_unit_basis: "capsule".to_string(),
             as_of_yyyymmdd: 20261013,
             demand_units: 100,
@@ -344,6 +350,8 @@ mod tests {
             jurisdiction: "ZA".to_string(),
             currency_code: "ZAR".to_string(),
             unit_basis: "capsule".to_string(),
+            price_kind: PriceKindV1::SupplierQuote,
+            price_class_id: "synthetic-supplier-quote-v1".to_string(),
             price_observation_sha256: DIGEST_A.to_string(),
             quality_evidence_sha256: DIGEST_A.to_string(),
             authorization_evidence_sha256: DIGEST_A.to_string(),
@@ -450,6 +458,39 @@ mod tests {
         plan.allocations.sort_by(|left, right| left.offer_id.cmp(&right.offer_id));
         plan.total_allocated_cost_minor = plan
             .allocations
+            .iter()
+            .map(|allocation| allocation.extended_cost_minor)
+            .sum();
+
+        let violations = verify_plan_v1(&policy, &offers, &plan);
+        assert!(violations.contains(&PlanViolationV1::AllocatedOfferIneligible));
+    }
+
+    #[test]
+    fn independent_checker_rejects_price_class_mismatch() {
+        let policy = policy();
+        let mut mismatched = offer("offer-a", "supplier-a", 10, 100);
+        mismatched.price_kind = PriceKindV1::PublishedReferencePrice;
+        mismatched.price_class_id = "za-ndoh.sep".to_string();
+        let offers = vec![
+            mismatched.clone(),
+            offer("offer-b", "supplier-b", 20, 100),
+            offer("offer-c", "supplier-c", 21, 100),
+        ];
+        let mut plan = plan_procurement_v1(&policy, &offers).expect("policy");
+        let index = plan.allocations
+            .iter()
+            .position(|allocation| allocation.offer_id == "offer-b")
+            .expect("eligible allocation");
+        let units = plan.allocations[index].allocated_units;
+        let unit_cost = mismatched.unit_cost.total_minor().expect("valid cost");
+        plan.allocations[index].offer_id = mismatched.offer_id.clone();
+        plan.allocations[index].supplier_id = mismatched.supplier_id.clone();
+        plan.allocations[index].unit_total_cost_minor = unit_cost;
+        plan.allocations[index].extended_cost_minor =
+            (units as u128) * (unit_cost as u128);
+        plan.allocations.sort_by(|left, right| left.offer_id.cmp(&right.offer_id));
+        plan.total_allocated_cost_minor = plan.allocations
             .iter()
             .map(|allocation| allocation.extended_cost_minor)
             .sum();
