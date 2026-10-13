@@ -104,6 +104,7 @@ pub enum SignalKind {
     PotentialDuplicateServiceLines,
     ReversalTargetNotFound,
     ReversalTargetNotSubmitted,
+    ReversalTargetMismatch,
 }
 
 /// The sole authority marker available in V1; signals cannot represent a
@@ -118,6 +119,7 @@ pub enum SignalReason {
     MatchingBeneficiaryProviderServiceDateAndAmount,
     ReversalReferenceAbsentFromBundle,
     ReversalTargetIsNotSubmittedLine,
+    ReversalDoesNotMatchTargetService,
 }
 
 /// A signal is a lead for review, never a finding of fraud or wrongdoing.
@@ -286,8 +288,29 @@ pub fn evaluate(bundle: &ClaimEvidenceBundleV1) -> EvaluationReportV1 {
                 line_ids: vec![line.line_id.clone()],
                 source_record_digests: vec![line.source_record_digest.clone()],
             }),
-            Some(target_line) if target_line.status == ClaimLineStatus::Submitted => {
+            Some(target_line)
+                if target_line.status == ClaimLineStatus::Submitted
+                    && reversal_matches_target(line, target_line) =>
+            {
+                // A reversal suppresses a submitted line from duplicate grouping
+                // only when the service identity and full amount agree. A dangling
+                // or mismatched reversal must not make duplicate evidence disappear.
                 known_reversed_targets.insert(target.to_string());
+            }
+            Some(target_line) if target_line.status == ClaimLineStatus::Submitted => {
+                signals.push(AnomalySignalV1 {
+                    signal_key: format!("reversal_target_mismatch:{}", line.line_id),
+                    kind: SignalKind::ReversalTargetMismatch,
+                    reason: SignalReason::ReversalDoesNotMatchTargetService,
+                    decision_authority: DecisionAuthority::NonAuthoritativeReviewLead,
+                    input_manifest_digest: bundle.input_manifest_digest.clone(),
+                    policy_digest: bundle.policy_digest.clone(),
+                    line_ids: vec![line.line_id.clone(), target_line.line_id.clone()],
+                    source_record_digests: vec![
+                        line.source_record_digest.clone(),
+                        target_line.source_record_digest.clone(),
+                    ],
+                });
             }
             Some(target_line) => signals.push(AnomalySignalV1 {
                 signal_key: format!("reversal_target_not_submitted:{}", line.line_id),
@@ -382,6 +405,18 @@ pub fn evaluate(bundle: &ClaimEvidenceBundleV1) -> EvaluationReportV1 {
         signals,
         bundle.lines.len(),
     )
+}
+
+/// Return true only when a reversal matches the submitted service identity
+/// and full amount. Claim IDs may differ because a reversal can be recorded in
+/// a separate adjustment claim; the service-level fields must still agree.
+fn reversal_matches_target(reversal: &ClaimLineV1, target: &ClaimLineV1) -> bool {
+    reversal.beneficiary_ref == target.beneficiary_ref
+        && reversal.provider_ref == target.provider_ref
+        && reversal.service_code == target.service_code
+        && reversal.currency_code == target.currency_code
+        && reversal.service_date_yyyymmdd == target.service_date_yyyymmdd
+        && reversal.amount_minor_units == target.amount_minor_units
 }
 
 fn report(
@@ -536,6 +571,28 @@ mod tests {
         let report = evaluate(&bundle(vec![original, reversal, replacement]));
         assert!(report.signals.is_empty());
         assert_eq!(report.status, AnalysisStatus::Complete);
+    }
+
+    #[test]
+    fn mismatched_reversal_does_not_suppress_duplicate_signal() {
+        let original = line("line-original");
+        let duplicate = line("line-duplicate");
+        let mut reversal = line("line-reversal");
+        reversal.status = ClaimLineStatus::Reversal;
+        reversal.reverses_line_id = Some("line-original".to_string());
+        reversal.amount_minor_units -= 1;
+        reversal.source_record_digest = DIGEST_B.to_string();
+
+        let report = evaluate(&bundle(vec![original, duplicate, reversal]));
+        assert_eq!(report.status, AnalysisStatus::Complete);
+        assert!(report.signals.iter().any(|signal| {
+            signal.kind == SignalKind::ReversalTargetMismatch
+                && signal.line_ids == vec!["line-reversal".to_string(), "line-original".to_string()]
+        }));
+        assert!(report.signals.iter().any(|signal| {
+            signal.kind == SignalKind::PotentialDuplicateServiceLines
+                && signal.line_ids == vec!["line-duplicate".to_string(), "line-original".to_string()]
+        }));
     }
 
     #[test]
