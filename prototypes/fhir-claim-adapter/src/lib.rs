@@ -96,6 +96,8 @@ pub enum MappingIssueV1 {
     MissingSourceVersion,
     UnsupportedResourceExtension,
     UnsupportedClaimStatus,
+    UnsupportedClaimUse,
+    UnsupportedClaimContext,
     MissingRequiredClaimFields,
     MissingItems,
     InvalidOrMissingSequence,
@@ -359,6 +361,12 @@ fn map_claim(
     }
     if source_status.as_deref() != Some("active") {
         global_issues.push(MappingIssueV1::UnsupportedClaimStatus);
+    }
+    if value.get("use").and_then(Value::as_str) != Some("claim") {
+        global_issues.push(MappingIssueV1::UnsupportedClaimUse);
+    }
+    if unsupported_claim_context_fields(value) {
+        global_issues.push(MappingIssueV1::UnsupportedClaimContext);
     }
     if !required_claim_fields_present(value) {
         global_issues.push(MappingIssueV1::MissingRequiredClaimFields);
@@ -728,6 +736,26 @@ fn parse_iso_date(value: &str) -> Option<u32> {
     Some(year * 10_000 + month * 100 + day)
 }
 
+fn unsupported_claim_context_fields(value: &Value) -> bool {
+    const ALLOWED: &[&str] = &[
+        "resourceType",
+        "id",
+        "meta",
+        "status",
+        "type",
+        "use",
+        "patient",
+        "created",
+        "provider",
+        "priority",
+        "insurance",
+        "item",
+    ];
+    value
+        .as_object()
+        .is_none_or(|object| object.keys().any(|key| !ALLOWED.contains(&key.as_str())))
+}
+
 fn required_claim_fields_present(value: &Value) -> bool {
     let has_type_coding = value
         .get("type")
@@ -741,11 +769,21 @@ fn required_claim_fields_present(value: &Value) -> bool {
                         .is_some_and(|code| !code.trim().is_empty())
             })
         });
-    let use_is_supported = value
-        .get("use")
-        .and_then(Value::as_str)
-        .is_some_and(|claim_use| {
-            matches!(claim_use, "claim" | "preauthorization" | "predetermination")
+    let has_priority_coding = value
+        .get("priority")
+        .and_then(|priority| priority.get("coding"))
+        .and_then(Value::as_array)
+        .is_some_and(|codings| {
+            codings.iter().any(|coding| {
+                coding
+                    .get("system")
+                    .and_then(Value::as_str)
+                    .is_some_and(|system| !system.trim().is_empty())
+                    && coding
+                        .get("code")
+                        .and_then(Value::as_str)
+                        .is_some_and(|code| !code.trim().is_empty())
+            })
         });
     let has_patient = value
         .get("patient")
@@ -765,19 +803,34 @@ fn required_claim_fields_present(value: &Value) -> bool {
         .get("insurance")
         .and_then(Value::as_array)
         .is_some_and(|insurance| {
-            !insurance.is_empty()
+            let mut seen_sequences = BTreeSet::new();
+            let mut focal_count = 0usize;
+            let entries_are_valid = !insurance.is_empty()
                 && insurance.iter().all(|entry| {
-                    entry.get("sequence")
-                        .and_then(Value::as_u64)
-                        .is_some_and(|sequence| sequence > 0)
-                        && entry.get("focal").and_then(Value::as_bool).is_some()
-                        && entry.get("coverage")
+                    let sequence = entry.get("sequence").and_then(Value::as_u64);
+                    let sequence_is_valid = sequence.is_some_and(|sequence| {
+                        sequence > 0 && seen_sequences.insert(sequence)
+                    });
+                    let focal = entry.get("focal").and_then(Value::as_bool);
+                    if focal == Some(true) {
+                        focal_count += 1;
+                    }
+                    sequence_is_valid
+                        && focal.is_some()
+                        && entry
+                            .get("coverage")
                             .and_then(|coverage| coverage.get("reference"))
                             .and_then(Value::as_str)
                             .is_some_and(|reference| !reference.trim().is_empty())
-                })
+                });
+            entries_are_valid && focal_count == 1
         });
-    has_type_coding && use_is_supported && has_patient && has_provider && has_created && has_insurance
+    has_type_coding
+        && has_priority_coding
+        && has_patient
+        && has_provider
+        && has_created
+        && has_insurance
 }
 
 fn source_versions(value: &Value) -> (Option<String>, Option<String>) {
