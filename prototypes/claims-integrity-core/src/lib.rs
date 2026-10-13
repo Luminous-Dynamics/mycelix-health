@@ -122,18 +122,35 @@ pub enum SignalReason {
     ReversalDoesNotMatchTargetService,
 }
 
+/// A line reference keeps the source digest attached to the exact line it
+/// describes. A digest here is a locator/commitment string, not authentication.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct LineEvidenceRefV1 {
+    pub line_id: String,
+    pub source_record_digest: String,
+}
+
 /// A signal is a lead for review, never a finding of fraud or wrongdoing.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct AnomalySignalV1 {
     /// Stable within the exact evidence bundle and this ruleset. Not a signature.
     pub signal_key: String,
+    pub ruleset_version: String,
+    pub code_set_version: String,
+    pub input_completeness: InputCompleteness,
     pub kind: SignalKind,
     pub reason: SignalReason,
     pub decision_authority: DecisionAuthority,
     pub input_manifest_digest: String,
     pub policy_digest: String,
-    pub line_ids: Vec<String>,
-    pub source_record_digests: Vec<String>,
+    /// Sorted by line identifier; each line remains paired with its own digest.
+    pub evidence: Vec<LineEvidenceRefV1>,
+}
+
+impl AnomalySignalV1 {
+    pub fn line_ids(&self) -> Vec<&str> {
+        self.evidence.iter().map(|reference| reference.line_id.as_str()).collect()
+    }
 }
 
 /// Result from a single deterministic evaluation.
@@ -145,6 +162,7 @@ pub struct EvaluationReportV1 {
     pub scope: AnalysisScope,
     pub input_manifest_digest: String,
     pub policy_digest: String,
+    pub code_set_version: String,
     pub lines_examined: usize,
     pub reasons: Vec<AnalysisReason>,
     pub signals: Vec<AnomalySignalV1>,
@@ -278,16 +296,13 @@ pub fn evaluate(bundle: &ClaimEvidenceBundleV1) -> EvaluationReportV1 {
         }
         let target = line.reverses_line_id.as_deref().unwrap_or_default();
         match by_id.get(target) {
-            None => signals.push(AnomalySignalV1 {
-                signal_key: format!("reversal_target_missing:{}", line.line_id),
-                kind: SignalKind::ReversalTargetNotFound,
-                reason: SignalReason::ReversalReferenceAbsentFromBundle,
-                decision_authority: DecisionAuthority::NonAuthoritativeReviewLead,
-                input_manifest_digest: bundle.input_manifest_digest.clone(),
-                policy_digest: bundle.policy_digest.clone(),
-                line_ids: vec![line.line_id.clone()],
-                source_record_digests: vec![line.source_record_digest.clone()],
-            }),
+            None => signals.push(make_signal(
+                bundle,
+                format!("reversal_target_missing:{}", line.line_id),
+                SignalKind::ReversalTargetNotFound,
+                SignalReason::ReversalReferenceAbsentFromBundle,
+                vec![line],
+            )),
             Some(target_line)
                 if target_line.status == ClaimLineStatus::Submitted
                     && reversal_matches_target(line, target_line) =>
@@ -298,33 +313,21 @@ pub fn evaluate(bundle: &ClaimEvidenceBundleV1) -> EvaluationReportV1 {
                 known_reversed_targets.insert(target.to_string());
             }
             Some(target_line) if target_line.status == ClaimLineStatus::Submitted => {
-                signals.push(AnomalySignalV1 {
-                    signal_key: format!("reversal_target_mismatch:{}", line.line_id),
-                    kind: SignalKind::ReversalTargetMismatch,
-                    reason: SignalReason::ReversalDoesNotMatchTargetService,
-                    decision_authority: DecisionAuthority::NonAuthoritativeReviewLead,
-                    input_manifest_digest: bundle.input_manifest_digest.clone(),
-                    policy_digest: bundle.policy_digest.clone(),
-                    line_ids: vec![line.line_id.clone(), target_line.line_id.clone()],
-                    source_record_digests: vec![
-                        line.source_record_digest.clone(),
-                        target_line.source_record_digest.clone(),
-                    ],
-                });
+                signals.push(make_signal(
+                    bundle,
+                    format!("reversal_target_mismatch:{}", line.line_id),
+                    SignalKind::ReversalTargetMismatch,
+                    SignalReason::ReversalDoesNotMatchTargetService,
+                    vec![line, *target_line],
+                ));
             }
-            Some(target_line) => signals.push(AnomalySignalV1 {
-                signal_key: format!("reversal_target_not_submitted:{}", line.line_id),
-                kind: SignalKind::ReversalTargetNotSubmitted,
-                reason: SignalReason::ReversalTargetIsNotSubmittedLine,
-                decision_authority: DecisionAuthority::NonAuthoritativeReviewLead,
-                input_manifest_digest: bundle.input_manifest_digest.clone(),
-                policy_digest: bundle.policy_digest.clone(),
-                line_ids: vec![line.line_id.clone(), target_line.line_id.clone()],
-                source_record_digests: vec![
-                    line.source_record_digest.clone(),
-                    target_line.source_record_digest.clone(),
-                ],
-            }),
+            Some(target_line) => signals.push(make_signal(
+                bundle,
+                format!("reversal_target_not_submitted:{}", line.line_id),
+                SignalKind::ReversalTargetNotSubmitted,
+                SignalReason::ReversalTargetIsNotSubmittedLine,
+                vec![line, *target_line],
+            )),
         }
     }
 
@@ -355,23 +358,14 @@ pub fn evaluate(bundle: &ClaimEvidenceBundleV1) -> EvaluationReportV1 {
             continue;
         }
         group.sort_by(|left, right| left.line_id.cmp(&right.line_id));
-        let line_ids: Vec<String> = group.iter().map(|line| line.line_id.clone()).collect();
-        let mut source_digests: Vec<String> = group
-            .iter()
-            .map(|line| line.source_record_digest.clone())
-            .collect();
-        source_digests.sort();
-
-        signals.push(AnomalySignalV1 {
-            signal_key: format!("potential_duplicate_group:{}", line_ids[0]),
-            kind: SignalKind::PotentialDuplicateServiceLines,
-            reason: SignalReason::MatchingBeneficiaryProviderServiceDateAndAmount,
-            decision_authority: DecisionAuthority::NonAuthoritativeReviewLead,
-            input_manifest_digest: bundle.input_manifest_digest.clone(),
-            policy_digest: bundle.policy_digest.clone(),
-            line_ids,
-            source_record_digests: source_digests,
-        });
+        let first_line_id = group.first().map(|line| line.line_id.as_str()).unwrap_or_default();
+        signals.push(make_signal(
+            bundle,
+            format!("potential_duplicate_group:{first_line_id}"),
+            SignalKind::PotentialDuplicateServiceLines,
+            SignalReason::MatchingBeneficiaryProviderServiceDateAndAmount,
+            group,
+        ));
     }
 
     signals.sort_by(|left, right| left.signal_key.cmp(&right.signal_key));
@@ -419,6 +413,36 @@ fn reversal_matches_target(reversal: &ClaimLineV1, target: &ClaimLineV1) -> bool
         && reversal.amount_minor_units == target.amount_minor_units
 }
 
+fn make_signal(
+    bundle: &ClaimEvidenceBundleV1,
+    signal_key: String,
+    kind: SignalKind,
+    reason: SignalReason,
+    mut lines: Vec<&ClaimLineV1>,
+) -> AnomalySignalV1 {
+    lines.sort_by(|left, right| left.line_id.cmp(&right.line_id));
+    let evidence = lines
+        .into_iter()
+        .map(|line| LineEvidenceRefV1 {
+            line_id: line.line_id.clone(),
+            source_record_digest: line.source_record_digest.clone(),
+        })
+        .collect();
+
+    AnomalySignalV1 {
+        signal_key,
+        ruleset_version: RULESET_VERSION.to_string(),
+        code_set_version: bundle.code_set_version.clone(),
+        input_completeness: bundle.completeness,
+        kind,
+        reason,
+        decision_authority: DecisionAuthority::NonAuthoritativeReviewLead,
+        input_manifest_digest: bundle.input_manifest_digest.clone(),
+        policy_digest: bundle.policy_digest.clone(),
+        evidence,
+    }
+}
+
 fn report(
     bundle: &ClaimEvidenceBundleV1,
     status: AnalysisStatus,
@@ -434,6 +458,7 @@ fn report(
         scope,
         input_manifest_digest: bundle.input_manifest_digest.clone(),
         policy_digest: bundle.policy_digest.clone(),
+        code_set_version: bundle.code_set_version.clone(),
         lines_examined,
         reasons,
         signals,
@@ -538,10 +563,36 @@ mod tests {
         assert_eq!(report.signals.len(), 1);
         let signal = &report.signals[0];
         assert_eq!(signal.kind, SignalKind::PotentialDuplicateServiceLines);
-        assert_eq!(signal.line_ids, vec!["line-a".to_string(), "line-b".to_string()]);
+        assert_eq!(signal.line_ids(), vec!["line-a", "line-b"]);
         assert_eq!(
             signal.decision_authority,
             DecisionAuthority::NonAuthoritativeReviewLead
+        );
+    }
+
+    #[test]
+    fn evidence_keeps_each_line_paired_with_its_own_source_digest() {
+        let mut first = line("line-a");
+        first.source_record_digest = DIGEST_A.to_string();
+        let mut second = line("line-b");
+        second.source_record_digest = DIGEST_B.to_string();
+
+        let report = evaluate(&bundle(vec![second, first]));
+        let signal = &report.signals[0];
+        assert_eq!(signal.ruleset_version, RULESET_VERSION);
+        assert_eq!(signal.code_set_version, "test-codes-v1");
+        assert_eq!(
+            signal.evidence,
+            vec![
+                LineEvidenceRefV1 {
+                    line_id: "line-a".to_string(),
+                    source_record_digest: DIGEST_A.to_string(),
+                },
+                LineEvidenceRefV1 {
+                    line_id: "line-b".to_string(),
+                    source_record_digest: DIGEST_B.to_string(),
+                },
+            ]
         );
     }
 
@@ -587,11 +638,11 @@ mod tests {
         assert_eq!(report.status, AnalysisStatus::Complete);
         assert!(report.signals.iter().any(|signal| {
             signal.kind == SignalKind::ReversalTargetMismatch
-                && signal.line_ids == vec!["line-reversal".to_string(), "line-original".to_string()]
+                && signal.line_ids() == vec!["line-original", "line-reversal"]
         }));
         assert!(report.signals.iter().any(|signal| {
             signal.kind == SignalKind::PotentialDuplicateServiceLines
-                && signal.line_ids == vec!["line-duplicate".to_string(), "line-original".to_string()]
+                && signal.line_ids() == vec!["line-duplicate", "line-original"]
         }));
     }
 
@@ -603,7 +654,7 @@ mod tests {
         let report = evaluate(&bundle(vec![reversal]));
         assert_eq!(report.signals.len(), 1);
         assert_eq!(report.signals[0].kind, SignalKind::ReversalTargetNotFound);
-        assert_eq!(report.signals[0].line_ids, vec!["line-reversal".to_string()]);
+        assert_eq!(report.signals[0].line_ids(), vec!["line-reversal"]);
         assert_eq!(report.status, AnalysisStatus::Complete);
     }
 
