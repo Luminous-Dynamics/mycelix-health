@@ -96,6 +96,7 @@ pub enum MappingIssueV1 {
     MissingSourceVersion,
     UnsupportedResourceExtension,
     UnsupportedClaimStatus,
+    MissingRequiredClaimFields,
     MissingItems,
     InvalidOrMissingSequence,
     DuplicateSequence,
@@ -358,6 +359,9 @@ fn map_claim(
     }
     if source_status.as_deref() != Some("active") {
         global_issues.push(MappingIssueV1::UnsupportedClaimStatus);
+    }
+    if !required_claim_fields_present(value) {
+        global_issues.push(MappingIssueV1::MissingRequiredClaimFields);
     }
 
     let items = value.get("item").and_then(Value::as_array);
@@ -722,6 +726,58 @@ fn parse_iso_date(value: &str) -> Option<u32> {
         return None;
     }
     Some(year * 10_000 + month * 100 + day)
+}
+
+fn required_claim_fields_present(value: &Value) -> bool {
+    let has_type_coding = value
+        .get("type")
+        .and_then(|claim_type| claim_type.get("coding"))
+        .and_then(Value::as_array)
+        .is_some_and(|codings| {
+            codings.iter().any(|coding| {
+                coding.get("system").and_then(Value::as_str)
+                    .is_some_and(|system| !system.trim().is_empty())
+                    && coding.get("code").and_then(Value::as_str)
+                        .is_some_and(|code| !code.trim().is_empty())
+            })
+        });
+    let use_is_supported = value
+        .get("use")
+        .and_then(Value::as_str)
+        .is_some_and(|claim_use| {
+            matches!(claim_use, "claim" | "preauthorization" | "predetermination")
+        });
+    let has_patient = value
+        .get("patient")
+        .and_then(|patient| patient.get("reference"))
+        .and_then(Value::as_str)
+        .is_some_and(|reference| !reference.trim().is_empty());
+    let has_provider = value
+        .get("provider")
+        .and_then(|provider| provider.get("reference"))
+        .and_then(Value::as_str)
+        .is_some_and(|reference| !reference.trim().is_empty());
+    let has_created = value
+        .get("created")
+        .and_then(Value::as_str)
+        .is_some_and(|created| !created.trim().is_empty() && created.len() <= 64);
+    let has_insurance = value
+        .get("insurance")
+        .and_then(Value::as_array)
+        .is_some_and(|insurance| {
+            !insurance.is_empty()
+                && insurance.iter().all(|entry| {
+                    entry.get("sequence")
+                        .and_then(Value::as_u64)
+                        .is_some_and(|sequence| sequence > 0)
+                        && entry.get("focal").and_then(Value::as_bool).is_some()
+                        && entry.get("coverage")
+                            .and_then(|coverage| coverage.get("reference"))
+                            .and_then(Value::as_str)
+                            .is_some_and(|reference| !reference.trim().is_empty())
+                })
+        });
+    has_type_coding && use_is_supported && has_patient && has_provider && has_created && has_insurance
 }
 
 fn source_versions(value: &Value) -> (Option<String>, Option<String>) {
@@ -1112,6 +1168,29 @@ mod tests {
         assert!(output.envelope.global_issues.contains(&MappingIssueV1::DuplicateSequence));
         assert!(output.bundle.lines.is_empty());
         assert_eq!(output.envelope.state, MappingStateV1::Indeterminate);
+    }
+
+    #[test]
+    fn missing_required_fhir_claim_context_fails_closed() {
+        let mut value: Value = serde_json::from_str(FIXTURE).expect("fixture JSON");
+        value.as_object_mut().expect("Claim object").remove("patient");
+        let output = match map_fhir_r4_json(
+            value.to_string().as_bytes(),
+            &context(),
+            &policy(),
+        )
+        .expect("valid JSON should produce a fail-closed result")
+        {
+            AdapterResultV1::Claim(output) => output,
+            _ => panic!("expected Claim"),
+        };
+        assert!(output
+            .envelope
+            .global_issues
+            .contains(&MappingIssueV1::MissingRequiredClaimFields));
+        assert!(output.bundle.lines.is_empty());
+        assert_eq!(output.envelope.state, MappingStateV1::Indeterminate);
+        assert_eq!(output.evaluation.status, AnalysisStatus::Indeterminate);
     }
 
     #[test]
