@@ -45,12 +45,16 @@ jobs:
           java -jar "$RUNNER_TEMP/validator_cli.jar" \
             prototypes/fhir-claim-adapter/profiles/StructureDefinition-synthetic-claimresponse-linkage-v1.json \
             -version 4.0.1 -tx n/a
-      - name: Validate synthetic Claim against the local profile
+      - name: Validate synthetic resources against local profiles
         run: |
           java -jar "$RUNNER_TEMP/validator_cli.jar" \
             prototypes/fhir-claim-adapter/fixtures/synthetic-claim-duplicate.json \
             -version 4.0.1 -ig prototypes/fhir-claim-adapter/profiles \
             -profile urn:luminous-dynamics:synthetic:fhir-r4:claim-review-v1 -tx n/a
+          java -jar "$RUNNER_TEMP/validator_cli.jar" \
+            prototypes/fhir-claim-adapter/fixtures/synthetic-claimresponse-reference-only.json \
+            -version 4.0.1 -ig prototypes/fhir-claim-adapter/profiles \
+            -profile urn:luminous-dynamics:synthetic:fhir-r4:claimresponse-linkage-v1 -tx n/a
 
   test:
     name: FHIR adapter (Rust ${{ matrix.toolchain }})
