@@ -197,9 +197,13 @@ impl fmt::Display for AdapterError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::InvalidJson => write!(f, "input is not valid FHIR JSON"),
-            Self::UnsupportedResourceType => write!(f, "resource type is not Claim or ClaimResponse"),
+            Self::UnsupportedResourceType => {
+                write!(f, "resource type is not Claim or ClaimResponse")
+            },
             Self::InvalidMappingPolicy => write!(f, "mapping policy is invalid or incomplete"),
-            Self::InvalidOpaqueReference => write!(f, "caller-supplied opaque reference is invalid"),
+            Self::InvalidOpaqueReference => {
+                write!(f, "caller-supplied opaque reference is invalid")
+            },
         }
     }
 }
@@ -421,7 +425,10 @@ fn map_claim(
                     .and_then(Value::as_u64)
                     .filter(|sequence| *sequence > 0 && *sequence <= u32::MAX as u64)
                     .map(|sequence| sequence as u32),
-                reason: global_issues.first().copied().unwrap_or(MappingIssueV1::UnsupportedProfile),
+                reason: global_issues
+                    .first()
+                    .copied()
+                    .unwrap_or(MappingIssueV1::UnsupportedProfile),
                 unsupported_field_names: Vec::new(),
             });
         }
@@ -484,7 +491,7 @@ fn map_item(
         .and_then(Value::as_u64)
         .filter(|sequence| *sequence > 0 && *sequence <= u32::MAX as u64)
         .map(|sequence| sequence as u32);
-    let mut unmapped = |reason, unsupported_field_names| UnmappedItemV1 {
+    let unmapped = |reason, unsupported_field_names| UnmappedItemV1 {
         item_array_index: array_index,
         item_sequence,
         reason,
@@ -633,7 +640,12 @@ enum DecimalError {
 }
 
 fn decimal_to_minor_units(value: &str, scale: u8) -> Result<u64, DecimalError> {
-    if value.is_empty() || value.starts_with('-') || value.starts_with('+') || value.contains('e') || value.contains('E') {
+    if value.is_empty()
+        || value.starts_with('-')
+        || value.starts_with('+')
+        || value.contains('e')
+        || value.contains('E')
+    {
         return Err(DecimalError::InvalidOrOutOfRange);
     }
     if scale > 6 {
@@ -889,7 +901,13 @@ mod tests {
             "status": "active",
             "outcome": "complete",
             "request": {"reference": "Claim/synthetic-claim-001"},
-            "item": [{"itemSequence": 1, "adjudication": [{"category":{"text":"benefit"},"amount":{"value":125.0,"currency":"USD"}}]}]
+            "item": [{
+                "itemSequence": 1,
+                "adjudication": [{
+                    "category": {"text": "benefit"},
+                    "amount": {"value": 125.0, "currency": "USD"}
+                }]
+            }]
         });
         let mut ctx = context();
         ctx.linked_claim_ref = Some("claim-demo-001".to_string());
@@ -898,7 +916,10 @@ mod tests {
         let AdapterResultV1::ClaimResponse(response) = result else {
             panic!("ClaimResponse must remain distinct");
         };
-        assert_eq!(response.linkage_state, ClaimResponseLinkageStateV1::LinkedViaCallerSuppliedOpaqueRef);
+        assert_eq!(
+            response.linkage_state,
+            ClaimResponseLinkageStateV1::LinkedViaCallerSuppliedOpaqueRef
+        );
         assert!(response.request_reference_present);
         assert_eq!(response.linked_claim_ref.as_deref(), Some("claim-demo-001"));
         assert!(!response.service_lines_mapped);
@@ -966,7 +987,10 @@ mod tests {
             AdapterResultV1::Claim(output) => output,
             _ => panic!("expected Claim"),
         };
-        assert!(output.envelope.global_issues.contains(&MappingIssueV1::UnsupportedResourceExtension));
+        assert!(output
+            .envelope
+            .global_issues
+            .contains(&MappingIssueV1::UnsupportedResourceExtension));
         assert_eq!(output.envelope.state, MappingStateV1::Indeterminate);
         assert!(output.bundle.lines.is_empty());
     }
