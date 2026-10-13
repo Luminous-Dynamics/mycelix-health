@@ -279,6 +279,9 @@ pub fn map_fhir_r4_json(
             if contains_extension(&value) {
                 global_issues.push(MappingIssueV1::UnsupportedResourceExtension);
             }
+            if unsupported_meta_fields(&value) {
+                global_issues.push(MappingIssueV1::UnsupportedClaimContext);
+            }
             let request_reference_present = value
                 .get("request")
                 .and_then(|v| v.get("reference"))
@@ -365,7 +368,7 @@ fn map_claim(
     if value.get("use").and_then(Value::as_str) != Some("claim") {
         global_issues.push(MappingIssueV1::UnsupportedClaimUse);
     }
-    if unsupported_claim_context_fields(value) {
+    if unsupported_claim_context_fields(value) || unsupported_meta_fields(value) {
         global_issues.push(MappingIssueV1::UnsupportedClaimContext);
     }
     if !required_claim_fields_present(value) {
@@ -754,6 +757,14 @@ fn unsupported_claim_context_fields(value: &Value) -> bool {
     value
         .as_object()
         .is_none_or(|object| object.keys().any(|key| !ALLOWED.contains(&key.as_str())))
+}
+
+fn unsupported_meta_fields(value: &Value) -> bool {
+    const ALLOWED_META: &[&str] = &["versionId", "lastUpdated", "profile"];
+    value
+        .get("meta")
+        .and_then(Value::as_object)
+        .is_none_or(|meta| meta.keys().any(|key| !ALLOWED_META.contains(&key.as_str())))
 }
 
 fn required_claim_fields_present(value: &Value) -> bool {
@@ -1219,6 +1230,28 @@ mod tests {
             _ => panic!("expected Claim"),
         };
         assert!(output.envelope.global_issues.contains(&MappingIssueV1::DuplicateSequence));
+        assert!(output.bundle.lines.is_empty());
+        assert_eq!(output.envelope.state, MappingStateV1::Indeterminate);
+    }
+
+    #[test]
+    fn preauthorization_is_not_mapped_as_rendered_service_lines() {
+        let mut value: Value = serde_json::from_str(FIXTURE).expect("fixture JSON");
+        value["use"] = serde_json::json!("preauthorization");
+        let output = match map_fhir_r4_json(
+            value.to_string().as_bytes(),
+            &context(),
+            &policy(),
+        )
+        .expect("valid JSON should produce a fail-closed result")
+        {
+            AdapterResultV1::Claim(output) => output,
+            _ => panic!("expected Claim"),
+        };
+        assert!(output
+            .envelope
+            .global_issues
+            .contains(&MappingIssueV1::UnsupportedClaimUse));
         assert!(output.bundle.lines.is_empty());
         assert_eq!(output.envelope.state, MappingStateV1::Indeterminate);
     }
