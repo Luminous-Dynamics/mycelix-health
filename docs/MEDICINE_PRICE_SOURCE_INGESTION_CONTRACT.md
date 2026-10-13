@@ -50,7 +50,7 @@ Every source adapter must emit a versioned manifest before rows are processed:
 - Source availability and freshness limits, known limitations, and contact/escalation route.
 - Whether original bytes may be retained. When not permitted, preserve only the metadata and evidence that are lawful to keep.
 
-Permission is scoped. A right to view a page is not presumed to grant bulk extraction; non-commercial reference use is not presumed to permit commercial analytics; permission to analyze records is not presumed to permit republishing them. Unknown, conflicting, expired or insufficient rights fail closed.
+Permission is scoped. A right to view a page is not presumed to grant bulk extraction; non-commercial reference use is not presumed to permit commercial analytics; permission to analyze records is not presumed to permit republishing them. Unknown, conflicting, expired or insufficient rights fail closed. The prototype now compares the policy's required scope with the offer's declared permitted scopes and checks a separate permission-evidence digest's syntax. Those fields remain assertions from the upstream rights review: the prototype cannot determine whether a licence text legally grants them.
 
 ## Canonical price observation
 
@@ -63,6 +63,7 @@ Each parsed record should preserve, at minimum:
 - Separate assertions for registered/authorized in destination market, quality status, licensing territory, supplier identity, stock/available quantity, quote validity, lead time and shelf life. Each assertion carries source and timestamp; none is inferred from a price row.
 - Observed versus imputed/scenario-estimated components, estimation method, uncertainty/range, and a link back to the raw field or source span.
 - Source-use permission reference and lineage digest.
+- Exact intended-use scope required by the procurement policy plus the explicitly authorized scopes recorded by the rights-reviewed source manifest. Scope values are non-hierarchical; permission for one purpose never implies another.
 
 Never use a product-name string alone as a cross-market join key. Match strength, formulation, release type, route, package unit, manufacturer and local authorization; ambiguous matches stay unresolved. Brand/generic or pack normalization must be explicit and independently reviewed. No therapeutic substitution or dose-equivalence is inferred by the price engine.
 
