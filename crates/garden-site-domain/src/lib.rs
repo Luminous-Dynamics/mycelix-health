@@ -222,6 +222,7 @@ pub enum ProfileBlockerCode {
     InvalidProfileIdFormat,
     UnsupportedProfileSchema,
     EmptyJurisdiction,
+    InvalidJurisdictionCode,
     MissingCatalogueRegion,
     InvalidCatalogueRegionId,
     MissingGrowingSpace,
@@ -246,6 +247,7 @@ pub enum CatalogueBlockerCode {
     EmptyManifestId,
     EmptyCatalogueVersion,
     EmptyManifestJurisdiction,
+    InvalidManifestJurisdictionCode,
     EmptyManifestRegion,
     InvalidManifestRegionFormat,
     JurisdictionMismatch,
@@ -357,6 +359,12 @@ impl GardenSiteProfileV1 {
                 &mut blockers,
                 ProfileBlockerCode::EmptyJurisdiction,
                 "jurisdiction_code must be non-empty",
+            );
+        } else if !is_country_code(&self.jurisdiction_code) {
+            push_profile(
+                &mut blockers,
+                ProfileBlockerCode::InvalidJurisdictionCode,
+                "jurisdiction_code must be a two-letter uppercase country code",
             );
         }
         if self
@@ -524,6 +532,12 @@ pub fn evaluate_local_catalogue(
             &mut catalogue_blockers,
             CatalogueBlockerCode::EmptyManifestJurisdiction,
             "manifest jurisdiction must be non-empty",
+        );
+    } else if !is_country_code(&manifest.jurisdiction_code) {
+        push_catalogue(
+            &mut catalogue_blockers,
+            CatalogueBlockerCode::InvalidManifestJurisdictionCode,
+            "manifest jurisdiction must be a two-letter uppercase country code",
         );
     }
     if manifest.catalogue_region_id.trim().is_empty() {
@@ -775,6 +789,12 @@ fn push_catalogue(
     });
 }
 
+/// Format check for an ISO-3166 alpha-2-shaped jurisdiction token. This does
+/// not validate the code against a maintained country registry.
+fn is_country_code(value: &str) -> bool {
+    value.len() == 2 && value.bytes().all(|byte| byte.is_ascii_uppercase())
+}
+
 fn is_opaque_identifier(value: &str) -> bool {
     let bytes = value.as_bytes();
     bytes.len() == 36
@@ -944,6 +964,29 @@ mod tests {
     }
 
     #[test]
+    fn jurisdiction_must_be_a_country_code_not_free_text() {
+        let mut profile = good_profile();
+        profile.jurisdiction_code = "Johannesburg".to_owned();
+        assert!(has_profile_code(
+            &evaluate_local_catalogue(
+                &profile,
+                &approved_manifest(vec![approved_entry()]),
+                NOW
+            ),
+            ProfileBlockerCode::InvalidJurisdictionCode
+        ));
+        profile.jurisdiction_code = "za".to_owned();
+        assert!(has_profile_code(
+            &evaluate_local_catalogue(
+                &profile,
+                &approved_manifest(vec![approved_entry()]),
+                NOW
+            ),
+            ProfileBlockerCode::InvalidJurisdictionCode
+        ));
+    }
+
+    #[test]
     fn free_form_addresses_are_not_valid_region_tokens() {
         let mut profile = good_profile();
         profile.catalogue_region_id = Some("123-main-street".to_owned());
@@ -1074,6 +1117,17 @@ mod tests {
         manifest.jurisdiction_code = "XX".to_owned();
         let decision = evaluate_local_catalogue(&profile, &manifest, NOW);
         assert!(has_catalogue_code(&decision, CatalogueBlockerCode::JurisdictionMismatch));
+    }
+
+    #[test]
+    fn manifest_jurisdiction_must_be_a_country_code() {
+        let profile = good_profile();
+        let mut manifest = approved_manifest(vec![approved_entry()]);
+        manifest.jurisdiction_code = "Johannesburg".to_owned();
+        assert!(has_catalogue_code(
+            &evaluate_local_catalogue(&profile, &manifest, NOW),
+            CatalogueBlockerCode::InvalidManifestJurisdictionCode
+        ));
     }
 
     #[test]

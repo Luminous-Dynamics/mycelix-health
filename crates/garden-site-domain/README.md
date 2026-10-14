@@ -10,8 +10,11 @@ exact street address, GPS coordinates, patient ID, medical history, or
 traditional/sacred knowledge. It uses a region token selected from a reviewed catalogue manifest (not free
 text) and supports local-only operation by default. Profile IDs must have an
 opaque UUID shape; generate them locally and randomly rather than deriving them
-from names or addresses. The crate structurally checks an opt-in reference and
-timestamp but does not authenticate consent or authorize network access.
+from names or addresses. Jurisdiction is a two-letter uppercase code and the
+region is a reviewed token; neither should contain free-text locality. This is
+a format check, not validation against a live country registry. The crate
+structurally checks an opt-in reference and timestamp but does not authenticate
+consent or authorize network access.
 Withdrawal is represented separately. This state alone cannot delete any
 already-synchronized copy, so a future sync adapter must authenticate consent,
 re-check revocation, and verify the remote-copy deletion/export workflow.
