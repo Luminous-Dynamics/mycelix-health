@@ -41,6 +41,17 @@ pub enum GateKey {
     AdverseEventAndRecallReadiness,
 }
 
+/// Evidence scope must match the gate, jurisdiction, and subject being evaluated.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct EvidenceScope {
+    /// Botanical lot for cultivation/supply gates; finished-product batch for
+    /// manufacturing and post-manufacture gates.
+    pub subject_id: String,
+    pub gate: GateKey,
+    /// Versioned jurisdiction identifier used by the policy/evidence owner.
+    pub jurisdiction: String,
+}
+
 /// Hash-linked evidence metadata. The digest is shape-checked only; this crate
 /// does not fetch evidence or verify that the digest matches its contents.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -53,8 +64,8 @@ pub struct EvidenceRef {
     pub reviewer_id: String,
     /// UTC review timestamp in YYYY-MM-DDTHH:MM:SSZ form.
     pub reviewed_at: String,
-    /// Explicit batch, gate, intended transaction, and jurisdiction scope.
-    pub scope: String,
+    /// Structured scope; evaluated for exact gate, subject, and jurisdiction match.
+    pub scope: EvidenceScope,
 }
 
 /// An evidence state. Unassessed and failed gates never count as satisfied.
@@ -84,6 +95,22 @@ pub enum EligibilityTarget {
     /// Evidence for finished-product release review is complete.
     /// This does not replace a qualified person's real release decision.
     FinishedProductRelease,
+}
+
+impl GateKey {
+    /// Whether evidence for this gate must be scoped to the linked finished-product batch.
+    pub const fn uses_finished_product_scope(self) -> bool {
+        matches!(
+            self,
+            Self::ManufacturingAuthorization
+                | Self::ManufacturingProcessValidation
+                | Self::FinishedProductQualityTesting
+                | Self::ProductAuthorization
+                | Self::StabilityAndPackaging
+                | Self::QualifiedReleaseDecision
+                | Self::AdverseEventAndRecallReadiness
+        )
+    }
 }
 
 impl EligibilityTarget {
@@ -141,6 +168,7 @@ impl EligibilityTarget {
 #[serde(rename_all = "snake_case")]
 pub enum BlockerCode {
     EmptyBatchId,
+    EmptyJurisdiction,
     MissingFinishedProductBatchId,
     MissingAssessment,
     NotAssessed,
@@ -173,6 +201,8 @@ pub struct EligibilityDecision {
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct BotanicalBatchRecord {
     pub batch_id: String,
+    /// Jurisdiction whose versioned criteria apply to this evidence evaluation.
+    pub jurisdiction: String,
     pub assessments: BTreeMap<GateKey, GateAssessment>,
     /// Required only for FinishedProductRelease. Must point to an independently
     /// tracked finished-product batch rather than treating raw herb as a medicine.
@@ -193,6 +223,14 @@ impl BotanicalBatchRecord {
                 gate: None,
                 code: BlockerCode::EmptyBatchId,
                 detail: "batch_id must be non-empty".to_owned(),
+            });
+        }
+
+        if self.jurisdiction.trim().is_empty() {
+            blockers.push(GateBlocker {
+                gate: None,
+                code: BlockerCode::EmptyJurisdiction,
+                detail: "jurisdiction must be non-empty".to_owned(),
             });
         }
 
@@ -270,7 +308,21 @@ impl BotanicalBatchRecord {
         evidence: &EvidenceRef,
         blockers: &mut Vec<GateBlocker>,
     ) {
-        let issues = evidence.validation_issues();
+        let mut issues = evidence.validation_issues();
+        if evidence.scope.gate != gate {
+            issues.push("scope gate does not match the assessed gate".to_owned());
+        }
+        let expected_subject_id = if gate.uses_finished_product_scope() {
+            self.finished_product_batch_id.as_deref().unwrap_or_default()
+        } else {
+            self.batch_id.as_str()
+        };
+        if evidence.scope.subject_id != expected_subject_id {
+            issues.push("scope subject_id does not match the expected batch".to_owned());
+        }
+        if evidence.scope.jurisdiction != self.jurisdiction {
+            issues.push("scope jurisdiction does not match the record jurisdiction".to_owned());
+        }
         if !issues.is_empty() {
             blockers.push(GateBlocker {
                 gate: Some(gate),
@@ -303,8 +355,11 @@ impl EvidenceRef {
         if !is_valid_utc_timestamp(&self.reviewed_at) {
             issues.push("reviewed_at must be a valid UTC YYYY-MM-DDTHH:MM:SSZ timestamp".to_owned());
         }
-        if self.scope.trim().is_empty() {
-            issues.push("scope is empty".to_owned());
+        if self.scope.subject_id.trim().is_empty() {
+            issues.push("scope subject_id is empty".to_owned());
+        }
+        if self.scope.jurisdiction.trim().is_empty() {
+            issues.push("scope jurisdiction is empty".to_owned());
         }
         issues
     }
@@ -383,7 +438,15 @@ mod tests {
             sha256: "a".repeat(64),
             reviewer_id: "synthetic-reviewer".to_owned(),
             reviewed_at: "2026-01-02T03:04:05Z".to_owned(),
-            scope: format!("SYNTHETIC:batch-001:{gate:?}:ZA"),
+            scope: EvidenceScope {
+                subject_id: if gate.uses_finished_product_scope() {
+                    "SYNTHETIC-PRODUCT-001".to_owned()
+                } else {
+                    "SYNTHETIC-BATCH-001".to_owned()
+                },
+                gate,
+                jurisdiction: "ZA".to_owned(),
+            },
         }
     }
 
@@ -401,6 +464,7 @@ mod tests {
             .collect();
         BotanicalBatchRecord {
             batch_id: "SYNTHETIC-BATCH-001".to_owned(),
+            jurisdiction: "ZA".to_owned(),
             assessments,
             finished_product_batch_id: Some("SYNTHETIC-PRODUCT-001".to_owned()),
         }
@@ -414,6 +478,7 @@ mod tests {
     fn empty_record_fails_closed_with_missing_assessments() {
         let record = BotanicalBatchRecord {
             batch_id: "SYNTHETIC-BATCH-001".to_owned(),
+            jurisdiction: "ZA".to_owned(),
             assessments: BTreeMap::new(),
             finished_product_batch_id: None,
         };
@@ -517,7 +582,7 @@ mod tests {
     #[test]
     fn blank_scope_is_rejected() {
         let mut evidence = evidence_for(GateKey::SpeciesIdentity);
-        evidence.scope.clear();
+        evidence.scope.jurisdiction.clear();
         assert!(evidence.validation_issues().iter().any(|issue| issue.contains("scope")));
     }
 
@@ -565,6 +630,58 @@ mod tests {
         let decision = record.evaluate(EligibilityTarget::TraceableBotanicalSupply);
         assert!(decision_has_code(&decision, BlockerCode::NotApplicableNotPermitted));
         assert!(!decision.requirement_set_satisfied);
+    }
+
+    #[test]
+    fn evidence_for_the_wrong_gate_is_rejected() {
+        let mut record = complete_record();
+        if let Some(GateAssessment::Pass { evidence }) =
+            record.assessments.get_mut(&GateKey::SpeciesIdentity)
+        {
+            evidence.scope.gate = GateKey::LawfulPropagation;
+        }
+        let decision = record.evaluate(EligibilityTarget::TraceableBotanicalSupply);
+        assert!(decision_has_code(&decision, BlockerCode::InvalidEvidence));
+        assert!(!decision.requirement_set_satisfied);
+    }
+
+    #[test]
+    fn evidence_for_another_batch_is_rejected() {
+        let mut record = complete_record();
+        if let Some(GateAssessment::Pass { evidence }) =
+            record.assessments.get_mut(&GateKey::SpeciesIdentity)
+        {
+            evidence.scope.subject_id = "SYNTHETIC-OTHER-BATCH".to_owned();
+        }
+        let decision = record.evaluate(EligibilityTarget::TraceableBotanicalSupply);
+        assert!(decision_has_code(&decision, BlockerCode::InvalidEvidence));
+        assert!(!decision.requirement_set_satisfied);
+    }
+
+    #[test]
+    fn evidence_from_another_jurisdiction_is_rejected() {
+        let mut record = complete_record();
+        if let Some(GateAssessment::Pass { evidence }) =
+            record.assessments.get_mut(&GateKey::SpeciesIdentity)
+        {
+            evidence.scope.jurisdiction = "XX".to_owned();
+        }
+        let decision = record.evaluate(EligibilityTarget::TraceableBotanicalSupply);
+        assert!(decision_has_code(&decision, BlockerCode::InvalidEvidence));
+        assert!(!decision.requirement_set_satisfied);
+    }
+
+    #[test]
+    fn product_gate_evidence_must_reference_product_batch_not_raw_batch() {
+        let mut record = complete_record();
+        if let Some(GateAssessment::Pass { evidence }) =
+            record.assessments.get_mut(&GateKey::ProductAuthorization)
+        {
+            evidence.scope.subject_id = "SYNTHETIC-BATCH-001".to_owned();
+        }
+        assert!(!record
+            .evaluate(EligibilityTarget::FinishedProductRelease)
+            .requirement_set_satisfied);
     }
 
     #[test]
@@ -628,6 +745,7 @@ mod tests {
     fn blocker_order_is_deterministic() {
         let record = BotanicalBatchRecord {
             batch_id: "SYNTHETIC-BATCH-001".to_owned(),
+            jurisdiction: "ZA".to_owned(),
             assessments: BTreeMap::new(),
             finished_product_batch_id: None,
         };

@@ -3,7 +3,7 @@
 //! Synthetic walkthrough only. No real plant, source, licence, lab, or product data.
 
 use medicine_bio_domain::{
-    BotanicalBatchRecord, EligibilityTarget, EvidenceRef, GateAssessment, GateKey,
+    BotanicalBatchRecord, EligibilityTarget, EvidenceRef, EvidenceScope, GateAssessment, GateKey,
 };
 use std::collections::BTreeMap;
 
@@ -35,7 +35,15 @@ fn main() {
                 sha256: "a".repeat(64),
                 reviewer_id: "synthetic-fixture-reviewer".to_owned(),
                 reviewed_at: "2026-01-02T03:04:05Z".to_owned(),
-                scope: format!("SYNTHETIC-ONLY:BATCH-DEMO:{gate:?}:ZA"),
+                scope: EvidenceScope {
+                    subject_id: if gate.uses_finished_product_scope() {
+                        "SYNTHETIC-ONLY-PRODUCT-DEMO".to_owned()
+                    } else {
+                        "SYNTHETIC-ONLY-BATCH-DEMO".to_owned()
+                    },
+                    gate,
+                    jurisdiction: "ZA".to_owned(),
+                },
             };
             (gate, GateAssessment::Pass { evidence })
         })
@@ -43,6 +51,7 @@ fn main() {
 
     let batch = BotanicalBatchRecord {
         batch_id: "SYNTHETIC-ONLY-BATCH-DEMO".to_owned(),
+        jurisdiction: "ZA".to_owned(),
         assessments,
         finished_product_batch_id: Some("SYNTHETIC-ONLY-PRODUCT-DEMO".to_owned()),
     };
@@ -70,7 +79,11 @@ fn main() {
                 sha256: "b".repeat(64),
                 reviewer_id: "synthetic-fixture-reviewer".to_owned(),
                 reviewed_at: "2026-01-02T03:04:05Z".to_owned(),
-                scope: "SYNTHETIC-ONLY:BATCH-DEMO:biodiversity:ZA".to_owned(),
+                scope: EvidenceScope {
+                    subject_id: "SYNTHETIC-ONLY-BATCH-DEMO".to_owned(),
+                    gate: GateKey::BiodiversityProtection,
+                    jurisdiction: "ZA".to_owned(),
+                },
             },
         },
     );
