@@ -41,6 +41,9 @@
   "dependencies": {
     "@holochain/client": "0.20.0"
   },
+  "overrides": {
+    "libsodium-wrappers": "0.7.15"
+  },
   "devDependencies": {
     "@types/node": "^20.19.30",
     "eslint": "^9.39.2",
