@@ -353,7 +353,9 @@ impl EvidenceRef {
             issues.push("reviewer_id is empty".to_owned());
         }
         if !is_valid_utc_timestamp(&self.reviewed_at) {
-            issues.push("reviewed_at must be a valid UTC YYYY-MM-DDTHH:MM:SSZ timestamp".to_owned());
+            issues.push(
+                "reviewed_at must be a valid UTC YYYY-MM-DDTHH:MM:SSZ timestamp".to_owned(),
+            );
         }
         if self.scope.subject_id.trim().is_empty() {
             issues.push("scope subject_id is empty".to_owned());
@@ -398,7 +400,8 @@ fn is_valid_utc_timestamp(value: &str) -> bool {
         return false;
     }
 
-    let leap_year = year % 4 == 0 && (year % 100 != 0 || year % 400 == 0);
+    let leap_year = year.is_multiple_of(4)
+        && (!year.is_multiple_of(100) || year.is_multiple_of(400));
     let days_in_month = match month {
         1 | 3 | 5 | 7 | 8 | 10 | 12 => 31,
         4 | 6 | 9 | 11 => 30,
