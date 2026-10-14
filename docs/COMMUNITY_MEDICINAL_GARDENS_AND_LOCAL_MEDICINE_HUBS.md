@@ -194,6 +194,7 @@ A release path must answer these questions with auditable evidence:
 - Are stability, packaging, storage, shelf-life/retest, transport and recall requirements justified?
 - Is there credible evidence for the specific claim and intended population, including interactions/contraindications and vulnerable groups?
 - Is this product category and operation authorized in the destination jurisdiction?
+- For regulated products and applicable procurement paths, does the evidence bind the exact product identity/listing separately from the manufacturer's licence and any third-party arrangement?
 - Is adverse-event monitoring staffed and functional?
 
 A failed answer puts the affected material on hold. It does not mean a person needs to discard a garden plant for educational use; it means the material cannot progress into a medicine supply chain or be represented as an approved treatment without clearing the required gate.
@@ -203,7 +204,7 @@ A failed answer puts the affected material on hold. It does not mean a person ne
 - Community governance must exist before data collection and commercial activity, not be appended after the project succeeds.
 - Traditional knowledge is not a public dataset. Do not collect, translate, publish, train models on, or commercialize sacred, restricted or sensitive knowledge without clear permission and agreed terms.
 - The relevant knowledge holders must determine attribution, who can use knowledge, what can be withheld, benefit-sharing, and how consent is reviewed or withdrawn where applicable.
-- In South Africa, legal review must address the National Environmental Management: Biodiversity Act and current bioprospecting/access-and-benefit-sharing rules for relevant biological resources/traditional knowledge, plus land, protected-species, municipal and water rules. The Traditional Health Practitioners Act provides a separate framework for traditional healthcare practitioners; it is not a blanket authorization to manufacture medicines.
+- In South Africa, legal review must address the National Environmental Management: Biodiversity Act and current bioprospecting/access-and-benefit-sharing rules for relevant biological resources/traditional knowledge, plus land, protected-species, municipal and water rules. The DFFE Bioprospecting, Access and Benefit-Sharing (BABS) portal identifies eligible applicant classes and supplies materials-transfer, benefit-sharing and community-resolution documents. Determine whether a specific activity triggers a permit or notification before proceeding; do not infer that every household garden does, or that none does. The Traditional Health Practitioners Act provides a separate framework for traditional healthcare practitioners; it is not a blanket authorization to manufacture medicines.
 - Protect biodiversity: cultivate rather than deplete wild stocks where appropriate, avoid invasive species, model water demand, track soil effects, and set harvest ceilings and restoration conditions.
 - Define fair payment and benefit sharing early; community members should not bear agronomic risk while downstream manufacturers capture all value.
 - Make privacy, accessibility, language inclusion, disability access and low-connectivity operation design requirements.
@@ -278,7 +279,7 @@ Do not optimize only for number of plants grown or nominal price.
 ## 11. Hard no-go conditions
 
 Stop the affected pathway if any of the following is true:
-- rights, consent, land access, protected-species or applicable permit status is unknown;
+- rights, consent, land access, protected-species status, required BABS permit/notification, or a legally eligible applicant/partner (where needed) is unknown;
 - species identity is uncertain for a medicinal supply lot;
 - a price/product/claim/lot cannot be compared or traced on the defined basis;
 - a required quality test is missing, failed or outside specification;
@@ -294,6 +295,17 @@ A no-go state should explain the missing evidence, owner and next review step, w
 
 This is a system-design reference list, not a full legal compliance opinion. Review the current instruments with SAHPRA, qualified counsel and relevant professional/environmental bodies before any activity involving product manufacture, clinical use, commercialization, protected species or traditional knowledge.
 
+### Additional South African implementation findings (checked 14 October 2026)
+
+These findings make the Johannesburg pilot more specific without preselecting a medicinal species or implying that a garden harvest is safe to use as medicine:
+
+- **Treat conservation status as an input to the catalogue, not a footnote.** SANBI's National Biodiversity Assessment reports 143 medicinal-plant species as threatened in its 2024 Red List assessments and a further 69 of conservation concern. The catalogue should have a hard conservation/collection gate before promoting species for commercial growing: [SANBI — importance of South Africa's biodiversity](https://nba.sanbi.org.za/content/context/importance.html).
+- **There is a real conservation rationale for cultivation support, but do not generalize from a single case.** SANBI describes a programme supplying cultivated *Warburgia salutaris* plants for home gardens as a way to reduce pressure on wild populations. This supports testing seedling access, grower guidance and traceable cultivated supply—not assuming this intervention transfers unchanged to every species: [SANBI — plant species and conservation intervention](https://nba.sanbi.org.za/content/species/sp_plants.html).
+- **Make permit-applicant eligibility an early governance check.** The DFFE BABS portal describes eligible applicant classes and provides material-transfer agreements, benefit-sharing agreements and community-resolution documents. The project should record an activity-specific determination of whether a permit or notification applies and who is legally eligible to submit it, before research or commercial use begins: [DFFE — BABS clearing house](https://www.dffe.gov.za/bc_projectsprogrammes_babs). This is a scoping prompt, not a claim that every household garden is subject to BABS permitting.
+- **Keep product identity distinct from manufacturer authority.** The Department of Health's September 2026 guidance for complementary medicines offered in national pharmaceutical tenders says the applicable Section 22C licence must be considered alongside the relevant SAHPRA-approved DA02 Product List; the product must match the approved listing, and using a licensed third-party manufacturer does not by itself establish authorization of the specific product. Therefore the software needs separate, product-scoped evidence for the manufacturer and the finished product. The guidance is tender-specific and should not be generalized beyond its scope without regulatory review: [NDoH — guidance on complementary medicines in national tenders (September 2026)](https://www.health.gov.za/wp-content/uploads/2026/09/Guidance-on-Complementary-Medicines.pdf).
+
+Operational consequence: begin with non-clinical growing education, biodiversity review and a community-governed seedling/cultivation pilot. Do not publish a generic “top medicinal plants” list or allow Symthaea to turn traditional-use records into treatment claims. A later supply/manufacturing pathway needs a separate conservation, rights, product-quality, regulator and buyer review.
+
 - WHO Global Traditional Medicine Strategy 2025–2034: https://www.who.int/teams/integrated-health-services/traditional-complementary-and-integrative-medicine/global-strategies
 - WHO guidelines on Good Agricultural and Collection Practices for medicinal plants: https://www.who.int/publications/i/item/9241546271
 - WHO GMP for manufacture of herbal medicines, TRS 1010 Annex 1: https://www.who.int/publications/m/item/trs1010-annex1
@@ -305,6 +317,9 @@ This is a system-design reference list, not a full legal compliance opinion. Rev
 - SAHPRA complementary-medicine guidance: https://www.sahpra.org.za/complementary-medicines-guidelines/
 - SAHPRA vigilance guidelines: https://www.sahpra.org.za/vigilance-guidelines/
 - South African National Environmental Management: Biodiversity Act 10 of 2004: https://www.gov.za/xh/documents/national-environmental-management-biodiversity-act-0
+- DFFE Bioprospecting, Access and Benefit-Sharing (BABS) portal, permits and agreement templates: https://www.dffe.gov.za/bc_projectsprogrammes_babs
+- SANBI National Biodiversity Assessment, medicinal plants/conservation status: https://nba.sanbi.org.za/content/context/importance.html
+- Department of Health, guidance on complementary medicines offered in national pharmaceutical tenders, September 2026: https://www.health.gov.za/wp-content/uploads/2026/09/Guidance-on-Complementary-Medicines.pdf
 - Traditional Health Practitioners Act 22 of 2007: https://www.gov.za/ss/documents/traditional-health-practitioners-act
 - WHO sustainable local production ecosystem, 20 July 2026: https://www.who.int/news/item/20-07-2026-who-and-partners-strengthen-global-commitment-to-sustainable-local-manufacturing-for-health
 
