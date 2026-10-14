@@ -47,6 +47,9 @@ pub struct EvidenceScope {
     /// Botanical lot for cultivation/supply gates; finished-product batch for
     /// manufacturing and post-manufacture gates.
     pub subject_id: String,
+    /// Stable product-master identifier, distinct from its finished batch id.
+    /// Present only for manufacturing/product gates.
+    pub product_id: Option<String>,
     pub gate: GateKey,
     /// Versioned jurisdiction identifier used by the policy/evidence owner.
     pub jurisdiction: String,
@@ -170,6 +173,7 @@ pub enum BlockerCode {
     EmptyBatchId,
     EmptyJurisdiction,
     MissingFinishedProductBatchId,
+    MissingProductId,
     MissingAssessment,
     NotAssessed,
     GateFailed,
@@ -207,6 +211,8 @@ pub struct BotanicalBatchRecord {
     /// Required only for FinishedProductRelease. Must point to an independently
     /// tracked finished-product batch rather than treating raw herb as a medicine.
     pub finished_product_batch_id: Option<String>,
+    /// Stable product-master identifier; distinct from the individual product batch.
+    pub product_id: Option<String>,
 }
 
 impl BotanicalBatchRecord {
@@ -231,6 +237,21 @@ impl BotanicalBatchRecord {
                 gate: None,
                 code: BlockerCode::EmptyJurisdiction,
                 detail: "jurisdiction must be non-empty".to_owned(),
+            });
+        }
+
+        if target == EligibilityTarget::FinishedProductRelease
+            && self
+                .product_id
+                .as_deref()
+                .map(str::trim)
+                .unwrap_or_default()
+                .is_empty()
+        {
+            blockers.push(GateBlocker {
+                gate: None,
+                code: BlockerCode::MissingProductId,
+                detail: "finished-product release requires a stable product id".to_owned(),
             });
         }
 
@@ -323,6 +344,14 @@ impl BotanicalBatchRecord {
         if evidence.scope.jurisdiction != self.jurisdiction {
             issues.push("scope jurisdiction does not match the record jurisdiction".to_owned());
         }
+        let expected_product_id = if gate.uses_finished_product_scope() {
+            self.product_id.as_deref()
+        } else {
+            None
+        };
+        if evidence.scope.product_id.as_deref() != expected_product_id {
+            issues.push("scope product_id does not match the expected product".to_owned());
+        }
         if !issues.is_empty() {
             blockers.push(GateBlocker {
                 gate: Some(gate),
@@ -359,6 +388,16 @@ impl EvidenceRef {
         }
         if self.scope.subject_id.trim().is_empty() {
             issues.push("scope subject_id is empty".to_owned());
+        }
+        if self
+            .scope
+            .product_id
+            .as_deref()
+            .map(str::trim)
+            .map(str::is_empty)
+            .unwrap_or(false)
+        {
+            issues.push("scope product_id is empty".to_owned());
         }
         if self.scope.jurisdiction.trim().is_empty() {
             issues.push("scope jurisdiction is empty".to_owned());
@@ -447,6 +486,11 @@ mod tests {
                 } else {
                     "SYNTHETIC-BATCH-001".to_owned()
                 },
+                product_id: if gate.uses_finished_product_scope() {
+                    Some("SYNTHETIC-MEDICINE-001".to_owned())
+                } else {
+                    None
+                },
                 gate,
                 jurisdiction: "ZA".to_owned(),
             },
@@ -470,6 +514,7 @@ mod tests {
             jurisdiction: "ZA".to_owned(),
             assessments,
             finished_product_batch_id: Some("SYNTHETIC-PRODUCT-001".to_owned()),
+            product_id: Some("SYNTHETIC-MEDICINE-001".to_owned()),
         }
     }
 
@@ -484,6 +529,7 @@ mod tests {
             jurisdiction: "ZA".to_owned(),
             assessments: BTreeMap::new(),
             finished_product_batch_id: None,
+            product_id: None,
         };
         let decision = record.evaluate(EligibilityTarget::TraceableBotanicalSupply);
         assert!(!decision.requirement_set_satisfied);
@@ -688,6 +734,27 @@ mod tests {
     }
 
     #[test]
+    fn product_authorization_evidence_must_match_the_product_master_id() {
+        let mut record = complete_record();
+        record.product_id = Some("SYNTHETIC-OTHER-PRODUCT".to_owned());
+        let decision = record.evaluate(EligibilityTarget::FinishedProductRelease);
+        assert!(decision_has_code(&decision, BlockerCode::InvalidEvidence));
+        assert!(!decision.requirement_set_satisfied);
+    }
+
+    #[test]
+    fn missing_product_id_blocks_finished_product_release() {
+        let mut record = complete_record();
+        record.product_id = None;
+        assert!(record
+            .evaluate(EligibilityTarget::AuthorizedManufacturingIntake)
+            .requirement_set_satisfied);
+        let decision = record.evaluate(EligibilityTarget::FinishedProductRelease);
+        assert!(decision_has_code(&decision, BlockerCode::MissingProductId));
+        assert!(!decision.requirement_set_satisfied);
+    }
+
+    #[test]
     fn empty_batch_identifier_blocks_even_with_all_gates_passed() {
         let mut record = complete_record();
         record.batch_id = "  ".to_owned();
@@ -751,6 +818,7 @@ mod tests {
             jurisdiction: "ZA".to_owned(),
             assessments: BTreeMap::new(),
             finished_product_batch_id: None,
+            product_id: None,
         };
         let one = record.evaluate(EligibilityTarget::FinishedProductRelease);
         let two = record.evaluate(EligibilityTarget::FinishedProductRelease);

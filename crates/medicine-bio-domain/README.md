@@ -26,9 +26,10 @@ a later stage passes.
 - Missing, unassessed, failed, or malformed required evidence blocks the target.
 - Only the knowledge-rights/benefit-sharing gate may be marked not applicable;
   even that requires scoped evidence and a non-empty rationale.
-- Every evidence scope must match the exact gate, jurisdiction, and subject
-  batch. Manufacturing and post-manufacturing gates bind to the linked
-  finished-product batch id, not just the raw botanical lot.
+- Every evidence scope must match the exact gate, jurisdiction, relevant batch,
+  and (for manufacturing/product gates) stable product-master id. The linked
+  finished-product batch id and product id are separate identifiers, neither
+  interchangeable with the raw botanical lot.
 - Evidence references are shape-checked; hashes are **not** recomputed and do
   not authenticate bytes, reviewer identity, legal status, or regulatory data.
 - A satisfied checklist is not a clinical opinion, species identification,

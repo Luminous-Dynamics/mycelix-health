@@ -41,6 +41,11 @@ fn main() {
                     } else {
                         "SYNTHETIC-ONLY-BATCH-DEMO".to_owned()
                     },
+                    product_id: if gate.uses_finished_product_scope() {
+                        Some("SYNTHETIC-ONLY-PRODUCT-MASTER".to_owned())
+                    } else {
+                        None
+                    },
                     gate,
                     jurisdiction: "ZA".to_owned(),
                 },
@@ -54,6 +59,7 @@ fn main() {
         jurisdiction: "ZA".to_owned(),
         assessments,
         finished_product_batch_id: Some("SYNTHETIC-ONLY-PRODUCT-DEMO".to_owned()),
+        product_id: Some("SYNTHETIC-ONLY-PRODUCT-MASTER".to_owned()),
     };
 
     for target in [
@@ -81,6 +87,7 @@ fn main() {
                 reviewed_at: "2026-01-02T03:04:05Z".to_owned(),
                 scope: EvidenceScope {
                     subject_id: "SYNTHETIC-ONLY-BATCH-DEMO".to_owned(),
+                    product_id: None,
                     gate: GateKey::BiodiversityProtection,
                     jurisdiction: "ZA".to_owned(),
                 },
