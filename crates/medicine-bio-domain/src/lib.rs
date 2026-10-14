@@ -18,9 +18,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 
 /// A gate for which a reviewer must provide an explicit, scoped assessment.
-#[derive(
-    Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize,
-)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum GateKey {
     SpeciesIdentity,
@@ -77,8 +75,12 @@ pub struct EvidenceRef {
 #[serde(tag = "status", rename_all = "snake_case")]
 pub enum GateAssessment {
     NotAssessed,
-    Pass { evidence: EvidenceRef },
-    Fail { evidence: EvidenceRef },
+    Pass {
+        evidence: EvidenceRef,
+    },
+    Fail {
+        evidence: EvidenceRef,
+    },
     NotApplicable {
         evidence: EvidenceRef,
         rationale: String,
@@ -266,8 +268,7 @@ impl BotanicalBatchRecord {
             blockers.push(GateBlocker {
                 gate: None,
                 code: BlockerCode::MissingFinishedProductBatchId,
-                detail: "finished-product release requires a linked product batch id"
-                    .to_owned(),
+                detail: "finished-product release requires a linked product batch id".to_owned(),
             });
         }
 
@@ -294,7 +295,10 @@ impl BotanicalBatchRecord {
                         detail: "required gate has a negative assessment".to_owned(),
                     });
                 }
-                Some(GateAssessment::NotApplicable { evidence, rationale }) => {
+                Some(GateAssessment::NotApplicable {
+                    evidence,
+                    rationale,
+                }) => {
                     self.append_evidence_blockers(*gate, evidence, &mut blockers);
                     if *gate != GateKey::KnowledgeRightsAndBenefitSharing {
                         blockers.push(GateBlocker {
@@ -334,7 +338,9 @@ impl BotanicalBatchRecord {
             issues.push("scope gate does not match the assessed gate".to_owned());
         }
         let expected_subject_id = if gate.uses_finished_product_scope() {
-            self.finished_product_batch_id.as_deref().unwrap_or_default()
+            self.finished_product_batch_id
+                .as_deref()
+                .unwrap_or_default()
         } else {
             self.batch_id.as_str()
         };
@@ -382,9 +388,8 @@ impl EvidenceRef {
             issues.push("reviewer_id is empty".to_owned());
         }
         if !is_valid_utc_timestamp(&self.reviewed_at) {
-            issues.push(
-                "reviewed_at must be a valid UTC YYYY-MM-DDTHH:MM:SSZ timestamp".to_owned(),
-            );
+            issues
+                .push("reviewed_at must be a valid UTC YYYY-MM-DDTHH:MM:SSZ timestamp".to_owned());
         }
         if self.scope.subject_id.trim().is_empty() {
             issues.push("scope subject_id is empty".to_owned());
@@ -425,9 +430,8 @@ fn is_valid_utc_timestamp(value: &str) -> bool {
         }
     }
 
-    let number = |start: usize, end: usize| -> u32 {
-        value[start..end].parse::<u32>().unwrap_or(u32::MAX)
-    };
+    let number =
+        |start: usize, end: usize| -> u32 { value[start..end].parse::<u32>().unwrap_or(u32::MAX) };
     let year = number(0, 4);
     let month = number(5, 7);
     let day = number(8, 10);
@@ -439,8 +443,8 @@ fn is_valid_utc_timestamp(value: &str) -> bool {
         return false;
     }
 
-    let leap_year = year.is_multiple_of(4)
-        && (!year.is_multiple_of(100) || year.is_multiple_of(400));
+    let leap_year =
+        year.is_multiple_of(4) && (!year.is_multiple_of(100) || year.is_multiple_of(400));
     let days_in_month = match month {
         1 | 3 | 5 | 7 | 8 | 10 | 12 => 31,
         4 | 6 | 9 | 11 => 30,
@@ -555,11 +559,15 @@ mod tests {
     fn missing_buyer_gates_do_not_block_the_earlier_botanical_lane() {
         let mut record = complete_record();
         record.assessments.remove(&GateKey::BuyerAuthorization);
-        record.assessments.remove(&GateKey::IncomingQualityRequirements);
+        record
+            .assessments
+            .remove(&GateKey::IncomingQualityRequirements);
 
-        assert!(record
-            .evaluate(EligibilityTarget::TraceableBotanicalSupply)
-            .requirement_set_satisfied);
+        assert!(
+            record
+                .evaluate(EligibilityTarget::TraceableBotanicalSupply)
+                .requirement_set_satisfied
+        );
         let intake = record.evaluate(EligibilityTarget::AuthorizedManufacturingIntake);
         assert!(!intake.requirement_set_satisfied);
         assert_eq!(
@@ -591,10 +599,9 @@ mod tests {
         let mut record = complete_record();
         let mut evidence = evidence_for(GateKey::SpeciesIdentity);
         evidence.sha256 = "not-a-digest".to_owned();
-        record.assessments.insert(
-            GateKey::SpeciesIdentity,
-            GateAssessment::Pass { evidence },
-        );
+        record
+            .assessments
+            .insert(GateKey::SpeciesIdentity, GateAssessment::Pass { evidence });
         let decision = record.evaluate(EligibilityTarget::TraceableBotanicalSupply);
         assert!(decision_has_code(&decision, BlockerCode::InvalidEvidence));
         assert!(!decision.requirement_set_satisfied);
@@ -604,14 +611,20 @@ mod tests {
     fn uppercase_digest_is_rejected_to_keep_canonical_form() {
         let mut evidence = evidence_for(GateKey::SpeciesIdentity);
         evidence.sha256 = "A".repeat(64);
-        assert!(evidence.validation_issues().iter().any(|issue| issue.contains("sha256")));
+        assert!(evidence
+            .validation_issues()
+            .iter()
+            .any(|issue| issue.contains("sha256")));
     }
 
     #[test]
     fn invalid_calendar_date_is_rejected() {
         let mut evidence = evidence_for(GateKey::SpeciesIdentity);
         evidence.reviewed_at = "2026-02-29T03:04:05Z".to_owned();
-        assert!(evidence.validation_issues().iter().any(|issue| issue.contains("reviewed_at")));
+        assert!(evidence
+            .validation_issues()
+            .iter()
+            .any(|issue| issue.contains("reviewed_at")));
     }
 
     #[test]
@@ -625,14 +638,20 @@ mod tests {
     fn blank_reviewer_id_is_rejected() {
         let mut evidence = evidence_for(GateKey::SpeciesIdentity);
         evidence.reviewer_id = "   ".to_owned();
-        assert!(evidence.validation_issues().iter().any(|issue| issue.contains("reviewer_id")));
+        assert!(evidence
+            .validation_issues()
+            .iter()
+            .any(|issue| issue.contains("reviewer_id")));
     }
 
     #[test]
     fn blank_scope_is_rejected() {
         let mut evidence = evidence_for(GateKey::SpeciesIdentity);
         evidence.scope.jurisdiction.clear();
-        assert!(evidence.validation_issues().iter().any(|issue| issue.contains("scope")));
+        assert!(evidence
+            .validation_issues()
+            .iter()
+            .any(|issue| issue.contains("scope")));
     }
 
     #[test]
@@ -646,9 +665,11 @@ mod tests {
                     .to_owned(),
             },
         );
-        assert!(record
-            .evaluate(EligibilityTarget::TraceableBotanicalSupply)
-            .requirement_set_satisfied);
+        assert!(
+            record
+                .evaluate(EligibilityTarget::TraceableBotanicalSupply)
+                .requirement_set_satisfied
+        );
     }
 
     #[test]
@@ -662,7 +683,10 @@ mod tests {
             },
         );
         let decision = record.evaluate(EligibilityTarget::TraceableBotanicalSupply);
-        assert!(decision_has_code(&decision, BlockerCode::EmptyNotApplicableRationale));
+        assert!(decision_has_code(
+            &decision,
+            BlockerCode::EmptyNotApplicableRationale
+        ));
         assert!(!decision.requirement_set_satisfied);
     }
 
@@ -677,7 +701,10 @@ mod tests {
             },
         );
         let decision = record.evaluate(EligibilityTarget::TraceableBotanicalSupply);
-        assert!(decision_has_code(&decision, BlockerCode::NotApplicableNotPermitted));
+        assert!(decision_has_code(
+            &decision,
+            BlockerCode::NotApplicableNotPermitted
+        ));
         assert!(!decision.requirement_set_satisfied);
     }
 
@@ -728,9 +755,11 @@ mod tests {
         {
             evidence.scope.subject_id = "SYNTHETIC-BATCH-001".to_owned();
         }
-        assert!(!record
-            .evaluate(EligibilityTarget::FinishedProductRelease)
-            .requirement_set_satisfied);
+        assert!(
+            !record
+                .evaluate(EligibilityTarget::FinishedProductRelease)
+                .requirement_set_satisfied
+        );
     }
 
     #[test]
@@ -746,9 +775,11 @@ mod tests {
     fn missing_product_id_blocks_finished_product_release() {
         let mut record = complete_record();
         record.product_id = None;
-        assert!(record
-            .evaluate(EligibilityTarget::AuthorizedManufacturingIntake)
-            .requirement_set_satisfied);
+        assert!(
+            record
+                .evaluate(EligibilityTarget::AuthorizedManufacturingIntake)
+                .requirement_set_satisfied
+        );
         let decision = record.evaluate(EligibilityTarget::FinishedProductRelease);
         assert!(decision_has_code(&decision, BlockerCode::MissingProductId));
         assert!(!decision.requirement_set_satisfied);
@@ -767,11 +798,16 @@ mod tests {
     fn finished_product_requires_its_own_batch_identifier() {
         let mut record = complete_record();
         record.finished_product_batch_id = None;
-        assert!(record
-            .evaluate(EligibilityTarget::TraceableBotanicalSupply)
-            .requirement_set_satisfied);
+        assert!(
+            record
+                .evaluate(EligibilityTarget::TraceableBotanicalSupply)
+                .requirement_set_satisfied
+        );
         let decision = record.evaluate(EligibilityTarget::FinishedProductRelease);
-        assert!(decision_has_code(&decision, BlockerCode::MissingFinishedProductBatchId));
+        assert!(decision_has_code(
+            &decision,
+            BlockerCode::MissingFinishedProductBatchId
+        ));
         assert!(!decision.requirement_set_satisfied);
     }
 
@@ -784,31 +820,44 @@ mod tests {
                 evidence: evidence_for(GateKey::FinishedProductQualityTesting),
             },
         );
-        assert!(record
-            .evaluate(EligibilityTarget::TraceableBotanicalSupply)
-            .requirement_set_satisfied);
-        assert!(!record
-            .evaluate(EligibilityTarget::FinishedProductRelease)
-            .requirement_set_satisfied);
+        assert!(
+            record
+                .evaluate(EligibilityTarget::TraceableBotanicalSupply)
+                .requirement_set_satisfied
+        );
+        assert!(
+            !record
+                .evaluate(EligibilityTarget::FinishedProductRelease)
+                .requirement_set_satisfied
+        );
     }
 
     #[test]
     fn missing_manufacturing_authorization_blocks_intake_independent_of_garden_gates() {
         let mut record = complete_record();
-        record.assessments.remove(&GateKey::ManufacturingAuthorization);
-        assert!(record
-            .evaluate(EligibilityTarget::AuthorizedManufacturingIntake)
-            .requirement_set_satisfied);
-        assert!(!record
-            .evaluate(EligibilityTarget::FinishedProductRelease)
-            .requirement_set_satisfied);
+        record
+            .assessments
+            .remove(&GateKey::ManufacturingAuthorization);
+        assert!(
+            record
+                .evaluate(EligibilityTarget::AuthorizedManufacturingIntake)
+                .requirement_set_satisfied
+        );
+        assert!(
+            !record
+                .evaluate(EligibilityTarget::FinishedProductRelease)
+                .requirement_set_satisfied
+        );
     }
 
     #[test]
     fn utc_offset_form_is_rejected_until_normalized_to_utc() {
         let mut evidence = evidence_for(GateKey::SpeciesIdentity);
         evidence.reviewed_at = "2026-01-02T05:04:05+02:00".to_owned();
-        assert!(evidence.validation_issues().iter().any(|issue| issue.contains("reviewed_at")));
+        assert!(evidence
+            .validation_issues()
+            .iter()
+            .any(|issue| issue.contains("reviewed_at")));
     }
 
     #[test]
