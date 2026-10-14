@@ -316,9 +316,9 @@ pub struct CatalogueDecision {
 }
 
 impl GardenSiteProfileV1 {
-    /// Determine whether a valid explicit consent permits a future sync adapter.
-    /// This does not perform sync or establish that old remote copies were erased.
-    pub fn sync_is_allowed(&self) -> bool {
+    /// Check only the structure of consent metadata for a future sync adapter.
+    /// This does not authenticate consent or authorize network access.
+    pub fn has_structurally_valid_sync_opt_in(&self) -> bool {
         match &self.sync_state {
             SyncState::OptedIn { consent_ref, consented_at_utc } => {
                 !consent_ref.trim().is_empty() && is_valid_utc_timestamp(consented_at_utc)
@@ -791,6 +791,10 @@ fn is_region_id(value: &str) -> bool {
         && !value.starts_with('-')
         && !value.ends_with('-')
         && !value.contains("--")
+        && value
+            .as_bytes()
+            .first()
+            .is_some_and(|byte| byte.is_ascii_lowercase())
         && value.bytes().any(|byte| byte.is_ascii_lowercase())
         && value
             .bytes()
@@ -925,7 +929,7 @@ mod tests {
     #[test]
     fn local_only_is_the_default_and_sync_is_never_implicit() {
         assert_eq!(SyncState::default(), SyncState::LocalOnly);
-        assert!(!good_profile().sync_is_allowed());
+        assert!(!good_profile().has_structurally_valid_sync_opt_in());
         assert!(good_profile().catalogue_blockers().is_empty());
     }
 
@@ -942,11 +946,17 @@ mod tests {
     #[test]
     fn free_form_addresses_are_not_valid_region_tokens() {
         let mut profile = good_profile();
-        profile.catalogue_region_id = Some("123 Main Street, Johannesburg".to_owned());
+        profile.catalogue_region_id = Some("123-main-street".to_owned());
         assert!(has_profile_code(
             &evaluate_local_catalogue(&profile, &approved_manifest(vec![approved_entry()]), NOW),
             ProfileBlockerCode::InvalidCatalogueRegionId
         ));
+    }
+
+    #[test]
+    fn region_tokens_cannot_look_like_numbered_street_addresses() {
+        assert!(!is_region_id("123-main-street"));
+        assert!(is_region_id("gauteng-urban"));
     }
 
     #[test]
@@ -1014,20 +1024,20 @@ mod tests {
             consent_ref: " ".to_owned(),
             consented_at_utc: "not-a-time".to_owned(),
         };
-        assert!(!profile.sync_is_allowed());
+        assert!(!profile.has_structurally_valid_sync_opt_in());
         let decision = evaluate_local_catalogue(&profile, &approved_manifest(vec![approved_entry()]), NOW);
         assert!(decision.catalogue_available);
         assert_eq!(decision.visible_entry_ids.len(), 1);
     }
 
     #[test]
-    fn a_valid_opt_in_is_required_to_allow_sync() {
+    fn an_opt_in_record_only_passes_structural_validation() {
         let mut profile = good_profile();
         profile.sync_state = SyncState::OptedIn {
             consent_ref: "synthetic-consent".to_owned(),
             consented_at_utc: NOW.to_owned(),
         };
-        assert!(profile.sync_is_allowed());
+        assert!(profile.has_structurally_valid_sync_opt_in());
     }
 
     #[test]
@@ -1037,7 +1047,7 @@ mod tests {
             revocation_ref: "synthetic-revocation".to_owned(),
             withdrawn_at_utc: NOW.to_owned(),
         };
-        assert!(!profile.sync_is_allowed());
+        assert!(!profile.has_structurally_valid_sync_opt_in());
         assert!(profile.catalogue_blockers().is_empty());
     }
 
@@ -1070,7 +1080,7 @@ mod tests {
     fn free_form_manifest_region_is_rejected() {
         let profile = good_profile();
         let mut manifest = approved_manifest(vec![approved_entry()]);
-        manifest.catalogue_region_id = "123 Main Street, Johannesburg".to_owned();
+        manifest.catalogue_region_id = "123-main-street".to_owned();
         assert!(has_catalogue_code(
             &evaluate_local_catalogue(&profile, &manifest, NOW),
             CatalogueBlockerCode::InvalidManifestRegionFormat
