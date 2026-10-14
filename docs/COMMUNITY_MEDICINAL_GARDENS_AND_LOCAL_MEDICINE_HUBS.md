@@ -209,6 +209,22 @@ A failed answer puts the affected material on hold. It does not mean a person ne
 - Define fair payment and benefit sharing early; community members should not bear agronomic risk while downstream manufacturers capture all value.
 - Make privacy, accessibility, language inclusion, disability access and low-connectivity operation design requirements.
 
+
+### Privacy and data minimisation (POPIA-aligned design target)
+
+The Information Regulator's personal privacy principles include collecting only data necessary for a specific defined purpose, securing records, and retaining no more personal information than needed. POPIA sets conditions for lawful processing of personal information by public and private bodies; this garden prototype should be treated as a product-design commitment, not as a substitute for the responsible party's legal assessment.
+
+For the garden layer, that translates into these defaults:
+
+- No account required for paper or local-only planning; do not require an exact household address or GPS coordinate.
+- Use a random, locally generated profile identifier and coarse locality from a reviewed catalogue region list—not a user's name or free-text address.
+- Do not collect patient records, symptoms, medication data, or reasons for interface accessibility preferences.
+- Store the site profile on-device until the person explicitly opts into a separate sync workflow. A stored withdrawal state is not proof that previously synchronized copies were erased; deletion/export must be implemented and verified independently.
+- Never store or publish traditional/sacred knowledge as garden onboarding data. Any later collection, translation, model training or commercial use needs a separately governed permission and benefit-sharing path.
+- Make profile export disclose only fields the user deliberately selects; local-only does not automatically make printed/exported data anonymous.
+
+Sources: [South African Protection of Personal Information Act 4 of 2013](https://www.gov.za/documents/protection-personal-information-act); [Information Regulator — Personal Privacy Principles](https://eservices.inforegulator.org.za/pps/principles.aspx).
+
 ## 8. Symthaea bootstrap plan
 
 Symthaea may develop the software in small, independently reviewable stages.
@@ -327,6 +343,8 @@ Operational consequence: begin with non-clinical growing education, biodiversity
 - University of Pretoria Phytomedicine Programme: https://www.up.ac.za/phytomedicine-programme
 - Traditional Health Practitioners Act 22 of 2007: https://www.gov.za/ss/documents/traditional-health-practitioners-act
 - WHO sustainable local production ecosystem, 20 July 2026: https://www.who.int/news/item/20-07-2026-who-and-partners-strengthen-global-commitment-to-sustainable-local-manufacturing-for-health
+- South African Protection of Personal Information Act 4 of 2013: https://www.gov.za/documents/protection-personal-information-act
+- Information Regulator, Personal Privacy Principles (data minimisation and security): https://eservices.inforegulator.org.za/pps/principles.aspx
 
 ## Decision requested for the engineering plan
 
