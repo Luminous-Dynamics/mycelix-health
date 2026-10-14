@@ -7,8 +7,10 @@ onboarding and region-bound, expert-reviewed non-clinical growing catalogues.
 
 `GardenSiteProfileV1` deliberately contains no field for a person's name,
 exact street address, GPS coordinates, patient ID, medical history, or
-traditional/sacred knowledge. It uses a coarse catalogue region and supports
-local-only operation by default. Sync requires an explicit consent reference;
+traditional/sacred knowledge. It uses a region token selected from a reviewed catalogue manifest (not free
+text) and supports local-only operation by default. Profile IDs must have an
+opaque UUID shape; generate them locally and randomly rather than deriving them
+from names or addresses. Sync requires an explicit consent reference;
 withdrawal is represented separately. This state alone cannot delete any
 already-synchronized copy, so a future sync adapter must implement and verify
 that workflow separately.

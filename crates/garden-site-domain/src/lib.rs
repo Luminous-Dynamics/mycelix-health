@@ -219,9 +219,11 @@ pub enum KnowledgeDisclosure {
 #[serde(rename_all = "snake_case")]
 pub enum ProfileBlockerCode {
     EmptyProfileId,
+    InvalidProfileIdFormat,
     UnsupportedProfileSchema,
     EmptyJurisdiction,
     MissingCatalogueRegion,
+    InvalidCatalogueRegionId,
     MissingGrowingSpace,
     MissingSunExposure,
     MissingWaterAccess,
@@ -245,6 +247,7 @@ pub enum CatalogueBlockerCode {
     EmptyCatalogueVersion,
     EmptyManifestJurisdiction,
     EmptyManifestRegion,
+    InvalidManifestRegionFormat,
     JurisdictionMismatch,
     RegionMismatch,
     ManifestNotApproved,
@@ -335,6 +338,12 @@ impl GardenSiteProfileV1 {
                 ProfileBlockerCode::EmptyProfileId,
                 "profile_id must be non-empty and non-identifying",
             );
+        } else if !is_opaque_identifier(&self.profile_id) {
+            push_profile(
+                &mut blockers,
+                ProfileBlockerCode::InvalidProfileIdFormat,
+                "profile_id must be a locally generated opaque UUID-shaped value",
+            );
         }
         if self.schema_version != GARDEN_SITE_SCHEMA_VERSION {
             push_profile(
@@ -362,6 +371,15 @@ impl GardenSiteProfileV1 {
                 ProfileBlockerCode::MissingCatalogueRegion,
                 "a coarse catalogue region is required; do not use an exact address",
             );
+        }
+        if let Some(region_id) = self.catalogue_region_id.as_deref() {
+            if !is_region_id(region_id) {
+                push_profile(
+                    &mut blockers,
+                    ProfileBlockerCode::InvalidCatalogueRegionId,
+                    "catalogue_region_id must be a reviewed region token, not free-form locality text",
+                );
+            }
         }
         if self.growing_space.is_none() {
             push_profile(
@@ -513,6 +531,12 @@ pub fn evaluate_local_catalogue(
             &mut catalogue_blockers,
             CatalogueBlockerCode::EmptyManifestRegion,
             "manifest region must be non-empty",
+        );
+    } else if !is_region_id(&manifest.catalogue_region_id) {
+        push_catalogue(
+            &mut catalogue_blockers,
+            CatalogueBlockerCode::InvalidManifestRegionFormat,
+            "manifest region must be a reviewed region token, not an address",
         );
     }
     if !profile.jurisdiction_code.trim().is_empty()
@@ -751,6 +775,28 @@ fn push_catalogue(
     });
 }
 
+fn is_opaque_identifier(value: &str) -> bool {
+    let bytes = value.as_bytes();
+    bytes.len() == 36
+        && [8, 13, 18, 23].into_iter().all(|index| bytes[index] == b'-')
+        && bytes.iter().enumerate().all(|(index, byte)| {
+            [8, 13, 18, 23].contains(&index)
+                || (byte.is_ascii_hexdigit() && !byte.is_ascii_uppercase())
+        })
+}
+
+fn is_region_id(value: &str) -> bool {
+    !value.is_empty()
+        && value.len() <= 48
+        && !value.starts_with('-')
+        && !value.ends_with('-')
+        && !value.contains("--")
+        && value.bytes().any(|byte| byte.is_ascii_lowercase())
+        && value
+            .bytes()
+            .all(|byte| byte.is_ascii_lowercase() || byte.is_ascii_digit() || byte == b'-')
+}
+
 fn is_language_tag(value: &str) -> bool {
     !value.is_empty()
         && !value.starts_with('-')
@@ -808,7 +854,7 @@ mod tests {
 
     fn good_profile() -> GardenSiteProfileV1 {
         GardenSiteProfileV1 {
-            profile_id: "local-random-profile-001".to_owned(),
+            profile_id: "8c2f53a4-9921-4b78-8ab5-a0b1234c9001".to_owned(),
             schema_version: GARDEN_SITE_SCHEMA_VERSION,
             jurisdiction_code: "ZA".to_owned(),
             catalogue_region_id: Some("gauteng-urban".to_owned()),
@@ -881,6 +927,26 @@ mod tests {
         assert_eq!(SyncState::default(), SyncState::LocalOnly);
         assert!(!good_profile().sync_is_allowed());
         assert!(good_profile().catalogue_blockers().is_empty());
+    }
+
+    #[test]
+    fn human_readable_profile_ids_are_rejected() {
+        let mut profile = good_profile();
+        profile.profile_id = "my-home-garden-johannesburg".to_owned();
+        assert!(has_profile_code(
+            &evaluate_local_catalogue(&profile, &approved_manifest(vec![approved_entry()]), NOW),
+            ProfileBlockerCode::InvalidProfileIdFormat
+        ));
+    }
+
+    #[test]
+    fn free_form_addresses_are_not_valid_region_tokens() {
+        let mut profile = good_profile();
+        profile.catalogue_region_id = Some("123 Main Street, Johannesburg".to_owned());
+        assert!(has_profile_code(
+            &evaluate_local_catalogue(&profile, &approved_manifest(vec![approved_entry()]), NOW),
+            ProfileBlockerCode::InvalidCatalogueRegionId
+        ));
     }
 
     #[test]
@@ -998,6 +1064,17 @@ mod tests {
         manifest.jurisdiction_code = "XX".to_owned();
         let decision = evaluate_local_catalogue(&profile, &manifest, NOW);
         assert!(has_catalogue_code(&decision, CatalogueBlockerCode::JurisdictionMismatch));
+    }
+
+    #[test]
+    fn free_form_manifest_region_is_rejected() {
+        let profile = good_profile();
+        let mut manifest = approved_manifest(vec![approved_entry()]);
+        manifest.catalogue_region_id = "123 Main Street, Johannesburg".to_owned();
+        assert!(has_catalogue_code(
+            &evaluate_local_catalogue(&profile, &manifest, NOW),
+            CatalogueBlockerCode::InvalidManifestRegionFormat
+        ));
     }
 
     #[test]
