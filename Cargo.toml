@@ -55,6 +55,9 @@ members = [
     # ── Health FL Pipeline ──
     "crates/health-fl",
 
+    # ── MED-BIO-002: privacy-first non-clinical garden profiles ──
+    "crates/garden-site-domain",
+
     # ── Post-Quantum + ZK Crypto ──
     "crates/health-crypto",
     "crates/health-zkp",
