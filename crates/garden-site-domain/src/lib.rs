@@ -703,8 +703,12 @@ impl LocalGrowingCatalogueEntry {
             }
         }
         match &self.knowledge_disclosure {
-            KnowledgeDisclosure::Unknown => reasons.push(EntryExclusionCode::KnowledgeRightsUnknown),
-            KnowledgeDisclosure::Restricted => reasons.push(EntryExclusionCode::KnowledgeRestricted),
+            KnowledgeDisclosure::Unknown => {
+                reasons.push(EntryExclusionCode::KnowledgeRightsUnknown)
+            }
+            KnowledgeDisclosure::Restricted => {
+                reasons.push(EntryExclusionCode::KnowledgeRestricted)
+            }
             KnowledgeDisclosure::Withheld => reasons.push(EntryExclusionCode::KnowledgeWithheld),
             KnowledgeDisclosure::PubliclyShareable { evidence_ref } => {
                 if evidence_ref.trim().is_empty() {
@@ -1041,7 +1045,11 @@ mod tests {
     fn hazard_not_assessed_does_not_allow_species_specific_guidance() {
         let mut profile = good_profile();
         profile.hazard_screening = HazardScreening::NotAssessed;
-        let decision = evaluate_local_catalogue(&profile, &approved_manifest(vec![approved_entry()]), NOW);
+        let decision = evaluate_local_catalogue(
+            &profile,
+            &approved_manifest(vec![approved_entry()]),
+            NOW,
+        );
         assert!(!decision.catalogue_available);
         assert!(has_profile_code(&decision, ProfileBlockerCode::HazardNotAssessed));
         assert!(decision.visible_entry_ids.is_empty());
@@ -1068,7 +1076,11 @@ mod tests {
             consented_at_utc: "not-a-time".to_owned(),
         };
         assert!(!profile.has_structurally_valid_sync_opt_in());
-        let decision = evaluate_local_catalogue(&profile, &approved_manifest(vec![approved_entry()]), NOW);
+        let decision = evaluate_local_catalogue(
+            &profile,
+            &approved_manifest(vec![approved_entry()]),
+            NOW,
+        );
         assert!(decision.catalogue_available);
         assert_eq!(decision.visible_entry_ids.len(), 1);
     }
