@@ -874,6 +874,10 @@ mod tests {
         assert_eq!(one, two);
         assert_eq!(
             one.blockers.first().map(|blocker| blocker.code),
+            Some(BlockerCode::MissingProductId)
+        );
+        assert_eq!(
+            one.blockers.get(1).map(|blocker| blocker.code),
             Some(BlockerCode::MissingFinishedProductBatchId)
         );
     }
