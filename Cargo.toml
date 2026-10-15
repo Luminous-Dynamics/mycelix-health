@@ -37,6 +37,9 @@ members = [
     "crates/hdc-experiments",
     "crates/health-validation",
 
+    # ── MED-BIO-001: non-clinical botanical lot evidence gates ──
+    "crates/medicine-bio-domain",
+
     # ── Tier 3: Behavioral Health (restored 2026-03-26) ──
     "zomes/mental_health/integrity",
     "zomes/mental_health/coordinator",
@@ -119,4 +122,3 @@ todo = "deny"
 unimplemented = "deny"
 eq_op = "deny"
 cast_ptr_alignment = "deny"
-

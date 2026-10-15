@@ -231,5 +231,8 @@ jobs:
       - name: Run integration tests
         run: |
           cd tests/integration
-          npm ci
+          # This package currently has no committed package-lock.json, so npm ci
+          # cannot run here. Install from the declared manifest; add a lockfile
+          # in a separate reproducibility change rather than generating one silently.
+          npm install --no-audit --no-fund
           npm test

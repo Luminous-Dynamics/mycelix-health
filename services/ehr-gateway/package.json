@@ -44,5 +44,8 @@
   },
   "engines": {
     "node": ">=18.0.0"
+  },
+  "overrides": {
+    "libsodium-wrappers": "0.7.15"
   }
 }

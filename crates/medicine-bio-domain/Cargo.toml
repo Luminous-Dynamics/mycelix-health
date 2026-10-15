@@ -1,0 +1,9 @@
+[package]
+name = "medicine-bio-domain"
+version = "0.1.0"
+edition = "2021"
+license = "AGPL-3.0-or-later"
+description = "Fail-closed evidence gates for non-clinical botanical lot traceability and regulated hand-off"
+
+[dependencies]
+serde = { version = "1.0", features = ["derive"] }
