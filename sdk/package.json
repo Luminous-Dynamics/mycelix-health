@@ -58,5 +58,8 @@
     "type": "git",
     "url": "https://github.com/Luminous-Dynamics/mycelix-health.git",
     "directory": "sdk"
+  },
+  "overrides": {
+    "libsodium-wrappers": "0.7.15"
   }
 }
