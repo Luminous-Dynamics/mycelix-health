@@ -4,6 +4,9 @@
 
 Mycelix-Health is a Holochain-based healthcare application that puts patients in control of their medical data while enabling seamless, privacy-preserving sharing with healthcare providers, researchers, and insurers.
 
+> **Current maturity boundary:** this repository contains research-stage healthcare infrastructure and a mixture of active, deferred and archived capabilities. The mental-health zome is present in the current workspace, but it is not a deployed clinical service. The digital-twin zome described below is a roadmap / historical design item and is currently deferred; there is no active twin implementation in the current workspace. No clinical efficacy, regulatory approval or independent security audit is implied by the feature descriptions. See [NeuroTwin Data Governance Contract v0.1](docs/NEUROTWIN_DATA_GOVERNANCE_V0_1.md) before proposing neuroimaging, mental-health or model-training workflows.
+
+
 ## Vision
 
 Healthcare data belongs to patients, not institutions. Mycelix-Health enables:
