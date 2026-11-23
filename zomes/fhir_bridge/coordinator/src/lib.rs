@@ -19,6 +19,8 @@ use hdk::prelude::*;
 
 mod patient_subject;
 use patient_subject::{relative_patient_id, resolve_patient_subject, PatientSubjectBinding};
+mod observation_time;
+use observation_time::parse_fhir_instant;
 
 // Local mirrors of fhir_mapping_integrity types to avoid duplicate __num_entry_types
 // symbols when compiling to WASM. These must match the serialization layout exactly.
@@ -102,7 +104,10 @@ pub struct FhirObservationMapping {
     pub value_codeable_concept: Option<FhirCodeableConcept>,
     pub value_string: Option<String>,
     pub value_boolean: Option<bool>,
+    /// Clinical event time parsed from FHIR Observation.effectiveDateTime.
+    /// Never substitute local import time for this field.
     pub effective_datetime: Timestamp,
+    /// Independent FHIR Observation.issued instant, when supplied.
     pub issued: Option<Timestamp>,
     pub reference_range: Option<ObservationReferenceRange>,
     pub interpretation: Vec<FhirCodeableConcept>,
@@ -662,6 +667,20 @@ fn process_observation(
     let (code, display, system) = extract_coding(resource, "code");
     let loinc_code = code.clone().unwrap_or_else(|| "unknown".to_string());
     let status = get_fhir_string(resource, "status").unwrap_or_else(|| "unknown".to_string());
+
+    // The event time, issue time and local import time are independent facts.
+    // This mapping version supports timezone-qualified effectiveDateTime only.
+    // Unsupported effective[x] forms are rejected rather than replaced with now.
+    let effective_raw = get_fhir_string(resource, "effectiveDateTime").ok_or_else(|| {
+        "Observation has no effectiveDateTime; effectivePeriod/effectiveTiming/effectiveInstant and date-only precision are not supported by this mapping version".to_string()
+    })?;
+    let effective_datetime = parse_fhir_instant(
+        &effective_raw,
+        "Observation.effectiveDateTime",
+    )?;
+    let issued = get_fhir_string(resource, "issued")
+        .map(|value| parse_fhir_instant(&value, "Observation.issued"))
+        .transpose()?;
     let now = sys_time().map_err(|e| e.to_string())?;
 
     let mapping = FhirObservationMapping {
@@ -678,8 +697,8 @@ fn process_observation(
         value_codeable_concept: None,
         value_string: extract_value(resource),
         value_boolean: resource.get("valueBoolean").and_then(|v| v.as_bool()),
-        effective_datetime: now,
-        issued: None,
+        effective_datetime,
+        issued,
         reference_range: None,
         interpretation: Vec::new(),
         note: Vec::new(),

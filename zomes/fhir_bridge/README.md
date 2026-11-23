@@ -229,6 +229,16 @@ The current `ingest_bundle` coordinator is a **single-patient** ingestion API.
 
 This is intentionally conservative. Identifier-only matching, multi-patient Bundles and cross-system master-patient-index reconciliation require separate versioned and audited policies; they are not guessed by this endpoint.
 
+## Observation temporal semantics
+
+The current Observation mapping profile preserves three separate time values:
+
+- `effective_datetime`: the source clinical event time from a timezone-qualified `Observation.effectiveDateTime`;
+- `issued`: the independent timezone-qualified `Observation.issued` instant, when present;
+- `last_synced`: local ingestion/synchronization time.
+
+The current mapping profile is deliberately narrower than all FHIR R4 temporal choices. It rejects missing, date-only, timezone-free, `effectivePeriod`, `effectiveTiming`, and `effectiveInstant` values rather than silently substituting import time or coercing intervals into points. A future versioned temporal envelope must preserve the original FHIR choice and precision.
+
 ## Deduplication
 
 The FHIR bridge prevents duplicate imports using anchors:
