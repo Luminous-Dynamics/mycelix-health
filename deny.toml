@@ -4,8 +4,6 @@
 
 [advisories]
 ignore = [
-    # Bincode unmaintained (transitive dep via holochain, no replacement available)
-    "RUSTSEC-2025-0141",
     # paste crate unmaintained (transitive dep via holochain/wasmtime)
     "RUSTSEC-2024-0436",
     # proc-macro-error unmaintained (transitive dep via holochain derive macros)
