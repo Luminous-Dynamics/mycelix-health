@@ -29,7 +29,14 @@ export interface ConflictResolution {
 
 export interface ConflictResolverConfig {
   defaultStrategy: ConflictResolutionStrategy;
-  autoResolveThreshold?: number; // Auto-resolve if difference is below threshold
+  autoResolveThreshold?: number; // Similarity threshold for explicitly allowlisted resources
+  /**
+   * Resource types eligible for automatic reconciliation.
+   *
+   * Defaults to an empty list. Clinical resources must not be allowlisted
+   * without a domain-specific reconciliation policy and adversarial evidence.
+   */
+  autoResolveResourceTypes?: string[];
   mergeRules?: MergeRules;
 }
 
@@ -55,6 +62,7 @@ export class ConflictResolver {
   constructor(config: ConflictResolverConfig) {
     this.config = {
       autoResolveThreshold: 0,
+      autoResolveResourceTypes: [],
       ...config,
     };
   }
@@ -263,7 +271,14 @@ export class ConflictResolver {
    * Check if a conflict can be auto-resolved
    */
   private canAutoResolve(conflict: ConflictInfo): boolean {
-    // Delete conflicts typically need manual review
+    // Fail closed: only explicitly allowlisted resource types may be
+    // considered for automatic reconciliation. Similarity is not clinical
+    // equivalence, source authority, or permission to choose a winner.
+    if (!this.config.autoResolveResourceTypes?.includes(conflict.resourceType)) {
+      return false;
+    }
+
+    // Delete conflicts always require review.
     if (conflict.conflictType === 'delete') {
       return false;
     }

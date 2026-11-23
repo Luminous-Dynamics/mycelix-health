@@ -19,7 +19,7 @@ describe('ConflictResolver', () => {
 
   beforeEach(() => {
     defaultConfig = {
-      defaultStrategy: 'most_recent',
+      defaultStrategy: 'manual',
       autoResolveThreshold: 0.1,
     };
     resolver = new ConflictResolver(defaultConfig);
@@ -355,56 +355,111 @@ describe('ConflictResolver', () => {
   });
 
   describe('autoResolveConflicts', () => {
-    it('auto-resolves highly similar conflicts', async () => {
-      // Use a config with higher threshold for testing
+    it('keeps clinical conflicts pending even when their payloads are highly similar', async () => {
       const autoResolver = new ConflictResolver({
         defaultStrategy: 'most_recent',
-        autoResolveThreshold: 0.5, // 50% threshold - allows more auto-resolution
+        autoResolveThreshold: 0.5,
+        autoResolveResourceTypes: ['Organization'],
       });
 
-      // Create very similar data (high similarity)
       const conflict: ConflictInfo = {
-        resourceType: 'Patient',
-        resourceId: 'patient-auto',
+        resourceType: 'Observation',
+        resourceId: 'observation-hba1c-001',
         localVersion: '1',
         remoteVersion: '2',
-        localData: { name: 'John Smith', age: 30, city: 'Austin' },
-        remoteData: { name: 'John Smith', age: 30, city: 'Dallas' },
+        localData: {
+          status: 'final',
+          effectiveDateTime: '2025-01-10T08:20:00Z',
+          issued: '2025-01-10T10:00:00Z',
+          valueQuantity: { value: 7.8, unit: '%', code: '%' },
+        },
+        remoteData: {
+          status: 'corrected',
+          effectiveDateTime: '2025-01-10T08:20:00Z',
+          issued: '2025-01-12T10:00:00Z',
+          valueQuantity: { value: 7.7, unit: '%', code: '%' },
+        },
         conflictType: 'update',
       };
 
       autoResolver.registerConflict(conflict);
-
       const resolutions = await autoResolver.autoResolveConflicts('auto-bot');
 
-      // Highly similar data should auto-resolve
-      expect(resolutions.length).toBe(1);
-      expect(resolutions[0].resolvedBy).toBe('auto-bot');
+      expect(resolutions).toHaveLength(0);
+      expect(autoResolver.getPendingConflicts()).toHaveLength(1);
+      expect(autoResolver.getResolvedConflicts()).toHaveLength(0);
     });
 
-    it('does not auto-resolve delete conflicts', async () => {
+    it('does not auto-resolve any resource type by default', async () => {
       const autoResolver = new ConflictResolver({
         defaultStrategy: 'most_recent',
-        autoResolveThreshold: 0.9, // Very high threshold
+        autoResolveThreshold: 1,
+      });
+
+      const conflict: ConflictInfo = {
+        resourceType: 'Organization',
+        resourceId: 'organization-001',
+        localVersion: '1',
+        remoteVersion: '2',
+        localData: { name: 'Example Health', active: true },
+        remoteData: { name: 'Example Health', active: false },
+        conflictType: 'update',
+      };
+
+      autoResolver.registerConflict(conflict);
+      const resolutions = await autoResolver.autoResolveConflicts('auto-bot');
+
+      expect(resolutions).toHaveLength(0);
+      expect(autoResolver.getPendingConflicts()).toHaveLength(1);
+    });
+
+    it('only auto-resolves an explicitly allowlisted non-clinical resource type', async () => {
+      const autoResolver = new ConflictResolver({
+        defaultStrategy: 'most_recent',
+        autoResolveThreshold: 0.5,
+        autoResolveResourceTypes: ['Organization'],
+      });
+
+      const conflict: ConflictInfo = {
+        resourceType: 'Organization',
+        resourceId: 'organization-auto',
+        localVersion: '1',
+        remoteVersion: '2',
+        localData: { name: 'Example Health', active: true, city: 'Austin' },
+        remoteData: { name: 'Example Health', active: true, city: 'Dallas' },
+        conflictType: 'update',
+      };
+
+      autoResolver.registerConflict(conflict);
+      const resolutions = await autoResolver.autoResolveConflicts('auto-bot');
+
+      expect(resolutions).toHaveLength(1);
+      expect(resolutions[0].resolvedBy).toBe('auto-bot');
+      expect(autoResolver.getResolvedConflicts()).toHaveLength(1);
+    });
+
+    it('does not auto-resolve delete conflicts even when allowlisted', async () => {
+      const autoResolver = new ConflictResolver({
+        defaultStrategy: 'most_recent',
+        autoResolveThreshold: 0.9,
+        autoResolveResourceTypes: ['Organization'],
       });
 
       const deleteConflict: ConflictInfo = {
-        resourceType: 'Patient',
-        resourceId: 'patient-delete',
+        resourceType: 'Organization',
+        resourceId: 'organization-delete',
         localVersion: '1',
         remoteVersion: '2',
-        localData: null, // Deleted locally
-        remoteData: { name: 'John' },
+        localData: null,
+        remoteData: { name: 'Example Health' },
         conflictType: 'delete',
       };
 
       autoResolver.registerConflict(deleteConflict);
-
       const resolutions = await autoResolver.autoResolveConflicts('auto-bot');
 
-      // Delete conflicts should not auto-resolve
-      expect(resolutions.length).toBe(0);
-      expect(autoResolver.getPendingConflicts().length).toBe(1);
+      expect(resolutions).toHaveLength(0);
+      expect(autoResolver.getPendingConflicts()).toHaveLength(1);
     });
   });
 
