@@ -215,6 +215,20 @@ const results = await gateway.pullPatientData(
 // The gateway internally calls fhir_bridge.ingest_bundle
 ```
 
+## Patient subject binding
+
+The current `ingest_bundle` coordinator is a **single-patient** ingestion API.
+
+- A Bundle containing more than one Patient resource is rejected before any Patient is created.
+- Every patient-scoped resource must carry a resolvable `subject.reference` or `patient.reference`.
+- Relative `Patient/{id}` references are accepted only when their logical ID matches the selected Patient.
+- Absolute and `urn:uuid` references are accepted only when they exactly match one unique Bundle `entry.fullUrl` whose target is the selected Patient.
+- Missing, identifier-only, unresolved, ambiguous or mismatched references cause that resource to be skipped and described in the `IngestReport.parse_errors` list.
+- The bridge does not infer patient identity from Bundle proximity, timestamp, name similarity or a URL suffix.
+- A Bundle without a Patient resource may use a relative `Patient/{id}` reference only when the same-source Patient mapping already exists.
+
+This is intentionally conservative. Identifier-only matching, multi-patient Bundles and cross-system master-patient-index reconciliation require separate versioned and audited policies; they are not guessed by this endpoint.
+
 ## Deduplication
 
 The FHIR bridge prevents duplicate imports using anchors:

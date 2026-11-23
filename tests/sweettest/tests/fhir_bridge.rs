@@ -408,6 +408,114 @@ async fn test_ingest_patient_only() -> Result<()> {
 }
 
 // ============================================================================
+ // Test: Unresolved and Missing Patient Subjects
+// ============================================================================
+
+#[tokio::test]
+#[ignore = "Requires running Holochain conductor"]
+async fn test_ingest_skips_unresolved_and_missing_patient_subjects() -> Result<()> {
+    let (conductor, cell_id) = setup_conductor().await?;
+
+    let bundle = json!({
+        "resourceType": "Bundle",
+        "id": "unresolved-subject-bundle",
+        "type": "collection",
+        "entry": [
+            {
+                "fullUrl": "https://trusted.example/fhir/Patient/binding-patient-001",
+                "resource": create_test_patient("binding-patient-001")
+            },
+            {
+                "fullUrl": "https://trusted.example/fhir/Observation/unresolved-absolute",
+                "resource": {
+                    "resourceType": "Observation",
+                    "id": "unresolved-absolute",
+                    "status": "final",
+                    "code": { "text": "Synthetic test observation" },
+                    "subject": {
+                        "reference": "https://other.example/fhir/Patient/binding-patient-001"
+                    }
+                }
+            },
+            {
+                "fullUrl": "https://trusted.example/fhir/Observation/missing-subject",
+                "resource": {
+                    "resourceType": "Observation",
+                    "id": "missing-subject",
+                    "status": "final",
+                    "code": { "text": "Synthetic test observation" }
+                }
+            }
+        ]
+    });
+
+    let input = IngestBundleInput {
+        bundle,
+        source_system: "unresolved-subject-test".to_string(),
+    };
+
+    let report: IngestReport = conductor
+        .call_zome(&cell_id, "fhir_bridge", "ingest_bundle", input)
+        .await?;
+
+    assert_eq!(report.patients_created, 1);
+    assert_eq!(report.observations_created, 0);
+    assert_eq!(report.total_processed, 1);
+    assert_eq!(report.parse_errors.len(), 2);
+    assert!(report.parse_errors.iter().all(|error| error.contains("subject could not be bound safely")));
+
+    Ok(())
+}
+
+// ============================================================================
+// Test: Multi-Patient Bundle Rejected
+// ============================================================================
+
+#[tokio::test]
+#[ignore = "Requires running Holochain conductor"]
+async fn test_ingest_rejects_multi_patient_bundle() -> Result<()> {
+    let (conductor, cell_id) = setup_conductor().await?;
+
+    let bundle = json!({
+        "resourceType": "Bundle",
+        "id": "multi-patient-bundle",
+        "type": "collection",
+        "entry": [
+            {
+                "fullUrl": "https://ehr.example/fhir/Patient/patient-a",
+                "resource": create_test_patient("patient-a")
+            },
+            {
+                "fullUrl": "https://ehr.example/fhir/Patient/patient-b",
+                "resource": create_test_patient("patient-b")
+            },
+            {
+                "fullUrl": "https://ehr.example/fhir/Observation/observation-a",
+                "resource": create_test_observation("observation-a", "Patient/patient-a")
+            }
+        ]
+    });
+
+    let input = IngestBundleInput {
+        bundle,
+        source_system: "multi-patient-test".to_string(),
+    };
+
+    let report: IngestReport = conductor
+        .call_zome(&cell_id, "fhir_bridge", "ingest_bundle", input)
+        .await?;
+
+    assert_eq!(report.patients_created, 0);
+    assert_eq!(report.patients_updated, 0);
+    assert_eq!(report.observations_created, 0);
+    assert_eq!(report.total_processed, 0);
+    assert_eq!(report.parse_errors.len(), 1);
+    assert!(report.parse_errors[0].contains("2 Patient resources"));
+
+    Ok(())
+}
+
+// ============================================================================
 // Test: Deduplication - Same Bundle Twice
 // ============================================================================
 
