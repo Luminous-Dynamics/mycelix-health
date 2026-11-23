@@ -13,6 +13,12 @@ const readJson = (name: string): any =>
 const patientBundle = readJson('patient-001-longitudinal.json');
 const contrastBundle = readJson('patient-002-contrast.json');
 const wrongPatientBundle = readJson('adversarial-wrong-patient.json');
+const positiveUrnBundle = readJson('positive-urn-subject.json');
+const positiveAbsoluteBundle = readJson('positive-absolute-subject.json');
+const unresolvedAbsoluteBundle = readJson('adversarial-unresolved-absolute.json');
+const unresolvedUrnBundle = readJson('adversarial-unresolved-urn.json');
+const missingSubjectBundle = readJson('adversarial-missing-subject.json');
+const multiPatientBundle = readJson('adversarial-multi-patient.json');
 const manifest = readJson('manifest.json');
 const taskSet = readJson('tasks.json');
 
@@ -29,7 +35,7 @@ describe('Longitudinal EHR development corpus v1', () => {
   it('uses unique UUID-form fullUrls in every Bundle', () => {
     const uuidUrn = /^urn:uuid:[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
-    for (const bundle of [patientBundle, contrastBundle, wrongPatientBundle]) {
+    for (const bundle of [patientBundle, contrastBundle, wrongPatientBundle, positiveUrnBundle, positiveAbsoluteBundle, unresolvedAbsoluteBundle, unresolvedUrnBundle, missingSubjectBundle, multiPatientBundle]) {
       const fullUrls = (bundle.entry ?? []).map((entry: any) => entry.fullUrl);
       expect(fullUrls.length).toBeGreaterThan(0);
       expect(new Set(fullUrls).size).toBe(fullUrls.length);
@@ -89,6 +95,30 @@ describe('Longitudinal EHR development corpus v1', () => {
     expect(observation.subject.reference).not.toBe(`Patient/${patient.id}`);
     expect(taskSet.tasks.find((task: any) => task.task_id === 'IDENTITY-001')?.expected.required_outcome)
       .toBe('reject-resource');
+  });
+
+  it('distinguishes exact fullUrl subject matches from unresolved absolute and URN references', () => {
+    const positiveUrnObservation = resources(positiveUrnBundle).find(resource => resource.resourceType === 'Observation');
+    const positiveAbsoluteObservation = resources(positiveAbsoluteBundle).find(resource => resource.resourceType === 'Observation');
+    const unresolvedAbsoluteObservation = resources(unresolvedAbsoluteBundle).find(resource => resource.resourceType === 'Observation');
+    const unresolvedUrnObservation = resources(unresolvedUrnBundle).find(resource => resource.resourceType === 'Observation');
+
+    expect(positiveUrnObservation.subject.reference).toBe(positiveUrnBundle.entry[0].fullUrl);
+    expect(positiveAbsoluteObservation.subject.reference).toBe(positiveAbsoluteBundle.entry[0].fullUrl);
+    expect(unresolvedAbsoluteObservation.subject.reference).not.toBe(unresolvedAbsoluteBundle.entry[0].fullUrl);
+    expect(unresolvedUrnObservation.subject.reference).not.toBe(unresolvedUrnBundle.entry[0].fullUrl);
+  });
+
+  it('keeps missing-subject and multi-patient cases as explicit adversarial fixtures', () => {
+    const missingObservation = resources(missingSubjectBundle).find(resource => resource.resourceType === 'Observation');
+    const multiPatients = resources(multiPatientBundle).filter(resource => resource.resourceType === 'Patient');
+
+    expect(missingObservation.subject).toBeUndefined();
+    expect(multiPatients).toHaveLength(2);
+    expect(taskSet.tasks.find((task: any) => task.task_id === 'IDENTITY-MISSING-001')?.expected.required_outcome)
+      .toBe('reject-resource');
+    expect(taskSet.tasks.find((task: any) => task.task_id === 'IDENTITY-MULTI-001')?.expected.required_outcome)
+      .toBe('reject-bundle');
   });
 
   it('keeps the corpus classified as synthetic development data', () => {

@@ -1,0 +1,36 @@
+{
+  "resourceType": "Bundle",
+  "id": "synthetic-missing-subject",
+  "type": "collection",
+  "entry": [
+    {
+      "fullUrl": "urn:uuid:00000000-0000-4000-8000-000000000051",
+      "resource": {
+        "resourceType": "Patient",
+        "id": "synthetic-patient-001"
+      }
+    },
+    {
+      "fullUrl": "urn:uuid:00000000-0000-4000-8000-000000000052",
+      "resource": {
+        "resourceType": "Observation",
+        "id": "synthetic-observation-missing-subject",
+        "status": "final",
+        "code": {
+          "coding": [
+            {
+              "system": "http://loinc.org",
+              "code": "4548-4"
+            }
+          ]
+        },
+        "valueQuantity": {
+          "value": 7.5,
+          "unit": "%",
+          "system": "http://unitsofmeasure.org",
+          "code": "%"
+        }
+      }
+    }
+  ]
+}

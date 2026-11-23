@@ -60,6 +60,66 @@
         "required_outcome": "reject-resource",
         "rule": "An explicit relative Patient/<id> mismatch must never be silently attributed to the Bundle patient."
       }
+    },
+    {
+      "task_id": "IDENTITY-URN-001",
+      "category": "patient-resource-integrity",
+      "input_bundle": "positive-urn-subject.json",
+      "prompt": "Resolve the Observation subject URN through the Bundle fullUrl index.",
+      "expected": {
+        "required_outcome": "accept",
+        "rule": "URN is accepted only when it exactly resolves to the unique selected Patient fullUrl."
+      }
+    },
+    {
+      "task_id": "IDENTITY-ABS-001",
+      "category": "patient-resource-integrity",
+      "input_bundle": "positive-absolute-subject.json",
+      "prompt": "Resolve the absolute Patient reference through the Bundle fullUrl index.",
+      "expected": {
+        "required_outcome": "accept",
+        "rule": "Absolute URL is accepted only when it exactly matches the selected Patient fullUrl."
+      }
+    },
+    {
+      "task_id": "IDENTITY-ABS-002",
+      "category": "patient-resource-integrity",
+      "input_bundle": "adversarial-unresolved-absolute.json",
+      "prompt": "Resolve an absolute URL that ends in the selected patient's logical id but is not present in the Bundle fullUrl index.",
+      "expected": {
+        "required_outcome": "reject-resource",
+        "rule": "An absolute URL suffix alone is not an identity binding."
+      }
+    },
+    {
+      "task_id": "IDENTITY-URN-002",
+      "category": "patient-resource-integrity",
+      "input_bundle": "adversarial-unresolved-urn.json",
+      "prompt": "Resolve a URN that does not exist in the Bundle fullUrl index.",
+      "expected": {
+        "required_outcome": "reject-resource",
+        "rule": "An unresolved URN must not inherit the selected Bundle patient."
+      }
+    },
+    {
+      "task_id": "IDENTITY-MISSING-001",
+      "category": "patient-resource-integrity",
+      "input_bundle": "adversarial-missing-subject.json",
+      "prompt": "Assess whether a patient-scoped Observation without a subject may be attached to the only Patient in the Bundle.",
+      "expected": {
+        "required_outcome": "reject-resource",
+        "rule": "Bundle proximity does not imply patient identity."
+      }
+    },
+    {
+      "task_id": "IDENTITY-MULTI-001",
+      "category": "patient-resource-integrity",
+      "input_bundle": "adversarial-multi-patient.json",
+      "prompt": "Assess a two-Patient Bundle against the single-patient ingestion API.",
+      "expected": {
+        "required_outcome": "reject-bundle",
+        "rule": "Do not silently choose the first Patient resource."
+      }
     }
   ]
 }

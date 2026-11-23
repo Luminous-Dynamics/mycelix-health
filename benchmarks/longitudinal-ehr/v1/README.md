@@ -26,6 +26,9 @@ The fixtures exercise four narrow engineering properties:
 - `patient-001-longitudinal.json`: encounter, condition, medication, corrected laboratory result, provenance and method transition.
 - `patient-002-contrast.json`: separate patient identity and comparison observation.
 - `adversarial-wrong-patient.json`: negative bundle with an explicit cross-patient subject mismatch.
+- `positive-urn-subject.json` and `positive-absolute-subject.json`: exact unique Bundle fullUrl reference positives.
+- `adversarial-unresolved-absolute.json`, `adversarial-unresolved-urn.json`, and `adversarial-missing-subject.json`: unbound subject negatives.
+- `adversarial-multi-patient.json`: a two-patient bundle rejected by the current single-patient ingestion contract.
 
 ## Current qualification state
 

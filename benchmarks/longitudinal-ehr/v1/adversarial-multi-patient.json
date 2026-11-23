@@ -1,0 +1,46 @@
+{
+  "resourceType": "Bundle",
+  "id": "synthetic-multi-patient",
+  "type": "collection",
+  "entry": [
+    {
+      "fullUrl": "urn:uuid:00000000-0000-4000-8000-000000000061",
+      "resource": {
+        "resourceType": "Patient",
+        "id": "synthetic-patient-001"
+      }
+    },
+    {
+      "fullUrl": "urn:uuid:00000000-0000-4000-8000-000000000062",
+      "resource": {
+        "resourceType": "Patient",
+        "id": "synthetic-patient-002"
+      }
+    },
+    {
+      "fullUrl": "urn:uuid:00000000-0000-4000-8000-000000000063",
+      "resource": {
+        "resourceType": "Observation",
+        "id": "synthetic-observation-multi-patient",
+        "status": "final",
+        "code": {
+          "coding": [
+            {
+              "system": "http://loinc.org",
+              "code": "4548-4"
+            }
+          ]
+        },
+        "subject": {
+          "reference": "Patient/synthetic-patient-001"
+        },
+        "valueQuantity": {
+          "value": 7.6,
+          "unit": "%",
+          "system": "http://unitsofmeasure.org",
+          "code": "%"
+        }
+      }
+    }
+  ]
+}

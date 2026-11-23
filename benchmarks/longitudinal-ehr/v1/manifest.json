@@ -31,6 +31,36 @@
       "file": "adversarial-wrong-patient.json",
       "subject": "synthetic-patient-001",
       "role": "explicit wrong-subject resource attachment negative"
+    },
+    {
+      "file": "positive-urn-subject.json",
+      "subject": "synthetic-patient-001",
+      "role": "exact fullUrl subject-resolution positive"
+    },
+    {
+      "file": "positive-absolute-subject.json",
+      "subject": "synthetic-patient-001",
+      "role": "exact fullUrl subject-resolution positive"
+    },
+    {
+      "file": "adversarial-unresolved-absolute.json",
+      "subject": "synthetic-patient-001",
+      "role": "patient-subject resolution negative"
+    },
+    {
+      "file": "adversarial-unresolved-urn.json",
+      "subject": "synthetic-patient-001",
+      "role": "patient-subject resolution negative"
+    },
+    {
+      "file": "adversarial-missing-subject.json",
+      "subject": "synthetic-patient-001",
+      "role": "patient-subject resolution negative"
+    },
+    {
+      "file": "adversarial-multi-patient.json",
+      "subject": "synthetic-patient-001",
+      "role": "patient-subject resolution negative"
     }
   ],
   "tasks_file": "tasks.json",
