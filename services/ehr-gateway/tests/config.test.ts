@@ -38,11 +38,11 @@ describe('EHR gateway safe network defaults', () => {
   });
 
   it('recognizes loopback hosts and rejects network interfaces', () => {
-    for (const host of ['localhost', '127.0.0.1', '127.12.34.56', '::1', '[::1]']) {
+    for (const host of ['localhost', '127.0.0.1', '127.12.34.56', '127.255.0.1', '::1', '[::1]']) {
       expect(isLoopbackHost(host)).toBe(true);
     }
 
-    for (const host of ['0.0.0.0', '192.168.1.10', '10.0.0.2', 'example.org']) {
+    for (const host of ['0.0.0.0', '127.256.0.1', '192.168.1.10', '10.0.0.2', 'example.org']) {
       expect(isLoopbackHost(host)).toBe(false);
     }
   });
