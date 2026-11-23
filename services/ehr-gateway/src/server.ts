@@ -11,6 +11,7 @@
  * - Health checks
  */
 
+import { isLoopbackHost } from './network-binding.js';
 import { Hono } from 'hono';
 import { serve } from '@hono/node-server';
 import { cors } from 'hono/cors';
@@ -50,15 +51,18 @@ export function createApp(ctx: AppContext): Hono {
     app.use('*', logger());
   }
 
-  // CORS
-  app.use('*', cors({
-    origin: ctx.config.corsOrigins,
-    allowMethods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-    allowHeaders: ['Content-Type', 'Authorization', 'X-Source-System'],
-    exposeHeaders: ['X-Request-Id'],
-    credentials: true,
-    maxAge: 86400,
-  }));
+  // CORS is opt-in and restricted to exact configured origins.
+  // Wildcard origins are rejected by ServerConfigSchema because credentials are enabled.
+  if (ctx.config.corsOrigins.length > 0) {
+    app.use('*', cors({
+      origin: ctx.config.corsOrigins,
+      allowMethods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+      allowHeaders: ['Content-Type', 'Authorization'],
+      exposeHeaders: ['X-Request-Id'],
+      credentials: true,
+      maxAge: 86400,
+    }));
+  }
 
   // Health check endpoint
   app.get('/health', (c) => {
@@ -127,6 +131,12 @@ async function connectHolochain(config: ServerConfig): Promise<AppClient | null>
  */
 async function main(): Promise<void> {
   const config = loadServerConfig();
+
+  if (!isLoopbackHost(config.host)) {
+    throw new Error(
+      'Refusing non-loopback EHR Gateway bind: HTTP principal authentication and patient-scoped authorization are not yet configured. Keep EHR_GATEWAY_HOST on loopback until the gateway security boundary is qualified.'
+    );
+  }
 
   console.log('='.repeat(60));
   console.log('EHR Gateway Server starting...');
