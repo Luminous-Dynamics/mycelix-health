@@ -17,6 +17,9 @@
 use fhir_bridge_integrity::*;
 use hdk::prelude::*;
 
+mod patient_subject;
+use patient_subject::{relative_patient_id, resolve_patient_subject, PatientSubjectBinding};
+
 // Local mirrors of fhir_mapping_integrity types to avoid duplicate __num_entry_types
 // symbols when compiling to WASM. These must match the serialization layout exactly.
 
@@ -210,59 +213,72 @@ pub fn ingest_bundle(input: IngestBundleInput) -> ExternResult<IngestReport> {
         }
     };
 
-    // First pass: find and process Patient resources to establish patient hash
+    // This entrypoint is intentionally single-patient. Do not silently select
+    // the first Patient from a multi-patient Bundle.
+    let patient_entries: Vec<&JsonValue> = entries
+        .iter()
+        .filter_map(|entry| entry.get("resource"))
+        .filter(|resource| get_resource_type(resource).as_deref() == Some("Patient"))
+        .collect();
+
+    if patient_entries.len() > 1 {
+        report.parse_errors.push(format!(
+            "Bundle contains {} Patient resources; single-patient ingestion requires exactly one",
+            patient_entries.len()
+        ));
+        create_entry(&EntryTypes::IngestReport(report.clone()))?;
+        return Ok(report);
+    }
+
+    // First pass: establish exactly one patient identity or resolve an existing
+    // source-system patient through a supported relative Patient/{id} reference.
     let mut patient_hash: Option<ActionHash> = None;
     let mut patient_fhir_id: Option<String> = None;
 
-    for entry in &entries {
-        let resource = match entry.get("resource") {
-            Some(r) => r,
-            None => continue,
-        };
-
-        if get_resource_type(resource) == Some("Patient".to_string()) {
-            match process_patient(resource, &input.source_system) {
-                Ok((hash, created)) => {
-                    patient_hash = Some(hash);
-                    patient_fhir_id = get_resource_id(resource);
-                    report.total_processed += 1;
-                    if created {
-                        report.patients_created += 1;
-                    } else {
-                        report.patients_updated += 1;
-                    }
-                }
-                Err(e) => {
-                    report.parse_errors.push(format!("Patient: {}", e));
+    if let Some(resource) = patient_entries.first() {
+        patient_fhir_id = get_resource_id(resource);
+        match process_patient(resource, &input.source_system) {
+            Ok((hash, created)) => {
+                patient_hash = Some(hash);
+                report.total_processed += 1;
+                if created {
+                    report.patients_created += 1;
+                } else {
+                    report.patients_updated += 1;
                 }
             }
-            break; // Only expect one Patient per bundle
+            Err(e) => report.parse_errors.push(format!("Patient: {}", e)),
         }
-    }
-
-    // If no patient found, try to find patient reference from other resources
-    if patient_hash.is_none() {
+    } else {
         for entry in &entries {
-            if let Some(resource) = entry.get("resource") {
-                if let Some(patient_ref) = get_patient_reference(resource) {
-                    // Try to look up existing patient by reference
-                    if let Some(hash) =
-                        lookup_patient_by_fhir_reference(&patient_ref, &input.source_system)?
-                    {
-                        patient_hash = Some(hash);
-                        break;
-                    }
-                }
+            let Some(resource) = entry.get("resource") else {
+                continue;
+            };
+            let Some(patient_ref) = get_patient_reference(resource) else {
+                continue;
+            };
+            let Some(patient_id) = relative_patient_id(&patient_ref) else {
+                continue;
+            };
+
+            if let Some(hash) =
+                lookup_patient_by_fhir_reference(&patient_ref, &input.source_system)?
+            {
+                patient_hash = Some(hash);
+                patient_fhir_id = Some(patient_id.to_string());
+                break;
             }
         }
     }
 
-    // If still no patient, we can't process other resources
+    // If the source patient cannot be resolved unambiguously, no resource can
+    // be safely attached to a patient.
     let patient_hash = match patient_hash {
         Some(h) => h,
         None => {
             report.parse_errors.push(
-                "No Patient resource found and could not resolve patient reference".to_string(),
+                "No single Patient resource found and no supported source-system Patient/{id} reference resolved"
+                    .to_string(),
             );
             create_entry(&EntryTypes::IngestReport(report.clone()))?;
             return Ok(report);
@@ -291,25 +307,42 @@ pub fn ingest_bundle(input: IngestBundleInput) -> ExternResult<IngestReport> {
             continue;
         }
 
-        // A bundle may only contribute resources for the patient it establishes.
-        // `patient_fhir_id` was captured in the first pass for exactly this check,
-        // which was never written -- so every non-Patient resource was attached to
-        // `patient_hash` regardless of whom its subject/patient reference named.
-        //
-        // Only an UNAMBIGUOUS mismatch rejects: a relative "Patient/<id>" reference
-        // whose id differs from the bundle's Patient. Absolute URLs, urn:uuid
-        // references, and resources carrying no reference are passed through, since
-        // those cannot be compared reliably and silently dropping data would be the
-        // worse failure. A rejected resource is reported, not swallowed.
-        if let (Some(bundle_id), Some(reference)) =
-            (patient_fhir_id.as_ref(), get_patient_reference(resource))
-        {
-            if let Some(ref_id) = reference.strip_prefix("Patient/") {
-                if ref_id != bundle_id {
+        // All resource types mapped into a patient record require an exact,
+        // unambiguous patient binding. Missing/unresolved subjects are not inferred
+        // from the presence of some other Patient resource in the Bundle.
+        let patient_scoped = matches!(
+            resource_type.as_str(),
+            "Observation"
+                | "Condition"
+                | "MedicationRequest"
+                | "MedicationStatement"
+                | "AllergyIntolerance"
+                | "Immunization"
+                | "Procedure"
+                | "DiagnosticReport"
+                | "CarePlan"
+        );
+
+        if patient_scoped {
+            let Some(bundle_patient_id) = patient_fhir_id.as_deref() else {
+                report.parse_errors.push(format!(
+                    "{resource_type}: selected patient has no FHIR id; subject binding is unresolved; skipped"
+                ));
+                continue;
+            };
+
+            let reference = get_patient_reference(resource);
+            match resolve_patient_subject(reference.as_deref(), bundle_patient_id, &entries) {
+                PatientSubjectBinding::MatchesBundlePatient => {}
+                PatientSubjectBinding::DifferentPatient { referenced_patient_id } => {
                     report.parse_errors.push(format!(
-                        "{resource_type}: subject references Patient/{ref_id} but this bundle \
-                         establishes Patient/{bundle_id}; skipped rather than attributing data \
-                         to the wrong patient"
+                        "{resource_type}: subject resolves to Patient/{referenced_patient_id},                          but the selected patient is Patient/{bundle_patient_id}; skipped"
+                    ));
+                    continue;
+                }
+                PatientSubjectBinding::Unresolved { reason } => {
+                    report.parse_errors.push(format!(
+                        "{resource_type}: patient subject could not be bound safely ({reason}); skipped"
                     ));
                     continue;
                 }
