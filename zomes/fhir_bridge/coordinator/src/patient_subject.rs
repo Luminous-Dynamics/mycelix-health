@@ -70,9 +70,7 @@ pub fn resolve_patient_subject(
 
     let matching_entries: Vec<&Value> = entries
         .iter()
-        .filter(|entry| {
-            entry.get("fullUrl").and_then(Value::as_str) == Some(reference)
-        })
+        .filter(|entry| entry.get("fullUrl").and_then(Value::as_str) == Some(reference))
         .collect();
 
     match matching_entries.as_slice() {
@@ -132,11 +130,7 @@ mod tests {
     #[test]
     fn accepts_matching_relative_patient_reference() {
         assert_eq!(
-            resolve_patient_subject(
-                Some("Patient/p-1"),
-                "p-1",
-                &[]
-            ),
+            resolve_patient_subject(Some("Patient/p-1"), "p-1", &[]),
             PatientSubjectBinding::MatchesBundlePatient
         );
     }
@@ -144,11 +138,7 @@ mod tests {
     #[test]
     fn accepts_matching_versioned_relative_patient_reference() {
         assert_eq!(
-            resolve_patient_subject(
-                Some("Patient/p-1/_history/3"),
-                "p-1",
-                &[]
-            ),
+            resolve_patient_subject(Some("Patient/p-1/_history/3"), "p-1", &[]),
             PatientSubjectBinding::MatchesBundlePatient
         );
     }
@@ -156,11 +146,7 @@ mod tests {
     #[test]
     fn rejects_different_relative_patient_reference() {
         assert_eq!(
-            resolve_patient_subject(
-                Some("Patient/p-2"),
-                "p-1",
-                &[]
-            ),
+            resolve_patient_subject(Some("Patient/p-2"), "p-1", &[]),
             PatientSubjectBinding::DifferentPatient {
                 referenced_patient_id: "p-2".to_string()
             }
@@ -169,7 +155,10 @@ mod tests {
 
     #[test]
     fn accepts_urn_reference_only_when_it_resolves_to_the_selected_bundle_patient() {
-        let entries = vec![patient_entry("urn:uuid:00000000-0000-4000-8000-000000000001", "p-1")];
+        let entries = vec![patient_entry(
+            "urn:uuid:00000000-0000-4000-8000-000000000001",
+            "p-1",
+        )];
         assert_eq!(
             resolve_patient_subject(
                 Some("urn:uuid:00000000-0000-4000-8000-000000000001"),
@@ -231,7 +220,7 @@ mod tests {
         let full_url = "urn:uuid:00000000-0000-4000-8000-000000000003";
         let entries = vec![
             patient_entry(full_url, "p-1"),
-            patient_entry(full_url, "p-1")
+            patient_entry(full_url, "p-1"),
         ];
         assert!(matches!(
             resolve_patient_subject(Some(full_url), "p-1", &entries),
