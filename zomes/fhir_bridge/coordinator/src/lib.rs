@@ -334,9 +334,11 @@ pub fn ingest_bundle(input: IngestBundleInput) -> ExternResult<IngestReport> {
             let reference = get_patient_reference(resource);
             match resolve_patient_subject(reference.as_deref(), bundle_patient_id, &entries) {
                 PatientSubjectBinding::MatchesBundlePatient => {}
-                PatientSubjectBinding::DifferentPatient { referenced_patient_id } => {
+                PatientSubjectBinding::DifferentPatient {
+                    referenced_patient_id,
+                } => {
                     report.parse_errors.push(format!(
-                        "{resource_type}: subject resolves to Patient/{referenced_patient_id},                          but the selected patient is Patient/{bundle_patient_id}; skipped"
+                        "{resource_type}: subject resolves to Patient/{referenced_patient_id}, but the selected patient is Patient/{bundle_patient_id}; skipped"
                     ));
                     continue;
                 }
