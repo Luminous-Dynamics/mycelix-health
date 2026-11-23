@@ -1,0 +1,39 @@
+{
+  "resourceType": "Bundle",
+  "id": "synthetic-positive-urn-subject",
+  "type": "collection",
+  "entry": [
+    {
+      "fullUrl": "urn:uuid:00000000-0000-4000-8000-000000000021",
+      "resource": {
+        "resourceType": "Patient",
+        "id": "synthetic-patient-001"
+      }
+    },
+    {
+      "fullUrl": "urn:uuid:00000000-0000-4000-8000-000000000022",
+      "resource": {
+        "resourceType": "Observation",
+        "id": "synthetic-observation-urn",
+        "status": "final",
+        "code": {
+          "coding": [
+            {
+              "system": "http://loinc.org",
+              "code": "4548-4"
+            }
+          ]
+        },
+        "subject": {
+          "reference": "urn:uuid:00000000-0000-4000-8000-000000000021"
+        },
+        "valueQuantity": {
+          "value": 7.1,
+          "unit": "%",
+          "system": "http://unitsofmeasure.org",
+          "code": "%"
+        }
+      }
+    }
+  ]
+}

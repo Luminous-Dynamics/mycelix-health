@@ -1,0 +1,39 @@
+{
+  "resourceType": "Bundle",
+  "id": "synthetic-positive-absolute-subject",
+  "type": "collection",
+  "entry": [
+    {
+      "fullUrl": "https://synthetic-ehr.example/fhir/Patient/synthetic-patient-001",
+      "resource": {
+        "resourceType": "Patient",
+        "id": "synthetic-patient-001"
+      }
+    },
+    {
+      "fullUrl": "urn:uuid:00000000-0000-4000-8000-000000000024",
+      "resource": {
+        "resourceType": "Observation",
+        "id": "synthetic-observation-absolute",
+        "status": "final",
+        "code": {
+          "coding": [
+            {
+              "system": "http://loinc.org",
+              "code": "4548-4"
+            }
+          ]
+        },
+        "subject": {
+          "reference": "https://synthetic-ehr.example/fhir/Patient/synthetic-patient-001"
+        },
+        "valueQuantity": {
+          "value": 7.2,
+          "unit": "%",
+          "system": "http://unitsofmeasure.org",
+          "code": "%"
+        }
+      }
+    }
+  ]
+}

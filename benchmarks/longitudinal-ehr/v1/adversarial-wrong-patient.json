@@ -1,0 +1,45 @@
+{
+  "resourceType": "Bundle",
+  "id": "synthetic-adversarial-wrong-patient-001",
+  "type": "collection",
+  "timestamp": "2025-06-12T12:00:00Z",
+  "entry": [
+    {
+      "fullUrl": "urn:uuid:00000000-0000-4000-8000-000000000012",
+      "resource": {
+        "resourceType": "Patient",
+        "id": "synthetic-patient-001",
+        "active": true,
+        "gender": "female",
+        "birthDate": "1988-03-04"
+      }
+    },
+    {
+      "fullUrl": "urn:uuid:00000000-0000-4000-8000-000000000013",
+      "resource": {
+        "resourceType": "Observation",
+        "id": "synthetic-observation-wrong-subject",
+        "status": "final",
+        "code": {
+          "coding": [
+            {
+              "system": "http://loinc.org",
+              "code": "4548-4",
+              "display": "Hemoglobin A1c/Hemoglobin.total in Blood"
+            }
+          ]
+        },
+        "subject": {
+          "reference": "Patient/synthetic-patient-002"
+        },
+        "effectiveDateTime": "2025-04-22T08:20:00Z",
+        "valueQuantity": {
+          "value": 6.5,
+          "unit": "%",
+          "system": "http://unitsofmeasure.org",
+          "code": "%"
+        }
+      }
+    }
+  ]
+}
