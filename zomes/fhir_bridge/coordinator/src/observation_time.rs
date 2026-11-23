@@ -29,7 +29,7 @@ mod tests {
     fn parses_utc_rfc3339_instant() {
         let parsed = parse_fhir_instant("2025-01-10T08:20:00Z", "effectiveDateTime")
             .expect("valid UTC instant");
-        assert_eq!(parsed.as_micros(), 1_736_507_600_000_000);
+        assert_eq!(parsed.as_micros(), 1_736_497_200_000_000);
     }
 
     #[test]
