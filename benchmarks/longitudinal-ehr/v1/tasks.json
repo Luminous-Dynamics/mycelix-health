@@ -1,0 +1,65 @@
+{
+  "benchmark_id": "mycelix-health-longitudinal-ehr-v1",
+  "task_schema_version": "1.0.0",
+  "scoring_boundary": "Structural and temporal evidence handling only; not diagnosis, prognosis, treatment advice, or clinical effectiveness.",
+  "tasks": [
+    {
+      "task_id": "TIMELINE-001",
+      "category": "temporal-reconstruction",
+      "input_bundle": "patient-001-longitudinal.json",
+      "prompt": "Reconstruct the event timeline. Distinguish clinical effective time from result issuance time.",
+      "expected": {
+        "effective_time_order": [
+          "synthetic-encounter-001",
+          "synthetic-observation-hba1c-001",
+          "synthetic-medication-request-001",
+          "synthetic-encounter-002",
+          "synthetic-observation-hba1c-002"
+        ],
+        "issued_time_for_corrected_observation": "2025-01-15T14:30:00Z",
+        "rule": "Do not substitute issued time for effectiveDateTime."
+      }
+    },
+    {
+      "task_id": "REVISION-001",
+      "category": "provenance-and-correction",
+      "input_bundle": "patient-001-longitudinal.json",
+      "prompt": "Identify the current corrected laboratory assertion and preserve its prior-version lineage.",
+      "expected": {
+        "current_version": "Observation/synthetic-observation-hba1c-001/_history/2",
+        "prior_version": "Observation/synthetic-observation-hba1c-001/_history/1",
+        "provenance_entity_role": "revision",
+        "current_status": "corrected",
+        "current_value": 7.8,
+        "unit": "%"
+      }
+    },
+    {
+      "task_id": "METHOD-001",
+      "category": "measurement-comparability",
+      "input_bundle": "patient-001-longitudinal.json",
+      "prompt": "Assess whether the January and June HbA1c numeric values may be interpreted as a directly comparable trend.",
+      "expected": {
+        "same_loinc_code": true,
+        "method_codes": [
+          "assay-alpha",
+          "assay-beta"
+        ],
+        "required_output": "comparability-unqualified",
+        "rule": "Do not assert a direct quantitative trend without method comparability evidence."
+      }
+    },
+    {
+      "task_id": "IDENTITY-001",
+      "category": "patient-resource-integrity",
+      "input_bundle": "adversarial-wrong-patient.json",
+      "prompt": "Validate whether the Observation may be attached to the Patient established by this Bundle.",
+      "expected": {
+        "bundle_patient": "synthetic-patient-001",
+        "observation_subject": "synthetic-patient-002",
+        "required_outcome": "reject-resource",
+        "rule": "An explicit relative Patient/<id> mismatch must never be silently attributed to the Bundle patient."
+      }
+    }
+  ]
+}

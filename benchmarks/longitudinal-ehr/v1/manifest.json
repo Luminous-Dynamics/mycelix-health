@@ -1,0 +1,38 @@
+{
+  "benchmark_id": "mycelix-health-longitudinal-ehr-v1",
+  "version": "0.1.0",
+  "fhir_release": "4.0.1",
+  "fixture_class": "deterministic-synthetic",
+  "generation_method": "hand-authored deterministic synthetic FHIR fixtures",
+  "real_patient_data": false,
+  "external_dataset_derivation": false,
+  "intended_use": "engineering benchmark for temporal semantics, correction provenance, measurement comparability, and wrong-patient ingestion refusal",
+  "not_intended_for": [
+    "diagnosis",
+    "prognosis",
+    "treatment selection",
+    "clinical decision validation",
+    "regulatory certification"
+  ],
+  "status": "development-fixtures-not-yet-validator-qualified",
+  "split": "development",
+  "fixtures": [
+    {
+      "file": "patient-001-longitudinal.json",
+      "subject": "synthetic-patient-001",
+      "role": "longitudinal timeline, corrected lab result, method transition"
+    },
+    {
+      "file": "patient-002-contrast.json",
+      "subject": "synthetic-patient-002",
+      "role": "separate subject for identity-confusion negatives"
+    },
+    {
+      "file": "adversarial-wrong-patient.json",
+      "subject": "synthetic-patient-001",
+      "role": "explicit wrong-subject resource attachment negative"
+    }
+  ],
+  "tasks_file": "tasks.json",
+  "release_policy": "Do not move fixtures into a held-out test split until a separately frozen corpus release and patient-level split policy exist."
+}
