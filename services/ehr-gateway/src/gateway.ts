@@ -25,6 +25,8 @@ export interface EhrGatewayConfig {
   defaultTimeout?: number;
   maxRetries?: number;
   conflictStrategy?: ConflictResolutionStrategy;
+  /** Explicit allowlist for non-clinical automatic conflict resolution. Empty by default. */
+  autoResolveResourceTypes?: string[];
   /** Cache configuration */
   cache?: EhrCacheConfig;
   /** Whether caching is enabled (default: true) */
@@ -57,14 +59,16 @@ export class EhrGateway {
     this.config = {
       defaultTimeout: 30000,
       maxRetries: 3,
-      conflictStrategy: 'most_recent',
+      conflictStrategy: 'manual',
+      autoResolveResourceTypes: [],
       enableCache: true,
       ...config,
     };
 
     this.conflictResolver = new ConflictResolver({
-      defaultStrategy: this.config.conflictStrategy || 'most_recent',
+      defaultStrategy: this.config.conflictStrategy || 'manual',
       autoResolveThreshold: 0.1,
+      autoResolveResourceTypes: this.config.autoResolveResourceTypes ?? [],
       mergeRules: {
         preferLocalFields: ['consent_status', 'privacy_settings'],
         preferRemoteFields: ['clinical_status', 'verification_status'],

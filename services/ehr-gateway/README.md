@@ -67,8 +67,11 @@ const observations = await epic.getObservations(accessToken, patientId);
 import { ConflictResolver } from './sync/conflict-resolver';
 
 const resolver = new ConflictResolver({
-  defaultStrategy: 'most_recent',
+  // Keep conflicts pending unless the application supplies an explicit,
+  // reviewed allowlist for safe non-clinical resource types.
+  defaultStrategy: 'manual',
   autoResolveThreshold: 0.1,
+  autoResolveResourceTypes: [],
   mergeRules: {
     preferLocalFields: ['phone'],
     preferRemoteFields: ['email'],
