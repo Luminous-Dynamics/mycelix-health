@@ -11,6 +11,7 @@
  * - Health checks
  */
 
+import { isLoopbackHost } from './network-binding.js';
 import { Hono } from 'hono';
 import { serve } from '@hono/node-server';
 import { cors } from 'hono/cors';
@@ -123,22 +124,6 @@ async function connectHolochain(config: ServerConfig): Promise<AppClient | null>
     console.warn('Server will start without Holochain connection');
     return null;
   }
-}
-
-/**
- * The gateway has no production HTTP-principal authenticator wired yet.
- * Until that boundary is implemented and independently qualified, refuse
- * non-loopback binds even if an operator sets EHR_GATEWAY_HOST explicitly.
- */
-export function isLoopbackHost(host: string): boolean {
-  const normalized = host.trim().toLowerCase();
-  return normalized === 'localhost'
-    || normalized === '::1'
-    || normalized === '[::1]'
-    || (
-      /^127(?:\.\d{1,3}){3}$/.test(normalized)
-      && normalized.split('.').slice(1).every(octet => Number(octet) <= 255)
-    );
 }
 
 /**

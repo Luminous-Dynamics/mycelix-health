@@ -4,7 +4,7 @@
 
 import { describe, expect, it } from 'vitest';
 import { ServerConfigSchema, getTestConfig } from '../src/config.js';
-import { isLoopbackHost } from '../src/server.js';
+import { isLoopbackHost } from '../src/network-binding.js';
 
 describe('EHR gateway safe network defaults', () => {
   it('defaults to loopback binding', () => {
