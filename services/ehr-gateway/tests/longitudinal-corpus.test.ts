@@ -32,14 +32,15 @@ describe('Longitudinal EHR development corpus v1', () => {
     expect(() => FhirBundleSchema.parse(wrongPatientBundle)).not.toThrow();
   });
 
-  it('uses unique UUID-form fullUrls in every Bundle', () => {
+  it('uses unique valid Bundle fullUrls (UUID URNs or absolute URLs)', () => {
     const uuidUrn = /^urn:uuid:[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+    const absoluteUrl = /^https?:\/\/[^\s]+$/i;
 
     for (const bundle of [patientBundle, contrastBundle, wrongPatientBundle, positiveUrnBundle, positiveAbsoluteBundle, unresolvedAbsoluteBundle, unresolvedUrnBundle, missingSubjectBundle, multiPatientBundle]) {
       const fullUrls = (bundle.entry ?? []).map((entry: any) => entry.fullUrl);
       expect(fullUrls.length).toBeGreaterThan(0);
       expect(new Set(fullUrls).size).toBe(fullUrls.length);
-      for (const fullUrl of fullUrls) expect(fullUrl).toMatch(uuidUrn);
+      for (const fullUrl of fullUrls) expect(fullUrl).toMatch(new RegExp(`(?:${uuidUrn.source})|(?:${absoluteUrl.source})`, 'i'));
     }
   });
 
