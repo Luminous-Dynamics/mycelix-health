@@ -135,7 +135,10 @@ export function isLoopbackHost(host: string): boolean {
   return normalized === 'localhost'
     || normalized === '::1'
     || normalized === '[::1]'
-    || /^127(?:\\.\\d{1,3}){3}$/.test(normalized);
+    || (
+      /^127(?:\.\d{1,3}){3}$/.test(normalized)
+      && normalized.split('.').slice(1).every(octet => Number(octet) <= 255)
+    );
 }
 
 /**
