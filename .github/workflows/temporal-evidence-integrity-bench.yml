@@ -25,8 +25,9 @@ jobs:
           components: rustfmt, clippy
       - name: Verify fixture digests
         run: |
-          sha256sum prototypes/temporal-evidence-integrity-bench/fixtures/v1-cases.tsv
           sha256sum prototypes/temporal-evidence-integrity-bench/fixtures/v1-events.tsv
+          sha256sum prototypes/temporal-evidence-integrity-bench/fixtures/v1-cases.tsv
+          sha256sum prototypes/temporal-evidence-integrity-bench/fixtures/v1-answer-key-events.tsv
       - name: Check formatting
         run: cargo fmt --manifest-path prototypes/temporal-evidence-integrity-bench/Cargo.toml -- --check
       - name: Run clippy
