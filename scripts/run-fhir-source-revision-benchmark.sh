@@ -17,4 +17,5 @@ echo "Fixture catalogue: $FIXTURE"
 sha256sum "$FIXTURE"
 
 cargo fmt --manifest-path "$MANIFEST" -- --check
+cargo clippy --manifest-path "$MANIFEST" --target "$HOST" --all-targets --locked -- -D warnings
 cargo test --manifest-path "$MANIFEST" --target "$HOST" --locked
