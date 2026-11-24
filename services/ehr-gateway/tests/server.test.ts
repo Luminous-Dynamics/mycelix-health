@@ -323,6 +323,20 @@ describe('EHR Gateway Server', () => {
       expect(res.headers.get('Location')).toContain('fhir.epic.com');
     });
 
+    it('GET /auth/smart/launch rejects caller-controlled redirect_uri', async () => {
+      mockGateway.isConnected.mockReturnValueOnce(true);
+      mockGateway.getAuthorizationUrl.mockClear();
+
+      const res = await app.request(
+        '/auth/smart/launch?connection=test-connection&redirect_uri=https%3A%2F%2Fattacker.example%2Fcallback'
+      );
+      const body = await res.json();
+
+      expect(res.status).toBe(400);
+      expect(body.error).toBe('Invalid redirect_uri');
+      expect(mockGateway.getAuthorizationUrl).not.toHaveBeenCalled();
+    });
+
     it('GET /auth/smart/callback handles error from EHR', async () => {
       const res = await app.request(
         '/auth/smart/callback?error=access_denied&error_description=User%20denied'
