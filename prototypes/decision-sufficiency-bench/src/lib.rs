@@ -515,8 +515,8 @@ mod tests {
             report.obligations[1].blockers,
             vec![
                 EvidenceStatus::Expired,
-                EvidenceStatus::UnauthenticatedIssuer,
-                EvidenceStatus::Unauthorized
+                EvidenceStatus::Unauthorized,
+                EvidenceStatus::UnauthenticatedIssuer
             ]
         );
     }
@@ -666,6 +666,57 @@ mod tests {
             assess_candidate(&input, "unneeded-read").unwrap(),
             Some(CandidateAssessment::Irrelevant)
         );
+    }
+
+    #[test]
+    fn missing_version_and_unsupported_semantics_are_distinct_blockers() {
+        let input = task(
+            vec![
+                verified("patient-binding", "patient-proof-1"),
+                EvidenceRecord {
+                    obligation_id: "lab-provenance".to_string(),
+                    source_id: "unversioned-lab".to_string(),
+                    status: EvidenceStatus::MissingVersion,
+                },
+                EvidenceRecord {
+                    obligation_id: "lab-provenance".to_string(),
+                    source_id: "unsupported-unit-lab".to_string(),
+                    status: EvidenceStatus::UnsupportedSemantics,
+                },
+            ],
+            Vec::new(),
+        );
+        let report = evaluate_sufficiency(&input).unwrap();
+        assert_eq!(report.state, SufficiencyState::Insufficient);
+        assert_eq!(
+            report.obligations[1].blockers,
+            vec![
+                EvidenceStatus::MissingVersion,
+                EvidenceStatus::UnsupportedSemantics
+            ]
+        );
+    }
+
+    #[test]
+    fn fixture_catalogue_is_frozen_and_has_unique_case_ids() {
+        let mut ids = BTreeSet::new();
+        let mut rows = 0usize;
+        for line in include_str!("../fixtures/v1-cases.tsv").lines() {
+            if line.is_empty() || line.starts_with('#') {
+                continue;
+            }
+            let fields: Vec<&str> = line.split('|').collect();
+            assert_eq!(fields.len(), 4, "malformed fixture catalogue row");
+            assert!(!fields[0].trim().is_empty(), "fixture id must not be empty");
+            assert!(ids.insert(fields[0]), "duplicate fixture id: {}", fields[0]);
+            assert!(
+                ["sufficient", "insufficient", "invalid"].contains(&fields[2]),
+                "unknown expected sufficiency in fixture {}",
+                fields[0]
+            );
+            rows += 1;
+        }
+        assert_eq!(rows, 15, "v1 fixture catalogue size changed");
     }
 
     #[test]
