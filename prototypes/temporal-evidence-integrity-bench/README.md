@@ -23,12 +23,12 @@ The visible input corpus is `fixtures/v1-task-inputs.tsv` plus `fixtures/v1-even
 ## Scoring
 
 Per task, the evaluator returns:
-- disposition correctness;
+- task-identity and disposition correctness;
 - current-timeline precision/recall and exact ordered match;
 - pairwise temporal-order accuracy;
 - retained-history recall and exact match;
-- quarantine recall/exact match;
-- unresolved-conflict recall/exact match;
+- quarantine precision/recall and exact match;
+- unresolved-conflict precision/recall and exact match;
 - unsafe accepted-event IDs;
 - provenance mismatch IDs;
 - duplicate accepted-event IDs;
@@ -47,7 +47,7 @@ cargo clippy --manifest-path prototypes/temporal-evidence-integrity-bench/Cargo.
 cargo test --manifest-path prototypes/temporal-evidence-integrity-bench/Cargo.toml --target "$HOST"
 ```
 
-Or run `sh ./prototypes/temporal-evidence-integrity-bench/run.sh` from the repository root. The script prints SHA-256 digests for the visible input and both evaluator answer-key files.
+Or run `sh ./prototypes/temporal-evidence-integrity-bench/run.sh` from the repository root. The script prints SHA-256 digests for both visible input files and both evaluator answer-key files.
 
 ## Baseline protocol
 
@@ -61,6 +61,8 @@ The crate supplies a typed evaluator, an agent-visible input loader, and an orac
 All systems must receive identical visible evidence and tool permissions. Report task-level paired results, bootstrap confidence intervals, hard-gate counts, coverage, wall time, tokens/API cost, and reviewer effort. Keep HealthAgentBench, LongMedBench, and EHRFlowBench results as separate external comparators; do not blend their scores into this corpus.
 
 ## Known scope limits
+
+Exact-head dedicated CI qualification on 2026-11-24: rustfmt passed, Clippy passed with `-D warnings`, and all 14 unit tests passed (0 failed, 0 ignored). This qualifies the evaluator contract only; it is not a candidate-agent result.
 
 This is evaluator infrastructure, not a production FHIR ingestion engine, identity service, consent engine, cryptographic verifier, or clinical model. The evaluator-only role labels are reference answers. Real agent trials must receive `v1-events.tsv` only, not the case manifest or answer-key event labels. No clinical validity, benefit, legal compliance, privacy audit, or deployment claim follows from a passing test.
 
