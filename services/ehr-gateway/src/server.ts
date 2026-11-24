@@ -80,7 +80,7 @@ export function createApp(ctx: AppContext): Hono {
         return next();
       }
 
-      const match = c.req.header("Authorization")?.match(/^Bearer ([^\\s]+)$/i);
+      const match = c.req.header("Authorization")?.match(/^Bearer ([^\s]+)$/i);
       if (!match) {
         c.header("WWW-Authenticate", 'Bearer realm="mycelix-ehr-gateway"');
         return c.json({ error: "Unauthorized" }, 401);
