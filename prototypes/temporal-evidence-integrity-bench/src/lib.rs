@@ -1153,6 +1153,32 @@ mod tests {
         assert!(!result.hard_gates_pass);
     }
 
+
+    #[test]
+    fn logical_resource_identity_is_visible_and_part_of_exact_provenance() {
+        let answer_key = load_fixture().expect("answer key must validate");
+        let visible = load_visible_fixture().expect("visible corpus must validate");
+
+        let truth = answer_key.iter().find(|task| task.task_id == "T03").unwrap();
+        let prior = truth.events.iter().find(|event| event.event_id == "E05").unwrap();
+        let current = truth.events.iter().find(|event| event.event_id == "E06").unwrap();
+        assert_eq!(prior.resource_type, "Observation");
+        assert_eq!(prior.resource_id, "lab-panel-03");
+        assert_eq!(current.resource_id, "lab-panel-03");
+        assert_ne!(prior.resource_version, current.resource_version);
+
+        let visible_task = visible.iter().find(|task| task.task_id == "T03").unwrap();
+        let visible_prior = visible_task.events.iter().find(|event| event.event_id == "E05").unwrap();
+        let visible_current = visible_task.events.iter().find(|event| event.event_id == "E06").unwrap();
+        assert_eq!(visible_prior.resource_id, visible_current.resource_id);
+
+        let mut submission = reference_submission(truth);
+        submission.timeline[0].resource_id = "wrong-resource".to_owned();
+        let score = evaluate(truth, &submission);
+        assert_eq!(score.provenance_errors, vec!["E06".to_owned()]);
+        assert!(!score.hard_gates_pass);
+    }
+
     #[test]
     fn source_version_digest_substitution_is_a_provenance_error() {
         let tasks = load_fixture().expect("fixture must validate");
