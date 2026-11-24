@@ -1242,7 +1242,7 @@ mod tests {
             );
             assert!(!fields[3].trim().is_empty(), "fixture purpose must not be empty");
 
-            let (mut input, expected_frontier) = match profile {
+            let (input, expected_frontier) = match profile {
                 "complete" | "already_sufficient" => (
                     task(
                         vec![
