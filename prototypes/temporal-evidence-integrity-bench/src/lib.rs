@@ -1159,17 +1159,36 @@ mod tests {
         let answer_key = load_fixture().expect("answer key must validate");
         let visible = load_visible_fixture().expect("visible corpus must validate");
 
-        let truth = answer_key.iter().find(|task| task.task_id == "T03").unwrap();
-        let prior = truth.events.iter().find(|event| event.event_id == "E05").unwrap();
-        let current = truth.events.iter().find(|event| event.event_id == "E06").unwrap();
+        let truth = answer_key
+            .iter()
+            .find(|task| task.task_id == "T03")
+            .unwrap();
+        let prior = truth
+            .events
+            .iter()
+            .find(|event| event.event_id == "E05")
+            .unwrap();
+        let current = truth
+            .events
+            .iter()
+            .find(|event| event.event_id == "E06")
+            .unwrap();
         assert_eq!(prior.resource_type, "Observation");
         assert_eq!(prior.resource_id, "lab-panel-03");
         assert_eq!(current.resource_id, "lab-panel-03");
         assert_ne!(prior.resource_version, current.resource_version);
 
         let visible_task = visible.iter().find(|task| task.task_id == "T03").unwrap();
-        let visible_prior = visible_task.events.iter().find(|event| event.event_id == "E05").unwrap();
-        let visible_current = visible_task.events.iter().find(|event| event.event_id == "E06").unwrap();
+        let visible_prior = visible_task
+            .events
+            .iter()
+            .find(|event| event.event_id == "E05")
+            .unwrap();
+        let visible_current = visible_task
+            .events
+            .iter()
+            .find(|event| event.event_id == "E06")
+            .unwrap();
         assert_eq!(visible_prior.resource_id, visible_current.resource_id);
 
         let mut submission = reference_submission(truth);
