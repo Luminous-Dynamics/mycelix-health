@@ -62,6 +62,11 @@ pub struct EvidenceEvent {
     pub source_principal: String,
     pub resource_version: String,
     pub payload_digest: String,
+    pub measurement_method: Option<String>,
+    pub measurement_unit: Option<String>,
+    pub terminology_system: Option<String>,
+    pub terminology_version: Option<String>,
+    pub terminology_code: Option<String>,
     pub clinical_event_time_ms: i64,
     pub specimen_collected_at_ms: Option<i64>,
     pub analysis_performed_at_ms: Option<i64>,
@@ -96,6 +101,11 @@ pub struct EventCitation {
     pub source_principal: String,
     pub resource_version: String,
     pub payload_digest: String,
+    pub measurement_method: Option<String>,
+    pub measurement_unit: Option<String>,
+    pub terminology_system: Option<String>,
+    pub terminology_version: Option<String>,
+    pub terminology_code: Option<String>,
     pub clinical_event_time_ms: i64,
     pub specimen_collected_at_ms: Option<i64>,
     pub analysis_performed_at_ms: Option<i64>,
@@ -112,6 +122,11 @@ impl From<&EvidenceEvent> for EventCitation {
             source_principal: event.source_principal.clone(),
             resource_version: event.resource_version.clone(),
             payload_digest: event.payload_digest.clone(),
+            measurement_method: event.measurement_method.clone(),
+            measurement_unit: event.measurement_unit.clone(),
+            terminology_system: event.terminology_system.clone(),
+            terminology_version: event.terminology_version.clone(),
+            terminology_code: event.terminology_code.clone(),
             clinical_event_time_ms: event.clinical_event_time_ms,
             specimen_collected_at_ms: event.specimen_collected_at_ms,
             analysis_performed_at_ms: event.analysis_performed_at_ms,
@@ -132,6 +147,11 @@ pub struct VisibleEvidenceEvent {
     pub source_principal: String,
     pub resource_version: String,
     pub payload_digest: String,
+    pub measurement_method: Option<String>,
+    pub measurement_unit: Option<String>,
+    pub terminology_system: Option<String>,
+    pub terminology_version: Option<String>,
+    pub terminology_code: Option<String>,
     pub clinical_event_time_ms: i64,
     pub specimen_collected_at_ms: Option<i64>,
     pub analysis_performed_at_ms: Option<i64>,
@@ -161,6 +181,11 @@ impl From<&VisibleEvidenceEvent> for EventCitation {
             source_principal: event.source_principal.clone(),
             resource_version: event.resource_version.clone(),
             payload_digest: event.payload_digest.clone(),
+            measurement_method: event.measurement_method.clone(),
+            measurement_unit: event.measurement_unit.clone(),
+            terminology_system: event.terminology_system.clone(),
+            terminology_version: event.terminology_version.clone(),
+            terminology_code: event.terminology_code.clone(),
             clinical_event_time_ms: event.clinical_event_time_ms,
             specimen_collected_at_ms: event.specimen_collected_at_ms,
             analysis_performed_at_ms: event.analysis_performed_at_ms,
@@ -334,6 +359,14 @@ fn parse_optional_i64(value: &str, field: &str, line_index: usize) -> Result<Opt
     }
 }
 
+fn optional_text(value: &str) -> Option<String> {
+    if value == "-" || value.is_empty() {
+        None
+    } else {
+        Some(value.to_owned())
+    }
+}
+
 fn parse_visible_events(
     input: &str,
 ) -> Result<BTreeMap<String, Vec<VisibleEvidenceEvent>>, String> {
@@ -344,17 +377,17 @@ fn parse_visible_events(
             continue;
         }
         let fields: Vec<&str> = line.split('\t').collect();
-        if fields.len() != 17 {
+        if fields.len() != 22 {
             return Err(format!(
-                "visible events.tsv line {}: expected 17 columns, got {}",
+                "visible events.tsv line {}: expected 22 columns, got {}",
                 line_index + 1,
                 fields.len()
             ));
         }
-        let source_sequence = if fields[12] == "-" {
+        let source_sequence = if fields[17] == "-" {
             None
         } else {
-            Some(fields[12].parse::<u64>().map_err(|error| {
+            Some(fields[17].parse::<u64>().map_err(|error| {
                 format!(
                     "visible events.tsv line {}: invalid source sequence: {error}",
                     line_index + 1
@@ -367,35 +400,40 @@ fn parse_visible_events(
             source_principal: fields[3].to_owned(),
             resource_version: fields[4].to_owned(),
             payload_digest: fields[5].to_owned(),
-            clinical_event_time_ms: fields[6].parse::<i64>().map_err(|error| {
+            measurement_method: optional_text(fields[6]),
+            measurement_unit: optional_text(fields[7]),
+            terminology_system: optional_text(fields[8]),
+            terminology_version: optional_text(fields[9]),
+            terminology_code: optional_text(fields[10]),
+            clinical_event_time_ms: fields[16].parse::<i64>().map_err(|error| {
                 format!(
                     "visible events.tsv line {}: invalid clinical event time: {error}",
                     line_index + 1
                 )
             })?,
             specimen_collected_at_ms: parse_optional_i64(
-                fields[7],
+                fields[12],
                 "specimen collection time",
                 line_index,
             )?,
-            analysis_performed_at_ms: parse_optional_i64(fields[8], "analysis time", line_index)?,
-            result_issued_at_ms: parse_optional_i64(fields[9], "result issue time", line_index)?,
+            analysis_performed_at_ms: parse_optional_i64(fields[13], "analysis time", line_index)?,
+            result_issued_at_ms: parse_optional_i64(fields[14], "result issue time", line_index)?,
             source_last_updated_at_ms: parse_optional_i64(
-                fields[10],
+                fields[15],
                 "source lastUpdated time",
                 line_index,
             )?,
-            ingested_at_ms: fields[11].parse::<i64>().map_err(|error| {
+            ingested_at_ms: fields[16].parse::<i64>().map_err(|error| {
                 format!(
                     "visible events.tsv line {}: invalid ingestion time: {error}",
                     line_index + 1
                 )
             })?,
             source_sequence,
-            issuer_authenticated: parse_bool(fields[13], "issuer_authenticated")?,
-            application_authorized: parse_bool(fields[14], "application_authorized")?,
-            lineage_complete: parse_bool(fields[15], "lineage_complete")?,
-            expired: parse_bool(fields[16], "expired")?,
+            issuer_authenticated: parse_bool(fields[18], "issuer_authenticated")?,
+            application_authorized: parse_bool(fields[19], "application_authorized")?,
+            lineage_complete: parse_bool(fields[20], "lineage_complete")?,
+            expired: parse_bool(fields[21], "expired")?,
         };
         if event.event_id.is_empty()
             || event.patient_binding.is_empty()
@@ -425,64 +463,65 @@ fn parse_events(input: &str) -> Result<BTreeMap<String, Vec<EvidenceEvent>>, Str
             continue;
         }
         let fields: Vec<&str> = line.split('\t').collect();
-        if fields.len() != 19 {
+        if fields.len() != 24 {
             return Err(format!(
-                "answer-key-events.tsv line {}: expected 19 columns, got {}",
+                "answer-key-events.tsv line {}: expected 24 columns, got {}",
                 line_index + 1,
                 fields.len()
             ));
         }
-        let sequence = if fields[12] == "-" {
+        let sequence = if fields[17] == "-" {
             None
         } else {
-            Some(fields[12].parse::<u64>().map_err(|error| {
+            Some(fields[17].parse::<u64>().map_err(|error| {
                 format!(
                     "answer-key-events.tsv line {}: invalid sequence: {error}",
                     line_index + 1
                 )
             })?)
         };
-        let conflict_group = if fields[18] == "-" {
-            None
-        } else {
-            Some(fields[18].to_owned())
-        };
+        let conflict_group = optional_text(fields[23]);
         let event = EvidenceEvent {
             event_id: fields[1].to_owned(),
             patient_binding: fields[2].to_owned(),
             source_principal: fields[3].to_owned(),
             resource_version: fields[4].to_owned(),
             payload_digest: fields[5].to_owned(),
-            clinical_event_time_ms: fields[6].parse::<i64>().map_err(|error| {
+            measurement_method: optional_text(fields[6]),
+            measurement_unit: optional_text(fields[7]),
+            terminology_system: optional_text(fields[8]),
+            terminology_version: optional_text(fields[9]),
+            terminology_code: optional_text(fields[10]),
+            clinical_event_time_ms: fields[16].parse::<i64>().map_err(|error| {
                 format!(
                     "answer-key-events.tsv line {}: invalid clinical event time: {error}",
                     line_index + 1
                 )
             })?,
             specimen_collected_at_ms: parse_optional_i64(
-                fields[7],
+                fields[12],
                 "specimen collection time",
                 line_index,
             )?,
-            analysis_performed_at_ms: parse_optional_i64(fields[8], "analysis time", line_index)?,
-            result_issued_at_ms: parse_optional_i64(fields[9], "result issue time", line_index)?,
+            analysis_performed_at_ms: parse_optional_i64(fields[13], "analysis time", line_index)?,
+            result_issued_at_ms: parse_optional_i64(fields[14], "result issue time", line_index)?,
             source_last_updated_at_ms: parse_optional_i64(
-                fields[10],
+                fields[15],
                 "source lastUpdated time",
                 line_index,
             )?,
-            ingested_at_ms: fields[11].parse::<i64>().map_err(|error| {
+            ingested_at_ms: fields[16].parse::<i64>().map_err(|error| {
                 format!(
                     "answer-key-events.tsv line {}: invalid ingestion time: {error}",
                     line_index + 1
                 )
             })?,
             source_sequence: sequence,
-            issuer_authenticated: parse_bool(fields[13], "issuer_authenticated")?,
-            application_authorized: parse_bool(fields[14], "application_authorized")?,
-            lineage_complete: parse_bool(fields[15], "lineage_complete")?,
-            expired: parse_bool(fields[16], "expired")?,
-            role: EventRole::parse(fields[17])?,
+            issuer_authenticated: parse_bool(fields[18], "issuer_authenticated")?,
+            application_authorized: parse_bool(fields[19], "application_authorized")?,
+            lineage_complete: parse_bool(fields[20], "lineage_complete")?,
+            expired: parse_bool(fields[21], "expired")?,
+            role: EventRole::parse(fields[22])?,
             conflict_group,
         };
         if event.event_id.is_empty()
@@ -704,6 +743,11 @@ fn citation_matches(event: &EvidenceEvent, citation: &EventCitation) -> bool {
         && event.source_principal == citation.source_principal
         && event.resource_version == citation.resource_version
         && event.payload_digest == citation.payload_digest
+        && event.measurement_method == citation.measurement_method
+        && event.measurement_unit == citation.measurement_unit
+        && event.terminology_system == citation.terminology_system
+        && event.terminology_version == citation.terminology_version
+        && event.terminology_code == citation.terminology_code
         && event.clinical_event_time_ms == citation.clinical_event_time_ms
         && event.specimen_collected_at_ms == citation.specimen_collected_at_ms
         && event.analysis_performed_at_ms == citation.analysis_performed_at_ms
