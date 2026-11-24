@@ -375,7 +375,6 @@ pub fn assess_candidate(
     }
 }
 
-
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ReferenceSufficiencyLabel {
     Sufficient,
@@ -498,8 +497,7 @@ pub fn evaluate_selective_predictions(
     }
 
     let total = predictions.len();
-    let brier_score_bps =
-        (squared_error_sum / (total as u128 * 10_000)).min(10_000) as u16;
+    let brier_score_bps = (squared_error_sum / (total as u128 * 10_000)).min(10_000) as u16;
 
     Ok(SelectiveMetrics {
         total,
@@ -578,7 +576,12 @@ pub struct DecisionCurvePoint {
     pub act_none: NetBenefitFraction,
 }
 
-fn net_benefit_fraction(tp: usize, fp: usize, total: usize, threshold_bps: u16) -> NetBenefitFraction {
+fn net_benefit_fraction(
+    tp: usize,
+    fp: usize,
+    total: usize,
+    threshold_bps: u16,
+) -> NetBenefitFraction {
     let threshold = threshold_bps as i64;
     let numerator = tp as i64 * (10_000 - threshold) - fp as i64 * threshold;
     let denominator = total as u64 * (10_000 - threshold_bps as u64);
@@ -676,7 +679,10 @@ pub fn evaluate_evsi(model: &EvsiModel) -> Result<EvsiReport, MetricError> {
         return Err(MetricError::EmptyOutcomeSet);
     }
     if model.current_best_expected_loss_bps > 10_000
-        || model.outcomes.iter().any(|outcome| outcome.best_expected_loss_bps > 10_000)
+        || model
+            .outcomes
+            .iter()
+            .any(|outcome| outcome.best_expected_loss_bps > 10_000)
     {
         return Err(MetricError::LossOutOfRange);
     }
@@ -1040,7 +1046,6 @@ mod tests {
         );
     }
 
-
     #[test]
     fn selective_metrics_score_abstentions_as_uncalibrated_predictions_not_free_passes() {
         let predictions = vec![
@@ -1189,7 +1194,9 @@ mod tests {
         };
         assert_eq!(
             evaluate_evsi(&model),
-            Err(MetricError::OutcomeProbabilitiesDoNotSumToTenThousand(5_000))
+            Err(MetricError::OutcomeProbabilitiesDoNotSumToTenThousand(
+                5_000
+            ))
         );
     }
 
