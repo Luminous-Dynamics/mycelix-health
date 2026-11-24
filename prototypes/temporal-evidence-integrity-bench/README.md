@@ -47,12 +47,12 @@ cargo clippy --manifest-path prototypes/temporal-evidence-integrity-bench/Cargo.
 cargo test --manifest-path prototypes/temporal-evidence-integrity-bench/Cargo.toml --target "$HOST"
 ```
 
-Or run `sh ./prototypes/temporal-evidence-integrity-bench/run.sh` from the repository root. The script prints SHA-256 digests for both visible input files and both evaluator answer-key files.
+Or run `sh ./prototypes/temporal-evidence-integrity-bench/run.sh` from the repository root. The script prints SHA-256 digests for both visible input files and both evaluator answer-key files, then executes the deterministic negative-control report through `src/bin/naive_baseline.rs`. The CI job also publishes the per-task TSV and batch summary as the `temporal-evidence-integrity-naive-baseline` artifact. The CLI receives the answer-free input separately from the evaluator-only truth fixture; candidate agents must never receive the answer-key files.
 
 ## Baseline protocol
 
 The crate supplies a typed evaluator, an agent-visible input loader, and an oracle fixture path for contract tests. It also provides a deliberately weak `naive_ingestion_order_baseline` that accepts every visible event as current and sorts by ingestion time. This negative control demonstrates that plausible chronological sorting alone does not preserve revision, identity, authority or conflict semantics. It does **not** contain model outputs or claim a model score. The next experiment must freeze model/agent versions, prompts, tool permissions, task seeds, and resource budgets, then compare:
-1. raw timestamp sort / naive latest-record selection;
+1. raw timestamp sort / naive latest-record selection (v1 now includes an executable run and per-task report);
 2. source-sequence-only revision selection;
 3. ordinary FHIR/RAG timeline reconstruction;
 4. a provenance-aware evidence pipeline;
