@@ -191,6 +191,26 @@ remains part of P0 issue #289.
 
 ---
 
+## Sync request security
+
+`POST /sync/patient/:patientId` keeps the server-side connection identifier and
+the optional `async=true` flag in the URL. The stored `tokenKey` and optional
+`resourceTypes` array are supplied in a JSON body:
+
+```json
+{
+  "tokenKey": "server-stored-token-key",
+  "resourceTypes": ["Patient", "Observation"]
+}
+```
+
+`POST /sync/bidirectional/:patientId` accepts `tokenKey` and the base64
+`patientHash` in its JSON body. Neither route accepts `tokenKey`,
+`patientHash`, or caller-selected `sourceSystem` query overrides. The source
+namespace is selected from the server-side connection registry. It is not a
+cryptographic assertion about the EHR issuer; source authentication remains
+part of P0 issue #289.
+
 ## Local Development with Holochain
 
 ### Prerequisites

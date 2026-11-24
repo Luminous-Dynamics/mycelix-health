@@ -157,8 +157,9 @@ describe('PullService', () => {
         mockTokenInfo as any,
         {
           resourceTypes: ['Patient', 'Observation', 'Condition', 'MedicationRequest'],
-          sourceSystem: 'test-ehr',
-        }
+          // Legacy callers cannot select their own provenance namespace.
+          sourceSystem: 'caller-controlled-override',
+        } as any
       );
 
       // Verify the bundle was assembled correctly
@@ -169,6 +170,8 @@ describe('PullService', () => {
       // Verify ingest was called
       expect(mockHolochainClient.callZome).toHaveBeenCalledTimes(1);
       expect(result.ingestReport).toEqual(mockReport);
+      expect(mockHolochainClient.callZome.mock.calls[0][0].payload.source_system)
+        .toBe('test-ehr');
 
       // Verify sync results
       expect(result.syncResults).toHaveLength(4); // One per resource type
