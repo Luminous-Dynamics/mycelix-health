@@ -941,6 +941,82 @@ mod tests {
     }
 
     #[test]
+    fn a_verified_label_without_all_independent_gates_is_not_verified() {
+        let mut record = verified("lab-provenance", "lab-source-1");
+        record
+            .gates
+            .retain(|gate| gate.dimension != EvidenceDimension::ApplicationAuthority);
+        assert_eq!(record.status, EvidenceStatus::Verified);
+        assert!(!record.is_verified());
+
+        let input = task(
+            vec![
+                verified("patient-binding", "patient-proof-1"),
+                record,
+            ],
+            Vec::new(),
+        );
+        let report = evaluate_sufficiency(&input).unwrap();
+        assert_eq!(report.state, SufficiencyState::Insufficient);
+        assert_eq!(
+            report.obligations[1].blockers,
+            vec![EvidenceStatus::IncompleteVerification]
+        );
+        assert!(report.obligations[1].gate_blockers.iter().any(|blocker| {
+            blocker.source_id == "lab-source-1"
+                && blocker.dimension == EvidenceDimension::ApplicationAuthority
+                && blocker.state == EvidenceGateState::Missing
+        }));
+    }
+
+    #[test]
+    fn duplicate_evidence_gate_is_not_silently_accepted() {
+        let mut record = verified("lab-provenance", "lab-source-1");
+        record.gates.push(EvidenceGate {
+            dimension: EvidenceDimension::IssuerAuthenticity,
+            state: EvidenceGateState::Verified,
+        });
+        assert!(!record.is_verified());
+
+        let input = task(
+            vec![
+                verified("patient-binding", "patient-proof-1"),
+                record,
+            ],
+            Vec::new(),
+        );
+        let report = evaluate_sufficiency(&input).unwrap();
+        assert_eq!(report.state, SufficiencyState::Insufficient);
+        assert!(report.obligations[1].gate_blockers.iter().any(|blocker| {
+            blocker.dimension == EvidenceDimension::IssuerAuthenticity
+                && blocker.state == EvidenceGateState::Duplicate
+        }));
+    }
+
+    #[test]
+    fn independent_gate_failures_remain_separately_visible() {
+        let mut record = verified("lab-provenance", "lab-source-1");
+        for gate in &mut record.gates {
+            if gate.dimension == EvidenceDimension::TemporalValidity {
+                gate.state = EvidenceGateState::Failed;
+            }
+            if gate.dimension == EvidenceDimension::ApplicationAuthority {
+                gate.state = EvidenceGateState::Missing;
+            }
+        }
+        let blockers = record.gate_blockers();
+        assert_eq!(blockers.len(), 2);
+        assert!(blockers.iter().any(|blocker| {
+            blocker.dimension == EvidenceDimension::TemporalValidity
+                && blocker.state == EvidenceGateState::Failed
+        }));
+        assert!(blockers.iter().any(|blocker| {
+            blocker.dimension == EvidenceDimension::ApplicationAuthority
+                && blocker.state == EvidenceGateState::Missing
+        }));
+    }
+
+    #[test]
     fn sufficient_requires_every_obligation_to_be_verified() {
         let input = task(
             vec![
