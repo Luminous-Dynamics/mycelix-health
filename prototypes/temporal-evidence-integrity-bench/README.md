@@ -18,7 +18,7 @@ The benchmark evaluates **evidence operations**, not just answer text:
 
 The frozen corpus contains 20 synthetic tasks across 20 scenario families and 32 evidence envelopes. It includes late/backfilled events, source revision ordering, same-version/different-payload collisions, exact replay, wrong-patient references, unauthorized/revoked access, expired evidence, issuer and lineage failures, source conflicts, unknown revision order, method transitions, terminology-version transitions, and clock skew.
 
-The visible input corpus is `fixtures/v1-events.tsv`; it contains synthetic patient bindings and evidence envelopes only. Evaluator-only labels are separated into `fixtures/v1-cases.tsv` and `fixtures/v1-answer-key-events.tsv`. Never provide either answer-key file to an evaluated agent. These are not real medical records and do not encode clinical thresholds or treatment recommendations.
+The visible input corpus is `fixtures/v1-task-inputs.tsv` plus `fixtures/v1-events.tsv`; it contains task IDs, target-subject bindings and synthetic evidence envelopes only. Evaluator-only labels are separated into `fixtures/v1-cases.tsv` and `fixtures/v1-answer-key-events.tsv`. The Rust API exposes these as distinct `VisibleTaskInput` and answer-key `Task` types. Never provide either answer-key file to an evaluated agent. These are not real medical records and do not encode clinical thresholds or treatment recommendations.
 
 ## Scoring
 
@@ -51,7 +51,7 @@ Or run `sh ./prototypes/temporal-evidence-integrity-bench/run.sh` from the repos
 
 ## Baseline protocol
 
-The crate supplies a typed evaluator and an oracle fixture path for contract tests. It does **not** contain model outputs or claim a model score. The next experiment must freeze model/agent versions, prompts, tool permissions, task seeds, and resource budgets, then compare:
+The crate supplies a typed evaluator, an agent-visible input loader, and an oracle fixture path for contract tests. It also provides a deliberately weak `naive_ingestion_order_baseline` that accepts every visible event as current and sorts by ingestion time. This negative control demonstrates that plausible chronological sorting alone does not preserve revision, identity, authority or conflict semantics. It does **not** contain model outputs or claim a model score. The next experiment must freeze model/agent versions, prompts, tool permissions, task seeds, and resource budgets, then compare:
 1. raw timestamp sort / naive latest-record selection;
 2. source-sequence-only revision selection;
 3. ordinary FHIR/RAG timeline reconstruction;
