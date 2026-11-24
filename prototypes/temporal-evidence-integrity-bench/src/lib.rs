@@ -951,6 +951,164 @@ pub fn naive_ingestion_order_baseline(input: &VisibleTaskInput) -> Submission {
     }
 }
 
+
+/// Resource-version baseline: groups only by the logical resource identity
+/// (subject, source principal, resource type, resource ID), detects conflicting
+/// payloads for the same version, deduplicates exact replays, and uses explicit
+/// source sequence—not clocks or arrival time—to select a current revision.
+/// It intentionally does not solve cross-source semantic assertion conflicts.
+pub fn source_sequence_revision_baseline(input: &VisibleTaskInput) -> Submission {
+    let mut groups: BTreeMap<(String, String, String, String), Vec<&VisibleEvidenceEvent>> =
+        BTreeMap::new();
+    let mut quarantined_event_ids = Vec::new();
+    let mut identity_blocked = false;
+    let mut authority_blocked = false;
+    let mut stale = false;
+    let mut insufficient = false;
+
+    for event in &input.events {
+        if event.patient_binding != input.target_patient_binding {
+            identity_blocked = true;
+            quarantined_event_ids.push(event.event_id.clone());
+            continue;
+        }
+        if !event.application_authorized {
+            authority_blocked = true;
+            quarantined_event_ids.push(event.event_id.clone());
+            continue;
+        }
+        if event.expired {
+            stale = true;
+            quarantined_event_ids.push(event.event_id.clone());
+            continue;
+        }
+        if !event.issuer_authenticated || !event.lineage_complete {
+            insufficient = true;
+            quarantined_event_ids.push(event.event_id.clone());
+            continue;
+        }
+
+        groups
+            .entry((
+                event.patient_binding.clone(),
+                event.source_principal.clone(),
+                event.resource_type.clone(),
+                event.resource_id.clone(),
+            ))
+            .or_default()
+            .push(event);
+    }
+
+    let mut timeline = Vec::<EventCitation>::new();
+    let mut retained_history = Vec::<EventCitation>::new();
+    let mut unresolved_conflict_groups = Vec::new();
+    let mut unknown_order = false;
+
+    for ((_, source, resource_type, resource_id), events) in groups {
+        let mut by_version: BTreeMap<&str, BTreeMap<&str, Vec<&VisibleEvidenceEvent>>> =
+            BTreeMap::new();
+        for event in &events {
+            by_version
+                .entry(event.resource_version.as_str())
+                .or_default()
+                .entry(event.payload_digest.as_str())
+                .or_default()
+                .push(*event);
+        }
+
+        let conflicting_version = by_version
+            .iter()
+            .find(|(_, digests)| digests.len() > 1)
+            .map(|(version, _)| *version);
+        if let Some(version) = conflicting_version {
+            unresolved_conflict_groups.push(format!(
+                "resource:{source}:{resource_type}:{resource_id}:{version}"
+            ));
+            continue;
+        }
+
+        let mut unique_revisions = Vec::<&VisibleEvidenceEvent>::new();
+        for (_, digests) in by_version {
+            let mut replay_group = digests
+                .into_values()
+                .next()
+                .expect("version group contains at least one digest");
+            replay_group.sort_by(|left, right| {
+                left.ingested_at_ms
+                    .cmp(&right.ingested_at_ms)
+                    .then_with(|| left.event_id.cmp(&right.event_id))
+            });
+            if let Some(original) = replay_group.first() {
+                unique_revisions.push(*original);
+                quarantined_event_ids.extend(
+                    replay_group
+                        .iter()
+                        .skip(1)
+                        .map(|duplicate| duplicate.event_id.clone()),
+                );
+            }
+        }
+
+        if unique_revisions.iter().any(|event| event.source_sequence.is_none()) {
+            unknown_order = true;
+            retained_history.extend(unique_revisions.into_iter().map(EventCitation::from));
+            continue;
+        }
+
+        unique_revisions.sort_by(|left, right| {
+            left.source_sequence
+                .cmp(&right.source_sequence)
+                .then_with(|| left.event_id.cmp(&right.event_id))
+        });
+        if let Some(current) = unique_revisions.pop() {
+            timeline.push(EventCitation::from(current));
+        }
+        retained_history.extend(unique_revisions.into_iter().map(EventCitation::from));
+    }
+
+    let timeline_order = |left: &EventCitation, right: &EventCitation| {
+        left.clinical_event_time_ms
+            .cmp(&right.clinical_event_time_ms)
+            .then_with(|| left.event_id.cmp(&right.event_id))
+    };
+    timeline.sort_by(timeline_order);
+    retained_history.sort_by(timeline_order);
+    quarantined_event_ids.sort();
+    quarantined_event_ids.dedup();
+    unresolved_conflict_groups.sort();
+
+    let disposition = if !unresolved_conflict_groups.is_empty() {
+        Disposition::Conflicted
+    } else if timeline.is_empty() && retained_history.is_empty() && identity_blocked {
+        Disposition::IdentityBlocked
+    } else if timeline.is_empty()
+        && retained_history.is_empty()
+        && authority_blocked
+    {
+        Disposition::AuthorityBlocked
+    } else if timeline.is_empty() && retained_history.is_empty() && stale {
+        Disposition::Stale
+    } else if timeline.is_empty()
+        && retained_history.is_empty()
+        && insufficient
+    {
+        Disposition::Insufficient
+    } else if timeline.is_empty() && unknown_order {
+        Disposition::UnknownOrder
+    } else {
+        Disposition::Supported
+    };
+
+    Submission {
+        task_id: input.task_id.clone(),
+        disposition,
+        timeline,
+        retained_history,
+        quarantined_event_ids,
+        unresolved_conflict_groups,
+    }
+}
+
 /// Evaluate a complete batch. Missing, extra, and duplicate task outputs are errors.
 pub fn evaluate_batch(tasks: &[Task], submissions: &[Submission]) -> Result<BatchReport, String> {
     let task_ids: BTreeSet<&str> = tasks.iter().map(|task| task.task_id.as_str()).collect();
