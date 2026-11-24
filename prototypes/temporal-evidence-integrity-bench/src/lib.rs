@@ -149,6 +149,8 @@ pub struct VisibleEvidenceEvent {
 pub struct VisibleTaskInput {
     pub task_id: String,
     pub target_patient_binding: String,
+    /// Natural-language task request shown to the evaluated agent.
+    pub request: String,
     pub events: Vec<VisibleEvidenceEvent>,
 }
 
@@ -282,21 +284,28 @@ fn parse_cases(input: &str) -> Result<Vec<Task>, String> {
     Ok(tasks)
 }
 
-fn parse_visible_task_manifest(input: &str) -> Result<BTreeMap<String, String>, String> {
+fn parse_visible_task_manifest(input: &str) -> Result<BTreeMap<String, (String, String)>, String> {
     let mut tasks = BTreeMap::new();
     for (line_index, line) in input.lines().enumerate() {
         if line.is_empty() || line.starts_with('#') {
             continue;
         }
         let fields: Vec<&str> = line.split('\t').collect();
-        if fields.len() != 2 || fields[0].is_empty() || fields[1].is_empty() {
+        if fields.len() != 3
+            || fields[0].is_empty()
+            || fields[1].is_empty()
+            || fields[2].trim().is_empty()
+        {
             return Err(format!(
-                "task-inputs.tsv line {}: expected non-empty task id and patient binding",
+                "task-inputs.tsv line {}: expected task id, patient binding, and task request",
                 line_index + 1
             ));
         }
         if tasks
-            .insert(fields[0].to_owned(), fields[1].to_owned())
+            .insert(
+                fields[0].to_owned(),
+                (fields[1].to_owned(), fields[2].to_owned()),
+            )
             .is_some()
         {
             return Err(format!(
@@ -521,11 +530,12 @@ pub fn load_visible_fixture() -> Result<Vec<VisibleTaskInput>, String> {
     let mut events_by_task = parse_visible_events(include_str!("../fixtures/v1-events.tsv"))?;
     let mut tasks = Vec::with_capacity(task_manifest.len());
 
-    for (task_id, target_patient_binding) in task_manifest {
+    for (task_id, (target_patient_binding, request)) in task_manifest {
         tasks.push(VisibleTaskInput {
             events: events_by_task.remove(&task_id).unwrap_or_default(),
             task_id,
             target_patient_binding,
+            request,
         });
     }
     if !events_by_task.is_empty() {
@@ -968,6 +978,7 @@ mod tests {
         let visible = load_visible_fixture().expect("visible fixture must validate");
         let answer_key = load_fixture().expect("answer key fixture must validate");
         assert_eq!(visible.len(), 20);
+        assert!(visible.iter().all(|task| !task.request.trim().is_empty()));
         assert_eq!(
             visible.iter().map(|task| task.events.len()).sum::<usize>(),
             32
