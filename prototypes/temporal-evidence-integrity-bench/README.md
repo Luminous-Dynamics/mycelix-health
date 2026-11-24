@@ -11,14 +11,14 @@ The benchmark evaluates **evidence operations**, not just answer text:
 - which valid superseded versions remain available as history;
 - which records are quarantined;
 - which contradictions remain explicitly unresolved;
-- whether citations preserve exact source, version, payload digest, and clinical event time;
+- whether citations preserve exact source, version, payload digest, clinical event time, specimen collection time, analysis time, result issue time, source `lastUpdated`, and local ingestion time;
 - whether timeline order follows event time rather than ingestion order.
 
 ## V1 contents
 
-The frozen corpus contains 20 synthetic tasks across 15 scenario families and 29 evidence envelopes. It includes late/backfilled events, source revision ordering, same-version/different-payload collisions, exact replay, wrong-patient references, unauthorized/revoked access, expired evidence, issuer and lineage failures, source conflicts, unknown revision order, method transitions, terminology-version transitions, and clock skew.
+The frozen corpus contains 20 synthetic tasks across 20 scenario families and 32 evidence envelopes. It includes late/backfilled events, source revision ordering, same-version/different-payload collisions, exact replay, wrong-patient references, unauthorized/revoked access, expired evidence, issuer and lineage failures, source conflicts, unknown revision order, method transitions, terminology-version transitions, and clock skew.
 
-The fixtures contain synthetic patient bindings only. They are not real medical records and do not encode clinical thresholds or treatment recommendations.
+The visible input corpus is `fixtures/v1-events.tsv`; it contains synthetic patient bindings and evidence envelopes only. Evaluator-only labels are separated into `fixtures/v1-cases.tsv` and `fixtures/v1-answer-key-events.tsv`. Never provide either answer-key file to an evaluated agent. These are not real medical records and do not encode clinical thresholds or treatment recommendations.
 
 ## Scoring
 
@@ -47,7 +47,7 @@ cargo clippy --manifest-path prototypes/temporal-evidence-integrity-bench/Cargo.
 cargo test --manifest-path prototypes/temporal-evidence-integrity-bench/Cargo.toml --target "$HOST"
 ```
 
-Or run `./prototypes/temporal-evidence-integrity-bench/run.sh` from the repository root. The script prints SHA-256 digests for both frozen fixture files.
+Or run `sh ./prototypes/temporal-evidence-integrity-bench/run.sh` from the repository root. The script prints SHA-256 digests for the visible input and both evaluator answer-key files.
 
 ## Baseline protocol
 
@@ -62,7 +62,7 @@ All systems must receive identical visible evidence and tool permissions. Report
 
 ## Known scope limits
 
-This is evaluator infrastructure, not a production FHIR ingestion engine, identity service, consent engine, cryptographic verifier, or clinical model. The fixture roles are reference labels supplied to the evaluator; real agent trials must receive only the visible event envelopes, not answer-key fields. No clinical validity, benefit, legal compliance, privacy audit, or deployment claim follows from a passing test.
+This is evaluator infrastructure, not a production FHIR ingestion engine, identity service, consent engine, cryptographic verifier, or clinical model. The evaluator-only role labels are reference answers. Real agent trials must receive `v1-events.tsv` only, not the case manifest or answer-key event labels. No clinical validity, benefit, legal compliance, privacy audit, or deployment claim follows from a passing test.
 
 ## External context
 
