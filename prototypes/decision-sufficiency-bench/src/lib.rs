@@ -371,7 +371,12 @@ pub fn assess_claim(
         return Ok(ClaimAssessment::NoEvidenceCited);
     }
     if task.evidence.iter().any(|record| {
-        record.obligation_id == claim.obligation_id && record.status == EvidenceStatus::Conflicted
+        record.obligation_id == claim.obligation_id
+            && (record.status == EvidenceStatus::Conflicted
+                || record.gates.iter().any(|gate| {
+                    gate.dimension == EvidenceDimension::ConflictReconciliation
+                        && gate.state == EvidenceGateState::Conflicted
+                }))
     }) {
         return Ok(ClaimAssessment::UnresolvedConflict);
     }
