@@ -298,10 +298,6 @@ function decodeMessagePack(bytes: Uint8Array, label: string): unknown {
   }
 }
 
-function equalHash(left: unknown, right: Uint8Array, label: string): void {
-  if (!isBytes(left) || !bytesEqual(left, right)) throw new Error(`${label} hash mismatch`);
-}
-
 function getCreateActionBase(preflight: UnknownRecord): UnknownRecord {
   const actionBase = asRecord(preflight.action_base);
   const create = actionBase ? asRecord(actionBase.Create) : null;
