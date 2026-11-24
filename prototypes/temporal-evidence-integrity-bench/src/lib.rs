@@ -509,7 +509,6 @@ pub fn load_fixture() -> Result<Vec<Task>, String> {
     Ok(tasks)
 }
 
-
 /// Load the agent-visible v1 corpus without exposing evaluator answer-key fields.
 pub fn load_visible_fixture() -> Result<Vec<VisibleTaskInput>, String> {
     let task_manifest =
