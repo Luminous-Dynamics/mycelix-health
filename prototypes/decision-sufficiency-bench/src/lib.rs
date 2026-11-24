@@ -1240,7 +1240,10 @@ mod tests {
                 "unknown expected sufficiency in fixture {}",
                 case_id
             );
-            assert!(!fields[3].trim().is_empty(), "fixture purpose must not be empty");
+            assert!(
+                !fields[3].trim().is_empty(),
+                "fixture purpose must not be empty"
+            );
 
             let (input, expected_frontier) = match profile {
                 "complete" | "already_sufficient" => (
@@ -1258,7 +1261,10 @@ mod tests {
                     None,
                 ),
                 "missing" => (
-                    task(vec![verified("patient-binding", "patient-proof-1")], Vec::new()),
+                    task(
+                        vec![verified("patient-binding", "patient-proof-1")],
+                        Vec::new(),
+                    ),
                     None,
                 ),
                 "wrong_subject" => (
@@ -1290,7 +1296,10 @@ mod tests {
                     ),
                     None,
                 ),
-                "expired" | "unauthenticated" | "unauthorized" | "missing_version"
+                "expired"
+                | "unauthenticated"
+                | "unauthorized"
+                | "missing_version"
                 | "unsupported_semantics" => {
                     let status = match profile {
                         "expired" => EvidenceStatus::Expired,
@@ -1375,7 +1384,9 @@ mod tests {
                 }
                 "ambiguous" => {
                     let mut input = task(Vec::new(), Vec::new());
-                    input.required_obligations.push("lab-provenance".to_string());
+                    input
+                        .required_obligations
+                        .push("lab-provenance".to_string());
                     (input, None)
                 }
                 _ => panic!("unknown frozen fixture profile {} for {}", profile, case_id),
