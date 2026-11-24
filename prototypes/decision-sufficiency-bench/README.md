@@ -65,7 +65,9 @@ The catalogue in fixtures/v1-cases.tsv enumerates the v1 cases. The unit tests c
 
 ## Metrics for the full research benchmark
 
-This reference implementation supplies machine-checkable foundations, not model scores. The full #299 experiment should additionally report:
+This reference implementation supplies machine-checkable foundations, not model scores. The 15-row TSV is a frozen scenario catalogue; the executable task inputs are currently constructed in the typed Rust tests. This is an evaluator-contract slice, not yet the complete 25–40-task model-comparison corpus proposed by #299.
+
+The full #299 experiment should additionally report:
 
 - sufficiency precision / recall by blocker category;
 - risk-versus-coverage curves and AURC;
@@ -73,7 +75,11 @@ This reference implementation supplies machine-checkable foundations, not model 
 - exact source/version/subject/time lineage support rate;
 - unauthorized acquisition and disclosure count;
 - Pareto-frontier coverage and chosen-action opportunity gaps by benefit, cost and privacy separately;
+- expected value of sample information (EVSI) for each candidate acquisition policy where the synthetic world provides a defensible probability and decision-loss model; use EVPI as an upper bound where meaningful;
+- decision-curve analysis and net benefit at predeclared action thresholds when tasks have valid outcome, benefit and harm labels; compare with default policies such as act-on-all and act-on-none where appropriate;
 - wall time, p50/p95/p99 latency, compute, bytes accessed and reviewer time.
+
+EVSI is the expected improvement in decision quality from collecting a specific observation or dataset, not a generic information-gain score. Report its assumptions and sensitivity analyses. For clinical decision support, net benefit should complement discrimination and calibration rather than replace them. The operating threshold must be fixed with appropriate clinical and patient input before evaluation; decision curves do not choose the threshold for the intended population. See the BMJ [clinical prediction model guide](https://www.bmj.com/content/386/bmj-2023-078276.long), [net-benefit primer](https://www.bmj.com/content/352/bmj.i6), and the review of [value-of-information analysis in health policy](https://pmc.ncbi.nlm.nih.gov/articles/PMC7612603/).
 
 Never collapse the three acquisition dimensions into one scalar without stating the policy trade-off. An observation that is high-value but unauthorized is not a candidate. A task already sufficient under its declared evidence obligations should not trigger redundant retrieval.
 
