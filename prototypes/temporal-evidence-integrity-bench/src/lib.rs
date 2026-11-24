@@ -198,11 +198,18 @@ fn parse_cases(input: &str) -> Result<Vec<Task>, String> {
         }
         let fields: Vec<&str> = line.split('\t').collect();
         if fields.len() != 8 {
-            return Err(format!("cases.tsv line {}: expected 8 columns, got {}", line_index + 1, fields.len()));
+            return Err(format!(
+                "cases.tsv line {}: expected 8 columns, got {}",
+                line_index + 1,
+                fields.len()
+            ));
         }
         let task_id = fields[0].to_owned();
         if task_id.is_empty() || !seen.insert(task_id.clone()) {
-            return Err(format!("cases.tsv line {}: empty or duplicate task id", line_index + 1));
+            return Err(format!(
+                "cases.tsv line {}: empty or duplicate task id",
+                line_index + 1
+            ));
         }
         tasks.push(Task {
             task_id,
@@ -228,7 +235,10 @@ fn parse_optional_i64(value: &str, field: &str, line_index: usize) -> Result<Opt
         Ok(None)
     } else {
         value.parse::<i64>().map(Some).map_err(|error| {
-            format!("events.tsv line {}: invalid {field}: {error}", line_index + 1)
+            format!(
+                "events.tsv line {}: invalid {field}: {error}",
+                line_index + 1
+            )
         })
     }
 }
@@ -242,26 +252,57 @@ fn parse_events(input: &str) -> Result<BTreeMap<String, Vec<EvidenceEvent>>, Str
         }
         let fields: Vec<&str> = line.split('\t').collect();
         if fields.len() != 19 {
-            return Err(format!("answer-key-events.tsv line {}: expected 19 columns, got {}", line_index + 1, fields.len()));
+            return Err(format!(
+                "answer-key-events.tsv line {}: expected 19 columns, got {}",
+                line_index + 1,
+                fields.len()
+            ));
         }
         let sequence = if fields[12] == "-" {
             None
         } else {
-            Some(fields[12].parse::<u64>().map_err(|error| format!("answer-key-events.tsv line {}: invalid sequence: {error}", line_index + 1))?)
+            Some(fields[12].parse::<u64>().map_err(|error| {
+                format!(
+                    "answer-key-events.tsv line {}: invalid sequence: {error}",
+                    line_index + 1
+                )
+            })?)
         };
-        let conflict_group = if fields[18] == "-" { None } else { Some(fields[18].to_owned()) };
+        let conflict_group = if fields[18] == "-" {
+            None
+        } else {
+            Some(fields[18].to_owned())
+        };
         let event = EvidenceEvent {
             event_id: fields[1].to_owned(),
             patient_binding: fields[2].to_owned(),
             source_principal: fields[3].to_owned(),
             resource_version: fields[4].to_owned(),
             payload_digest: fields[5].to_owned(),
-            clinical_event_time_ms: fields[6].parse::<i64>().map_err(|error| format!("answer-key-events.tsv line {}: invalid clinical event time: {error}", line_index + 1))?,
-            specimen_collected_at_ms: parse_optional_i64(fields[7], "specimen collection time", line_index)?,
+            clinical_event_time_ms: fields[6].parse::<i64>().map_err(|error| {
+                format!(
+                    "answer-key-events.tsv line {}: invalid clinical event time: {error}",
+                    line_index + 1
+                )
+            })?,
+            specimen_collected_at_ms: parse_optional_i64(
+                fields[7],
+                "specimen collection time",
+                line_index,
+            )?,
             analysis_performed_at_ms: parse_optional_i64(fields[8], "analysis time", line_index)?,
             result_issued_at_ms: parse_optional_i64(fields[9], "result issue time", line_index)?,
-            source_last_updated_at_ms: parse_optional_i64(fields[10], "source lastUpdated time", line_index)?,
-            ingested_at_ms: fields[11].parse::<i64>().map_err(|error| format!("answer-key-events.tsv line {}: invalid ingestion time: {error}", line_index + 1))?,
+            source_last_updated_at_ms: parse_optional_i64(
+                fields[10],
+                "source lastUpdated time",
+                line_index,
+            )?,
+            ingested_at_ms: fields[11].parse::<i64>().map_err(|error| {
+                format!(
+                    "answer-key-events.tsv line {}: invalid ingestion time: {error}",
+                    line_index + 1
+                )
+            })?,
             source_sequence: sequence,
             issuer_authenticated: parse_bool(fields[13], "issuer_authenticated")?,
             application_authorized: parse_bool(fields[14], "application_authorized")?,
@@ -275,9 +316,15 @@ fn parse_events(input: &str) -> Result<BTreeMap<String, Vec<EvidenceEvent>>, Str
             || event.source_principal.is_empty()
             || event.resource_version.is_empty()
             || event.payload_digest.len() != 64
-            || !event.payload_digest.bytes().all(|byte| byte.is_ascii_hexdigit())
+            || !event
+                .payload_digest
+                .bytes()
+                .all(|byte| byte.is_ascii_hexdigit())
         {
-            return Err(format!("answer-key-events.tsv line {}: invalid event identity or payload digest", line_index + 1));
+            return Err(format!(
+                "answer-key-events.tsv line {}: invalid event identity or payload digest",
+                line_index + 1
+            ));
         }
         events.entry(fields[0].to_owned()).or_default().push(event);
     }
@@ -294,51 +341,84 @@ pub fn load_fixture() -> Result<Vec<Task>, String> {
         validate_task(task)?;
     }
     if !events_by_task.is_empty() {
-        return Err(format!("events reference unknown tasks: {:?}", events_by_task.keys().collect::<Vec<_>>()));
+        return Err(format!(
+            "events reference unknown tasks: {:?}",
+            events_by_task.keys().collect::<Vec<_>>()
+        ));
     }
     Ok(tasks)
 }
 
 fn validate_task(task: &Task) -> Result<(), String> {
     if task.family.is_empty() || task.target_patient_binding.is_empty() {
-        return Err(format!("{}: family and target patient binding are required", task.task_id));
+        return Err(format!(
+            "{}: family and target patient binding are required",
+            task.task_id
+        ));
     }
     let mut event_ids = BTreeSet::new();
     for event in &task.events {
         if !event_ids.insert(event.event_id.as_str()) {
-            return Err(format!("{}: duplicate event id {}", task.task_id, event.event_id));
+            return Err(format!(
+                "{}: duplicate event id {}",
+                task.task_id, event.event_id
+            ));
         }
     }
 
     let expected_sets = [
         (&task.expected_timeline, EventRole::Current, "timeline"),
         (&task.expected_history, EventRole::History, "history"),
-        (&task.expected_quarantine, EventRole::Quarantine, "quarantine"),
+        (
+            &task.expected_quarantine,
+            EventRole::Quarantine,
+            "quarantine",
+        ),
     ];
     let mut expected_ids = BTreeSet::new();
     for (ids, role, channel) in expected_sets {
         for id in ids {
             if !expected_ids.insert(id.as_str()) {
-                return Err(format!("{}: event {id} appears in multiple expected channels", task.task_id));
+                return Err(format!(
+                    "{}: event {id} appears in multiple expected channels",
+                    task.task_id
+                ));
             }
-            let event = task.events.iter().find(|event| event.event_id == *id)
-                .ok_or_else(|| format!("{}: expected {channel} event {id} is absent", task.task_id))?;
+            let event = task
+                .events
+                .iter()
+                .find(|event| event.event_id == *id)
+                .ok_or_else(|| {
+                    format!("{}: expected {channel} event {id} is absent", task.task_id)
+                })?;
             if event.role != role {
-                return Err(format!("{}: event {id} has wrong fixture role for {channel}", task.task_id));
+                return Err(format!(
+                    "{}: event {id} has wrong fixture role for {channel}",
+                    task.task_id
+                ));
             }
         }
     }
 
-    let available_conflicts: BTreeSet<&str> = task.events.iter()
+    let available_conflicts: BTreeSet<&str> = task
+        .events
+        .iter()
         .filter(|event| event.role == EventRole::Conflict)
         .filter_map(|event| event.conflict_group.as_deref())
         .collect();
     for group in &task.expected_conflicts {
         if !available_conflicts.contains(group.as_str()) {
-            return Err(format!("{}: expected conflict group {group} has no conflict events", task.task_id));
+            return Err(format!(
+                "{}: expected conflict group {group} has no conflict events",
+                task.task_id
+            ));
         }
     }
-    if task.events.iter().any(|event| event.role == EventRole::Conflict && event.conflict_group.is_none()) {
+    if task
+        .events
+        .iter()
+        .any(|event| event.role == EventRole::Conflict && event.conflict_group.is_none())
+    {
         return Err(format!("{}: conflict event has no group id", task.task_id));
     }
     Ok(())
@@ -357,7 +437,11 @@ fn unique_ids<'a>(ids: impl Iterator<Item = &'a String>) -> (BTreeSet<&'a str>, 
 
 fn ratio(numerator: usize, denominator: usize) -> f64 {
     if denominator == 0 {
-        if numerator == 0 { 1.0 } else { 0.0 }
+        if numerator == 0 {
+            1.0
+        } else {
+            0.0
+        }
     } else {
         numerator as f64 / denominator as f64
     }
@@ -367,17 +451,28 @@ fn set_precision_recall(expected: &[String], actual: &[String]) -> (f64, f64) {
     let expected_set: BTreeSet<&str> = expected.iter().map(String::as_str).collect();
     let actual_set: BTreeSet<&str> = actual.iter().map(String::as_str).collect();
     let overlap = expected_set.intersection(&actual_set).count();
-    (ratio(overlap, actual_set.len()), ratio(overlap, expected_set.len()))
+    (
+        ratio(overlap, actual_set.len()),
+        ratio(overlap, expected_set.len()),
+    )
 }
 
 fn pairwise_order_accuracy(expected: &[String], actual: &[String]) -> f64 {
-    let expected_positions: BTreeMap<&str, usize> = expected.iter().enumerate()
-        .map(|(index, id)| (id.as_str(), index)).collect();
-    let actual_positions: BTreeMap<&str, usize> = actual.iter().enumerate()
-        .map(|(index, id)| (id.as_str(), index)).collect();
-    let common: Vec<&str> = expected_positions.keys()
+    let expected_positions: BTreeMap<&str, usize> = expected
+        .iter()
+        .enumerate()
+        .map(|(index, id)| (id.as_str(), index))
+        .collect();
+    let actual_positions: BTreeMap<&str, usize> = actual
+        .iter()
+        .enumerate()
+        .map(|(index, id)| (id.as_str(), index))
+        .collect();
+    let common: Vec<&str> = expected_positions
+        .keys()
         .filter(|id| actual_positions.contains_key(**id))
-        .copied().collect();
+        .copied()
+        .collect();
     if common.len() < 2 {
         return 1.0;
     }
@@ -386,7 +481,8 @@ fn pairwise_order_accuracy(expected: &[String], actual: &[String]) -> f64 {
     for left in 0..common.len() {
         for right in (left + 1)..common.len() {
             comparisons += 1;
-            let expected_order = expected_positions[common[left]] < expected_positions[common[right]];
+            let expected_order =
+                expected_positions[common[left]] < expected_positions[common[right]];
             let actual_order = actual_positions[common[left]] < actual_positions[common[right]];
             if expected_order == actual_order {
                 concordant += 1;
@@ -422,21 +518,41 @@ fn citation_matches(event: &EvidenceEvent, citation: &EventCitation) -> bool {
 /// Score a candidate output against one frozen synthetic task.
 pub fn evaluate(task: &Task, submission: &Submission) -> TaskScore {
     let expected_timeline = &task.expected_timeline;
-    let actual_timeline: Vec<String> = submission.timeline.iter().map(|item| item.event_id.clone()).collect();
+    let actual_timeline: Vec<String> = submission
+        .timeline
+        .iter()
+        .map(|item| item.event_id.clone())
+        .collect();
     let expected_history = &task.expected_history;
-    let actual_history: Vec<String> = submission.retained_history.iter().map(|item| item.event_id.clone()).collect();
+    let actual_history: Vec<String> = submission
+        .retained_history
+        .iter()
+        .map(|item| item.event_id.clone())
+        .collect();
 
-    let (timeline_precision, timeline_recall) = set_precision_recall(expected_timeline, &actual_timeline);
+    let (timeline_precision, timeline_recall) =
+        set_precision_recall(expected_timeline, &actual_timeline);
     let (_, history_recall) = set_precision_recall(expected_history, &actual_history);
-    let (_, quarantine_recall) = set_precision_recall(&task.expected_quarantine, &submission.quarantined_event_ids);
-    let (_, conflict_recall) = set_precision_recall(&task.expected_conflicts, &submission.unresolved_conflict_groups);
-
-    let (accepted_ids, duplicates) = unique_ids(
-        submission.timeline.iter().map(|item| &item.event_id)
-            .chain(submission.retained_history.iter().map(|item| &item.event_id))
+    let (_, quarantine_recall) =
+        set_precision_recall(&task.expected_quarantine, &submission.quarantined_event_ids);
+    let (_, conflict_recall) = set_precision_recall(
+        &task.expected_conflicts,
+        &submission.unresolved_conflict_groups,
     );
-    let event_by_id: BTreeMap<&str, &EvidenceEvent> = task.events.iter()
-        .map(|event| (event.event_id.as_str(), event)).collect();
+
+    let (_accepted_ids, duplicates) = unique_ids(
+        submission.timeline.iter().map(|item| &item.event_id).chain(
+            submission
+                .retained_history
+                .iter()
+                .map(|item| &item.event_id),
+        )
+    );
+    let event_by_id: BTreeMap<&str, &EvidenceEvent> = task
+        .events
+        .iter()
+        .map(|event| (event.event_id.as_str(), event))
+        .collect();
     let mut unsafe_acceptances = Vec::new();
     let mut provenance_errors = Vec::new();
 
@@ -524,9 +640,15 @@ pub fn evaluate(task: &Task, submission: &Submission) -> TaskScore {
 pub fn reference_submission(task: &Task) -> Submission {
     let event_by_id: BTreeMap<&str, &EvidenceEvent> = task.events.iter()
         .map(|event| (event.event_id.as_str(), event)).collect();
-    let citations = |ids: &[String]| ids.iter()
-        .filter_map(|id| event_by_id.get(id.as_str()).map(|event| EventCitation::from(*event)))
-        .collect();
+    let citations = |ids: &[String]| {
+        ids.iter()
+            .filter_map(|id| {
+                event_by_id
+                    .get(id.as_str())
+                    .map(|event| EventCitation::from(*event))
+            })
+            .collect()
+    };
     Submission {
         task_id: task.task_id.clone(),
         disposition: task.expected_disposition,
@@ -543,18 +665,30 @@ pub fn evaluate_batch(tasks: &[Task], submissions: &[Submission]) -> Result<Batc
     let mut seen = BTreeSet::new();
     for submission in submissions {
         if !seen.insert(submission.task_id.as_str()) {
-            return Err(format!("duplicate submission for task {}", submission.task_id));
+            return Err(format!(
+                "duplicate submission for task {}",
+                submission.task_id
+            ));
         }
         if !task_ids.contains(submission.task_id.as_str()) {
-            return Err(format!("submission references unknown task {}", submission.task_id));
+            return Err(format!(
+                "submission references unknown task {}",
+                submission.task_id
+            ));
         }
     }
     if submissions.len() != tasks.len() {
-        return Err(format!("expected {} submissions, received {}", tasks.len(), submissions.len()));
+        return Err(format!(
+            "expected {} submissions, received {}",
+            tasks.len(),
+            submissions.len()
+        ));
     }
 
-    let by_id: BTreeMap<&str, &Submission> = submissions.iter()
-        .map(|submission| (submission.task_id.as_str(), submission)).collect();
+    let by_id: BTreeMap<&str, &Submission> = submissions
+        .iter()
+        .map(|submission| (submission.task_id.as_str(), submission))
+        .collect();
     let mut report = BatchReport {
         task_count: tasks.len(),
         disposition_correct: 0,
@@ -569,7 +703,8 @@ pub fn evaluate_batch(tasks: &[Task], submissions: &[Submission]) -> Result<Batc
     };
 
     for task in tasks {
-        let submission = by_id.get(task.task_id.as_str())
+        let submission = by_id
+            .get(task.task_id.as_str())
             .ok_or_else(|| format!("missing submission for task {}", task.task_id))?;
         let score = evaluate(task, submission);
         report.disposition_correct += usize::from(score.disposition_correct);
@@ -598,7 +733,10 @@ mod tests {
     fn frozen_v1_corpus_loads_twenty_synthetic_tasks() {
         let tasks = load_fixture().expect("fixture must validate");
         assert_eq!(tasks.len(), 20);
-        assert_eq!(tasks.iter().map(|task| task.events.len()).sum::<usize>(), 32);
+        assert_eq!(
+            tasks.iter().map(|task| task.events.len()).sum::<usize>(),
+            32
+        );
     }
 
     #[test]
@@ -606,8 +744,16 @@ mod tests {
         let tasks = load_fixture().expect("fixture must validate");
         for task in &tasks {
             let result = evaluate(task, &reference_submission(task));
-            assert!(result.exact_match, "{} did not exactly match its reference: {result:?}", task.task_id);
-            assert!(result.hard_gates_pass, "{} failed a hard gate", task.task_id);
+            assert!(
+                result.exact_match,
+                "{} did not exactly match its reference: {result:?}",
+                task.task_id
+            );
+            assert!(
+                result.hard_gates_pass,
+                "{} failed a hard gate",
+                task.task_id
+            );
         }
     }
 
@@ -626,7 +772,11 @@ mod tests {
         let tasks = load_fixture().expect("fixture must validate");
         let task = tasks.iter().find(|task| task.task_id == "T07").unwrap();
         let mut submission = reference_submission(task);
-        let rejected = task.events.iter().find(|event| event.role == EventRole::Quarantine).unwrap();
+        let rejected = task
+            .events
+            .iter()
+            .find(|event| event.role == EventRole::Quarantine)
+            .unwrap();
         submission.timeline.push(EventCitation::from(rejected));
         submission.quarantined_event_ids.clear();
         let result = evaluate(task, &submission);
@@ -673,7 +823,11 @@ mod tests {
     fn specimen_analysis_issue_source_update_and_ingestion_times_remain_distinct() {
         let tasks = load_fixture().expect("fixture must validate");
         let task = tasks.iter().find(|task| task.task_id == "T15").unwrap();
-        let event = task.events.iter().find(|event| event.event_id == "E23").unwrap();
+        let event = task
+            .events
+            .iter()
+            .find(|event| event.event_id == "E23")
+            .unwrap();
         assert_eq!(event.specimen_collected_at_ms, Some(18_000));
         assert_eq!(event.analysis_performed_at_ms, Some(20_000));
         assert_eq!(event.result_issued_at_ms, Some(25_000));
