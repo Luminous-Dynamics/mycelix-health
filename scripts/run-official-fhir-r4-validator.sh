@@ -34,12 +34,23 @@ echo "FHIR version: $FHIR_VERSION"
 echo "Corpus SHA-256: $ACTUAL_SHA"
 echo "Output directory: $OUT_DIR"
 
+case_count="$(jq -r '.cases | length' "$CORPUS")"
+if [[ "$case_count" -lt 1 ]]; then
+  echo "Official FHIR validator corpus is empty" >&2
+  exit 1
+fi
+
 summary="$OUT_DIR/summary.tsv"
 printf 'case_id\texpected\tactual_errors\tstatus\n' > "$summary"
+processed=0
 
 while IFS= read -r row; do
   case_id="$(jq -r '.id' <<< "$row")"
   expected="$(jq -r '.expected' <<< "$row")"
+  if [[ "$expected" != "valid" && "$expected" != "invalid" ]]; then
+    echo "Unknown expected validation state '$expected' for $case_id" >&2
+    exit 1
+  fi
   input="$OUT_DIR/$case_id.json"
   report="$OUT_DIR/$case_id-operation-outcome.json"
   console="$OUT_DIR/$case_id-console.txt"
@@ -81,6 +92,12 @@ while IFS= read -r row; do
   fi
 
   printf '%s\t%s\t%s\t%s\n' "$case_id" "$expected" "$errors" "$status" | tee -a "$summary"
+  processed=$((processed + 1))
 done < <(jq -c '.cases[]' "$CORPUS")
 
-echo "Official FHIR R4 core validation passed for $(($(wc -l < "$summary") - 1)) cases."
+if [[ "$processed" -ne "$case_count" ]]; then
+  echo "Processed $processed of $case_count official-validator cases" >&2
+  exit 1
+fi
+
+echo "Official FHIR R4 core validation passed for $processed cases."
