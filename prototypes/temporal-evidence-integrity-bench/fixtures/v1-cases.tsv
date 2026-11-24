@@ -15,7 +15,7 @@ T13	incomplete_provenance_lineage	PAT-A	insufficient	-	-	E20	-
 T14	clinical_time_not_record_time	PAT-A	supported	E21,E22	-	-	-
 T15	specimen_analysis_issue_times	PAT-A	supported	E23,E24	-	-	-
 T16	unknown_source_revision_order	PAT-A	unknown_order	-	E25	-	-
-T17	conflicting_source_assertions	PAT-A	conflicted	-	-	-	CG17
+T17	conflicting_source_assertions	PAT-A	conflicted	-	-	-	assertion:subject:PAT-A|concept:synthetic-condition-status|effective:21000
 T18	measurement_method_transition	PAT-A	supported	E28,E29	-	-	-
 T19	terminology_version_transition	PAT-A	supported	E30,E31	-	-	-
 T20	clock_skew_does_not_define_revision	PAT-A	unknown_order	-	E32	-	-
