@@ -147,7 +147,7 @@ const report = await appClient.callZome({
       type: 'collection',
       entry: [
         {
-          fullUrl: 'Patient/12345',
+          fullUrl: 'https://ehr.example/fhir/Patient/12345',
           resource: {
             resourceType: 'Patient',
             id: '12345',
@@ -156,7 +156,7 @@ const report = await appClient.callZome({
           },
         },
         {
-          fullUrl: 'Condition/67890',
+          fullUrl: 'https://ehr.example/fhir/Condition/67890',
           resource: {
             resourceType: 'Condition',
             id: '67890',
@@ -221,11 +221,11 @@ The current `ingest_bundle` coordinator is a **single-patient** ingestion API.
 
 - A Bundle containing more than one Patient resource is rejected before any Patient is created.
 - Every patient-scoped resource must carry a resolvable `subject.reference` or `patient.reference`.
-- Relative `Patient/{id}` references are accepted only when their logical ID matches the selected Patient.
+- Relative `Patient/{id}` references are expanded from the referencing entry's RESTful `fullUrl`; the expanded URL must resolve uniquely to the selected Patient. Version-specific references must also match `Resource.meta.versionId`.
 - Absolute and `urn:uuid` references are accepted only when they exactly match one unique Bundle `entry.fullUrl` whose target is the selected Patient.
 - Missing, identifier-only, unresolved, ambiguous or mismatched references cause that resource to be skipped and described in the `IngestReport.parse_errors` list.
 - The bridge does not infer patient identity from Bundle proximity, timestamp, name similarity or a URL suffix.
-- A Bundle without a Patient resource may use a relative `Patient/{id}` reference only when the same-source Patient mapping already exists.
+- A Bundle without a Patient resource is rejected for now. Existing-patient attachment remains disabled until the source identity is authenticated and bound as tracked by issue #289.
 
 This is intentionally conservative. Identifier-only matching, multi-patient Bundles and cross-system master-patient-index reconciliation require separate versioned and audited policies; they are not guessed by this endpoint.
 
@@ -316,10 +316,8 @@ cargo test fhir_bridge --target x86_64-unknown-linux-gnu
 
 ## FHIR Compliance
 
-- **FHIR R4**: Full support for R4 resources
-- **US Core**: Export in US Core profile format
-- **IPS**: International Patient Summary export
-- **C-CDA**: Clinical Document Architecture export
+- **FHIR R4**: Implements a deliberately limited ingest/export mapping subset. This is not full FHIR R4 resource or element coverage, and it does not by itself establish profile conformance.
+- **US Core / IPS / C-CDA**: Export format options exist, but their presence is not evidence of profile/document conformance. Each requires separate profile validation and interoperability testing before making a conformance claim.
 
 ## Privacy & Consent
 

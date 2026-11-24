@@ -13,9 +13,7 @@ use hdk::prelude::Timestamp;
 /// Parse a timezone-qualified RFC3339 instant without changing the represented instant.
 pub fn parse_fhir_instant(value: &str, field: &str) -> Result<Timestamp, String> {
     let parsed = DateTime::parse_from_rfc3339(value).map_err(|error| {
-        format!(
-            "{field}: expected a timezone-qualified RFC3339 instant, got {value:?}: {error}"
-        )
+        format!("{field}: expected a timezone-qualified RFC3339 instant, got {value:?}: {error}")
     })?;
 
     Ok(Timestamp::from_micros(parsed.timestamp_micros()))
@@ -45,7 +43,9 @@ mod tests {
     fn rejects_date_only_precision_in_the_instant_only_profile() {
         let result = parse_fhir_instant("2025-01-10", "effectiveDateTime");
         assert!(result.is_err());
-        assert!(result.unwrap_err().contains("timezone-qualified RFC3339 instant"));
+        assert!(result
+            .unwrap_err()
+            .contains("timezone-qualified RFC3339 instant"));
     }
 
     #[test]

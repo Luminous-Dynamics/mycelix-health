@@ -18,7 +18,7 @@ use fhir_bridge_integrity::*;
 use hdk::prelude::*;
 
 mod patient_subject;
-use patient_subject::{relative_patient_id, resolve_patient_subject, PatientSubjectBinding};
+use patient_subject::{resolve_patient_subject, PatientSubjectBinding};
 mod observation_time;
 use observation_time::parse_fhir_instant;
 
@@ -255,25 +255,16 @@ pub fn ingest_bundle(input: IngestBundleInput) -> ExternResult<IngestReport> {
             Err(e) => report.parse_errors.push(format!("Patient: {}", e)),
         }
     } else {
-        for entry in &entries {
-            let Some(resource) = entry.get("resource") else {
-                continue;
-            };
-            let Some(patient_ref) = get_patient_reference(resource) else {
-                continue;
-            };
-            let Some(patient_id) = relative_patient_id(&patient_ref) else {
-                continue;
-            };
-
-            if let Some(hash) =
-                lookup_patient_by_fhir_reference(&patient_ref, &input.source_system)?
-            {
-                patient_hash = Some(hash);
-                patient_fhir_id = Some(patient_id.to_string());
-                break;
-            }
-        }
+        // The request currently carries a caller-supplied source_system label,
+        // not a verified EHR principal. Do not use it to attach an existing
+        // patient until the gateway/source-authority boundary in issue #289
+        // is implemented and qualified.
+        report.parse_errors.push(
+            "Bundle has no Patient resource; existing-patient resolution is disabled until authenticated source authority is bound"
+                .to_string(),
+        );
+        create_entry(&EntryTypes::IngestReport(report.clone()))?;
+        return Ok(report);
     }
 
     // If the source patient cannot be resolved unambiguously, no resource can
@@ -337,7 +328,13 @@ pub fn ingest_bundle(input: IngestBundleInput) -> ExternResult<IngestReport> {
             };
 
             let reference = get_patient_reference(resource);
-            match resolve_patient_subject(reference.as_deref(), bundle_patient_id, &entries) {
+            let source_full_url = entry.get("fullUrl").and_then(JsonValue::as_str);
+            match resolve_patient_subject(
+                reference.as_deref(),
+                source_full_url,
+                bundle_patient_id,
+                &entries,
+            ) {
                 PatientSubjectBinding::MatchesBundlePatient => {}
                 PatientSubjectBinding::DifferentPatient {
                     referenced_patient_id,
@@ -674,10 +671,8 @@ fn process_observation(
     let effective_raw = get_fhir_string(resource, "effectiveDateTime").ok_or_else(|| {
         "Observation has no effectiveDateTime; effectivePeriod/effectiveTiming/effectiveInstant and date-only precision are not supported by this mapping version".to_string()
     })?;
-    let effective_datetime = parse_fhir_instant(
-        &effective_raw,
-        "Observation.effectiveDateTime",
-    )?;
+    let effective_datetime =
+        parse_fhir_instant(&effective_raw, "Observation.effectiveDateTime")?;
     let issued = get_fhir_string(resource, "issued")
         .map(|value| parse_fhir_instant(&value, "Observation.issued"))
         .transpose()?;
@@ -1328,21 +1323,6 @@ fn create_resource_anchor(
     .map_err(|e| e.to_string())?;
 
     Ok(())
-}
-
-fn lookup_patient_by_fhir_reference(
-    reference: &str,
-    source_system: &str,
-) -> ExternResult<Option<ActionHash>> {
-    // Reference format: "Patient/123"
-    let parts: Vec<&str> = reference.split('/').collect();
-    if parts.len() == 2 && parts[0] == "Patient" {
-        let source_key = format!("{}:Patient:{}", source_system, parts[1]);
-        if let Some(anchor) = lookup_resource_anchor(&source_key)? {
-            return Ok(Some(anchor.internal_hash));
-        }
-    }
-    Ok(None)
 }
 
 fn extract_patient_name(resource: &JsonValue) -> (Option<String>, Option<String>) {
