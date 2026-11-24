@@ -187,6 +187,7 @@ pub struct Submission {
 #[derive(Clone, Debug, PartialEq)]
 pub struct TaskScore {
     pub task_id: String,
+    pub task_identity_correct: bool,
     pub disposition_correct: bool,
     pub timeline_exact: bool,
     pub history_exact: bool,
@@ -196,7 +197,9 @@ pub struct TaskScore {
     pub timeline_recall: f64,
     pub temporal_order_accuracy: f64,
     pub history_recall: f64,
+    pub quarantine_precision: f64,
     pub quarantine_recall: f64,
+    pub conflict_precision: f64,
     pub conflict_recall: f64,
     pub unsafe_acceptances: Vec<String>,
     pub provenance_errors: Vec<String>,
@@ -215,7 +218,9 @@ pub struct BatchReport {
     pub unsafe_acceptance_count: usize,
     pub provenance_error_count: usize,
     pub temporal_order_accuracy_mean: f64,
+    pub quarantine_precision_mean: f64,
     pub quarantine_recall_mean: f64,
+    pub conflict_precision_mean: f64,
     pub conflict_recall_mean: f64,
 }
 
@@ -716,12 +721,13 @@ pub fn evaluate(task: &Task, submission: &Submission) -> TaskScore {
     let (timeline_precision, timeline_recall) =
         set_precision_recall(expected_timeline, &actual_timeline);
     let (_, history_recall) = set_precision_recall(expected_history, &actual_history);
-    let (_, quarantine_recall) =
+    let (quarantine_precision, quarantine_recall) =
         set_precision_recall(&task.expected_quarantine, &submission.quarantined_event_ids);
-    let (_, conflict_recall) = set_precision_recall(
+    let (conflict_precision, conflict_recall) = set_precision_recall(
         &task.expected_conflicts,
         &submission.unresolved_conflict_groups,
     );
+    let task_identity_correct = submission.task_id == task.task_id;
 
     let (_accepted_ids, duplicates) = unique_ids(
         submission.timeline.iter().map(|item| &item.event_id).chain(
@@ -783,7 +789,8 @@ pub fn evaluate(task: &Task, submission: &Submission) -> TaskScore {
         actual == expected
     };
     let disposition_correct = submission.disposition == task.expected_disposition;
-    let exact_match = disposition_correct
+    let exact_match = task_identity_correct
+        && disposition_correct
         && timeline_exact
         && history_exact
         && quarantine_exact
@@ -792,7 +799,8 @@ pub fn evaluate(task: &Task, submission: &Submission) -> TaskScore {
         && provenance_errors.is_empty()
         && duplicates.is_empty();
 
-    let hard_gates_pass = unsafe_acceptances.is_empty()
+    let hard_gates_pass = task_identity_correct
+        && unsafe_acceptances.is_empty()
         && provenance_errors.is_empty()
         && duplicates.is_empty()
         && quarantine_recall == 1.0
@@ -800,6 +808,7 @@ pub fn evaluate(task: &Task, submission: &Submission) -> TaskScore {
 
     TaskScore {
         task_id: task.task_id.clone(),
+        task_identity_correct,
         disposition_correct,
         timeline_exact,
         history_exact,
@@ -809,7 +818,9 @@ pub fn evaluate(task: &Task, submission: &Submission) -> TaskScore {
         timeline_recall,
         temporal_order_accuracy: pairwise_order_accuracy(expected_timeline, &actual_timeline),
         history_recall,
+        quarantine_precision,
         quarantine_recall,
+        conflict_precision,
         conflict_recall,
         unsafe_acceptances,
         provenance_errors,
@@ -905,7 +916,9 @@ pub fn evaluate_batch(tasks: &[Task], submissions: &[Submission]) -> Result<Batc
         unsafe_acceptance_count: 0,
         provenance_error_count: 0,
         temporal_order_accuracy_mean: 0.0,
+        quarantine_precision_mean: 0.0,
         quarantine_recall_mean: 0.0,
+        conflict_precision_mean: 0.0,
         conflict_recall_mean: 0.0,
     };
 
@@ -921,13 +934,17 @@ pub fn evaluate_batch(tasks: &[Task], submissions: &[Submission]) -> Result<Batc
         report.unsafe_acceptance_count += score.unsafe_acceptances.len();
         report.provenance_error_count += score.provenance_errors.len();
         report.temporal_order_accuracy_mean += score.temporal_order_accuracy;
+        report.quarantine_precision_mean += score.quarantine_precision;
         report.quarantine_recall_mean += score.quarantine_recall;
+        report.conflict_precision_mean += score.conflict_precision;
         report.conflict_recall_mean += score.conflict_recall;
     }
 
     let count = report.task_count as f64;
     report.temporal_order_accuracy_mean /= count;
+    report.quarantine_precision_mean /= count;
     report.quarantine_recall_mean /= count;
+    report.conflict_precision_mean /= count;
     report.conflict_recall_mean /= count;
     Ok(report)
 }
@@ -1039,7 +1056,7 @@ mod tests {
         let tasks = load_fixture().expect("fixture must validate");
         let task = tasks.iter().find(|task| task.task_id == "T03").unwrap();
         let mut submission = reference_submission(task);
-        submission.timeline[0].payload_digest = "f".repeat(64);
+        submission.timeline[0].payload_digest = "0".repeat(64);
         let result = evaluate(task, &submission);
         assert_eq!(result.provenance_errors, vec!["E06".to_owned()]);
         assert!(!result.hard_gates_pass);
@@ -1096,6 +1113,41 @@ mod tests {
         assert_eq!(submission.retained_history[0].event_id, "E05");
         let result = evaluate(task, &submission);
         assert!(result.exact_match);
+    }
+
+
+    #[test]
+    fn submission_must_be_bound_to_the_requested_task() {
+        let tasks = load_fixture().expect("fixture must validate");
+        let task = tasks.iter().find(|task| task.task_id == "T01").unwrap();
+        let mut submission = reference_submission(task);
+        submission.task_id = "T99".to_owned();
+        let result = evaluate(task, &submission);
+        assert!(!result.task_identity_correct);
+        assert!(!result.exact_match);
+        assert!(!result.hard_gates_pass);
+    }
+
+    #[test]
+    fn false_positive_quarantine_and_conflict_labels_reduce_precision() {
+        let tasks = load_fixture().expect("fixture must validate");
+        let quarantine_task = tasks.iter().find(|task| task.task_id == "T07").unwrap();
+        let mut quarantine_submission = reference_submission(quarantine_task);
+        quarantine_submission.quarantined_event_ids.push("EXTRA".to_owned());
+        let quarantine_score = evaluate(quarantine_task, &quarantine_submission);
+        assert_eq!(quarantine_score.quarantine_precision, 0.5);
+        assert_eq!(quarantine_score.quarantine_recall, 1.0);
+        assert!(!quarantine_score.exact_match);
+
+        let conflict_task = tasks.iter().find(|task| task.task_id == "T05").unwrap();
+        let mut conflict_submission = reference_submission(conflict_task);
+        conflict_submission
+            .unresolved_conflict_groups
+            .push("EXTRA".to_owned());
+        let conflict_score = evaluate(conflict_task, &conflict_submission);
+        assert_eq!(conflict_score.conflict_precision, 0.5);
+        assert_eq!(conflict_score.conflict_recall, 1.0);
+        assert!(!conflict_score.exact_match);
     }
 
     #[test]
