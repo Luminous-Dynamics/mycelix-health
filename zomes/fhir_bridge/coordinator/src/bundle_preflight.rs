@@ -190,7 +190,9 @@ mod tests {
             "entry": [{ "resource": { "resourceType": "Patient", "id": "patient-1" } }]
         });
         let errors = validate_collection_bundle(&bundle).expect_err("missing fullUrl rejects");
-        assert!(errors.iter().any(|error| error.contains("fullUrl is required")));
+        assert!(errors
+            .iter()
+            .any(|error| error.contains("fullUrl is required")));
     }
 
     #[test]

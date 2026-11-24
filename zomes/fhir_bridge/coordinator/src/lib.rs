@@ -17,8 +17,8 @@
 use fhir_bridge_integrity::*;
 use hdk::prelude::*;
 
-mod patient_subject;
 mod bundle_preflight;
+mod patient_subject;
 use bundle_preflight::validate_collection_bundle;
 use patient_subject::{
     bundle_entry_full_url_matches_resource, resolve_patient_subject, PatientSubjectBinding,

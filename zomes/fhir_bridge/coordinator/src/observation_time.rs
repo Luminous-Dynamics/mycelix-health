@@ -87,9 +87,7 @@ pub fn parse_observation_temporal_evidence(
 
     let issued = match resource.get("issued") {
         None => None,
-        Some(Value::String(value)) => {
-            Some(parse_fhir_instant(value, "Observation.issued")?)
-        }
+        Some(Value::String(value)) => Some(parse_fhir_instant(value, "Observation.issued")?),
         Some(_) => {
             return Err("Observation.issued must be a string when present".to_string());
         }
@@ -143,9 +141,7 @@ mod tests {
             "2025-01-10T08:20:00.123456789Z",
             "Observation.effectiveDateTime",
         );
-        assert!(result
-            .unwrap_err()
-            .contains("sub-microsecond precision"));
+        assert!(result.unwrap_err().contains("sub-microsecond precision"));
     }
 
     #[test]
@@ -218,8 +214,14 @@ mod tests {
             }
         }
 
-        assert!(accepted >= 5, "positive temporal controls must be exercised");
-        assert!(rejected >= 8, "negative temporal controls must be exercised");
+        assert!(
+            accepted >= 5,
+            "positive temporal controls must be exercised"
+        );
+        assert!(
+            rejected >= 8,
+            "negative temporal controls must be exercised"
+        );
         assert_eq!(accepted + rejected, cases.len());
     }
 }
