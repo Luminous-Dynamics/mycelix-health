@@ -208,9 +208,7 @@ pub fn classify_revision(
                     return Ok(assessment(RevisionDisposition::VersionEquivocation));
                 }
                 if prior.source_order != incoming.source_order {
-                    return Ok(assessment(
-                        RevisionDisposition::SourceOrderMetadataConflict,
-                    ));
+                    return Ok(assessment(RevisionDisposition::SourceOrderMetadataConflict));
                 }
                 return Ok(assessment(RevisionDisposition::ExactReplay));
             }
@@ -447,7 +445,9 @@ mod tests {
         let prior = revision("tenant-a", "issuer-a", Some("v1"), 1, Some(1));
         let incoming_other_tenant = revision("tenant-b", "issuer-a", Some("v1"), 1, Some(1));
         assert_eq!(
-            classify_revision(&incoming_other_tenant, &[prior], None).unwrap().disposition,
+            classify_revision(&incoming_other_tenant, &[prior], None)
+                .unwrap()
+                .disposition,
             RevisionDisposition::FirstRevision
         );
     }
@@ -492,7 +492,10 @@ mod tests {
                 "unknown disposition in fixture {}",
                 fields[0]
             );
-            assert!(!fields[3].trim().is_empty(), "fixture effect must not be empty");
+            assert!(
+                !fields[3].trim().is_empty(),
+                "fixture effect must not be empty"
+            );
             rows += 1;
         }
         assert_eq!(rows, 15, "v1 fixture catalogue size changed");
