@@ -323,7 +323,6 @@ describe('EHR Gateway Server', () => {
     });
 
     it('GET /auth/smart/launch rejects caller-controlled redirect_uri', async () => {
-      mockGateway.isConnected.mockReturnValueOnce(true);
       mockGateway.getAuthorizationUrl.mockClear();
 
       const res = await app.request(
@@ -404,7 +403,6 @@ describe('EHR Gateway Server', () => {
     });
 
     it('POST /sync/patient/:id with async=true returns job ID', async () => {
-      mockGateway.isConnected.mockReturnValueOnce(true);
       mockGateway.pullPatientData.mockResolvedValueOnce([]);
 
       const res = await app.request(
