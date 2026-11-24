@@ -67,7 +67,7 @@ Equivalent command:
 
 \`\`\`bash
 HOST="$(rustc -vV | sed -n 's/^host: //p')"
-cargo test -p fhir_bridge_coordinator --target "$HOST" fhir_subject_binding_v1_corpus
+cargo test -p fhir_bridge --target "$HOST" fhir_subject_binding_v1_corpus
 \`\`\`
 
 ## Reporting
@@ -110,8 +110,8 @@ Run both first slices from the repository root:
 
 \`\`\`bash
 HOST="$(rustc -vV | sed -n 's/^host: //p')"
-cargo test -p fhir_bridge_coordinator --target "$HOST" fhir_subject_binding_v1_corpus
-cargo test -p fhir_bridge_coordinator --target "$HOST" observation_temporal_fidelity_v1_corpus
+cargo test -p fhir_bridge --target "$HOST" fhir_subject_binding_v1_corpus
+cargo test -p fhir_bridge --target "$HOST" observation_temporal_fidelity_v1_corpus
 \`\`\`
 
 A successful test result demonstrates only exact behavior for these finite,

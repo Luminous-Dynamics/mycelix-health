@@ -23,7 +23,7 @@ sha256sum \
 
 cargo test \
   --manifest-path "$ROOT/Cargo.toml" \
-  -p fhir_bridge_coordinator \
+  -p fhir_bridge \
   --target "$HOST" \
   v1_corpus \
   -- --nocapture

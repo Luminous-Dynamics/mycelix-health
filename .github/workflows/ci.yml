@@ -151,7 +151,7 @@ jobs:
             ${{ runner.os }}-fhir-evidence-
 
       - name: Check FHIR coordinator formatting
-        run: cargo fmt -p fhir_bridge_coordinator -- --check
+        run: cargo fmt -p fhir_bridge -- --check
 
       - name: Run frozen FHIR evidence corpora
         run: ./scripts/run-clinical-evidence-fhir-corpora.sh

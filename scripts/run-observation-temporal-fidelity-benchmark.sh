@@ -17,7 +17,7 @@ sha256sum "$ROOT/benchmarks/clinical-evidence-integrity/observation-temporal-fid
 
 cargo test \
   --manifest-path "$ROOT/Cargo.toml" \
-  -p fhir_bridge_coordinator \
+  -p fhir_bridge \
   --target "$HOST" \
   observation_temporal_fidelity_v1_corpus \
   -- --nocapture

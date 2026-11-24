@@ -19,7 +19,7 @@ sha256sum "$CORPUS"
 
 cargo test \
   --manifest-path "$ROOT/Cargo.toml" \
-  -p fhir_bridge_coordinator \
+  -p fhir_bridge \
   --target "$HOST" \
   fhir_bundle_preflight_v1_corpus \
   -- --nocapture
