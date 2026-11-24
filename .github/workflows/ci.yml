@@ -148,7 +148,7 @@ jobs:
         run: cargo install --locked --version 0.22.0 cargo-deny
 
       - name: Check dependency policy
-        run: cargo deny check --all-features
+        run: cargo deny --all-features check
 
   # TypeScript SDK
   sdk:
@@ -234,5 +234,14 @@ jobs:
       - name: Build hApp zomes
         run: nix develop --command bash -euo pipefail -c 'cargo build --release --workspace'
 
-      - name: Run integration tests with pinned Holonix tools
-        run: nix develop --command bash -euo pipefail -c 'cd tests/integration && npm install --no-package-lock --ignore-scripts --no-audit --no-fund && npm test'
+      - name: Generate a one-time lockfile for the previously unpinned integration package
+        run: nix develop --command bash -euo pipefail -c 'cd tests/integration && npm install --package-lock-only --ignore-scripts --no-audit --no-fund'
+      - name: Install and run integration tests with the pinned Holonix toolchain
+        run: nix develop --command bash -euo pipefail -c 'cd tests/integration && npm ci --ignore-scripts --no-audit --no-fund && npm test'
+      - name: Export generated integration lockfile for repository pinning
+        uses: actions/upload-artifact@v4
+        with:
+          name: integration-package-lock
+          path: tests/integration/package-lock.json
+          if-no-files-found: error
+          retention-days: 3
