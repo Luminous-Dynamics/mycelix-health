@@ -562,7 +562,7 @@ mod tests {
     fn frozen_v1_corpus_loads_twenty_synthetic_tasks() {
         let tasks = load_fixture().expect("fixture must validate");
         assert_eq!(tasks.len(), 20);
-        assert_eq!(tasks.iter().map(|task| task.events.len()).sum::<usize>(), 29);
+        assert_eq!(tasks.iter().map(|task| task.events.len()).sum::<usize>(), 32);
     }
 
     #[test]
