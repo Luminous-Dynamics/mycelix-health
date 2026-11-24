@@ -405,7 +405,7 @@ fn parse_visible_events(
             terminology_system: optional_text(fields[8]),
             terminology_version: optional_text(fields[9]),
             terminology_code: optional_text(fields[10]),
-            clinical_event_time_ms: fields[16].parse::<i64>().map_err(|error| {
+            clinical_event_time_ms: fields[11].parse::<i64>().map_err(|error| {
                 format!(
                     "visible events.tsv line {}: invalid clinical event time: {error}",
                     line_index + 1
@@ -492,7 +492,7 @@ fn parse_events(input: &str) -> Result<BTreeMap<String, Vec<EvidenceEvent>>, Str
             terminology_system: optional_text(fields[8]),
             terminology_version: optional_text(fields[9]),
             terminology_code: optional_text(fields[10]),
-            clinical_event_time_ms: fields[16].parse::<i64>().map_err(|error| {
+            clinical_event_time_ms: fields[11].parse::<i64>().map_err(|error| {
                 format!(
                     "answer-key-events.tsv line {}: invalid clinical event time: {error}",
                     line_index + 1
@@ -1157,6 +1157,61 @@ mod tests {
         assert_eq!(event.ingested_at_ms, 27_000);
         let submission = reference_submission(task);
         assert_eq!(submission.timeline[0].result_issued_at_ms, Some(25_000));
+    }
+
+
+    #[test]
+    fn measurement_method_and_terminology_versions_remain_explicit() {
+        let tasks = load_fixture().expect("fixture must validate");
+        let visible = load_visible_fixture().expect("visible fixture must validate");
+
+        let method_task = tasks.iter().find(|task| task.task_id == "T18").unwrap();
+        let method_a = method_task
+            .events
+            .iter()
+            .find(|event| event.event_id == "E28")
+            .unwrap();
+        let method_b = method_task
+            .events
+            .iter()
+            .find(|event| event.event_id == "E29")
+            .unwrap();
+        assert_eq!(method_a.measurement_method.as_deref(), Some("assay-A"));
+        assert_eq!(method_b.measurement_method.as_deref(), Some("assay-B"));
+        assert_eq!(method_a.measurement_unit.as_deref(), Some("mmol/L"));
+        assert_eq!(method_b.measurement_unit.as_deref(), Some("mmol/L"));
+
+        let terminology_task = tasks.iter().find(|task| task.task_id == "T19").unwrap();
+        let terminology_a = terminology_task
+            .events
+            .iter()
+            .find(|event| event.event_id == "E30")
+            .unwrap();
+        let terminology_b = terminology_task
+            .events
+            .iter()
+            .find(|event| event.event_id == "E31")
+            .unwrap();
+        assert_eq!(
+            terminology_a.terminology_system.as_deref(),
+            Some("urn:mycelix:synthetic-terminology")
+        );
+        assert_eq!(terminology_a.terminology_version.as_deref(), Some("2026-01"));
+        assert_eq!(terminology_b.terminology_version.as_deref(), Some("2026-06"));
+        assert_eq!(terminology_a.terminology_code, terminology_b.terminology_code);
+
+        let visible_method_task = visible.iter().find(|task| task.task_id == "T18").unwrap();
+        let visible_method_a = visible_method_task
+            .events
+            .iter()
+            .find(|event| event.event_id == "E28")
+            .unwrap();
+        assert_eq!(visible_method_a.measurement_method.as_deref(), Some("assay-A"));
+        assert!(!visible_method_task.request.trim().is_empty());
+
+        let citation = EventCitation::from(method_a);
+        assert_eq!(citation.measurement_method, method_a.measurement_method);
+        assert_eq!(citation.measurement_unit, method_a.measurement_unit);
     }
 
     #[test]
