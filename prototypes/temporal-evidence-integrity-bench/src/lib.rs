@@ -546,7 +546,7 @@ pub fn evaluate(task: &Task, submission: &Submission) -> TaskScore {
                 .retained_history
                 .iter()
                 .map(|item| &item.event_id),
-        )
+        ),
     );
     let event_by_id: BTreeMap<&str, &EvidenceEvent> = task
         .events
@@ -638,8 +638,11 @@ pub fn evaluate(task: &Task, submission: &Submission) -> TaskScore {
 
 /// Construct the reference submission for evaluator tests and deterministic baselines.
 pub fn reference_submission(task: &Task) -> Submission {
-    let event_by_id: BTreeMap<&str, &EvidenceEvent> = task.events.iter()
-        .map(|event| (event.event_id.as_str(), event)).collect();
+    let event_by_id: BTreeMap<&str, &EvidenceEvent> = task
+        .events
+        .iter()
+        .map(|event| (event.event_id.as_str(), event))
+        .collect();
     let citations = |ids: &[String]| {
         ids.iter()
             .filter_map(|id| {
