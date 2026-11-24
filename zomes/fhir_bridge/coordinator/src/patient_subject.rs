@@ -92,7 +92,10 @@ pub fn bundle_entry_full_url_matches_resource(entry: &Value) -> bool {
         .get("resourceType")
         .and_then(Value::as_str)
         .unwrap_or_default();
-    let resource_id = resource.get("id").and_then(Value::as_str).unwrap_or_default();
+    let resource_id = resource
+        .get("id")
+        .and_then(Value::as_str)
+        .unwrap_or_default();
 
     full_url_type == resource_type && full_url_id == resource_id
 }
@@ -263,7 +266,8 @@ fn resolve_bundle_target(
                 };
                 if full_url_type != "Patient" || full_url_id != referenced_id {
                     return PatientSubjectBinding::Unresolved {
-                        reason: "Patient fullUrl type/id disagrees with embedded resource".to_string(),
+                        reason: "Patient fullUrl type/id disagrees with embedded resource"
+                            .to_string(),
                     };
                 }
             }
@@ -323,8 +327,14 @@ mod tests {
     #[test]
     fn rejects_relative_reference_without_a_consistent_restful_source_url() {
         for source in [
-            Some(source_entry("urn:uuid:00000000-0000-4000-8000-000000000002", "o-1")),
-            Some(source_entry("https://ehr.example/fhir/Observation/other", "o-1")),
+            Some(source_entry(
+                "urn:uuid:00000000-0000-4000-8000-000000000002",
+                "o-1",
+            )),
+            Some(source_entry(
+                "https://ehr.example/fhir/Observation/other",
+                "o-1",
+            )),
         ] {
             assert!(matches!(
                 resolve_patient_subject(Some("Patient/p-1"), source.as_ref(), "p-1", &[]),
@@ -475,17 +485,10 @@ mod tests {
 
     #[test]
     fn rejects_inconsistent_source_or_patient_bundle_entry_identity() {
-        let source = source_entry(
-            "https://ehr.example/fhir/Observation/o-spoofed",
-            "o-1",
-        );
+        let source = source_entry("https://ehr.example/fhir/Observation/o-spoofed", "o-1");
         assert!(!bundle_entry_full_url_matches_resource(&source));
 
-        let patient = patient_entry(
-            "https://ehr.example/fhir/Patient/p-spoofed",
-            "p-1",
-            None,
-        );
+        let patient = patient_entry("https://ehr.example/fhir/Patient/p-spoofed", "p-1", None);
         assert!(!bundle_entry_full_url_matches_resource(&patient));
     }
 
@@ -498,12 +501,7 @@ mod tests {
         )];
         let source = source_entry(SOURCE_FULL_URL, "o-1");
         assert_eq!(
-            resolve_patient_subject(
-                Some("Patient/p-2"),
-                Some(&source),
-                "p-1",
-                &entries
-            ),
+            resolve_patient_subject(Some("Patient/p-2"), Some(&source), "p-1", &entries),
             PatientSubjectBinding::DifferentPatient {
                 referenced_patient_id: "p-2".to_string()
             }

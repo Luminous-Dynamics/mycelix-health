@@ -256,7 +256,9 @@ pub fn ingest_bundle(input: IngestBundleInput) -> ExternResult<IngestReport> {
             return Ok(report);
         }
         let Some(resource) = patient_entry.get("resource") else {
-            report.parse_errors.push("Patient entry has no resource".to_string());
+            report
+                .parse_errors
+                .push("Patient entry has no resource".to_string());
             create_entry(&EntryTypes::IngestReport(report.clone()))?;
             return Ok(report);
         };
