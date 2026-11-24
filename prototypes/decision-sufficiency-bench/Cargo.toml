@@ -1,0 +1,9 @@
+[package]
+name = "mycelix-decision-sufficiency-bench"
+version = "0.1.0"
+edition = "2021"
+license = "AGPL-3.0-or-later"
+publish = false
+description = "Dependency-free reference evaluator for evidence sufficiency and value-of-information benchmark tasks"
+
+[workspace]
