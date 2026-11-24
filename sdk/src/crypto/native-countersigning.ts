@@ -313,10 +313,16 @@ function assertPreflightMatchesIntentBytes(
   intent: ClinicalCountersigningIntentV1,
   preflight: UnknownRecord,
   intentBytes: Uint8Array,
+  expectedAppEntryHash?: Uint8Array,
 ): void {
   const preflightBytes = preflight.preflight_bytes;
   if (!isBytes(preflightBytes) || !bytesEqual(preflightBytes, intentBytes)) {
     throw new Error("Preflight bytes do not match the exact clinical countersigning intent");
+  }
+  if (expectedAppEntryHash
+    && (!isBytes(preflight.app_entry_hash)
+      || !bytesEqual(preflight.app_entry_hash, expectedAppEntryHash))) {
+    throw new Error("Preflight App entry hash does not match the exact verified App entry");
   }
 
   const sessionTimes = asRecord(preflight.session_times);
@@ -383,10 +389,6 @@ export async function verifyNativeClinicalCountersigningEvidenceV1(
   if (evidence.evidence_version !== 1) throw new Error("Unsupported native countersigning evidence version");
   validateIntent(evidence.intent);
   const intentBytes = await encodeClinicalCountersigningIntentV1(evidence.intent);
-  const decodedPreflight = asRecord(decodeMessagePack(evidence.preflight_request_bytes, "Preflight request"));
-  if (!decodedPreflight) throw new Error("Preflight request is not a MessagePack map");
-  assertPreflightMatchesIntentBytes(evidence.intent, decodedPreflight, intentBytes);
-
   const appEntryHash = expectHash(evidence.app_entry_hash_bytes, "App entry hash");
   if (encodeHashToBase64(appEntryHash) !== evidence.app_entry_hash_binding) {
     throw new Error("App entry hash binding mismatch");
@@ -395,6 +397,10 @@ export async function verifyNativeClinicalCountersigningEvidenceV1(
   if (!bytesEqual(appEntryHash, computedAppEntryHash)) {
     throw new Error("App entry hash does not match exact App entry bytes");
   }
+
+  const decodedPreflight = asRecord(decodeMessagePack(evidence.preflight_request_bytes, "Preflight request"));
+  if (!decodedPreflight) throw new Error("Preflight request is not a MessagePack map");
+  assertPreflightMatchesIntentBytes(evidence.intent, decodedPreflight, intentBytes, computedAppEntryHash);
 
   const appEntry = asRecord(decodeMessagePack(evidence.app_entry_bytes, "App entry"));
   if (!appEntry || appEntry.entry_type !== "App" || !isBytes(appEntry.entry)) {
@@ -426,7 +432,7 @@ export async function verifyNativeClinicalCountersigningEvidenceV1(
   }
   const sessionPreflight = asRecord(session.preflight_request);
   if (!sessionPreflight) throw new Error("Countersigned session is missing its preflight request");
-  assertPreflightMatchesIntentBytes(evidence.intent, sessionPreflight, intentBytes);
+  assertPreflightMatchesIntentBytes(evidence.intent, sessionPreflight, intentBytes, computedAppEntryHash);
 
   const responses = session.responses;
   if (!Array.isArray(responses) || responses.length !== evidence.intent.participants.length) {
