@@ -63,7 +63,11 @@ pub struct EvidenceEvent {
     pub resource_version: String,
     pub payload_digest: String,
     pub clinical_event_time_ms: i64,
-    pub recorded_at_ms: i64,
+    pub specimen_collected_at_ms: Option<i64>,
+    pub analysis_performed_at_ms: Option<i64>,
+    pub result_issued_at_ms: Option<i64>,
+    pub source_last_updated_at_ms: Option<i64>,
+    pub ingested_at_ms: i64,
     pub source_sequence: Option<u64>,
     pub issuer_authenticated: bool,
     pub application_authorized: bool,
@@ -93,6 +97,11 @@ pub struct EventCitation {
     pub resource_version: String,
     pub payload_digest: String,
     pub clinical_event_time_ms: i64,
+    pub specimen_collected_at_ms: Option<i64>,
+    pub analysis_performed_at_ms: Option<i64>,
+    pub result_issued_at_ms: Option<i64>,
+    pub source_last_updated_at_ms: Option<i64>,
+    pub ingested_at_ms: i64,
 }
 
 impl From<&EvidenceEvent> for EventCitation {
@@ -103,6 +112,11 @@ impl From<&EvidenceEvent> for EventCitation {
             resource_version: event.resource_version.clone(),
             payload_digest: event.payload_digest.clone(),
             clinical_event_time_ms: event.clinical_event_time_ms,
+            specimen_collected_at_ms: event.specimen_collected_at_ms,
+            analysis_performed_at_ms: event.analysis_performed_at_ms,
+            result_issued_at_ms: event.result_issued_at_ms,
+            source_last_updated_at_ms: event.source_last_updated_at_ms,
+            ingested_at_ms: event.ingested_at_ms,
         }
     }
 }
@@ -207,6 +221,16 @@ fn parse_cases(input: &str) -> Result<Vec<Task>, String> {
     Ok(tasks)
 }
 
+fn parse_optional_i64(value: &str, field: &str, line_index: usize) -> Result<Option<i64>, String> {
+    if value == "-" {
+        Ok(None)
+    } else {
+        value.parse::<i64>().map(Some).map_err(|error| {
+            format!("events.tsv line {}: invalid {field}: {error}", line_index + 1)
+        })
+    }
+}
+
 fn parse_events(input: &str) -> Result<BTreeMap<String, Vec<EvidenceEvent>>, String> {
     let mut events = BTreeMap::<String, Vec<EvidenceEvent>>::new();
 
@@ -215,29 +239,33 @@ fn parse_events(input: &str) -> Result<BTreeMap<String, Vec<EvidenceEvent>>, Str
             continue;
         }
         let fields: Vec<&str> = line.split('\t').collect();
-        if fields.len() != 15 {
-            return Err(format!("events.tsv line {}: expected 15 columns, got {}", line_index + 1, fields.len()));
+        if fields.len() != 19 {
+            return Err(format!("answer-key-events.tsv line {}: expected 19 columns, got {}", line_index + 1, fields.len()));
         }
-        let sequence = if fields[8] == "-" {
+        let sequence = if fields[12] == "-" {
             None
         } else {
-            Some(fields[8].parse::<u64>().map_err(|error| format!("events.tsv line {}: invalid sequence: {error}", line_index + 1))?)
+            Some(fields[12].parse::<u64>().map_err(|error| format!("answer-key-events.tsv line {}: invalid sequence: {error}", line_index + 1))?)
         };
-        let conflict_group = if fields[14] == "-" { None } else { Some(fields[14].to_owned()) };
+        let conflict_group = if fields[18] == "-" { None } else { Some(fields[18].to_owned()) };
         let event = EvidenceEvent {
             event_id: fields[1].to_owned(),
             patient_binding: fields[2].to_owned(),
             source_principal: fields[3].to_owned(),
             resource_version: fields[4].to_owned(),
             payload_digest: fields[5].to_owned(),
-            clinical_event_time_ms: fields[6].parse::<i64>().map_err(|error| format!("events.tsv line {}: invalid clinical event time: {error}", line_index + 1))?,
-            recorded_at_ms: fields[7].parse::<i64>().map_err(|error| format!("events.tsv line {}: invalid record time: {error}", line_index + 1))?,
+            clinical_event_time_ms: fields[6].parse::<i64>().map_err(|error| format!("answer-key-events.tsv line {}: invalid clinical event time: {error}", line_index + 1))?,
+            specimen_collected_at_ms: parse_optional_i64(fields[7], "specimen collection time", line_index)?,
+            analysis_performed_at_ms: parse_optional_i64(fields[8], "analysis time", line_index)?,
+            result_issued_at_ms: parse_optional_i64(fields[9], "result issue time", line_index)?,
+            source_last_updated_at_ms: parse_optional_i64(fields[10], "source lastUpdated time", line_index)?,
+            ingested_at_ms: fields[11].parse::<i64>().map_err(|error| format!("answer-key-events.tsv line {}: invalid ingestion time: {error}", line_index + 1))?,
             source_sequence: sequence,
-            issuer_authenticated: parse_bool(fields[9], "issuer_authenticated")?,
-            application_authorized: parse_bool(fields[10], "application_authorized")?,
-            lineage_complete: parse_bool(fields[11], "lineage_complete")?,
-            expired: parse_bool(fields[12], "expired")?,
-            role: EventRole::parse(fields[13])?,
+            issuer_authenticated: parse_bool(fields[13], "issuer_authenticated")?,
+            application_authorized: parse_bool(fields[14], "application_authorized")?,
+            lineage_complete: parse_bool(fields[15], "lineage_complete")?,
+            expired: parse_bool(fields[16], "expired")?,
+            role: EventRole::parse(fields[17])?,
             conflict_group,
         };
         if event.event_id.is_empty()
@@ -247,7 +275,7 @@ fn parse_events(input: &str) -> Result<BTreeMap<String, Vec<EvidenceEvent>>, Str
             || event.payload_digest.len() != 64
             || !event.payload_digest.bytes().all(|byte| byte.is_ascii_hexdigit())
         {
-            return Err(format!("events.tsv line {}: invalid event identity or payload digest", line_index + 1));
+            return Err(format!("answer-key-events.tsv line {}: invalid event identity or payload digest", line_index + 1));
         }
         events.entry(fields[0].to_owned()).or_default().push(event);
     }
@@ -257,7 +285,7 @@ fn parse_events(input: &str) -> Result<BTreeMap<String, Vec<EvidenceEvent>>, Str
 /// Load the frozen v1 synthetic benchmark corpus compiled into this crate.
 pub fn load_fixture() -> Result<Vec<Task>, String> {
     let mut tasks = parse_cases(include_str!("../fixtures/v1-cases.tsv"))?;
-    let mut events_by_task = parse_events(include_str!("../fixtures/v1-events.tsv"))?;
+    let mut events_by_task = parse_events(include_str!("../fixtures/v1-answer-key-events.tsv"))?;
 
     for task in &mut tasks {
         task.events = events_by_task.remove(&task.task_id).unwrap_or_default();
@@ -381,6 +409,11 @@ fn citation_matches(event: &EvidenceEvent, citation: &EventCitation) -> bool {
         && event.resource_version == citation.resource_version
         && event.payload_digest == citation.payload_digest
         && event.clinical_event_time_ms == citation.clinical_event_time_ms
+        && event.specimen_collected_at_ms == citation.specimen_collected_at_ms
+        && event.analysis_performed_at_ms == citation.analysis_performed_at_ms
+        && event.result_issued_at_ms == citation.result_issued_at_ms
+        && event.source_last_updated_at_ms == citation.source_last_updated_at_ms
+        && event.ingested_at_ms == citation.ingested_at_ms
 }
 
 /// Score a candidate output against one frozen synthetic task.
@@ -579,7 +612,7 @@ mod tests {
     fn ingestion_order_does_not_replace_clinical_event_time() {
         let tasks = load_fixture().expect("fixture must validate");
         let task = tasks.iter().find(|task| task.task_id == "T01").unwrap();
-        assert!(task.events[0].recorded_at_ms > task.events[1].recorded_at_ms);
+        assert!(task.events[0].ingested_at_ms > task.events[1].ingested_at_ms);
         assert!(task.events[0].clinical_event_time_ms < task.events[1].clinical_event_time_ms);
         let result = evaluate(task, &reference_submission(task));
         assert!(result.temporal_order_accuracy == 1.0);
@@ -631,6 +664,20 @@ mod tests {
         let result = evaluate(task, &submission);
         assert!(!result.conflicts_exact);
         assert!(!result.hard_gates_pass);
+    }
+
+    #[test]
+    fn specimen_analysis_issue_source_update_and_ingestion_times_remain_distinct() {
+        let tasks = load_fixture().expect("fixture must validate");
+        let task = tasks.iter().find(|task| task.task_id == "T15").unwrap();
+        let event = task.events.iter().find(|event| event.event_id == "E23").unwrap();
+        assert_eq!(event.specimen_collected_at_ms, Some(18_000));
+        assert_eq!(event.analysis_performed_at_ms, Some(20_000));
+        assert_eq!(event.result_issued_at_ms, Some(25_000));
+        assert_eq!(event.source_last_updated_at_ms, Some(26_000));
+        assert_eq!(event.ingested_at_ms, 27_000);
+        let submission = reference_submission(task);
+        assert_eq!(submission.timeline[0].result_issued_at_ms, Some(25_000));
     }
 
     #[test]
