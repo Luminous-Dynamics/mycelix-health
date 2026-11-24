@@ -63,9 +63,18 @@
       }
     },
     {
-      "id": "valid_empty_collection",
+      "id": "valid_collection_without_entry_element",
       "expected": "valid",
-      "purpose": "R4 Collection entry cardinality is zero-or-more",
+      "purpose": "R4 Collection permits zero entries; the zero-value array property is omitted in FHIR JSON",
+      "bundle": {
+        "resourceType": "Bundle",
+        "type": "collection"
+      }
+    },
+    {
+      "id": "invalid_collection_with_empty_entry_array",
+      "expected": "invalid",
+      "purpose": "FHIR JSON does not serialize an empty array; the property should be absent when it has no values",
       "bundle": {
         "resourceType": "Bundle",
         "type": "collection",
