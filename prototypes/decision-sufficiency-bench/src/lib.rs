@@ -150,7 +150,9 @@ fn validate_task(task: &DecisionTask) -> Result<(), EvaluationError> {
             return Err(EvaluationError::EmptySourceId);
         }
         if !sources.insert(evidence.source_id.as_str()) {
-            return Err(EvaluationError::DuplicateSourceId(evidence.source_id.clone()));
+            return Err(EvaluationError::DuplicateSourceId(
+                evidence.source_id.clone(),
+            ));
         }
         if !obligations.contains(evidence.obligation_id.as_str()) {
             return Err(EvaluationError::EvidenceForUnknownObligation(
@@ -165,7 +167,9 @@ fn validate_task(task: &DecisionTask) -> Result<(), EvaluationError> {
             return Err(EvaluationError::EmptyActionId);
         }
         if !actions.insert(candidate.action_id.as_str()) {
-            return Err(EvaluationError::DuplicateActionId(candidate.action_id.clone()));
+            return Err(EvaluationError::DuplicateActionId(
+                candidate.action_id.clone(),
+            ));
         }
         if candidate.expected_loss_reduction_bps > 10_000 {
             return Err(EvaluationError::InvalidLossReduction(
@@ -184,9 +188,7 @@ fn validate_task(task: &DecisionTask) -> Result<(), EvaluationError> {
 /// untrusted records never satisfy an obligation. A valid alternative source
 /// may satisfy an obligation despite unrelated rejected records, but an explicit
 /// unresolved contradiction always blocks it.
-pub fn evaluate_sufficiency(
-    task: &DecisionTask,
-) -> Result<SufficiencyReport, EvaluationError> {
+pub fn evaluate_sufficiency(task: &DecisionTask) -> Result<SufficiencyReport, EvaluationError> {
     validate_task(task)?;
 
     let mut obligations = Vec::with_capacity(task.required_obligations.len());
@@ -250,7 +252,10 @@ pub fn evaluate_sufficiency(
 
 /// Check that a derived claim cites exact, verified sources for its obligation.
 /// This evaluator does not grade clinical truth; it grades support lineage.
-pub fn assess_claim(task: &DecisionTask, claim: &EvidenceClaim) -> Result<ClaimAssessment, EvaluationError> {
+pub fn assess_claim(
+    task: &DecisionTask,
+    claim: &EvidenceClaim,
+) -> Result<ClaimAssessment, EvaluationError> {
     validate_task(task)?;
 
     if !task
@@ -264,8 +269,7 @@ pub fn assess_claim(task: &DecisionTask, claim: &EvidenceClaim) -> Result<ClaimA
         return Ok(ClaimAssessment::NoEvidenceCited);
     }
     if task.evidence.iter().any(|record| {
-        record.obligation_id == claim.obligation_id
-            && record.status == EvidenceStatus::Conflicted
+        record.obligation_id == claim.obligation_id && record.status == EvidenceStatus::Conflicted
     }) {
         return Ok(ClaimAssessment::UnresolvedConflict);
     }
@@ -386,10 +390,7 @@ mod tests {
     fn task(evidence: Vec<EvidenceRecord>, candidates: Vec<CandidateObservation>) -> DecisionTask {
         DecisionTask {
             task_id: "synthetic-task".to_string(),
-            required_obligations: vec![
-                "patient-binding".to_string(),
-                "lab-provenance".to_string(),
-            ],
+            required_obligations: vec!["patient-binding".to_string(), "lab-provenance".to_string()],
             evidence,
             candidates,
             budget: ResourceBudget {
@@ -434,7 +435,10 @@ mod tests {
 
     #[test]
     fn missing_evidence_is_insufficient_not_assumed_from_context() {
-        let input = task(vec![verified("patient-binding", "patient-proof-1")], Vec::new());
+        let input = task(
+            vec![verified("patient-binding", "patient-proof-1")],
+            Vec::new(),
+        );
         let report = evaluate_sufficiency(&input).unwrap();
         assert_eq!(report.state, SufficiencyState::Insufficient);
         assert_eq!(
@@ -729,7 +733,9 @@ mod tests {
         );
 
         let mut duplicate = task(Vec::new(), Vec::new());
-        duplicate.required_obligations.push("lab-provenance".to_string());
+        duplicate
+            .required_obligations
+            .push("lab-provenance".to_string());
         assert_eq!(
             evaluate_sufficiency(&duplicate),
             Err(EvaluationError::DuplicateObligation(
