@@ -118,7 +118,7 @@ pub fn validate_collection_bundle(bundle: &Value) -> Result<Vec<Value>, Vec<Stri
         // not fullUrl alone. A repeated unversioned entry remains ambiguous.
         if !seen_resource_revisions.insert((full_url.to_string(), version_id)) {
             errors.push(format!(
-                "{prefix}.fullUrl and meta.versionId duplicate another Bundle entry"
+                "{prefix}.fullUrl and meta.versionId duplicates another Bundle entry"
             ));
         }
 
