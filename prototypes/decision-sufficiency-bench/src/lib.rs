@@ -868,9 +868,6 @@ mod tests {
             EvidenceStatus::WrongSubject => {
                 Some((EvidenceDimension::SubjectBinding, EvidenceGateState::Failed))
             }
-                EvidenceDimension::SubjectBinding,
-                EvidenceGateState::Failed,
-            )),
             EvidenceStatus::UnauthenticatedIssuer => Some((
                 EvidenceDimension::IssuerAuthenticity,
                 EvidenceGateState::Failed,
