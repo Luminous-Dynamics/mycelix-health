@@ -1061,6 +1061,34 @@ mod tests {
         assert!(!wrong_patient_attack.hard_gates_pass);
     }
 
+
+    #[test]
+    fn naive_baseline_generates_one_scored_output_for_every_visible_task() {
+        let visible = load_visible_fixture().expect("visible fixture must validate");
+        let tasks = load_fixture().expect("answer key fixture must validate");
+        let truth_by_id: BTreeMap<&str, &Task> = tasks
+            .iter()
+            .map(|task| (task.task_id.as_str(), task))
+            .collect();
+
+        let mut submissions = Vec::with_capacity(visible.len());
+        for input in &visible {
+            assert!(!input.request.trim().is_empty());
+            let truth = truth_by_id
+                .get(input.task_id.as_str())
+                .expect("every visible task has an evaluator answer");
+            let submission = naive_ingestion_order_baseline(input);
+            let score = evaluate(truth, &submission);
+            assert_eq!(score.task_id, input.task_id);
+            submissions.push(submission);
+        }
+
+        let report = evaluate_batch(&tasks, &submissions).expect("complete negative-control batch");
+        assert_eq!(report.task_count, 20);
+        assert!(report.exact_matches < report.task_count);
+        assert!(report.unsafe_acceptance_count > 0);
+    }
+
     #[test]
     fn reference_outputs_pass_every_hard_gate() {
         let tasks = load_fixture().expect("fixture must validate");
