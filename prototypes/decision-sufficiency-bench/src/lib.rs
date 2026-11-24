@@ -1220,24 +1220,208 @@ mod tests {
     }
 
     #[test]
-    fn fixture_catalogue_is_frozen_and_has_unique_case_ids() {
+    fn frozen_fixture_catalogue_drives_reference_evaluation() {
         let mut ids = BTreeSet::new();
         let mut rows = 0usize;
+
         for line in include_str!("../fixtures/v1-cases.tsv").lines() {
             if line.is_empty() || line.starts_with('#') {
                 continue;
             }
             let fields: Vec<&str> = line.split('|').collect();
             assert_eq!(fields.len(), 4, "malformed fixture catalogue row");
-            assert!(!fields[0].trim().is_empty(), "fixture id must not be empty");
-            assert!(ids.insert(fields[0]), "duplicate fixture id: {}", fields[0]);
+            let case_id = fields[0];
+            let profile = fields[1];
+            let expected = fields[2];
+            assert!(!case_id.trim().is_empty(), "fixture ID must not be empty");
+            assert!(ids.insert(case_id), "duplicate fixture ID: {}", case_id);
             assert!(
-                ["sufficient", "insufficient", "invalid"].contains(&fields[2]),
+                ["sufficient", "insufficient", "invalid"].contains(&expected),
                 "unknown expected sufficiency in fixture {}",
-                fields[0]
+                case_id
             );
+            assert!(!fields[3].trim().is_empty(), "fixture purpose must not be empty");
+
+            let (mut input, expected_frontier) = match profile {
+                "complete" | "already_sufficient" => (
+                    task(
+                        vec![
+                            verified("patient-binding", "patient-proof-1"),
+                            verified("lab-provenance", "lab-source-1"),
+                        ],
+                        if profile == "already_sufficient" {
+                            vec![action("unneeded-read", "lab-provenance", true, 1_000, 1, 1)]
+                        } else {
+                            Vec::new()
+                        },
+                    ),
+                    None,
+                ),
+                "missing" => (
+                    task(vec![verified("patient-binding", "patient-proof-1")], Vec::new()),
+                    None,
+                ),
+                "wrong_subject" => (
+                    task(
+                        vec![
+                            EvidenceRecord {
+                                obligation_id: "patient-binding".to_string(),
+                                source_id: "wrong-patient-proof".to_string(),
+                                status: EvidenceStatus::WrongSubject,
+                            },
+                            verified("lab-provenance", "lab-source-1"),
+                        ],
+                        Vec::new(),
+                    ),
+                    None,
+                ),
+                "conflicted" => (
+                    task(
+                        vec![
+                            verified("patient-binding", "patient-proof-1"),
+                            verified("lab-provenance", "lab-source-1"),
+                            EvidenceRecord {
+                                obligation_id: "lab-provenance".to_string(),
+                                source_id: "conflicting-lab".to_string(),
+                                status: EvidenceStatus::Conflicted,
+                            },
+                        ],
+                        Vec::new(),
+                    ),
+                    None,
+                ),
+                "expired" | "unauthenticated" | "unauthorized" | "missing_version"
+                | "unsupported_semantics" => {
+                    let status = match profile {
+                        "expired" => EvidenceStatus::Expired,
+                        "unauthenticated" => EvidenceStatus::UnauthenticatedIssuer,
+                        "unauthorized" => EvidenceStatus::Unauthorized,
+                        "missing_version" => EvidenceStatus::MissingVersion,
+                        _ => EvidenceStatus::UnsupportedSemantics,
+                    };
+                    (
+                        task(
+                            vec![
+                                verified("patient-binding", "patient-proof-1"),
+                                EvidenceRecord {
+                                    obligation_id: "lab-provenance".to_string(),
+                                    source_id: "blocked-lab".to_string(),
+                                    status,
+                                },
+                            ],
+                            Vec::new(),
+                        ),
+                        None,
+                    )
+                }
+                "alternative" => (
+                    task(
+                        vec![
+                            verified("patient-binding", "patient-proof-1"),
+                            EvidenceRecord {
+                                obligation_id: "lab-provenance".to_string(),
+                                source_id: "expired-lab".to_string(),
+                                status: EvidenceStatus::Expired,
+                            },
+                            verified("lab-provenance", "current-lab"),
+                        ],
+                        Vec::new(),
+                    ),
+                    None,
+                ),
+                "pareto" => (
+                    task(
+                        vec![
+                            verified("patient-binding", "patient-proof-1"),
+                            EvidenceRecord {
+                                obligation_id: "lab-provenance".to_string(),
+                                source_id: "expired-lab".to_string(),
+                                status: EvidenceStatus::Expired,
+                            },
+                        ],
+                        vec![
+                            action("high-value", "lab-provenance", true, 8_000, 4, 5),
+                            action("low-cost", "lab-provenance", true, 5_000, 2, 1),
+                            action("dominated", "lab-provenance", true, 4_000, 5, 5),
+                        ],
+                    ),
+                    Some(vec!["high-value".to_string(), "low-cost".to_string()]),
+                ),
+                "unauthorized_action" => (
+                    task(
+                        vec![
+                            verified("patient-binding", "patient-proof-1"),
+                            EvidenceRecord {
+                                obligation_id: "lab-provenance".to_string(),
+                                source_id: "expired-lab".to_string(),
+                                status: EvidenceStatus::Expired,
+                            },
+                        ],
+                        vec![action(
+                            "unauthorized-high-value",
+                            "lab-provenance",
+                            false,
+                            10_000,
+                            1,
+                            1,
+                        )],
+                    ),
+                    Some(Vec::new()),
+                ),
+                "vacuous" => {
+                    let mut input = task(Vec::new(), Vec::new());
+                    input.required_obligations.clear();
+                    (input, None)
+                }
+                "ambiguous" => {
+                    let mut input = task(Vec::new(), Vec::new());
+                    input.required_obligations.push("lab-provenance".to_string());
+                    (input, None)
+                }
+                _ => panic!("unknown frozen fixture profile {} for {}", profile, case_id),
+            };
+
+            let evaluation = evaluate_sufficiency(&input);
+            match expected {
+                "sufficient" => assert_eq!(
+                    evaluation.unwrap().state,
+                    SufficiencyState::Sufficient,
+                    "fixture {}",
+                    case_id
+                ),
+                "insufficient" => assert_eq!(
+                    evaluation.unwrap().state,
+                    SufficiencyState::Insufficient,
+                    "fixture {}",
+                    case_id
+                ),
+                "invalid" => assert!(
+                    evaluation.is_err(),
+                    "invalid fixture {} must be rejected",
+                    case_id
+                ),
+                _ => unreachable!(),
+            }
+
+            if let Some(expected_frontier) = expected_frontier {
+                assert_eq!(
+                    pareto_frontier(&input).unwrap(),
+                    expected_frontier,
+                    "frontier for fixture {}",
+                    case_id
+                );
+                if profile == "unauthorized_action" {
+                    assert_eq!(
+                        assess_candidate(&input, "unauthorized-high-value").unwrap(),
+                        Some(CandidateAssessment::Unauthorized),
+                        "unauthorized retrieval for fixture {}",
+                        case_id
+                    );
+                }
+            }
             rows += 1;
         }
+
         assert_eq!(rows, 15, "v1 fixture catalogue size changed");
     }
 
