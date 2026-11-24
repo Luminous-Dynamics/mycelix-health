@@ -233,3 +233,29 @@ jobs:
           cd tests/integration
           npm ci
           npm test
+
+  # Isolated, dependency-free research benchmark. This lane is independently
+  # runnable and does not require the parent mycelix workspace path crates.
+  temporal-evidence-bench:
+    name: Temporal Evidence Integrity Benchmark
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@1.96.0
+        with:
+          components: rustfmt, clippy
+      - name: Verify frozen corpus digests
+        run: |
+          sha256sum prototypes/temporal-evidence-integrity-bench/fixtures/v1-events.tsv
+          sha256sum prototypes/temporal-evidence-integrity-bench/fixtures/v1-cases.tsv
+          sha256sum prototypes/temporal-evidence-integrity-bench/fixtures/v1-answer-key-events.tsv
+      - name: Check formatting
+        run: cargo fmt --manifest-path prototypes/temporal-evidence-integrity-bench/Cargo.toml -- --check
+      - name: Run Clippy
+        run: |
+          HOST="$(rustc -vV | sed -n 's/^host: //p')"
+          cargo clippy --manifest-path prototypes/temporal-evidence-integrity-bench/Cargo.toml --target "$HOST" --all-targets -- -D warnings
+      - name: Run tests
+        run: |
+          HOST="$(rustc -vV | sed -n 's/^host: //p')"
+          cargo test --manifest-path prototypes/temporal-evidence-integrity-bench/Cargo.toml --target "$HOST"
