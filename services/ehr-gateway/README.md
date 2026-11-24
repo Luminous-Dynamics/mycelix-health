@@ -129,12 +129,28 @@ The gateway can run as a standalone HTTP server for receiving FHIR webhooks and 
 # Build
 npm run build
 
-# Start (connects to Holochain at ws://localhost:8888)
+# Start on loopback only (connects to Holochain at ws://localhost:8888)
 npm run start
 
-# Or with custom configuration
-PORT=3000 HOLOCHAIN_URL=ws://localhost:8888 npm run start
+# Explicitly configure exact browser origins if a local UI needs CORS
+CORS_ORIGINS=https://localhost:5173 npm run start
+
+# A non-loopback bind is an explicit deployment decision, not a safe default
+EHR_GATEWAY_HOST=127.0.0.1 PORT=3000 HOLOCHAIN_URL=ws://localhost:8888 npm run start
 ```
+
+### Security boundary (important)
+
+The gateway defaults to loopback binding and denies browser cross-origin
+access unless exact origins are configured. Wildcard CORS is rejected. This is
+defense-in-depth only: CORS is not authentication, and the current FHIR/sync
+routes are not yet qualified for network exposure. Do not bind this service to
+a non-loopback interface or connect it to real patient data until P0 issue #289
+has a verified caller identity, route authorization, tenant/patient scoping,
+source-authority binding, secret/PHI-safe logging, and adversarial tests.
+
+`X-Source-System` is untrusted request metadata. It must never be treated as
+proof of EHR origin, provider identity, or authorization.
 
 ### Endpoints
 
@@ -330,7 +346,7 @@ This gateway is compatible with **Holochain 0.6.0**:
 ```bash
 # HTTP Server
 PORT=3000                           # Server port (default: 3000)
-EHR_GATEWAY_HOST=0.0.0.0           # Bind address (default: 0.0.0.0)
+EHR_GATEWAY_HOST=127.0.0.1        # Bind address (default: loopback only)
 
 # Holochain Connection
 HOLOCHAIN_URL=ws://localhost:8888   # Conductor WebSocket URL
@@ -345,7 +361,7 @@ LOG_LEVEL=info                      # debug, info, warn, error
 ENABLE_REQUEST_LOGGING=true         # Log all requests
 
 # CORS
-CORS_ORIGINS=*                      # Comma-separated origins
+CORS_ORIGINS=https://app.example  # Exact origin allowlist; unset means deny cross-origin
 
 # OAuth (for SMART on FHIR redirects)
 OAUTH_CALLBACK_BASE_URL=http://localhost:3000

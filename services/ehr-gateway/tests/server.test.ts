@@ -17,7 +17,7 @@ vi.mock('@holochain/client', () => ({
 }));
 
 import { createApp, type AppContext } from '../src/server.js';
-import { getTestConfig } from '../src/config.js';
+import { getTestConfig, ServerConfigSchema } from '../src/config.js';
 import type { FhirBundle, IngestReport } from '../src/types.js';
 
 // Mock Holochain client
@@ -61,6 +61,52 @@ describe('EHR Gateway Server', () => {
 
   afterAll(() => {
     vi.clearAllMocks();
+  });
+
+  describe('Secure Configuration and CORS Defaults', () => {
+    it('defaults to loopback binding and no cross-origin access', () => {
+      const config = ServerConfigSchema.parse({});
+      expect(config.host).toBe('127.0.0.1');
+      expect(config.corsOrigins).toEqual([]);
+    });
+
+    it('rejects wildcard and non-origin CORS configuration', () => {
+      expect(() => ServerConfigSchema.parse({ corsOrigins: ['*'] })).toThrow();
+      expect(() => ServerConfigSchema.parse({
+        corsOrigins: ['https://trusted.example/path'],
+      })).toThrow();
+    });
+
+    it('does not grant CORS access to an unconfigured origin', async () => {
+      const noCorsApp = createApp({
+        ...ctx,
+        config: getTestConfig({ corsOrigins: [] }),
+      });
+      const res = await noCorsApp.request('/health', {
+        headers: { Origin: 'https://attacker.example' },
+      });
+
+      expect(res.status).toBe(200);
+      expect(res.headers.get('Access-Control-Allow-Origin')).toBeNull();
+      expect(res.headers.get('Access-Control-Allow-Credentials')).toBeNull();
+    });
+
+    it('returns only the exact configured CORS origin', async () => {
+      const allowlistedApp = createApp({
+        ...ctx,
+        config: getTestConfig({ corsOrigins: ['https://trusted.example'] }),
+      });
+      const trusted = await allowlistedApp.request('/health', {
+        headers: { Origin: 'https://trusted.example' },
+      });
+      const attacker = await allowlistedApp.request('/health', {
+        headers: { Origin: 'https://attacker.example' },
+      });
+
+      expect(trusted.headers.get('Access-Control-Allow-Origin'))
+        .toBe('https://trusted.example');
+      expect(attacker.headers.get('Access-Control-Allow-Origin')).toBeNull();
+    });
   });
 
   describe('Health Endpoints', () => {

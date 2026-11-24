@@ -54,9 +54,11 @@ export function createApp(ctx: AppContext): Hono {
   app.use('*', cors({
     origin: ctx.config.corsOrigins,
     allowMethods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-    allowHeaders: ['Content-Type', 'Authorization', 'X-Source-System'],
+    // X-Source-System is caller-controlled metadata, not an authenticated
+    // source identity. Browser clients must not use it as an authority signal.
+    allowHeaders: ['Content-Type', 'Authorization'],
     exposeHeaders: ['X-Request-Id'],
-    credentials: true,
+    credentials: ctx.config.corsOrigins.length > 0,
     maxAge: 86400,
   }));
 

@@ -18,7 +18,7 @@ export const ServerConfigSchema = z.object({
   port: z.number().int().min(0).max(65535).default(3000),
 
   /** Host to bind to */
-  host: z.string().default('0.0.0.0'),
+  host: z.string().default('127.0.0.1'),
 
   /** Holochain WebSocket URL */
   holochainUrl: z.string().url().default('ws://localhost:8888'),
@@ -34,9 +34,23 @@ export const ServerConfigSchema = z.object({
 
   /** CORS allowed origins (comma-separated string or array) */
   corsOrigins: z.union([
-    z.string().transform(s => s.split(',')),
+    z.string().transform(value => value.split(',')),
     z.array(z.string()),
-  ]).default(['*']),
+  ])
+    .default([])
+    .transform(origins => origins.map(origin => origin.trim()).filter(Boolean))
+    .refine(origins => !origins.includes('*'), {
+      message: 'Wildcard CORS origins are forbidden; configure exact origins',
+    })
+    .refine(origins => origins.every(origin => {
+      try {
+        return new URL(origin).origin === origin;
+      } catch {
+        return false;
+      }
+    }), {
+      message: 'CORS origins must be exact HTTP(S) origins without paths',
+    }),
 
   /** Log level */
   logLevel: z.enum(['debug', 'info', 'warn', 'error']).default('info'),
@@ -109,12 +123,12 @@ export type AppConfig = z.infer<typeof AppConfigSchema>;
 export function loadServerConfig(): ServerConfig {
   return ServerConfigSchema.parse({
     port: parseInt(process.env.EHR_GATEWAY_PORT || process.env.PORT || '3000', 10),
-    host: process.env.EHR_GATEWAY_HOST || '0.0.0.0',
+    host: process.env.EHR_GATEWAY_HOST || '127.0.0.1',
     holochainUrl: process.env.HOLOCHAIN_URL || 'ws://localhost:8888',
     holochainAppId: process.env.HOLOCHAIN_APP_ID || 'mycelix-health',
     defaultTimeout: parseInt(process.env.DEFAULT_TIMEOUT || '30000', 10),
     maxRetries: parseInt(process.env.MAX_RETRIES || '3', 10),
-    corsOrigins: process.env.CORS_ORIGINS || '*',
+    corsOrigins: process.env.CORS_ORIGINS ?? [],
     logLevel: process.env.LOG_LEVEL || 'info',
     enableRequestLogging: process.env.ENABLE_REQUEST_LOGGING !== 'false',
     oauthCallbackBaseUrl: process.env.OAUTH_CALLBACK_BASE_URL,
@@ -197,7 +211,7 @@ export function getTestConfig(overrides?: Partial<ServerConfig>): ServerConfig {
     holochainAppId: 'test-app',
     defaultTimeout: 5000,
     maxRetries: 1,
-    corsOrigins: ['*'],
+    corsOrigins: [],
     logLevel: 'error',
     enableRequestLogging: false,
     ...overrides,
