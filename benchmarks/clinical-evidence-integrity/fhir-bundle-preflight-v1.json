@@ -484,6 +484,78 @@
       },
       "expected": "reject",
       "expected_error_contains": "duplicates another Bundle entry"
+    },
+    {
+      "id": "valid_maximum_length_fhir_id",
+      "bundle": {
+        "resourceType": "Bundle",
+        "type": "collection",
+        "entry": [
+          {
+            "fullUrl": "urn:uuid:boundary-id",
+            "resource": {
+              "resourceType": "Patient",
+              "id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+            }
+          }
+        ]
+      },
+      "expected": "accept",
+      "expected_entry_count": 1
+    },
+    {
+      "id": "invalid_id_with_space_on_urn_entry",
+      "bundle": {
+        "resourceType": "Bundle",
+        "type": "collection",
+        "entry": [
+          {
+            "fullUrl": "urn:uuid:invalid-id-space",
+            "resource": {
+              "resourceType": "Patient",
+              "id": "patient one"
+            }
+          }
+        ]
+      },
+      "expected": "reject",
+      "expected_error_contains": "resource.id must match the FHIR id constraint"
+    },
+    {
+      "id": "invalid_id_over_64_characters_on_urn_entry",
+      "bundle": {
+        "resourceType": "Bundle",
+        "type": "collection",
+        "entry": [
+          {
+            "fullUrl": "urn:uuid:invalid-id-long",
+            "resource": {
+              "resourceType": "Patient",
+              "id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+            }
+          }
+        ]
+      },
+      "expected": "reject",
+      "expected_error_contains": "resource.id must match the FHIR id constraint"
+    },
+    {
+      "id": "invalid_resource_type_lowercase_on_urn_entry",
+      "bundle": {
+        "resourceType": "Bundle",
+        "type": "collection",
+        "entry": [
+          {
+            "fullUrl": "urn:uuid:invalid-resource-type",
+            "resource": {
+              "resourceType": "patient",
+              "id": "patient-1"
+            }
+          }
+        ]
+      },
+      "expected": "reject",
+      "expected_error_contains": "resourceType must be a valid FHIR resource type token"
     }
   ]
 }
