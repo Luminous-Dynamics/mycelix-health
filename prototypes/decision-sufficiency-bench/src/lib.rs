@@ -285,12 +285,20 @@ pub fn evaluate_sufficiency(task: &DecisionTask) -> Result<SufficiencyReport, Ev
             .filter(|record| record.obligation_id == *obligation_id)
             .collect();
 
-        let has_conflict = records
+        let gate_blockers: Vec<EvidenceGateBlocker> = records
             .iter()
-            .any(|record| record.status == EvidenceStatus::Conflicted);
+            .flat_map(|record| record.gate_blockers())
+            .collect();
+        let has_conflict = records.iter().any(|record| {
+            record.status == EvidenceStatus::Conflicted
+                || record
+                    .gate_blockers()
+                    .iter()
+                    .any(|blocker| blocker.state == EvidenceGateState::Conflicted)
+        });
         let verified_source_ids: Vec<String> = records
             .iter()
-            .filter(|record| record.status.is_verified())
+            .filter(|record| record.is_verified())
             .map(|record| record.source_id.clone())
             .collect();
 
@@ -304,8 +312,15 @@ pub fn evaluate_sufficiency(task: &DecisionTask) -> Result<SufficiencyReport, Ev
         } else {
             records
                 .iter()
-                .map(|record| record.status.clone())
-                .filter(|status| !status.is_verified())
+                .filter_map(|record| {
+                    if record.is_verified() {
+                        None
+                    } else if record.status.is_verified() {
+                        Some(EvidenceStatus::IncompleteVerification)
+                    } else {
+                        Some(record.status.clone())
+                    }
+                })
                 .collect::<BTreeSet<_>>()
                 .into_iter()
                 .collect()
@@ -316,6 +331,7 @@ pub fn evaluate_sufficiency(task: &DecisionTask) -> Result<SufficiencyReport, Ev
             satisfied,
             verified_source_ids,
             blockers,
+            gate_blockers,
         });
     }
 
@@ -331,7 +347,7 @@ pub fn evaluate_sufficiency(task: &DecisionTask) -> Result<SufficiencyReport, Ev
         rejected_evidence_count: task
             .evidence
             .iter()
-            .filter(|record| !record.status.is_verified())
+            .filter(|record| !record.is_verified())
             .count(),
     })
 }
@@ -366,7 +382,7 @@ pub fn assess_claim(
         }) else {
             return Ok(ClaimAssessment::UnknownSource);
         };
-        if !record.status.is_verified() {
+        if !record.is_verified() {
             return Ok(ClaimAssessment::SourceNotVerified);
         }
     }
