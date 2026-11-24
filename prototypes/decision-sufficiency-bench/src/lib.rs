@@ -375,6 +375,345 @@ pub fn assess_candidate(
     }
 }
 
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ReferenceSufficiencyLabel {
+    Sufficient,
+    Insufficient,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum AgentSufficiencyDecision {
+    Sufficient,
+    Insufficient,
+    Abstain,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct SufficiencyPrediction {
+    pub reference: ReferenceSufficiencyLabel,
+    /// Model probability that the evidence is sufficient, in basis points.
+    pub probability_sufficient_bps: u16,
+    pub decision: AgentSufficiencyDecision,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum MetricError {
+    EmptyPredictionSet,
+    ProbabilityOutOfRange,
+    InvalidThreshold,
+    EmptyOutcomeSet,
+    DuplicateOutcomeId(String),
+    OutcomeProbabilitiesDoNotSumToTenThousand(u32),
+    LossOutOfRange,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct SelectiveMetrics {
+    pub total: usize,
+    pub covered: usize,
+    pub abstained: usize,
+    pub errors_on_covered: usize,
+    pub true_positive: usize,
+    pub false_positive: usize,
+    pub false_negative: usize,
+    pub true_negative: usize,
+    /// Coverage as basis points of all tasks.
+    pub coverage_bps: u16,
+    /// Error rate among non-abstained tasks; None when coverage is zero.
+    pub selective_risk_bps: Option<u16>,
+    /// Brier score multiplied by 10,000; lower is better.
+    pub brier_score_bps: u16,
+    /// Positive predictive value among covered tasks.
+    pub precision_sufficient_bps: Option<u16>,
+    /// Sensitivity among covered tasks.
+    pub recall_sufficient_bps: Option<u16>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct RiskCoveragePoint {
+    pub confidence_threshold_bps: u16,
+    pub metrics: SelectiveMetrics,
+}
+
+fn ratio_bps(numerator: usize, denominator: usize) -> Option<u16> {
+    if denominator == 0 {
+        return None;
+    }
+    Some(((numerator as u128 * 10_000) / denominator as u128) as u16)
+}
+
+/// Evaluate coverage, selective error risk, discrimination counts and Brier
+/// score. Probabilities are scored for every task, including abstentions; an
+/// agent cannot improve calibration metrics by hiding uncertain predictions.
+pub fn evaluate_selective_predictions(
+    predictions: &[SufficiencyPrediction],
+) -> Result<SelectiveMetrics, MetricError> {
+    if predictions.is_empty() {
+        return Err(MetricError::EmptyPredictionSet);
+    }
+
+    let mut covered = 0usize;
+    let mut abstained = 0usize;
+    let mut errors = 0usize;
+    let mut tp = 0usize;
+    let mut fp = 0usize;
+    let mut fn_count = 0usize;
+    let mut tn = 0usize;
+    let mut squared_error_sum = 0u128;
+
+    for prediction in predictions {
+        let p = prediction.probability_sufficient_bps;
+        if p > 10_000 {
+            return Err(MetricError::ProbabilityOutOfRange);
+        }
+        let target = match prediction.reference {
+            ReferenceSufficiencyLabel::Sufficient => 10_000i64,
+            ReferenceSufficiencyLabel::Insufficient => 0i64,
+        };
+        let delta = p as i64 - target;
+        squared_error_sum += (delta * delta) as u128;
+
+        match prediction.decision {
+            AgentSufficiencyDecision::Abstain => abstained += 1,
+            AgentSufficiencyDecision::Sufficient => {
+                covered += 1;
+                if prediction.reference == ReferenceSufficiencyLabel::Sufficient {
+                    tp += 1;
+                } else {
+                    fp += 1;
+                    errors += 1;
+                }
+            }
+            AgentSufficiencyDecision::Insufficient => {
+                covered += 1;
+                if prediction.reference == ReferenceSufficiencyLabel::Insufficient {
+                    tn += 1;
+                } else {
+                    fn_count += 1;
+                    errors += 1;
+                }
+            }
+        }
+    }
+
+    let total = predictions.len();
+    let brier_score_bps =
+        (squared_error_sum / (total as u128 * 10_000)).min(10_000) as u16;
+
+    Ok(SelectiveMetrics {
+        total,
+        covered,
+        abstained,
+        errors_on_covered: errors,
+        true_positive: tp,
+        false_positive: fp,
+        false_negative: fn_count,
+        true_negative: tn,
+        coverage_bps: ratio_bps(covered, total).expect("non-empty predictions"),
+        selective_risk_bps: ratio_bps(errors, covered),
+        brier_score_bps,
+        precision_sufficient_bps: ratio_bps(tp, tp + fp),
+        recall_sufficient_bps: ratio_bps(tp, tp + fn_count),
+    })
+}
+
+/// Construct a risk/coverage curve from model confidence thresholds. A prediction
+/// is covered only when it is not already an abstention and its confidence in
+/// the selected class reaches the threshold.
+pub fn evaluate_risk_coverage_curve(
+    predictions: &[SufficiencyPrediction],
+    confidence_thresholds_bps: &[u16],
+) -> Result<Vec<RiskCoveragePoint>, MetricError> {
+    if predictions.is_empty() {
+        return Err(MetricError::EmptyPredictionSet);
+    }
+
+    let mut curve = Vec::with_capacity(confidence_thresholds_bps.len());
+    let mut previous_threshold = None;
+    for threshold in confidence_thresholds_bps {
+        if *threshold > 10_000 || previous_threshold.map(|p| *threshold < p).unwrap_or(false) {
+            return Err(MetricError::InvalidThreshold);
+        }
+        previous_threshold = Some(*threshold);
+
+        let filtered: Vec<SufficiencyPrediction> = predictions
+            .iter()
+            .copied()
+            .map(|mut prediction| {
+                let confidence = match prediction.decision {
+                    AgentSufficiencyDecision::Sufficient => prediction.probability_sufficient_bps,
+                    AgentSufficiencyDecision::Insufficient => {
+                        10_000 - prediction.probability_sufficient_bps
+                    }
+                    AgentSufficiencyDecision::Abstain => 0,
+                };
+                if confidence < *threshold {
+                    prediction.decision = AgentSufficiencyDecision::Abstain;
+                }
+                prediction
+            })
+            .collect();
+
+        curve.push(RiskCoveragePoint {
+            confidence_threshold_bps: *threshold,
+            metrics: evaluate_selective_predictions(&filtered)?,
+        });
+    }
+    Ok(curve)
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct NetBenefitFraction {
+    /// Exact numerator; divide by denominator to obtain net benefit.
+    pub numerator: i64,
+    pub denominator: u64,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct DecisionCurvePoint {
+    pub threshold_bps: u16,
+    pub model: NetBenefitFraction,
+    pub act_all: NetBenefitFraction,
+    pub act_none: NetBenefitFraction,
+}
+
+fn net_benefit_fraction(tp: usize, fp: usize, total: usize, threshold_bps: u16) -> NetBenefitFraction {
+    let threshold = threshold_bps as i64;
+    let numerator = tp as i64 * (10_000 - threshold) - fp as i64 * threshold;
+    let denominator = total as u64 * (10_000 - threshold_bps as u64);
+    NetBenefitFraction {
+        numerator,
+        denominator,
+    }
+}
+
+/// Compute net benefit for accepting an assertion at a predeclared sufficiency
+/// threshold. False acceptance (claiming sufficient when insufficient) is
+/// weighted by the threshold odds. Returns exact rational values and the
+/// act-all / act-none references; it does not select the clinical threshold.
+pub fn evaluate_net_benefit(
+    predictions: &[SufficiencyPrediction],
+    threshold_bps: u16,
+) -> Result<DecisionCurvePoint, MetricError> {
+    if predictions.is_empty() {
+        return Err(MetricError::EmptyPredictionSet);
+    }
+    if threshold_bps == 0 || threshold_bps >= 10_000 {
+        return Err(MetricError::InvalidThreshold);
+    }
+    let mut tp = 0usize;
+    let mut fp = 0usize;
+    let mut positive = 0usize;
+    let mut negative = 0usize;
+
+    for prediction in predictions {
+        if prediction.probability_sufficient_bps > 10_000 {
+            return Err(MetricError::ProbabilityOutOfRange);
+        }
+        match prediction.reference {
+            ReferenceSufficiencyLabel::Sufficient => positive += 1,
+            ReferenceSufficiencyLabel::Insufficient => negative += 1,
+        }
+        if prediction.probability_sufficient_bps >= threshold_bps {
+            match prediction.reference {
+                ReferenceSufficiencyLabel::Sufficient => tp += 1,
+                ReferenceSufficiencyLabel::Insufficient => fp += 1,
+            }
+        }
+    }
+
+    let total = predictions.len();
+    Ok(DecisionCurvePoint {
+        threshold_bps,
+        model: net_benefit_fraction(tp, fp, total, threshold_bps),
+        act_all: net_benefit_fraction(positive, negative, total, threshold_bps),
+        act_none: NetBenefitFraction {
+            numerator: 0,
+            denominator: total as u64,
+        },
+    })
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct InformationOutcome {
+    pub outcome_id: String,
+    pub probability_bps: u16,
+    /// Optimal expected decision loss after observing this outcome.
+    pub best_expected_loss_bps: u16,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct EvsiModel {
+    pub action_id: String,
+    pub authorized: bool,
+    pub current_best_expected_loss_bps: u16,
+    pub outcomes: Vec<InformationOutcome>,
+    /// Kept separate from EVSI; no universal conversion is imposed.
+    pub cost_units: u16,
+    /// Kept separate from EVSI; no universal conversion is imposed.
+    pub privacy_units: u16,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct EvsiReport {
+    pub action_id: String,
+    pub authorized: bool,
+    pub expected_post_observation_loss_bps: u16,
+    /// Current optimal expected loss minus expected optimal loss after observation.
+    /// Negative values indicate modelled value destruction or an inconsistent oracle.
+    pub gross_evsi_bps: i32,
+    pub cost_units: u16,
+    pub privacy_units: u16,
+}
+
+/// Calculate EVSI from a frozen synthetic outcome distribution. Outcome
+/// probabilities must sum to 10,000 basis points. EVSI is reported separately
+/// from cost and privacy; authorization is surfaced but never overridden by
+/// positive informational value.
+pub fn evaluate_evsi(model: &EvsiModel) -> Result<EvsiReport, MetricError> {
+    if model.outcomes.is_empty() {
+        return Err(MetricError::EmptyOutcomeSet);
+    }
+    if model.current_best_expected_loss_bps > 10_000
+        || model.outcomes.iter().any(|outcome| outcome.best_expected_loss_bps > 10_000)
+    {
+        return Err(MetricError::LossOutOfRange);
+    }
+
+    let mut ids = BTreeSet::new();
+    let mut probability_sum = 0u32;
+    let mut weighted_loss_sum = 0u128;
+    for outcome in &model.outcomes {
+        if outcome.outcome_id.trim().is_empty() || !ids.insert(outcome.outcome_id.as_str()) {
+            return Err(MetricError::DuplicateOutcomeId(outcome.outcome_id.clone()));
+        }
+        if outcome.probability_bps > 10_000 {
+            return Err(MetricError::ProbabilityOutOfRange);
+        }
+        probability_sum += outcome.probability_bps as u32;
+        weighted_loss_sum +=
+            outcome.probability_bps as u128 * outcome.best_expected_loss_bps as u128;
+    }
+    if probability_sum != 10_000 {
+        return Err(MetricError::OutcomeProbabilitiesDoNotSumToTenThousand(
+            probability_sum,
+        ));
+    }
+
+    let expected_post_observation_loss_bps =
+        ((weighted_loss_sum + 5_000) / 10_000).min(10_000) as u16;
+    Ok(EvsiReport {
+        action_id: model.action_id.clone(),
+        authorized: model.authorized,
+        expected_post_observation_loss_bps,
+        gross_evsi_bps: model.current_best_expected_loss_bps as i32
+            - expected_post_observation_loss_bps as i32,
+        cost_units: model.cost_units,
+        privacy_units: model.privacy_units,
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -698,6 +1037,159 @@ mod tests {
                 EvidenceStatus::MissingVersion,
                 EvidenceStatus::UnsupportedSemantics
             ]
+        );
+    }
+
+
+    #[test]
+    fn selective_metrics_score_abstentions_as_uncalibrated_predictions_not_free_passes() {
+        let predictions = vec![
+            SufficiencyPrediction {
+                reference: ReferenceSufficiencyLabel::Sufficient,
+                probability_sufficient_bps: 9_000,
+                decision: AgentSufficiencyDecision::Sufficient,
+            },
+            SufficiencyPrediction {
+                reference: ReferenceSufficiencyLabel::Insufficient,
+                probability_sufficient_bps: 8_000,
+                decision: AgentSufficiencyDecision::Abstain,
+            },
+            SufficiencyPrediction {
+                reference: ReferenceSufficiencyLabel::Insufficient,
+                probability_sufficient_bps: 1_000,
+                decision: AgentSufficiencyDecision::Insufficient,
+            },
+        ];
+        let metrics = evaluate_selective_predictions(&predictions).unwrap();
+        assert_eq!(metrics.covered, 2);
+        assert_eq!(metrics.abstained, 1);
+        assert_eq!(metrics.coverage_bps, 6_666);
+        assert_eq!(metrics.errors_on_covered, 0);
+        assert_eq!(metrics.selective_risk_bps, Some(0));
+        assert_eq!(metrics.true_positive, 1);
+        assert_eq!(metrics.true_negative, 1);
+        assert_eq!(metrics.brier_score_bps, 2_000);
+    }
+
+    #[test]
+    fn risk_coverage_curve_reduces_coverage_as_confidence_threshold_rises() {
+        let predictions = vec![
+            SufficiencyPrediction {
+                reference: ReferenceSufficiencyLabel::Sufficient,
+                probability_sufficient_bps: 9_000,
+                decision: AgentSufficiencyDecision::Sufficient,
+            },
+            SufficiencyPrediction {
+                reference: ReferenceSufficiencyLabel::Insufficient,
+                probability_sufficient_bps: 6_000,
+                decision: AgentSufficiencyDecision::Sufficient,
+            },
+            SufficiencyPrediction {
+                reference: ReferenceSufficiencyLabel::Insufficient,
+                probability_sufficient_bps: 1_000,
+                decision: AgentSufficiencyDecision::Insufficient,
+            },
+        ];
+        let curve = evaluate_risk_coverage_curve(&predictions, &[0, 5_000, 8_000]).unwrap();
+        assert_eq!(curve.len(), 3);
+        assert_eq!(curve[0].metrics.coverage_bps, 10_000);
+        assert_eq!(curve[1].metrics.coverage_bps, 10_000);
+        assert_eq!(curve[2].metrics.coverage_bps, 6_666);
+        assert_eq!(curve[0].metrics.selective_risk_bps, Some(3_333));
+        assert_eq!(curve[2].metrics.selective_risk_bps, Some(0));
+    }
+
+    #[test]
+    fn decision_curve_reports_model_and_default_policy_net_benefits() {
+        let predictions = vec![
+            SufficiencyPrediction {
+                reference: ReferenceSufficiencyLabel::Sufficient,
+                probability_sufficient_bps: 9_000,
+                decision: AgentSufficiencyDecision::Sufficient,
+            },
+            SufficiencyPrediction {
+                reference: ReferenceSufficiencyLabel::Insufficient,
+                probability_sufficient_bps: 8_000,
+                decision: AgentSufficiencyDecision::Sufficient,
+            },
+            SufficiencyPrediction {
+                reference: ReferenceSufficiencyLabel::Insufficient,
+                probability_sufficient_bps: 1_000,
+                decision: AgentSufficiencyDecision::Insufficient,
+            },
+        ];
+        let curve = evaluate_net_benefit(&predictions, 7_500).unwrap();
+        assert_eq!(curve.model.numerator, 1 * 2_500 - 1 * 7_500);
+        assert_eq!(curve.model.denominator, 3 * 2_500);
+        assert_eq!(curve.act_all.numerator, 1 * 2_500 - 2 * 7_500);
+        assert_eq!(curve.act_none.numerator, 0);
+    }
+
+    #[test]
+    fn evsi_uses_probability_weighted_post_observation_loss_and_keeps_cost_privacy_separate() {
+        let model = EvsiModel {
+            action_id: "obtain-current-lab".to_string(),
+            authorized: true,
+            current_best_expected_loss_bps: 6_000,
+            outcomes: vec![
+                InformationOutcome {
+                    outcome_id: "resolves-conflict".to_string(),
+                    probability_bps: 7_000,
+                    best_expected_loss_bps: 2_000,
+                },
+                InformationOutcome {
+                    outcome_id: "remains-ambiguous".to_string(),
+                    probability_bps: 3_000,
+                    best_expected_loss_bps: 5_000,
+                },
+            ],
+            cost_units: 4,
+            privacy_units: 2,
+        };
+        let report = evaluate_evsi(&model).unwrap();
+        assert_eq!(report.expected_post_observation_loss_bps, 2_900);
+        assert_eq!(report.gross_evsi_bps, 3_100);
+        assert_eq!(report.cost_units, 4);
+        assert_eq!(report.privacy_units, 2);
+        assert!(report.authorized);
+    }
+
+    #[test]
+    fn positive_evsi_never_turns_an_unauthorized_acquisition_into_an_authorized_action() {
+        let model = EvsiModel {
+            action_id: "unauthorized-read".to_string(),
+            authorized: false,
+            current_best_expected_loss_bps: 8_000,
+            outcomes: vec![InformationOutcome {
+                outcome_id: "revealing".to_string(),
+                probability_bps: 10_000,
+                best_expected_loss_bps: 1_000,
+            }],
+            cost_units: 1,
+            privacy_units: 1,
+        };
+        let report = evaluate_evsi(&model).unwrap();
+        assert_eq!(report.gross_evsi_bps, 7_000);
+        assert!(!report.authorized);
+    }
+
+    #[test]
+    fn evsi_rejects_incomplete_outcome_probability_mass() {
+        let model = EvsiModel {
+            action_id: "partial-model".to_string(),
+            authorized: true,
+            current_best_expected_loss_bps: 5_000,
+            outcomes: vec![InformationOutcome {
+                outcome_id: "only-half-the-world".to_string(),
+                probability_bps: 5_000,
+                best_expected_loss_bps: 1_000,
+            }],
+            cost_units: 0,
+            privacy_units: 0,
+        };
+        assert_eq!(
+            evaluate_evsi(&model),
+            Err(MetricError::OutcomeProbabilitiesDoNotSumToTenThousand(5_000))
         );
     }
 
