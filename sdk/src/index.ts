@@ -94,6 +94,14 @@ export * from './privacy';
 // Re-export accessibility utilities
 export * from './accessibility';
 
+// Re-export native countersigning evidence and recovery helpers.
+// These are verification/observation utilities; they do not create application authority.
+export * from './crypto/governed-validation';
+export * from './crypto/source-chain-evidence';
+export * from './crypto/native-countersigning';
+export * from './countersigning/native-session';
+
+
 /**
  * MycelixHealthClient
  *
