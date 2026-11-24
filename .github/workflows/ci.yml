@@ -255,11 +255,11 @@ jobs:
       - name: Run Clippy
         run: |
           HOST="$(rustc -vV | sed -n 's/^host: //p')"
-          cargo clippy --manifest-path prototypes/temporal-evidence-integrity-bench/Cargo.toml --target "$HOST" --all-targets -- -D warnings
+          cargo clippy --locked --manifest-path prototypes/temporal-evidence-integrity-bench/Cargo.toml --target "$HOST" --all-targets -- -D warnings
       - name: Run tests
         run: |
           HOST="$(rustc -vV | sed -n 's/^host: //p')"
-          cargo test --manifest-path prototypes/temporal-evidence-integrity-bench/Cargo.toml --target "$HOST"
+          cargo test --locked --manifest-path prototypes/temporal-evidence-integrity-bench/Cargo.toml --target "$HOST"
 
       - name: Execute deterministic negative-control baseline
         run: |
