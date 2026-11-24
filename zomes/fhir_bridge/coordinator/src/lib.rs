@@ -671,8 +671,7 @@ fn process_observation(
     let effective_raw = get_fhir_string(resource, "effectiveDateTime").ok_or_else(|| {
         "Observation has no effectiveDateTime; effectivePeriod/effectiveTiming/effectiveInstant and date-only precision are not supported by this mapping version".to_string()
     })?;
-    let effective_datetime =
-        parse_fhir_instant(&effective_raw, "Observation.effectiveDateTime")?;
+    let effective_datetime = parse_fhir_instant(&effective_raw, "Observation.effectiveDateTime")?;
     let issued = get_fhir_string(resource, "issued")
         .map(|value| parse_fhir_instant(&value, "Observation.issued"))
         .transpose()?;

@@ -110,33 +110,34 @@ pub fn resolve_patient_subject(
         };
     };
 
-    let (target_full_url, requested_version) =
-        if let Some((patient_id, version)) = parse_relative_patient_reference(reference) {
-            let Some(root) = source_full_url.and_then(restful_root) else {
-                return PatientSubjectBinding::Unresolved {
-                    reason: "relative reference has no RESTful source fullUrl context".to_string(),
-                };
-            };
-            (format!("{root}Patient/{patient_id}"), version)
-        } else if reference.starts_with("urn:") {
-            if reference.contains("/_history") {
-                return PatientSubjectBinding::Unresolved {
-                    reason: "URN patient references cannot carry a FHIR history version".to_string(),
-                };
-            }
-            (reference.to_string(), None)
-        } else if reference.starts_with("https://") || reference.starts_with("http://") {
-            let Some((base, version)) = split_absolute_history(reference) else {
-                return PatientSubjectBinding::Unresolved {
-                    reason: "malformed version-specific absolute reference".to_string(),
-                };
-            };
-            (base.to_string(), version)
-        } else {
+    let (target_full_url, requested_version) = if let Some((patient_id, version)) =
+        parse_relative_patient_reference(reference)
+    {
+        let Some(root) = source_full_url.and_then(restful_root) else {
             return PatientSubjectBinding::Unresolved {
-                reason: "unsupported or malformed patient reference form".to_string(),
+                reason: "relative reference has no RESTful source fullUrl context".to_string(),
             };
         };
+        (format!("{root}Patient/{patient_id}"), version)
+    } else if reference.starts_with("urn:") {
+        if reference.contains("/_history") {
+            return PatientSubjectBinding::Unresolved {
+                reason: "URN patient references cannot carry a FHIR history version".to_string(),
+            };
+        }
+        (reference.to_string(), None)
+    } else if reference.starts_with("https://") || reference.starts_with("http://") {
+        let Some((base, version)) = split_absolute_history(reference) else {
+            return PatientSubjectBinding::Unresolved {
+                reason: "malformed version-specific absolute reference".to_string(),
+            };
+        };
+        (base.to_string(), version)
+    } else {
+        return PatientSubjectBinding::Unresolved {
+            reason: "unsupported or malformed patient reference form".to_string(),
+        };
+    };
 
     resolve_bundle_target(
         &target_full_url,
@@ -154,9 +155,7 @@ fn resolve_bundle_target(
 ) -> PatientSubjectBinding {
     let exact_matches: Vec<&Value> = entries
         .iter()
-        .filter(|entry| {
-            entry.get("fullUrl").and_then(Value::as_str) == Some(target_full_url)
-        })
+        .filter(|entry| entry.get("fullUrl").and_then(Value::as_str) == Some(target_full_url))
         .collect();
 
     if exact_matches.is_empty() {
@@ -250,10 +249,7 @@ mod tests {
 
     #[test]
     fn rejects_relative_reference_from_urn_or_missing_source_context() {
-        for source in [
-            Some("urn:uuid:00000000-0000-4000-8000-000000000002"),
-            None,
-        ] {
+        for source in [Some("urn:uuid:00000000-0000-4000-8000-000000000002"), None] {
             assert!(matches!(
                 resolve_patient_subject(Some("Patient/p-1"), source, "p-1", &[]),
                 PatientSubjectBinding::Unresolved { .. }
@@ -320,10 +316,7 @@ mod tests {
     #[test]
     fn accepts_absolute_url_and_urn_only_on_exact_full_url_match() {
         let urn = "urn:uuid:00000000-0000-4000-8000-000000000001";
-        for (reference, full_url) in [
-            (PATIENT_FULL_URL, PATIENT_FULL_URL),
-            (urn, urn),
-        ] {
+        for (reference, full_url) in [(PATIENT_FULL_URL, PATIENT_FULL_URL), (urn, urn)] {
             let entries = vec![patient_entry(full_url, "p-1", None)];
             assert_eq!(
                 resolve_patient_subject(Some(reference), None, "p-1", &entries),
@@ -388,12 +381,7 @@ mod tests {
             None,
         )];
         assert_eq!(
-            resolve_patient_subject(
-                Some("Patient/p-2"),
-                Some(SOURCE_FULL_URL),
-                "p-1",
-                &entries
-            ),
+            resolve_patient_subject(Some("Patient/p-2"), Some(SOURCE_FULL_URL), "p-1", &entries),
             PatientSubjectBinding::DifferentPatient {
                 referenced_patient_id: "p-2".to_string()
             }
