@@ -12,6 +12,20 @@ use crate::patient_subject::bundle_entry_full_url_matches_resource;
 use serde_json::Value;
 use std::collections::BTreeSet;
 
+fn valid_fhir_id(value: &str) -> bool {
+    !value.is_empty()
+        && value.len() <= 64
+        && value
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || byte == b'-' || byte == b'.')
+}
+
+fn valid_fhir_resource_type(value: &str) -> bool {
+    !value.is_empty()
+        && value.as_bytes()[0].is_ascii_uppercase()
+        && value.bytes().all(|byte| byte.is_ascii_alphabetic())
+}
+
 /// Validate the complete supported Bundle envelope before any patient or
 /// clinical resource is written.
 ///
@@ -72,6 +86,12 @@ pub fn validate_collection_bundle(bundle: &Value) -> Result<Vec<Value>, Vec<Stri
             errors.push(format!("{prefix}.resource.resourceType is required"));
             continue;
         };
+        if !valid_fhir_resource_type(resource_type) {
+            errors.push(format!(
+                "{prefix}.resource.resourceType must be a valid FHIR resource type token"
+            ));
+            continue;
+        }
 
         let Some(resource_id) = resource
             .get("id")
@@ -83,6 +103,12 @@ pub fn validate_collection_bundle(bundle: &Value) -> Result<Vec<Value>, Vec<Stri
             ));
             continue;
         };
+        if !valid_fhir_id(resource_id) {
+            errors.push(format!(
+                "{prefix}.resource.id must match the FHIR id constraint (1-64 ASCII letters, digits, hyphen or period)"
+            ));
+            continue;
+        }
 
         let Some(full_url) = entry
             .get("fullUrl")
