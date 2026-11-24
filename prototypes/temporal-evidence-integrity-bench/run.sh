@@ -8,4 +8,4 @@ sha256sum "$FIXTURES/v1-task-inputs.tsv" "$FIXTURES/v1-events.tsv" "$FIXTURES/v1
 cargo fmt --locked --manifest-path "$MANIFEST" -- --check
 cargo clippy --locked --manifest-path "$MANIFEST" --target "$HOST" --all-targets -- -D warnings
 cargo test --locked --manifest-path "$MANIFEST" --target "$HOST"
-cargo run --locked --manifest-path "$MANIFEST" --bin naive_baseline
+cargo run --locked --manifest-path "$MANIFEST" --target "$HOST" --bin naive_baseline
