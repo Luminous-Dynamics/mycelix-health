@@ -1266,6 +1266,53 @@ mod tests {
         assert!(report.unsafe_acceptance_count > 0);
     }
 
+
+    #[test]
+    fn source_sequence_baseline_respects_resource_revision_and_replay_semantics() {
+        let visible = load_visible_fixture().expect("visible fixture must validate");
+        let answer_key = load_fixture().expect("answer key must validate");
+        let truth_by_id: BTreeMap<&str, &Task> = answer_key
+            .iter()
+            .map(|task| (task.task_id.as_str(), task))
+            .collect();
+        let visible_by_id: BTreeMap<&str, &VisibleTaskInput> = visible
+            .iter()
+            .map(|task| (task.task_id.as_str(), task))
+            .collect();
+
+        for task_id in ["T03", "T04", "T05", "T06", "T16", "T20"] {
+            let submission = source_sequence_revision_baseline(visible_by_id[task_id]);
+            let score = evaluate(truth_by_id[task_id], &submission);
+            assert!(score.exact_match, "{task_id} did not match: {score:?}");
+            assert!(score.hard_gates_pass, "{task_id} failed a hard gate");
+        }
+
+        let corrected = source_sequence_revision_baseline(visible_by_id["T03"]);
+        assert_eq!(corrected.timeline[0].event_id, "E06");
+        assert_eq!(corrected.retained_history[0].event_id, "E05");
+
+        let replay = source_sequence_revision_baseline(visible_by_id["T06"]);
+        assert_eq!(replay.timeline[0].event_id, "E12");
+        assert_eq!(replay.quarantined_event_ids, vec!["E13".to_owned()]);
+
+        let unknown = source_sequence_revision_baseline(visible_by_id["T16"]);
+        assert_eq!(unknown.disposition, Disposition::UnknownOrder);
+        assert!(unknown.timeline.is_empty());
+        assert_eq!(unknown.retained_history[0].event_id, "E25");
+    }
+
+    #[test]
+    fn source_sequence_baseline_does_not_invent_cross_source_semantic_reconciliation() {
+        let visible = load_visible_fixture().expect("visible fixture must validate");
+        let answer_key = load_fixture().expect("answer key must validate");
+        let truth = answer_key.iter().find(|task| task.task_id == "T17").unwrap();
+        let input = visible.iter().find(|task| task.task_id == "T17").unwrap();
+        let submission = source_sequence_revision_baseline(input);
+        let score = evaluate(truth, &submission);
+        assert!(!score.exact_match);
+        assert!(!score.unsafe_acceptances.is_empty());
+    }
+
     #[test]
     fn reference_outputs_pass_every_hard_gate() {
         let tasks = load_fixture().expect("fixture must validate");
