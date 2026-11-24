@@ -18,6 +18,10 @@ The reference evaluator:
 
 - Rejects vacuous tasks with no required obligations.
 - Requires every required obligation to have at least one Verified record.
+- Computes coverage, selective risk among covered tasks, confusion counts and Brier score while scoring probabilities for abstained tasks too.
+- Produces risk/coverage curves at caller-supplied confidence thresholds.
+- Computes exact rational decision-curve net benefit at predeclared sufficiency thresholds, alongside act-all and act-none references.
+- Computes probability-weighted EVSI from frozen synthetic outcome distributions; authorization, execution cost and privacy exposure are reported separately.
 - Treats an unresolved conflict as a blocker even when another record appears verified.
 - Never counts wrong-subject, expired, unauthorized, unauthenticated, unversioned or semantically unsupported records as verified.
 - Allows a verified alternative source to close an obligation when unrelated rejected records are present, while still counting those rejected records.
@@ -70,8 +74,10 @@ This reference implementation supplies machine-checkable foundations, not model 
 The full #299 experiment should additionally report:
 
 - sufficiency precision / recall by blocker category;
-- risk-versus-coverage curves and AURC;
-- Brier score and calibration error where probabilistic labels are justified;
+- risk-versus-coverage curves and AURC, including coverage at each predeclared threshold;
+- Brier score, calibration error and reliability diagrams where probabilistic labels are justified;
+- decision-curve net benefit versus act-all/act-none at predeclared clinical thresholds; the Rust evaluator returns exact fractions to avoid floating-point ambiguity;
+- EVSI from probability-weighted, frozen observation outcomes and an explicit expected-loss model;
 - exact source/version/subject/time lineage support rate;
 - unauthorized acquisition and disclosure count;
 - Pareto-frontier coverage and chosen-action opportunity gaps by benefit, cost and privacy separately;
