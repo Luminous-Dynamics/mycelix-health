@@ -263,13 +263,11 @@ jobs:
 
       - name: Execute deterministic negative-control baseline
         run: |
-          cargo run --locked --manifest-path prototypes/temporal-evidence-integrity-bench/Cargo.toml --bin naive_baseline > temporal-evidence-naive-baseline.tsv 2> temporal-evidence-naive-summary.txt
+          cargo run --locked --manifest-path prototypes/temporal-evidence-integrity-bench/Cargo.toml --bin naive_baseline > temporal-evidence-naive-baseline.tsv
       - name: Publish reproducible baseline report
         uses: actions/upload-artifact@v4
         with:
           name: temporal-evidence-integrity-naive-baseline
-          path: |
-            temporal-evidence-naive-baseline.tsv
-            temporal-evidence-naive-summary.txt
+          path: temporal-evidence-naive-baseline.tsv
           if-no-files-found: error
           retention-days: 30
