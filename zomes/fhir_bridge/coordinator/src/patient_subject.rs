@@ -507,4 +507,100 @@ mod tests {
             }
         );
     }
+
+    #[test]
+    fn fhir_subject_binding_v1_corpus() {
+        let corpus: Value = serde_json::from_str(include_str!(
+            "../../../../benchmarks/clinical-evidence-integrity/fhir-subject-binding-v1.json"
+        ))
+        .expect("checked-in synthetic benchmark corpus is valid JSON");
+
+        assert_eq!(corpus["schema_version"].as_u64(), Some(1));
+        assert_eq!(
+            corpus["benchmark_id"].as_str(),
+            Some("mycelix-clinical-evidence-integrity.fhir-subject-binding.v1")
+        );
+        assert_eq!(
+            corpus["data_classification"].as_str(),
+            Some("fully_synthetic_no_phi")
+        );
+
+        let cases = corpus["cases"]
+            .as_array()
+            .expect("corpus contains a cases array");
+        assert!(cases.len() >= 15, "benchmark corpus is intentionally adversarial");
+
+        let mut accepted = 0usize;
+        let mut rejected = 0usize;
+        for case in cases {
+            let case_id = case["id"].as_str().expect("case id");
+            let reference = case["reference"].as_str();
+            let source_entry = &case["source_entry"];
+            let selected_patient_id = case["selected_patient_id"]
+                .as_str()
+                .expect("selected patient id");
+            let entries = case["entries"]
+                .as_array()
+                .expect("bundle entries");
+
+            let patient_entries: Vec<&Value> = entries
+                .iter()
+                .filter(|entry| {
+                    entry
+                        .get("resource")
+                        .and_then(|resource| resource.get("resourceType"))
+                        .and_then(Value::as_str)
+                        == Some("Patient")
+                })
+                .collect();
+
+            let patient_entries_valid = patient_entries
+                .iter()
+                .all(|entry| bundle_entry_full_url_matches_resource(entry));
+            let source_entry_valid = bundle_entry_full_url_matches_resource(source_entry);
+            let binding = resolve_patient_subject(
+                reference,
+                Some(source_entry),
+                selected_patient_id,
+                entries,
+            );
+            let binding_label = match &binding {
+                PatientSubjectBinding::MatchesBundlePatient => "matches",
+                PatientSubjectBinding::DifferentPatient { .. } => "different_patient",
+                PatientSubjectBinding::Unresolved { .. } => "unresolved",
+            };
+
+            assert_eq!(
+                binding_label,
+                case["expected_binding"].as_str().expect("expected binding"),
+                "binding mismatch for case {case_id}"
+            );
+
+            // Mirror the coordinator's pre-ingest single-patient gates:
+            // exactly one Patient, valid selected/source Bundle identities,
+            // and an unambiguous subject match.
+            let accepted_by_policy = patient_entries.len() == 1
+                && patient_entries_valid
+                && source_entry_valid
+                && binding == PatientSubjectBinding::MatchesBundlePatient;
+
+            let actual_ingest = if accepted_by_policy { "accept" } else { "reject" };
+            assert_eq!(
+                actual_ingest,
+                case["expected_ingest"].as_str().expect("expected ingest outcome"),
+                "ingest policy mismatch for case {case_id}"
+            );
+
+            if accepted_by_policy {
+                accepted += 1;
+            } else {
+                rejected += 1;
+            }
+        }
+
+        assert!(accepted >= 4, "positive controls must exercise valid paths");
+        assert!(rejected >= 10, "negative controls must exercise fail-closed paths");
+        assert_eq!(accepted + rejected, cases.len());
+    }
+
 }
