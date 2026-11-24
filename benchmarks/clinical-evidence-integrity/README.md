@@ -15,6 +15,24 @@ It tests the coordinator's pre-ingest identity policy, not clinical correctness,
 de-identification, real EHR interoperability, deployed Holochain authorization,
 or diagnostic performance.
 
+## FHIR Bundle preflight v1
+
+The coordinator's declared ingestion profile is limited to Bundle.type =
+collection. The 22-case synthetic corpus covers valid URN/RESTful entries and
+malformed envelopes, including missing/duplicate fullUrl, missing resource
+fields, URL/resource identity disagreement, unsupported Bundle types, and
+forbidden request/response/search metadata.
+
+Run the preflight corpus from the repository root:
+
+```bash
+./scripts/run-fhir-bundle-preflight-benchmark.sh
+```
+
+The preflight is invoked before Patient or clinical-resource writes. A rejected
+envelope may persist only an unlinked rejection IngestReport. The Sweettest for
+a malformed collection checks that no Patient writes are reported.
+
 ## Run
 
 From the repository root in the supported Mycelix-Health submodule workspace:
