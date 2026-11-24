@@ -832,12 +832,81 @@ pub fn evaluate_evsi(model: &EvsiModel) -> Result<EvsiReport, MetricError> {
 mod tests {
     use super::*;
 
-    fn verified(obligation_id: &str, source_id: &str) -> EvidenceRecord {
+    fn gates_for_status(status: &EvidenceStatus) -> Vec<EvidenceGate> {
+        let mut gates: Vec<EvidenceGate> = REQUIRED_EVIDENCE_DIMENSIONS
+            .iter()
+            .copied()
+            .map(|dimension| EvidenceGate {
+                dimension,
+                state: EvidenceGateState::Verified,
+            })
+            .collect();
+
+        let failure = match status {
+            EvidenceStatus::Verified => None,
+            EvidenceStatus::Missing => Some((
+                EvidenceDimension::EvidencePresence,
+                EvidenceGateState::Missing,
+            )),
+            EvidenceStatus::Conflicted => Some((
+                EvidenceDimension::ConflictReconciliation,
+                EvidenceGateState::Conflicted,
+            )),
+            EvidenceStatus::Expired => Some((
+                EvidenceDimension::TemporalValidity,
+                EvidenceGateState::Failed,
+            )),
+            EvidenceStatus::Unauthorized => Some((
+                EvidenceDimension::ApplicationAuthority,
+                EvidenceGateState::Failed,
+            )),
+            EvidenceStatus::WrongSubject => Some((
+                EvidenceDimension::SubjectBinding,
+                EvidenceGateState::Failed,
+            )),
+            EvidenceStatus::UnauthenticatedIssuer => Some((
+                EvidenceDimension::IssuerAuthenticity,
+                EvidenceGateState::Failed,
+            )),
+            EvidenceStatus::MissingVersion => Some((
+                EvidenceDimension::ResourceVersion,
+                EvidenceGateState::Missing,
+            )),
+            EvidenceStatus::UnsupportedSemantics => Some((
+                EvidenceDimension::SemanticSupport,
+                EvidenceGateState::Failed,
+            )),
+            EvidenceStatus::IncompleteVerification => Some((
+                EvidenceDimension::ProvenanceLineage,
+                EvidenceGateState::Missing,
+            )),
+        };
+
+        if let Some((dimension, state)) = failure {
+            let gate = gates
+                .iter_mut()
+                .find(|gate| gate.dimension == dimension)
+                .expect("every evidence failure maps to a required dimension");
+            gate.state = state;
+        }
+        gates
+    }
+
+    fn evidence_record(
+        obligation_id: &str,
+        source_id: &str,
+        status: EvidenceStatus,
+    ) -> EvidenceRecord {
         EvidenceRecord {
             obligation_id: obligation_id.to_string(),
             source_id: source_id.to_string(),
-            status: EvidenceStatus::Verified,
+            gates: gates_for_status(&status),
+            status,
         }
+    }
+
+    fn verified(obligation_id: &str, source_id: &str) -> EvidenceRecord {
+        evidence_record(obligation_id, source_id, EvidenceStatus::Verified)
     }
 
     fn task(evidence: Vec<EvidenceRecord>, candidates: Vec<CandidateObservation>) -> DecisionTask {
@@ -904,11 +973,7 @@ mod tests {
     fn wrong_subject_never_satisfies_patient_binding() {
         let input = task(
             vec![
-                EvidenceRecord {
-                    obligation_id: "patient-binding".to_string(),
-                    source_id: "wrong-patient-record".to_string(),
-                    status: EvidenceStatus::WrongSubject,
-                },
+                evidence_record("patient-binding", "wrong-patient-record", EvidenceStatus::WrongSubject),
                 verified("lab-provenance", "lab-source-1"),
             ],
             Vec::new(),
@@ -927,11 +992,7 @@ mod tests {
             vec![
                 verified("patient-binding", "patient-proof-1"),
                 verified("lab-provenance", "lab-source-1"),
-                EvidenceRecord {
-                    obligation_id: "lab-provenance".to_string(),
-                    source_id: "conflicting-lab-source".to_string(),
-                    status: EvidenceStatus::Conflicted,
-                },
+                evidence_record("lab-provenance", "conflicting-lab-source", EvidenceStatus::Conflicted),
             ],
             Vec::new(),
         );
@@ -948,21 +1009,9 @@ mod tests {
         let input = task(
             vec![
                 verified("patient-binding", "patient-proof-1"),
-                EvidenceRecord {
-                    obligation_id: "lab-provenance".to_string(),
-                    source_id: "expired-lab".to_string(),
-                    status: EvidenceStatus::Expired,
-                },
-                EvidenceRecord {
-                    obligation_id: "lab-provenance".to_string(),
-                    source_id: "untrusted-lab".to_string(),
-                    status: EvidenceStatus::UnauthenticatedIssuer,
-                },
-                EvidenceRecord {
-                    obligation_id: "lab-provenance".to_string(),
-                    source_id: "unauthorized-lab".to_string(),
-                    status: EvidenceStatus::Unauthorized,
-                },
+                evidence_record("lab-provenance", "expired-lab", EvidenceStatus::Expired),
+                evidence_record("lab-provenance", "untrusted-lab", EvidenceStatus::UnauthenticatedIssuer),
+                evidence_record("lab-provenance", "unauthorized-lab", EvidenceStatus::Unauthorized),
             ],
             Vec::new(),
         );
@@ -983,11 +1032,7 @@ mod tests {
         let input = task(
             vec![
                 verified("patient-binding", "patient-proof-1"),
-                EvidenceRecord {
-                    obligation_id: "lab-provenance".to_string(),
-                    source_id: "rejected-old-source".to_string(),
-                    status: EvidenceStatus::Expired,
-                },
+                evidence_record("lab-provenance", "rejected-old-source", EvidenceStatus::Expired),
                 verified("lab-provenance", "current-lab-source"),
             ],
             Vec::new(),
@@ -1035,11 +1080,7 @@ mod tests {
         let input = task(
             vec![
                 verified("patient-binding", "patient-proof-1"),
-                EvidenceRecord {
-                    obligation_id: "lab-provenance".to_string(),
-                    source_id: "wrong-patient-lab".to_string(),
-                    status: EvidenceStatus::WrongSubject,
-                },
+                evidence_record("lab-provenance", "wrong-patient-lab", EvidenceStatus::WrongSubject),
             ],
             Vec::new(),
         );
@@ -1061,11 +1102,7 @@ mod tests {
         let input = task(
             vec![
                 verified("patient-binding", "patient-proof-1"),
-                EvidenceRecord {
-                    obligation_id: "lab-provenance".to_string(),
-                    source_id: "expired-lab".to_string(),
-                    status: EvidenceStatus::Expired,
-                },
+                evidence_record("lab-provenance", "expired-lab", EvidenceStatus::Expired),
             ],
             vec![
                 action("high-value", "lab-provenance", true, 8_000, 4, 5),
@@ -1130,16 +1167,8 @@ mod tests {
         let input = task(
             vec![
                 verified("patient-binding", "patient-proof-1"),
-                EvidenceRecord {
-                    obligation_id: "lab-provenance".to_string(),
-                    source_id: "unversioned-lab".to_string(),
-                    status: EvidenceStatus::MissingVersion,
-                },
-                EvidenceRecord {
-                    obligation_id: "lab-provenance".to_string(),
-                    source_id: "unsupported-unit-lab".to_string(),
-                    status: EvidenceStatus::UnsupportedSemantics,
-                },
+                evidence_record("lab-provenance", "unversioned-lab", EvidenceStatus::MissingVersion),
+                evidence_record("lab-provenance", "unsupported-unit-lab", EvidenceStatus::UnsupportedSemantics),
             ],
             Vec::new(),
         );
@@ -1372,11 +1401,7 @@ mod tests {
                 "wrong_subject" => (
                     task(
                         vec![
-                            EvidenceRecord {
-                                obligation_id: "patient-binding".to_string(),
-                                source_id: "wrong-patient-proof".to_string(),
-                                status: EvidenceStatus::WrongSubject,
-                            },
+                            evidence_record("patient-binding", "wrong-patient-proof", EvidenceStatus::WrongSubject),
                             verified("lab-provenance", "lab-source-1"),
                         ],
                         Vec::new(),
@@ -1388,11 +1413,7 @@ mod tests {
                         vec![
                             verified("patient-binding", "patient-proof-1"),
                             verified("lab-provenance", "lab-source-1"),
-                            EvidenceRecord {
-                                obligation_id: "lab-provenance".to_string(),
-                                source_id: "conflicting-lab".to_string(),
-                                status: EvidenceStatus::Conflicted,
-                            },
+                            evidence_record("lab-provenance", "conflicting-lab", EvidenceStatus::Conflicted),
                         ],
                         Vec::new(),
                     ),
@@ -1414,11 +1435,7 @@ mod tests {
                         task(
                             vec![
                                 verified("patient-binding", "patient-proof-1"),
-                                EvidenceRecord {
-                                    obligation_id: "lab-provenance".to_string(),
-                                    source_id: "blocked-lab".to_string(),
-                                    status,
-                                },
+                                evidence_record("lab-provenance", "blocked-lab", status.clone()),
                             ],
                             Vec::new(),
                         ),
@@ -1429,11 +1446,7 @@ mod tests {
                     task(
                         vec![
                             verified("patient-binding", "patient-proof-1"),
-                            EvidenceRecord {
-                                obligation_id: "lab-provenance".to_string(),
-                                source_id: "expired-lab".to_string(),
-                                status: EvidenceStatus::Expired,
-                            },
+                            evidence_record("lab-provenance", "expired-lab", EvidenceStatus::Expired),
                             verified("lab-provenance", "current-lab"),
                         ],
                         Vec::new(),
@@ -1444,11 +1457,7 @@ mod tests {
                     task(
                         vec![
                             verified("patient-binding", "patient-proof-1"),
-                            EvidenceRecord {
-                                obligation_id: "lab-provenance".to_string(),
-                                source_id: "expired-lab".to_string(),
-                                status: EvidenceStatus::Expired,
-                            },
+                            evidence_record("lab-provenance", "expired-lab", EvidenceStatus::Expired),
                         ],
                         vec![
                             action("high-value", "lab-provenance", true, 8_000, 4, 5),
@@ -1462,11 +1471,7 @@ mod tests {
                     task(
                         vec![
                             verified("patient-binding", "patient-proof-1"),
-                            EvidenceRecord {
-                                obligation_id: "lab-provenance".to_string(),
-                                source_id: "expired-lab".to_string(),
-                                status: EvidenceStatus::Expired,
-                            },
+                            evidence_record("lab-provenance", "expired-lab", EvidenceStatus::Expired),
                         ],
                         vec![action(
                             "unauthorized-high-value",
