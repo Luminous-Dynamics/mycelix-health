@@ -592,7 +592,7 @@ export async function verifyNativeClinicalCountersigningEvidenceV1(
     immutableParticipants.map((participant) => participant.action_hash),
   );
   const verifiedResult: VerifiedNativeClinicalCountersigningEvidenceV1 = Object.freeze({
-    [VERIFIED_NATIVE_COUNTERSIGNING_EVIDENCE]: true,
+    [VERIFIED_NATIVE_COUNTERSIGNING_EVIDENCE]: true as const,
     evidence_version: 1,
     intent_digest: copyBytes(intentDigest),
     app_entry_hash_binding: evidence.app_entry_hash_binding,
