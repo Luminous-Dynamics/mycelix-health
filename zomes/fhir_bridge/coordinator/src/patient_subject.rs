@@ -6,7 +6,7 @@
 //!
 //! Relative references are expanded from the referencing entry's RESTful
 //! fullUrl. Version-specific references are matched against Resource.meta.versionId.
-//! Missing, ambiguous, unsupported, or unresolved references fail closed.
+//! FHIR RESTful fullUrl type/id must agree with the embedded resource.
 
 use serde_json::Value;
 
@@ -17,17 +17,6 @@ pub enum PatientSubjectBinding {
     Unresolved { reason: String },
 }
 
-fn parse_relative_patient_reference(reference: &str) -> Option<(&str, Option<&str>)> {
-    let parts: Vec<&str> = reference.split('/').collect();
-    match parts.as_slice() {
-        ["Patient", id] if valid_fhir_id(id) => Some((*id, None)),
-        ["Patient", id, "_history", version] if valid_fhir_id(id) && valid_fhir_id(version) => {
-            Some((*id, Some(*version)))
-        }
-        _ => None,
-    }
-}
-
 fn valid_fhir_id(value: &str) -> bool {
     !value.is_empty()
         && value.len() <= 64
@@ -36,10 +25,9 @@ fn valid_fhir_id(value: &str) -> bool {
             .all(|byte| byte.is_ascii_alphanumeric() || byte == b'-' || byte == b'.')
 }
 
-/// Return the service root for a RESTful resource URL, including its trailing
-/// slash. URNs, relative paths, versioned URLs, and URLs with query/fragment
-/// components are not valid bases for relative reference expansion.
-fn restful_root(full_url: &str) -> Option<&str> {
+/// Parse an absolute RESTful resource fullUrl into its service root, resource
+/// type, and logical id. Query/fragment, encoded or invalid ids are rejected.
+fn restful_resource_identity(full_url: &str) -> Option<(&str, &str, &str)> {
     if full_url.contains('?') || full_url.contains('#') {
         return None;
     }
@@ -60,14 +48,17 @@ fn restful_root(full_url: &str) -> Option<&str> {
         return None;
     }
 
-    let last_slash = full_url.rfind('/')?;
-    let resource_slash = full_url[..last_slash].rfind('/')?;
-    if resource_slash < path_start {
+    let id_separator = full_url.rfind('/')?;
+    if id_separator < path_start || id_separator + 1 >= full_url.len() {
+        return None;
+    }
+    let type_separator = full_url[..id_separator].rfind('/')?;
+    if type_separator < path_start {
         return None;
     }
 
-    let resource_type = &full_url[resource_slash + 1..last_slash];
-    let id = &full_url[last_slash + 1..];
+    let resource_type = &full_url[type_separator + 1..id_separator];
+    let id = &full_url[id_separator + 1..];
     if resource_type.is_empty()
         || !resource_type.bytes().all(|byte| byte.is_ascii_alphabetic())
         || !resource_type.as_bytes()[0].is_ascii_uppercase()
@@ -76,7 +67,60 @@ fn restful_root(full_url: &str) -> Option<&str> {
         return None;
     }
 
-    Some(&full_url[..resource_slash + 1])
+    Some((&full_url[..type_separator + 1], resource_type, id))
+}
+
+/// A Bundle entry with an HTTP(S) fullUrl must agree with the resource's
+/// resourceType and id. URN fullUrls are opaque identifiers and are resolved
+/// only by exact equality.
+pub fn bundle_entry_full_url_matches_resource(entry: &Value) -> bool {
+    let Some(full_url) = entry.get("fullUrl").and_then(Value::as_str) else {
+        return true;
+    };
+
+    if full_url.starts_with("urn:") {
+        return true;
+    }
+
+    let Some((_, full_url_type, full_url_id)) = restful_resource_identity(full_url) else {
+        return false;
+    };
+    let Some(resource) = entry.get("resource") else {
+        return false;
+    };
+    let resource_type = resource
+        .get("resourceType")
+        .and_then(Value::as_str)
+        .unwrap_or_default();
+    let resource_id = resource.get("id").and_then(Value::as_str).unwrap_or_default();
+
+    full_url_type == resource_type && full_url_id == resource_id
+}
+
+fn source_restful_root(source_entry: Option<&Value>) -> Option<&str> {
+    let entry = source_entry?;
+    let full_url = entry.get("fullUrl").and_then(Value::as_str)?;
+    let (root, full_url_type, full_url_id) = restful_resource_identity(full_url)?;
+    let resource = entry.get("resource")?;
+    let resource_type = resource.get("resourceType").and_then(Value::as_str)?;
+    let resource_id = resource.get("id").and_then(Value::as_str)?;
+
+    if full_url_type == resource_type && full_url_id == resource_id {
+        Some(root)
+    } else {
+        None
+    }
+}
+
+fn parse_relative_patient_reference(reference: &str) -> Option<(&str, Option<&str>)> {
+    let parts: Vec<&str> = reference.split('/').collect();
+    match parts.as_slice() {
+        ["Patient", id] if valid_fhir_id(id) => Some((*id, None)),
+        ["Patient", id, "_history", version] if valid_fhir_id(id) && valid_fhir_id(version) => {
+            Some((*id, Some(*version)))
+        }
+        _ => None,
+    }
 }
 
 fn split_absolute_history(reference: &str) -> Option<(&str, Option<&str>)> {
@@ -92,15 +136,18 @@ fn split_absolute_history(reference: &str) -> Option<(&str, Option<&str>)> {
     Some((reference, None))
 }
 
-/// Resolve a patient-scoped reference according to Bundle reference semantics.
+/// Resolve a patient-scoped reference using Bundle reference identity semantics.
 ///
-/// Relative Patient references are expanded from the referencing entry's
-/// RESTful fullUrl. Absolute references and URNs match fullUrl exactly.
-/// Version-specific references additionally require exact meta.versionId.
-/// Exactly one Patient target must resolve to the selected patient.
+/// - Relative Patient references are expanded from the referencing entry's
+///   RESTful fullUrl, which must agree with that entry's resource identity.
+/// - Absolute references match Bundle entry fullUrl exactly.
+/// - URNs match Bundle entry fullUrl exactly.
+/// - Version-specific references additionally require exact meta.versionId.
+/// - For RESTful targets, fullUrl resource type/id must agree with the target.
+/// - Exactly one Patient target must resolve to the selected patient.
 pub fn resolve_patient_subject(
     reference: Option<&str>,
-    source_full_url: Option<&str>,
+    source_entry: Option<&Value>,
     bundle_patient_id: &str,
     entries: &[Value],
 ) -> PatientSubjectBinding {
@@ -113,9 +160,10 @@ pub fn resolve_patient_subject(
     let (target_full_url, requested_version) = if let Some((patient_id, version)) =
         parse_relative_patient_reference(reference)
     {
-        let Some(root) = source_full_url.and_then(restful_root) else {
+        let Some(root) = source_restful_root(source_entry) else {
             return PatientSubjectBinding::Unresolved {
-                reason: "relative reference has no RESTful source fullUrl context".to_string(),
+                reason: "relative reference has no consistent RESTful source fullUrl context"
+                    .to_string(),
             };
         };
         (format!("{root}Patient/{patient_id}"), version)
@@ -205,6 +253,20 @@ fn resolve_bundle_target(
                     reason: "matching Patient fullUrl has no logical id".to_string(),
                 };
             };
+            if target_full_url.starts_with("https://") || target_full_url.starts_with("http://") {
+                let Some((_, full_url_type, full_url_id)) =
+                    restful_resource_identity(target_full_url)
+                else {
+                    return PatientSubjectBinding::Unresolved {
+                        reason: "target RESTful fullUrl is malformed".to_string(),
+                    };
+                };
+                if full_url_type != "Patient" || full_url_id != referenced_id {
+                    return PatientSubjectBinding::Unresolved {
+                        reason: "Patient fullUrl type/id disagrees with embedded resource".to_string(),
+                    };
+                }
+            }
             if referenced_id == bundle_patient_id {
                 PatientSubjectBinding::MatchesBundlePatient
             } else {
@@ -238,23 +300,41 @@ mod tests {
         json!({ "fullUrl": full_url, "resource": resource })
     }
 
+    fn source_entry(full_url: &str, id: &str) -> Value {
+        json!({
+            "fullUrl": full_url,
+            "resource": {
+                "resourceType": "Observation",
+                "id": id
+            }
+        })
+    }
+
     #[test]
-    fn accepts_relative_reference_expanded_from_restful_source_url() {
+    fn accepts_relative_reference_expanded_from_consistent_restful_source_url() {
         let entries = vec![patient_entry(PATIENT_FULL_URL, "p-1", None)];
+        let source = source_entry(SOURCE_FULL_URL, "o-1");
         assert_eq!(
-            resolve_patient_subject(Some("Patient/p-1"), Some(SOURCE_FULL_URL), "p-1", &entries),
+            resolve_patient_subject(Some("Patient/p-1"), Some(&source), "p-1", &entries),
             PatientSubjectBinding::MatchesBundlePatient
         );
     }
 
     #[test]
-    fn rejects_relative_reference_from_urn_or_missing_source_context() {
-        for source in [Some("urn:uuid:00000000-0000-4000-8000-000000000002"), None] {
+    fn rejects_relative_reference_without_a_consistent_restful_source_url() {
+        for source in [
+            Some(source_entry("urn:uuid:00000000-0000-4000-8000-000000000002", "o-1")),
+            Some(source_entry("https://ehr.example/fhir/Observation/other", "o-1")),
+        ] {
             assert!(matches!(
-                resolve_patient_subject(Some("Patient/p-1"), source, "p-1", &[]),
+                resolve_patient_subject(Some("Patient/p-1"), source.as_ref(), "p-1", &[]),
                 PatientSubjectBinding::Unresolved { .. }
             ));
         }
+        assert!(matches!(
+            resolve_patient_subject(Some("Patient/p-1"), None, "p-1", &[]),
+            PatientSubjectBinding::Unresolved { .. }
+        ));
     }
 
     #[test]
@@ -264,8 +344,9 @@ mod tests {
             "p-1",
             None,
         )];
+        let source = source_entry(SOURCE_FULL_URL, "o-1");
         assert!(matches!(
-            resolve_patient_subject(Some("Patient/p-1"), Some(SOURCE_FULL_URL), "p-1", &entries),
+            resolve_patient_subject(Some("Patient/p-1"), Some(&source), "p-1", &entries),
             PatientSubjectBinding::Unresolved { .. }
         ));
     }
@@ -273,10 +354,11 @@ mod tests {
     #[test]
     fn matches_versioned_relative_reference_against_meta_version_id() {
         let entries = vec![patient_entry(PATIENT_FULL_URL, "p-1", Some("3"))];
+        let source = source_entry(SOURCE_FULL_URL, "o-1");
         assert_eq!(
             resolve_patient_subject(
                 Some("Patient/p-1/_history/3"),
-                Some(SOURCE_FULL_URL),
+                Some(&source),
                 "p-1",
                 &entries
             ),
@@ -285,7 +367,7 @@ mod tests {
         assert!(matches!(
             resolve_patient_subject(
                 Some("Patient/p-1/_history/4"),
-                Some(SOURCE_FULL_URL),
+                Some(&source),
                 "p-1",
                 &entries
             ),
@@ -328,7 +410,7 @@ mod tests {
     #[test]
     fn rejects_missing_or_external_reference() {
         assert!(matches!(
-            resolve_patient_subject(None, Some(SOURCE_FULL_URL), "p-1", &[]),
+            resolve_patient_subject(None, None, "p-1", &[]),
             PatientSubjectBinding::Unresolved { .. }
         ));
         assert!(matches!(
@@ -374,14 +456,54 @@ mod tests {
     }
 
     #[test]
+    fn rejects_target_full_url_that_disagrees_with_patient_resource_id() {
+        let entries = vec![patient_entry(
+            "https://ehr.example/fhir/Patient/p-wrong",
+            "p-1",
+            None,
+        )];
+        assert!(matches!(
+            resolve_patient_subject(
+                Some("https://ehr.example/fhir/Patient/p-wrong"),
+                None,
+                "p-1",
+                &entries
+            ),
+            PatientSubjectBinding::Unresolved { .. }
+        ));
+    }
+
+    #[test]
+    fn rejects_inconsistent_source_or_patient_bundle_entry_identity() {
+        let source = source_entry(
+            "https://ehr.example/fhir/Observation/o-spoofed",
+            "o-1",
+        );
+        assert!(!bundle_entry_full_url_matches_resource(&source));
+
+        let patient = patient_entry(
+            "https://ehr.example/fhir/Patient/p-spoofed",
+            "p-1",
+            None,
+        );
+        assert!(!bundle_entry_full_url_matches_resource(&patient));
+    }
+
+    #[test]
     fn identifies_a_different_patient_even_when_reference_is_well_formed() {
         let entries = vec![patient_entry(
             "https://ehr.example/fhir/Patient/p-2",
             "p-2",
             None,
         )];
+        let source = source_entry(SOURCE_FULL_URL, "o-1");
         assert_eq!(
-            resolve_patient_subject(Some("Patient/p-2"), Some(SOURCE_FULL_URL), "p-1", &entries),
+            resolve_patient_subject(
+                Some("Patient/p-2"),
+                Some(&source),
+                "p-1",
+                &entries
+            ),
             PatientSubjectBinding::DifferentPatient {
                 referenced_patient_id: "p-2".to_string()
             }

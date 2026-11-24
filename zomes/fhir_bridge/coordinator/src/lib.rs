@@ -18,7 +18,9 @@ use fhir_bridge_integrity::*;
 use hdk::prelude::*;
 
 mod patient_subject;
-use patient_subject::{resolve_patient_subject, PatientSubjectBinding};
+use patient_subject::{
+    bundle_entry_full_url_matches_resource, resolve_patient_subject, PatientSubjectBinding,
+};
 mod observation_time;
 use observation_time::parse_fhir_instant;
 
@@ -222,8 +224,12 @@ pub fn ingest_bundle(input: IngestBundleInput) -> ExternResult<IngestReport> {
     // the first Patient from a multi-patient Bundle.
     let patient_entries: Vec<&JsonValue> = entries
         .iter()
-        .filter_map(|entry| entry.get("resource"))
-        .filter(|resource| get_resource_type(resource).as_deref() == Some("Patient"))
+        .filter(|entry| {
+            entry
+                .get("resource")
+                .map(|resource| get_resource_type(resource).as_deref() == Some("Patient"))
+                .unwrap_or(false)
+        })
         .collect();
 
     if patient_entries.len() > 1 {
@@ -240,7 +246,20 @@ pub fn ingest_bundle(input: IngestBundleInput) -> ExternResult<IngestReport> {
     let mut patient_hash: Option<ActionHash> = None;
     let mut patient_fhir_id: Option<String> = None;
 
-    if let Some(resource) = patient_entries.first() {
+    if let Some(patient_entry) = patient_entries.first() {
+        if !bundle_entry_full_url_matches_resource(patient_entry) {
+            report.parse_errors.push(
+                "Patient entry fullUrl disagrees with its embedded Patient resource identity"
+                    .to_string(),
+            );
+            create_entry(&EntryTypes::IngestReport(report.clone()))?;
+            return Ok(report);
+        }
+        let Some(resource) = patient_entry.get("resource") else {
+            report.parse_errors.push("Patient entry has no resource".to_string());
+            create_entry(&EntryTypes::IngestReport(report.clone()))?;
+            return Ok(report);
+        };
         patient_fhir_id = get_resource_id(resource);
         match process_patient(resource, &input.source_system) {
             Ok((hash, created)) => {
@@ -328,10 +347,9 @@ pub fn ingest_bundle(input: IngestBundleInput) -> ExternResult<IngestReport> {
             };
 
             let reference = get_patient_reference(resource);
-            let source_full_url = entry.get("fullUrl").and_then(JsonValue::as_str);
             match resolve_patient_subject(
                 reference.as_deref(),
-                source_full_url,
+                Some(entry),
                 bundle_patient_id,
                 &entries,
             ) {
