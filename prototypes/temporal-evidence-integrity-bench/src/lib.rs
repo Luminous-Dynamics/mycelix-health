@@ -277,7 +277,6 @@ fn parse_cases(input: &str) -> Result<Vec<Task>, String> {
     Ok(tasks)
 }
 
-
 fn parse_visible_task_manifest(input: &str) -> Result<BTreeMap<String, String>, String> {
     let mut tasks = BTreeMap::new();
     for (line_index, line) in input.lines().enumerate() {
@@ -291,7 +290,10 @@ fn parse_visible_task_manifest(input: &str) -> Result<BTreeMap<String, String>, 
                 line_index + 1
             ));
         }
-        if tasks.insert(fields[0].to_owned(), fields[1].to_owned()).is_some() {
+        if tasks
+            .insert(fields[0].to_owned(), fields[1].to_owned())
+            .is_some()
+        {
             return Err(format!(
                 "task-inputs.tsv line {}: duplicate task id {}",
                 line_index + 1,
@@ -317,7 +319,6 @@ fn parse_optional_i64(value: &str, field: &str, line_index: usize) -> Result<Opt
         })
     }
 }
-
 
 fn parse_visible_events(
     input: &str,
@@ -363,16 +364,8 @@ fn parse_visible_events(
                 "specimen collection time",
                 line_index,
             )?,
-            analysis_performed_at_ms: parse_optional_i64(
-                fields[8],
-                "analysis time",
-                line_index,
-            )?,
-            result_issued_at_ms: parse_optional_i64(
-                fields[9],
-                "result issue time",
-                line_index,
-            )?,
+            analysis_performed_at_ms: parse_optional_i64(fields[8], "analysis time", line_index)?,
+            result_issued_at_ms: parse_optional_i64(fields[9], "result issue time", line_index)?,
             source_last_updated_at_ms: parse_optional_i64(
                 fields[10],
                 "source lastUpdated time",
@@ -519,9 +512,8 @@ pub fn load_fixture() -> Result<Vec<Task>, String> {
 
 /// Load the agent-visible v1 corpus without exposing evaluator answer-key fields.
 pub fn load_visible_fixture() -> Result<Vec<VisibleTaskInput>, String> {
-    let task_manifest = parse_visible_task_manifest(include_str!(
-        "../fixtures/v1-task-inputs.tsv"
-    ))?;
+    let task_manifest =
+        parse_visible_task_manifest(include_str!("../fixtures/v1-task-inputs.tsv"))?;
     let mut events_by_task = parse_visible_events(include_str!("../fixtures/v1-events.tsv"))?;
     let mut tasks = Vec::with_capacity(task_manifest.len());
 
@@ -854,7 +846,6 @@ pub fn reference_submission(task: &Task) -> Submission {
     }
 }
 
-
 /// Intentionally weak baseline: accepts every visible event as current and
 /// sorts by local ingestion time. It ignores revision, authority, identity,
 /// correction, and conflict semantics. This is a negative control, not a
@@ -956,7 +947,6 @@ mod tests {
         );
     }
 
-
     #[test]
     fn visible_input_is_separate_from_answer_key_and_negative_control_is_detected() {
         let visible = load_visible_fixture().expect("visible fixture must validate");
@@ -994,7 +984,9 @@ mod tests {
             truth_by_id["T07"],
             &naive_ingestion_order_baseline(visible_by_id["T07"]),
         );
-        assert!(wrong_patient_attack.unsafe_acceptances.contains(&"E14".to_owned()));
+        assert!(wrong_patient_attack
+            .unsafe_acceptances
+            .contains(&"E14".to_owned()));
         assert!(!wrong_patient_attack.hard_gates_pass);
     }
 
