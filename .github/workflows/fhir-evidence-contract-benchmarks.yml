@@ -49,9 +49,9 @@ jobs:
             ~/.cargo/registry
             ~/.cargo/git
             target
-          key: \${{ runner.os }}-fhir-evidence-\${{ hashFiles('Cargo.lock') }}
+          key: ${{ runner.os }}-fhir-evidence-${{ hashFiles('Cargo.lock') }}
           restore-keys: |
-            \${{ runner.os }}-fhir-evidence-
+            ${{ runner.os }}-fhir-evidence-
 
       - name: Check FHIR coordinator formatting
         run: cargo fmt -p fhir_bridge_coordinator -- --check
