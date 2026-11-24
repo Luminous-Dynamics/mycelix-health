@@ -1,0 +1,13 @@
+{
+  "schema_version": 1,
+  "validator": "HL7-maintained FHIR Validator CLI",
+  "release_tag": "7.0.6",
+  "release_url": "https://github.com/hapifhir/org.hl7.fhir.core/releases/download/7.0.6/validator_cli.jar",
+  "artifact": "validator_cli.jar",
+  "sha256": "2686590539f0b3ba7683149b25d78249f6886c04e2c326e884c5049d8947df89",
+  "size_bytes": 204899397,
+  "java_major": 17,
+  "fhir_version": "4.0.1",
+  "terminology_mode": "n/a",
+  "validation_scope": "FHIR R4 core structural and invariant validation only; no implementation guide or clinical terminology conformance claim"
+}
