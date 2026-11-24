@@ -60,6 +60,18 @@ export const ServerConfigSchema = z.object({
 
   /** OAuth callback base URL (for SMART on FHIR redirects) */
   oauthCallbackBaseUrl: z.string().url().optional(),
+
+  /** Coarse service-level API bearer; not a substitute for user/patient authorization */
+  apiBearerToken: z.string().min(32).optional(),
+}).superRefine((config, context) => {
+  const loopbackHosts = new Set(["127.0.0.1", "::1", "localhost"]);
+  if (!loopbackHosts.has(config.host) && !config.apiBearerToken) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["apiBearerToken"],
+      message: "A high-entropy EHR_GATEWAY_API_BEARER_TOKEN is required for non-loopback binding",
+    });
+  }
 });
 
 export type ServerConfig = z.infer<typeof ServerConfigSchema>;
@@ -132,6 +144,7 @@ export function loadServerConfig(): ServerConfig {
     logLevel: process.env.LOG_LEVEL || 'info',
     enableRequestLogging: process.env.ENABLE_REQUEST_LOGGING !== 'false',
     oauthCallbackBaseUrl: process.env.OAUTH_CALLBACK_BASE_URL,
+    apiBearerToken: process.env.EHR_GATEWAY_API_BEARER_TOKEN,
   });
 }
 

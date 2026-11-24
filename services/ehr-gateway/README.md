@@ -152,6 +152,19 @@ source-authority binding, secret/PHI-safe logging, and adversarial tests.
 `X-Source-System` is untrusted request metadata. It must never be treated as
 proof of EHR origin, provider identity, or authorization.
 
+### Network binding and API bearer boundary
+
+Non-loopback binding requires `EHR_GATEWAY_API_BEARER_TOKEN` (at least 32
+characters). When configured, FHIR, sync and administrative routes require
+`Authorization: Bearer ...`; `/health`, `/ready`, CORS preflight and the
+SMART OAuth callback remain reachable as documented.
+
+This is a coarse service-level shared-secret guard, not per-user identity,
+SMART access-token validation, patient/tenant scoping, role-based authorization,
+or cryptographic source-system attestation. It does not close P0 issue #289.
+Do not use real patient data or expose the service to untrusted networks until
+the complete #289 authority boundary and independent security review pass.
+
 ### Endpoints
 
 | Method | Path | Description |
@@ -347,6 +360,9 @@ This gateway is compatible with **Holochain 0.6.0**:
 # HTTP Server
 PORT=3000                           # Server port (default: 3000)
 EHR_GATEWAY_HOST=127.0.0.1        # Bind address (default: loopback only)
+
+# Network-bound API access (required when EHR_GATEWAY_HOST is not loopback)
+EHR_GATEWAY_API_BEARER_TOKEN=replace-with-at-least-32-random-characters
 
 # Holochain Connection
 HOLOCHAIN_URL=ws://localhost:8888   # Conductor WebSocket URL

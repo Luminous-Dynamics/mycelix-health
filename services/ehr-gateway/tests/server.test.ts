@@ -109,6 +109,73 @@ describe('EHR Gateway Server', () => {
     });
   });
 
+  describe('Network-bound API bearer guard', () => {
+    const bearer = 'test-gateway-api-bearer-secret-32-bytes-minimum';
+
+    it('rejects non-loopback binding without a strong API bearer', () => {
+      expect(() => ServerConfigSchema.parse({ host: '0.0.0.0' }))
+        .toThrow('EHR_GATEWAY_API_BEARER_TOKEN is required');
+    });
+
+    it('requires a valid bearer for FHIR, sync and admin routes when configured', async () => {
+      const secureApp = createApp({
+        ...ctx,
+        config: getTestConfig({
+          host: '0.0.0.0',
+          apiBearerToken: bearer,
+        }),
+      });
+
+      const noAuth = await secureApp.request('/fhir/metadata');
+      expect(noAuth.status).toBe(401);
+      expect(noAuth.headers.get('WWW-Authenticate')).toContain('Bearer');
+
+      const wrongAuth = await secureApp.request('/sync/jobs', {
+        headers: { Authorization: 'Bearer wrong-token' },
+      });
+      expect(wrongAuth.status).toBe(401);
+
+      const authorized = await secureApp.request('/fhir/metadata', {
+        headers: { Authorization: `Bearer ${bearer}` },
+      });
+      expect(authorized.status).toBe(200);
+
+      const adminAuthorized = await secureApp.request('/auth/connections', {
+        headers: { Authorization: `Bearer ${bearer}` },
+      });
+      expect(adminAuthorized.status).toBe(200);
+    });
+
+    it('keeps the SMART callback reachable without the gateway API bearer', async () => {
+      const secureApp = createApp({
+        ...ctx,
+        config: getTestConfig({
+          host: '0.0.0.0',
+          apiBearerToken: bearer,
+        }),
+      });
+
+      const callback = await secureApp.request(
+        '/auth/smart/callback?error=access_denied&error_description=User%20denied'
+      );
+      expect(callback.status).toBe(400);
+      expect((await callback.json()).error).toBe('Authorization denied');
+    });
+
+    it('keeps health and readiness public when the API bearer is configured', async () => {
+      const secureApp = createApp({
+        ...ctx,
+        config: getTestConfig({
+          host: '0.0.0.0',
+          apiBearerToken: bearer,
+        }),
+      });
+
+      expect((await secureApp.request('/health')).status).toBe(200);
+      expect((await secureApp.request('/ready')).status).toBe(200);
+    });
+  });
+
   describe('Health Endpoints', () => {
     it('GET /health returns ok status', async () => {
       const res = await app.request('/health');
