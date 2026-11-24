@@ -30,7 +30,7 @@ The reference evaluator:
 - Computes a Pareto frontier across benefit, cost and privacy instead of hiding policy choices in an arbitrary weighted score.
 - Uses stable sorting so the same frozen task produces the same frontier.
 
-The word Verified is a benchmark label, not a production token. A fixture may use it only when its reference data says that patient binding, issuer authenticity, resource version, temporal validity, semantic support, complete lineage and purpose-scoped authorization all passed.
+The word Verified is a benchmark disposition, not a production token and not a sufficient assertion by itself. Every source record carries nine independent gates: evidence presence, patient-subject binding, issuer authenticity, resource version, temporal validity/freshness, semantic support, provenance/transformation lineage, application authority, and conflict reconciliation. An accepted record must contain exactly one passing check for every required dimension. A missing check or duplicate dimension blocks sufficiency and is reported explicitly. The evaluator does not allow a valid signature to compensate for a wrong patient, or correct identity to compensate for expired evidence or missing authority.
 
 ## What it does not do
 
@@ -48,6 +48,7 @@ Equivalent commands:
 
     cargo fmt --manifest-path prototypes/decision-sufficiency-bench/Cargo.toml -- --check
     HOST="$(rustc -vV | sed -n 's/^host: //p')"
+    cargo clippy --manifest-path prototypes/decision-sufficiency-bench/Cargo.toml --target "$HOST" --all-targets --locked -- -D warnings
     cargo test --manifest-path prototypes/decision-sufficiency-bench/Cargo.toml --target "$HOST" --locked
 
 The crate has its own minimal workspace and no external dependencies. The runner prints a SHA-256 digest of the fixture catalogue. The Rust tests exercise the reference evaluator against adversarial cases.
@@ -58,6 +59,8 @@ The catalogue in fixtures/v1-cases.tsv enumerates the v1 cases. The unit tests c
 
 - complete evidence and missing obligations;
 - wrong-patient evidence;
+- missing or duplicate individual evidence gates despite a coarse Verified label;
+- multiple simultaneous gate failures with source- and dimension-specific blockers;
 - unresolved contradictions;
 - expired, unauthorized and unauthenticated evidence;
 - valid alternative sources;
@@ -73,16 +76,14 @@ This reference implementation supplies machine-checkable foundations, not model 
 
 The full #299 experiment should additionally report:
 
-- sufficiency precision / recall by blocker category;
+- sufficiency precision / recall by blocker category and individual evidence dimension;
 - risk-versus-coverage curves and AURC, including coverage at each predeclared threshold;
 - Brier score, calibration error and reliability diagrams where probabilistic labels are justified;
 - decision-curve net benefit versus act-all/act-none at predeclared clinical thresholds; the Rust evaluator returns exact fractions to avoid floating-point ambiguity;
-- EVSI from probability-weighted, frozen observation outcomes and an explicit expected-loss model;
+- EVSI from probability-weighted, frozen observation outcomes and an explicit expected-loss model; use EVPI as an upper bound where meaningful;
 - exact source/version/subject/time lineage support rate;
 - unauthorized acquisition and disclosure count;
 - Pareto-frontier coverage and chosen-action opportunity gaps by benefit, cost and privacy separately;
-- expected value of sample information (EVSI) for each candidate acquisition policy where the synthetic world provides a defensible probability and decision-loss model; use EVPI as an upper bound where meaningful;
-- decision-curve analysis and net benefit at predeclared action thresholds when tasks have valid outcome, benefit and harm labels; compare with default policies such as act-on-all and act-on-none where appropriate;
 - wall time, p50/p95/p99 latency, compute, bytes accessed and reviewer time.
 
 EVSI is the expected improvement in decision quality from collecting a specific observation or dataset, not a generic information-gain score. Report its assumptions and sensitivity analyses. For clinical decision support, net benefit should complement discrimination and calibration rather than replace them. The operating threshold must be fixed with appropriate clinical and patient input before evaluation; decision curves do not choose the threshold for the intended population. See the BMJ [clinical prediction model guide](https://www.bmj.com/content/386/bmj-2023-078276.long), [net-benefit primer](https://www.bmj.com/content/352/bmj.i6), and the review of [value-of-information analysis in health policy](https://pmc.ncbi.nlm.nih.gov/articles/PMC7612603/).
