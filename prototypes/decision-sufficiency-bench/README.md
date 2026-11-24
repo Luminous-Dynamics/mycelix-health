@@ -38,7 +38,7 @@ The candidate-action benefit values are synthetic expected decision-loss reducti
 
 From the repository root:
 
-    ./scripts/run-decision-sufficiency-benchmark.sh
+    bash ./scripts/run-decision-sufficiency-benchmark.sh
 
 Equivalent commands:
 
