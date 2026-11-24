@@ -188,7 +188,7 @@ pub fn classify_revision(
 
     let existing: Vec<&SourceRevision> = history
         .iter()
-        .chain(current.into_iter())
+        .chain(current)
         .filter(|revision| same_logical_resource(revision, incoming))
         .collect();
 
@@ -296,7 +296,7 @@ mod tests {
         replay.source_last_updated_micros = Some(1_700_000_500_000_000);
 
         assert_eq!(
-            classify_revision(&replay, &[existing.clone()], Some(&existing)).unwrap(),
+            classify_revision(&replay, std::slice::from_ref(&existing), Some(&existing)).unwrap(),
             RevisionAssessment {
                 disposition: RevisionDisposition::ExactReplay,
                 projection_effect: ProjectionEffect::NoChange,
@@ -309,7 +309,7 @@ mod tests {
         let current = revision("tenant-a", "issuer-a", Some("v1"), 1, Some(10));
         let incoming = revision("tenant-a", "issuer-a", Some("v2"), 2, Some(11));
         assert_eq!(
-            classify_revision(&incoming, &[current.clone()], Some(&current)).unwrap(),
+            classify_revision(&incoming, std::slice::from_ref(&current), Some(&current)).unwrap(),
             RevisionAssessment {
                 disposition: RevisionDisposition::NewerBySourceSequence,
                 projection_effect: ProjectionEffect::Promote,
@@ -322,7 +322,7 @@ mod tests {
         let current = revision("tenant-a", "issuer-a", Some("v2"), 2, Some(20));
         let late = revision("tenant-a", "issuer-a", Some("v1"), 1, Some(10));
         assert_eq!(
-            classify_revision(&late, &[current.clone()], Some(&current)).unwrap(),
+            classify_revision(&late, std::slice::from_ref(&current), Some(&current)).unwrap(),
             RevisionAssessment {
                 disposition: RevisionDisposition::OlderBySourceSequence,
                 projection_effect: ProjectionEffect::PreserveHistoryOnly,
@@ -335,7 +335,7 @@ mod tests {
         let existing = revision("tenant-a", "issuer-a", Some("v7"), 1, Some(7));
         let incoming = revision("tenant-a", "issuer-a", Some("v7"), 2, Some(7));
         assert_eq!(
-            classify_revision(&incoming, &[existing.clone()], Some(&existing)).unwrap(),
+            classify_revision(&incoming, std::slice::from_ref(&existing), Some(&existing)).unwrap(),
             RevisionAssessment {
                 disposition: RevisionDisposition::VersionEquivocation,
                 projection_effect: ProjectionEffect::Quarantine,
@@ -349,7 +349,7 @@ mod tests {
         let mut incoming = existing.clone();
         incoming.canonicalization_profile = "fhir-json-c14n-v2".to_string();
         assert_eq!(
-            classify_revision(&incoming, &[existing.clone()], Some(&existing)).unwrap(),
+            classify_revision(&incoming, std::slice::from_ref(&existing), Some(&existing)).unwrap(),
             RevisionAssessment {
                 disposition: RevisionDisposition::CanonicalizationProfileConflict,
                 projection_effect: ProjectionEffect::Quarantine,
@@ -362,7 +362,7 @@ mod tests {
         let current = revision("tenant-a", "issuer-a", None, 1, None);
         let incoming = revision("tenant-a", "issuer-a", None, 2, None);
         assert_eq!(
-            classify_revision(&incoming, &[current.clone()], Some(&current)).unwrap(),
+            classify_revision(&incoming, std::slice::from_ref(&current), Some(&current)).unwrap(),
             RevisionAssessment {
                 disposition: RevisionDisposition::OrderUnknown,
                 projection_effect: ProjectionEffect::PreserveHistoryOnly,
@@ -374,7 +374,7 @@ mod tests {
     fn unversioned_same_digest_is_an_exact_replay() {
         let existing = revision("tenant-a", "issuer-a", None, 1, None);
         assert_eq!(
-            classify_revision(&existing, &[existing.clone()], Some(&existing)).unwrap(),
+            classify_revision(&existing, std::slice::from_ref(&existing), Some(&existing)).unwrap(),
             RevisionAssessment {
                 disposition: RevisionDisposition::ExactReplay,
                 projection_effect: ProjectionEffect::NoChange,
@@ -387,7 +387,7 @@ mod tests {
         let current = revision("tenant-a", "issuer-a", Some("v10"), 10, None);
         let incoming = revision("tenant-a", "issuer-a", Some("v9"), 9, None);
         assert_eq!(
-            classify_revision(&incoming, &[current.clone()], Some(&current)).unwrap(),
+            classify_revision(&incoming, std::slice::from_ref(&current), Some(&current)).unwrap(),
             RevisionAssessment {
                 disposition: RevisionDisposition::OrderUnknown,
                 projection_effect: ProjectionEffect::PreserveHistoryOnly,
@@ -404,7 +404,7 @@ mod tests {
         incoming.source_last_updated_micros = Some(1_700_000_000_000_000);
         incoming.received_at_micros = 1_600_000_000_000_000;
         assert_eq!(
-            classify_revision(&incoming, &[current.clone()], Some(&current)).unwrap(),
+            classify_revision(&incoming, std::slice::from_ref(&current), Some(&current)).unwrap(),
             RevisionAssessment {
                 disposition: RevisionDisposition::OrderUnknown,
                 projection_effect: ProjectionEffect::PreserveHistoryOnly,
@@ -419,7 +419,7 @@ mod tests {
         incoming.source_order.as_mut().unwrap().profile_id = "other-ehr-profile".to_string();
         current.source_order.as_mut().unwrap().profile_id = "ehr-revision-sequence-v1".to_string();
         assert_eq!(
-            classify_revision(&incoming, &[current.clone()], Some(&current)).unwrap(),
+            classify_revision(&incoming, std::slice::from_ref(&current), Some(&current)).unwrap(),
             RevisionAssessment {
                 disposition: RevisionDisposition::OrderUnknown,
                 projection_effect: ProjectionEffect::PreserveHistoryOnly,
@@ -432,7 +432,7 @@ mod tests {
         let current = revision("tenant-a", "issuer-a", Some("v1"), 1, Some(5));
         let incoming = revision("tenant-a", "issuer-a", Some("v2"), 2, Some(5));
         assert_eq!(
-            classify_revision(&incoming, &[current.clone()], Some(&current)).unwrap(),
+            classify_revision(&incoming, std::slice::from_ref(&current), Some(&current)).unwrap(),
             RevisionAssessment {
                 disposition: RevisionDisposition::SourceSequenceCollision,
                 projection_effect: ProjectionEffect::Quarantine,
