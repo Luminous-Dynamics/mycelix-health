@@ -526,6 +526,12 @@ pub fn evaluate_risk_coverage_curve(
     if predictions.is_empty() {
         return Err(MetricError::EmptyPredictionSet);
     }
+    if predictions
+        .iter()
+        .any(|prediction| prediction.probability_sufficient_bps > 10_000)
+    {
+        return Err(MetricError::ProbabilityOutOfRange);
+    }
 
     let mut curve = Vec::with_capacity(confidence_thresholds_bps.len());
     let mut previous_threshold = None;
@@ -1102,6 +1108,19 @@ mod tests {
         assert_eq!(curve[2].metrics.coverage_bps, 6_666);
         assert_eq!(curve[0].metrics.selective_risk_bps, Some(3_333));
         assert_eq!(curve[2].metrics.selective_risk_bps, Some(0));
+    }
+
+    #[test]
+    fn risk_coverage_curve_rejects_out_of_range_probabilities_before_confidence_math() {
+        let predictions = vec![SufficiencyPrediction {
+            reference: ReferenceSufficiencyLabel::Insufficient,
+            probability_sufficient_bps: 10_001,
+            decision: AgentSufficiencyDecision::Insufficient,
+        }];
+        assert_eq!(
+            evaluate_risk_coverage_curve(&predictions, &[8_000]),
+            Err(MetricError::ProbabilityOutOfRange)
+        );
     }
 
     #[test]
