@@ -1097,7 +1097,11 @@ mod tests {
                     "untrusted-lab",
                     EvidenceStatus::UnauthenticatedIssuer,
                 ),
-                evidence_record("lab-provenance", "unauthorized-lab", EvidenceStatus::Unauthorized),
+                evidence_record(
+                    "lab-provenance",
+                    "unauthorized-lab",
+                    EvidenceStatus::Unauthorized,
+                ),
             ],
             Vec::new(),
         );
@@ -1118,7 +1122,11 @@ mod tests {
         let input = task(
             vec![
                 verified("patient-binding", "patient-proof-1"),
-                evidence_record("lab-provenance", "rejected-old-source", EvidenceStatus::Expired),
+                evidence_record(
+                    "lab-provenance",
+                    "rejected-old-source",
+                    EvidenceStatus::Expired,
+                ),
                 verified("lab-provenance", "current-lab-source"),
             ],
             Vec::new(),
