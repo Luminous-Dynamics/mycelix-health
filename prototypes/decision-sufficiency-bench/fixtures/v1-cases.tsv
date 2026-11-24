@@ -1,16 +1,16 @@
-# id|scenario|expected sufficiency|benchmark purpose
-complete_evidence|all required obligations have verified source records|sufficient|positive control
-missing_obligation|one required obligation has no evidence|insufficient|no inference from Bundle proximity
-wrong_subject|only candidate patient record is wrong-subject|insufficient|patient identity is a hard gate
-unresolved_conflict|verified-looking source plus unresolved contradiction|insufficient|conflict cannot be averaged away
-expired_evidence|only source is expired|insufficient|freshness is independent
-unauthenticated_issuer|source issuer is not authenticated|insufficient|issuer identity is independent
-unauthorized_evidence|source is outside granted purpose or scope|insufficient|consent is executable authority
-missing_version|resource version is not bound|insufficient|reproducibility requires version identity
-unsupported_semantics|unit or measurement method is unsupported|insufficient|semantic validity is required
-alternative_verified_source|a verified alternative exists beside a rejected stale source|sufficient|reject bad source without discarding valid alternative
-pareto_retrieval|two nondominated authorized observations and one dominated option|insufficient|benefit, cost and privacy remain separate
-unauthorized_high_value_action|unauthorized action has highest synthetic benefit|insufficient|utility never overrides authority
-already_sufficient|all obligations verified despite a redundant read candidate|sufficient|no unnecessary acquisition
-vacuous_task|task contains no required obligations|invalid|always-accept / vacuous-pass negative control
-ambiguous_task|duplicate obligation identifiers|invalid|manifest integrity negative control
+# id|profile|expected|benchmark purpose
+complete_evidence|complete|sufficient|positive control
+missing_obligation|missing|insufficient|no inference from Bundle proximity
+wrong_subject|wrong_subject|insufficient|patient identity is a hard gate
+unresolved_conflict|conflicted|insufficient|conflict cannot be averaged away
+expired_evidence|expired|insufficient|freshness is independent
+unauthenticated_issuer|unauthenticated|insufficient|issuer identity is independent
+unauthorized_evidence|unauthorized|insufficient|consent is executable authority
+missing_version|missing_version|insufficient|reproducibility requires version identity
+unsupported_semantics|unsupported_semantics|insufficient|semantic validity is required
+alternative_verified_source|alternative|sufficient|reject bad source without discarding valid alternative
+pareto_retrieval|pareto|insufficient|benefit cost and privacy remain separate
+unauthorized_high_value_action|unauthorized_action|insufficient|utility never overrides authority
+already_sufficient|already_sufficient|sufficient|no unnecessary acquisition
+vacuous_task|vacuous|invalid|always-accept or vacuous-pass negative control
+ambiguous_task|ambiguous|invalid|manifest integrity negative control
