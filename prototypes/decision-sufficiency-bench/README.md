@@ -43,7 +43,8 @@ From the repository root:
 Equivalent commands:
 
     cargo fmt --manifest-path prototypes/decision-sufficiency-bench/Cargo.toml -- --check
-    cargo test --manifest-path prototypes/decision-sufficiency-bench/Cargo.toml --locked
+    HOST="$(rustc -vV | sed -n 's/^host: //p')"
+    cargo test --manifest-path prototypes/decision-sufficiency-bench/Cargo.toml --target "$HOST" --locked
 
 The crate has its own minimal workspace and no external dependencies. The runner prints a SHA-256 digest of the fixture catalogue. The Rust tests exercise the reference evaluator against adversarial cases.
 
