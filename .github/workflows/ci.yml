@@ -109,6 +109,21 @@ jobs:
         run: cargo test --workspace --target "$(rustc -vV | awk '/^host:/{print $2}')"
 
 
+  # Dependency-free FHIR revision classifier; no production zome or sibling crates.
+  fhir-source-revision-benchmark:
+    name: FHIR Source Revision Reference Benchmark
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@1.96.0
+        with:
+          components: rustfmt
+
+      - name: Run frozen source revision evaluator
+        run: bash ./scripts/run-fhir-source-revision-benchmark.sh
+
   deny:
     runs-on: ubuntu-latest
     steps:
