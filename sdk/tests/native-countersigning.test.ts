@@ -46,12 +46,15 @@ async function participant(role: ClinicalApprovalRoleV1): Promise<ParticipantFix
   const agent = hashFrom32AndType(keypair.publicKey, 'Agent');
   return { role, keypair, agent, binding: encodeHashToBase64(agent) };
 }
-function proposal(operation: ClinicalApprovalProposalV1['operation_class']): ClinicalApprovalProposalV1 {
+function proposal(
+  operation: ClinicalApprovalProposalV1['operation_class'],
+  providerBinding: string,
+): ClinicalApprovalProposalV1 {
   return {
     approval_version: 1,
     operation_class: operation,
     patient_binding: encodeHashToBase64(hashFrom32AndType(new Uint8Array(32).fill(40), 'Action')),
-    provider_binding: encodeHashToBase64(hashFrom32AndType(new Uint8Array(32).fill(41), 'Agent')),
+    provider_binding: providerBinding,
     mutation_binding_digest: new Uint8Array(32).fill(1),
     deployment_evidence_sha256: new Uint8Array(32).fill(2),
     policy_digest: new Uint8Array(32).fill(3),
@@ -111,7 +114,10 @@ async function fixture(operation: ClinicalApprovalProposalV1['operation_class'] 
   const participants = await Promise.all(roles.map(participant));
   const intent: ClinicalCountersigningIntentV1 = {
     countersigning_version: 1,
-    proposal: proposal(operation),
+    proposal: proposal(
+      operation,
+      participants.find((item) => item.role === 'provider')!.binding,
+    ),
     participants: participants.map((item) => ({ role: item.role, agent_binding: item.binding, agent_bytes: item.agent })),
     session_start_ms: 1_700_000_010_000n,
     session_end_ms: 1_700_000_130_000n,
