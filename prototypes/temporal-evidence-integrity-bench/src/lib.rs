@@ -102,6 +102,7 @@ pub struct EventCitation {
     pub result_issued_at_ms: Option<i64>,
     pub source_last_updated_at_ms: Option<i64>,
     pub ingested_at_ms: i64,
+    pub source_sequence: Option<u64>,
 }
 
 impl From<&EvidenceEvent> for EventCitation {
@@ -117,6 +118,7 @@ impl From<&EvidenceEvent> for EventCitation {
             result_issued_at_ms: event.result_issued_at_ms,
             source_last_updated_at_ms: event.source_last_updated_at_ms,
             ingested_at_ms: event.ingested_at_ms,
+            source_sequence: event.source_sequence,
         }
     }
 }
@@ -414,6 +416,7 @@ fn citation_matches(event: &EvidenceEvent, citation: &EventCitation) -> bool {
         && event.result_issued_at_ms == citation.result_issued_at_ms
         && event.source_last_updated_at_ms == citation.source_last_updated_at_ms
         && event.ingested_at_ms == citation.ingested_at_ms
+        && event.source_sequence == citation.source_sequence
 }
 
 /// Score a candidate output against one frozen synthetic task.
@@ -615,7 +618,7 @@ mod tests {
         assert!(task.events[0].ingested_at_ms > task.events[1].ingested_at_ms);
         assert!(task.events[0].clinical_event_time_ms < task.events[1].clinical_event_time_ms);
         let result = evaluate(task, &reference_submission(task));
-        assert!(result.temporal_order_accuracy == 1.0);
+        assert!((result.temporal_order_accuracy - 1.0).abs() < f64::EPSILON);
     }
 
     #[test]
