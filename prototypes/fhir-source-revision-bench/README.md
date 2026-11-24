@@ -32,7 +32,8 @@ FHIR meta.versionId is treated as opaque. The classifier never lexically or nume
 Equivalent commands:
 
     cargo fmt --manifest-path prototypes/fhir-source-revision-bench/Cargo.toml -- --check
-    cargo test --manifest-path prototypes/fhir-source-revision-bench/Cargo.toml --locked
+    HOST="$(rustc -vV | sed -n 's/^host: //p')"
+    cargo test --manifest-path prototypes/fhir-source-revision-bench/Cargo.toml --target "$HOST" --locked
 
 The nested crate has no external dependencies and does not join the production Cargo workspace.
 
