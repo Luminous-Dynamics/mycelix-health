@@ -341,6 +341,13 @@ pub fn ingest_bundle(input: IngestBundleInput) -> ExternResult<IngestReport> {
         );
 
         if patient_scoped {
+            if !bundle_entry_full_url_matches_resource(entry) {
+                report.parse_errors.push(format!(
+                    "{resource_type}: Bundle fullUrl disagrees with embedded resourceType/id; skipped"
+                ));
+                continue;
+            }
+
             let Some(bundle_patient_id) = patient_fhir_id.as_deref() else {
                 report.parse_errors.push(format!(
                     "{resource_type}: selected patient has no FHIR id; subject binding is unresolved; skipped"
