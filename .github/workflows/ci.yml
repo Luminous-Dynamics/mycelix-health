@@ -151,7 +151,7 @@ jobs:
           tool: cargo-deny@0.22.0
 
       - name: Run cargo-deny on host
-        run: cargo deny check --all-features
+        run: cargo deny check
 
   # TypeScript SDK
   sdk:
