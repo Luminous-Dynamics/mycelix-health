@@ -528,7 +528,10 @@ mod tests {
         let cases = corpus["cases"]
             .as_array()
             .expect("corpus contains a cases array");
-        assert!(cases.len() >= 15, "benchmark corpus is intentionally adversarial");
+        assert!(
+            cases.len() >= 15,
+            "benchmark corpus is intentionally adversarial"
+        );
 
         let mut accepted = 0usize;
         let mut rejected = 0usize;
@@ -539,9 +542,7 @@ mod tests {
             let selected_patient_id = case["selected_patient_id"]
                 .as_str()
                 .expect("selected patient id");
-            let entries = case["entries"]
-                .as_array()
-                .expect("bundle entries");
+            let entries = case["entries"].as_array().expect("bundle entries");
 
             let patient_entries: Vec<&Value> = entries
                 .iter()
@@ -584,10 +585,16 @@ mod tests {
                 && source_entry_valid
                 && binding == PatientSubjectBinding::MatchesBundlePatient;
 
-            let actual_ingest = if accepted_by_policy { "accept" } else { "reject" };
+            let actual_ingest = if accepted_by_policy {
+                "accept"
+            } else {
+                "reject"
+            };
             assert_eq!(
                 actual_ingest,
-                case["expected_ingest"].as_str().expect("expected ingest outcome"),
+                case["expected_ingest"]
+                    .as_str()
+                    .expect("expected ingest outcome"),
                 "ingest policy mismatch for case {case_id}"
             );
 
@@ -599,8 +606,10 @@ mod tests {
         }
 
         assert!(accepted >= 4, "positive controls must exercise valid paths");
-        assert!(rejected >= 10, "negative controls must exercise fail-closed paths");
+        assert!(
+            rejected >= 10,
+            "negative controls must exercise fail-closed paths"
+        );
         assert_eq!(accepted + rejected, cases.len());
     }
-
 }
