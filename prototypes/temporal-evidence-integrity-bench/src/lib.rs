@@ -124,6 +124,54 @@ impl From<&EvidenceEvent> for EventCitation {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
+
+/// Evidence fields exposed to an evaluated agent. No answer-key disposition,
+/// current/history/quarantine role, or conflict-group label is included.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct VisibleEvidenceEvent {
+    pub event_id: String,
+    pub patient_binding: String,
+    pub source_principal: String,
+    pub resource_version: String,
+    pub payload_digest: String,
+    pub clinical_event_time_ms: i64,
+    pub specimen_collected_at_ms: Option<i64>,
+    pub analysis_performed_at_ms: Option<i64>,
+    pub result_issued_at_ms: Option<i64>,
+    pub source_last_updated_at_ms: Option<i64>,
+    pub ingested_at_ms: i64,
+    pub source_sequence: Option<u64>,
+    pub issuer_authenticated: bool,
+    pub application_authorized: bool,
+    pub lineage_complete: bool,
+    pub expired: bool,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct VisibleTaskInput {
+    pub task_id: String,
+    pub target_patient_binding: String,
+    pub events: Vec<VisibleEvidenceEvent>,
+}
+
+impl From<&VisibleEvidenceEvent> for EventCitation {
+    fn from(event: &VisibleEvidenceEvent) -> Self {
+        Self {
+            event_id: event.event_id.clone(),
+            source_principal: event.source_principal.clone(),
+            resource_version: event.resource_version.clone(),
+            payload_digest: event.payload_digest.clone(),
+            clinical_event_time_ms: event.clinical_event_time_ms,
+            specimen_collected_at_ms: event.specimen_collected_at_ms,
+            analysis_performed_at_ms: event.analysis_performed_at_ms,
+            result_issued_at_ms: event.result_issued_at_ms,
+            source_last_updated_at_ms: event.source_last_updated_at_ms,
+            ingested_at_ms: event.ingested_at_ms,
+            source_sequence: event.source_sequence,
+        }
+    }
+}
+
 pub struct Submission {
     pub task_id: String,
     pub disposition: Disposition,
@@ -230,6 +278,34 @@ fn parse_cases(input: &str) -> Result<Vec<Task>, String> {
     Ok(tasks)
 }
 
+
+fn parse_visible_task_manifest(input: &str) -> Result<BTreeMap<String, String>, String> {
+    let mut tasks = BTreeMap::new();
+    for (line_index, line) in input.lines().enumerate() {
+        if line.is_empty() || line.starts_with('#') {
+            continue;
+        }
+        let fields: Vec<&str> = line.split('\t').collect();
+        if fields.len() != 2 || fields[0].is_empty() || fields[1].is_empty() {
+            return Err(format!(
+                "task-inputs.tsv line {}: expected non-empty task id and patient binding",
+                line_index + 1
+            ));
+        }
+        if tasks.insert(fields[0].to_owned(), fields[1].to_owned()).is_some() {
+            return Err(format!(
+                "task-inputs.tsv line {}: duplicate task id {}",
+                line_index + 1,
+                fields[0]
+            ));
+        }
+    }
+    if tasks.is_empty() {
+        return Err("task-inputs.tsv contains no tasks".to_owned());
+    }
+    Ok(tasks)
+}
+
 fn parse_optional_i64(value: &str, field: &str, line_index: usize) -> Result<Option<i64>, String> {
     if value == "-" {
         Ok(None)
@@ -241,6 +317,98 @@ fn parse_optional_i64(value: &str, field: &str, line_index: usize) -> Result<Opt
             )
         })
     }
+}
+
+
+fn parse_visible_events(
+    input: &str,
+) -> Result<BTreeMap<String, Vec<VisibleEvidenceEvent>>, String> {
+    let mut events = BTreeMap::<String, Vec<VisibleEvidenceEvent>>::new();
+
+    for (line_index, line) in input.lines().enumerate() {
+        if line.is_empty() || line.starts_with('#') {
+            continue;
+        }
+        let fields: Vec<&str> = line.split('\t').collect();
+        if fields.len() != 17 {
+            return Err(format!(
+                "visible events.tsv line {}: expected 17 columns, got {}",
+                line_index + 1,
+                fields.len()
+            ));
+        }
+        let source_sequence = if fields[12] == "-" {
+            None
+        } else {
+            Some(fields[12].parse::<u64>().map_err(|error| {
+                format!(
+                    "visible events.tsv line {}: invalid source sequence: {error}",
+                    line_index + 1
+                )
+            })?)
+        };
+        let event = VisibleEvidenceEvent {
+            event_id: fields[1].to_owned(),
+            patient_binding: fields[2].to_owned(),
+            source_principal: fields[3].to_owned(),
+            resource_version: fields[4].to_owned(),
+            payload_digest: fields[5].to_owned(),
+            clinical_event_time_ms: fields[6].parse::<i64>().map_err(|error| {
+                format!(
+                    "visible events.tsv line {}: invalid clinical event time: {error}",
+                    line_index + 1
+                )
+            })?,
+            specimen_collected_at_ms: parse_optional_i64(
+                fields[7],
+                "specimen collection time",
+                line_index,
+            )?,
+            analysis_performed_at_ms: parse_optional_i64(
+                fields[8],
+                "analysis time",
+                line_index,
+            )?,
+            result_issued_at_ms: parse_optional_i64(
+                fields[9],
+                "result issue time",
+                line_index,
+            )?,
+            source_last_updated_at_ms: parse_optional_i64(
+                fields[10],
+                "source lastUpdated time",
+                line_index,
+            )?,
+            ingested_at_ms: fields[11].parse::<i64>().map_err(|error| {
+                format!(
+                    "visible events.tsv line {}: invalid ingestion time: {error}",
+                    line_index + 1
+                )
+            })?,
+            source_sequence,
+            issuer_authenticated: parse_bool(fields[13], "issuer_authenticated")?,
+            application_authorized: parse_bool(fields[14], "application_authorized")?,
+            lineage_complete: parse_bool(fields[15], "lineage_complete")?,
+            expired: parse_bool(fields[16], "expired")?,
+        };
+        if event.event_id.is_empty()
+            || event.patient_binding.is_empty()
+            || event.source_principal.is_empty()
+            || event.resource_version.is_empty()
+            || event.payload_digest.len() != 64
+            || !event
+                .payload_digest
+                .bytes()
+                .all(|byte| byte.is_ascii_hexdigit())
+        {
+            return Err(format!(
+                "visible events.tsv line {}: invalid event identity or payload digest",
+                line_index + 1
+            ));
+        }
+        events.entry(fields[0].to_owned()).or_default().push(event);
+    }
+    Ok(events)
 }
 
 fn parse_events(input: &str) -> Result<BTreeMap<String, Vec<EvidenceEvent>>, String> {
@@ -343,6 +511,31 @@ pub fn load_fixture() -> Result<Vec<Task>, String> {
     if !events_by_task.is_empty() {
         return Err(format!(
             "events reference unknown tasks: {:?}",
+            events_by_task.keys().collect::<Vec<_>>()
+        ));
+    }
+    Ok(tasks)
+}
+
+
+/// Load the agent-visible v1 corpus without exposing evaluator answer-key fields.
+pub fn load_visible_fixture() -> Result<Vec<VisibleTaskInput>, String> {
+    let task_manifest = parse_visible_task_manifest(include_str!(
+        "../fixtures/v1-task-inputs.tsv"
+    ))?;
+    let mut events_by_task = parse_visible_events(include_str!("../fixtures/v1-events.tsv"))?;
+    let mut tasks = Vec::with_capacity(task_manifest.len());
+
+    for (task_id, target_patient_binding) in task_manifest {
+        tasks.push(VisibleTaskInput {
+            events: events_by_task.remove(&task_id).unwrap_or_default(),
+            task_id,
+            target_patient_binding,
+        });
+    }
+    if !events_by_task.is_empty() {
+        return Err(format!(
+            "visible events reference unknown tasks: {:?}",
             events_by_task.keys().collect::<Vec<_>>()
         ));
     }
@@ -662,6 +855,28 @@ pub fn reference_submission(task: &Task) -> Submission {
     }
 }
 
+
+/// Intentionally weak baseline: accepts every visible event as current and
+/// sorts by local ingestion time. It ignores revision, authority, identity,
+/// correction, and conflict semantics. This is a negative control, not a
+/// recommended clinical workflow.
+pub fn naive_ingestion_order_baseline(input: &VisibleTaskInput) -> Submission {
+    let mut events = input.events.clone();
+    events.sort_by(|left, right| {
+        left.ingested_at_ms
+            .cmp(&right.ingested_at_ms)
+            .then_with(|| left.event_id.cmp(&right.event_id))
+    });
+    Submission {
+        task_id: input.task_id.clone(),
+        disposition: Disposition::Supported,
+        timeline: events.iter().map(EventCitation::from).collect(),
+        retained_history: Vec::new(),
+        quarantined_event_ids: Vec::new(),
+        unresolved_conflict_groups: Vec::new(),
+    }
+}
+
 /// Evaluate a complete batch. Missing, extra, and duplicate task outputs are errors.
 pub fn evaluate_batch(tasks: &[Task], submissions: &[Submission]) -> Result<BatchReport, String> {
     let task_ids: BTreeSet<&str> = tasks.iter().map(|task| task.task_id.as_str()).collect();
@@ -740,6 +955,48 @@ mod tests {
             tasks.iter().map(|task| task.events.len()).sum::<usize>(),
             32
         );
+    }
+
+
+    #[test]
+    fn visible_input_is_separate_from_answer_key_and_negative_control_is_detected() {
+        let visible = load_visible_fixture().expect("visible fixture must validate");
+        let answer_key = load_fixture().expect("answer key fixture must validate");
+        assert_eq!(visible.len(), 20);
+        assert_eq!(
+            visible.iter().map(|task| task.events.len()).sum::<usize>(),
+            32
+        );
+
+        let visible_by_id: BTreeMap<&str, &VisibleTaskInput> = visible
+            .iter()
+            .map(|task| (task.task_id.as_str(), task))
+            .collect();
+        let truth_by_id: BTreeMap<&str, &Task> = answer_key
+            .iter()
+            .map(|task| (task.task_id.as_str(), task))
+            .collect();
+
+        let arrival_attack = evaluate(
+            truth_by_id["T01"],
+            &naive_ingestion_order_baseline(visible_by_id["T01"]),
+        );
+        assert!(!arrival_attack.timeline_exact);
+        assert_eq!(arrival_attack.temporal_order_accuracy, 0.0);
+
+        let conflict_attack = evaluate(
+            truth_by_id["T05"],
+            &naive_ingestion_order_baseline(visible_by_id["T05"]),
+        );
+        assert!(!conflict_attack.hard_gates_pass);
+        assert!(!conflict_attack.unsafe_acceptances.is_empty());
+
+        let wrong_patient_attack = evaluate(
+            truth_by_id["T07"],
+            &naive_ingestion_order_baseline(visible_by_id["T07"]),
+        );
+        assert!(wrong_patient_attack.unsafe_acceptances.contains(&"E14".to_owned()));
+        assert!(!wrong_patient_attack.hard_gates_pass);
     }
 
     #[test]
