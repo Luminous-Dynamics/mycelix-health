@@ -18,6 +18,8 @@ use fhir_bridge_integrity::*;
 use hdk::prelude::*;
 
 mod patient_subject;
+mod bundle_preflight;
+use bundle_preflight::validate_collection_bundle;
 use patient_subject::{
     bundle_entry_full_url_matches_resource, resolve_patient_subject, PatientSubjectBinding,
 };
@@ -207,14 +209,13 @@ pub fn ingest_bundle(input: IngestBundleInput) -> ExternResult<IngestReport> {
         parse_errors: Vec::new(),
     };
 
-    // Extract entries from bundle
-    let entries = match input.bundle.get("entry") {
-        Some(JsonValue::Array(entries)) => entries.clone(),
-        _ => {
-            report
-                .parse_errors
-                .push("Bundle has no 'entry' array".to_string());
-            // Store the report even on error
+    // Validate the complete supported Bundle envelope before any Patient or
+    // clinical-resource mutation. Rejected Bundles produce only an unlinked
+    // IngestReport; no partial ingestion is attempted.
+    let entries = match validate_collection_bundle(&input.bundle) {
+        Ok(entries) => entries,
+        Err(errors) => {
+            report.parse_errors.extend(errors);
             create_entry(&EntryTypes::IngestReport(report.clone()))?;
             return Ok(report);
         }

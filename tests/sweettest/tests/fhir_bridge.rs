@@ -985,10 +985,12 @@ async fn test_malformed_bundle_entry() -> Result<()> {
         .call_zome(&cell_id, "fhir_bridge", "ingest_bundle", input)
         .await?;
 
-    // Should still process the valid patient
-    assert_eq!(report.patients_created, 1);
-    // Should report errors for malformed entries
-    assert!(report.parse_errors.len() > 0 || report.unknown_types.len() > 0);
+    // Preflight rejects the entire malformed envelope before any Patient or
+    // clinical-resource writes. Only the unlinked rejection IngestReport persists.
+    assert_eq!(report.patients_created, 0);
+    assert_eq!(report.patients_updated, 0);
+    assert_eq!(report.total_processed, 0);
+    assert!(report.parse_errors.len() >= 2);
 
     println!("Malformed bundle handling:");
     println!("  Parse errors: {:?}", report.parse_errors);

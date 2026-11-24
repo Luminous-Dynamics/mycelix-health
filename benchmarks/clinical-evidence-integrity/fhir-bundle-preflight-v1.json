@@ -1,0 +1,426 @@
+{
+  "schema_version": 1,
+  "benchmark_id": "mycelix-clinical-evidence-integrity.fhir-bundle-preflight.v1",
+  "release_status": "fixture-corpus-only",
+  "data_classification": "fully_synthetic_no_phi",
+  "profile": {
+    "supported_bundle_type": "collection",
+    "unsupported_bundle_types": [
+      "document",
+      "message",
+      "transaction",
+      "transaction-response",
+      "batch",
+      "batch-response",
+      "history",
+      "searchset"
+    ],
+    "full_url_policy": "resource-bearing entries require a unique absolute HTTP(S) fullUrl or opaque URN; RESTful type/id must match embedded resourceType/id; version-specific fullUrls are rejected",
+    "no_mutation_on_reject": true
+  },
+  "cases": [
+    {
+      "id": "valid_urn_collection",
+      "bundle": {
+        "resourceType": "Bundle",
+        "type": "collection",
+        "entry": [
+          {
+            "fullUrl": "urn:uuid:patient-1",
+            "resource": {
+              "resourceType": "Patient",
+              "id": "patient-1"
+            }
+          }
+        ]
+      },
+      "expected": "accept",
+      "expected_entry_count": 1
+    },
+    {
+      "id": "valid_restful_collection",
+      "bundle": {
+        "resourceType": "Bundle",
+        "type": "collection",
+        "entry": [
+          {
+            "fullUrl": "https://ehr.example/fhir/Patient/patient-1",
+            "resource": {
+              "resourceType": "Patient",
+              "id": "patient-1"
+            }
+          },
+          {
+            "fullUrl": "https://ehr.example/fhir/Observation/obs-1",
+            "resource": {
+              "resourceType": "Observation",
+              "id": "obs-1"
+            }
+          }
+        ]
+      },
+      "expected": "accept",
+      "expected_entry_count": 2
+    },
+    {
+      "id": "missing_full_url",
+      "bundle": {
+        "resourceType": "Bundle",
+        "type": "collection",
+        "entry": [
+          {
+            "resource": {
+              "resourceType": "Patient",
+              "id": "patient-1"
+            }
+          }
+        ]
+      },
+      "expected": "reject",
+      "expected_error_contains": "fullUrl is required"
+    },
+    {
+      "id": "empty_full_url",
+      "bundle": {
+        "resourceType": "Bundle",
+        "type": "collection",
+        "entry": [
+          {
+            "fullUrl": "",
+            "resource": {
+              "resourceType": "Patient",
+              "id": "patient-1"
+            }
+          }
+        ]
+      },
+      "expected": "reject",
+      "expected_error_contains": "fullUrl is required"
+    },
+    {
+      "id": "relative_full_url",
+      "bundle": {
+        "resourceType": "Bundle",
+        "type": "collection",
+        "entry": [
+          {
+            "fullUrl": "Patient/patient-1",
+            "resource": {
+              "resourceType": "Patient",
+              "id": "patient-1"
+            }
+          }
+        ]
+      },
+      "expected": "reject",
+      "expected_error_contains": "absolute HTTP(S) URL"
+    },
+    {
+      "id": "full_url_resource_id_mismatch",
+      "bundle": {
+        "resourceType": "Bundle",
+        "type": "collection",
+        "entry": [
+          {
+            "fullUrl": "https://ehr.example/fhir/Patient/patient-spoofed",
+            "resource": {
+              "resourceType": "Patient",
+              "id": "patient-1"
+            }
+          }
+        ]
+      },
+      "expected": "reject",
+      "expected_error_contains": "type/id must agree"
+    },
+    {
+      "id": "full_url_resource_type_mismatch",
+      "bundle": {
+        "resourceType": "Bundle",
+        "type": "collection",
+        "entry": [
+          {
+            "fullUrl": "https://ehr.example/fhir/Observation/patient-1",
+            "resource": {
+              "resourceType": "Patient",
+              "id": "patient-1"
+            }
+          }
+        ]
+      },
+      "expected": "reject",
+      "expected_error_contains": "type/id must agree"
+    },
+    {
+      "id": "version_specific_full_url_rejected",
+      "bundle": {
+        "resourceType": "Bundle",
+        "type": "collection",
+        "entry": [
+          {
+            "fullUrl": "https://ehr.example/fhir/Patient/patient-1/_history/2",
+            "resource": {
+              "resourceType": "Patient",
+              "id": "patient-1"
+            }
+          }
+        ]
+      },
+      "expected": "reject",
+      "expected_error_contains": "type/id must agree"
+    },
+    {
+      "id": "duplicate_full_url_rejected",
+      "bundle": {
+        "resourceType": "Bundle",
+        "type": "collection",
+        "entry": [
+          {
+            "fullUrl": "urn:uuid:patient-1",
+            "resource": {
+              "resourceType": "Patient",
+              "id": "patient-1"
+            }
+          },
+          {
+            "fullUrl": "urn:uuid:patient-1",
+            "resource": {
+              "resourceType": "Observation",
+              "id": "obs-1"
+            }
+          }
+        ]
+      },
+      "expected": "reject",
+      "expected_error_contains": "duplicates another"
+    },
+    {
+      "id": "missing_resource_rejected",
+      "bundle": {
+        "resourceType": "Bundle",
+        "type": "collection",
+        "entry": [
+          {
+            "fullUrl": "urn:uuid:patient-1"
+          }
+        ]
+      },
+      "expected": "reject",
+      "expected_error_contains": "resource must be an object"
+    },
+    {
+      "id": "missing_resource_type_rejected",
+      "bundle": {
+        "resourceType": "Bundle",
+        "type": "collection",
+        "entry": [
+          {
+            "fullUrl": "urn:uuid:patient-1",
+            "resource": {
+              "id": "patient-1"
+            }
+          }
+        ]
+      },
+      "expected": "reject",
+      "expected_error_contains": "resourceType is required"
+    },
+    {
+      "id": "missing_resource_id_rejected",
+      "bundle": {
+        "resourceType": "Bundle",
+        "type": "collection",
+        "entry": [
+          {
+            "fullUrl": "urn:uuid:patient-1",
+            "resource": {
+              "resourceType": "Patient"
+            }
+          }
+        ]
+      },
+      "expected": "reject",
+      "expected_error_contains": "resource.id is required"
+    },
+    {
+      "id": "wrong_resource_type_rejected_at_top",
+      "bundle": {
+        "resourceType": "Patient",
+        "type": "collection",
+        "entry": [
+          {
+            "fullUrl": "urn:uuid:patient-1",
+            "resource": {
+              "resourceType": "Patient",
+              "id": "patient-1"
+            }
+          }
+        ]
+      },
+      "expected": "reject",
+      "expected_error_contains": "resourceType must be exactly"
+    },
+    {
+      "id": "transaction_bundle_unsupported",
+      "bundle": {
+        "resourceType": "Bundle",
+        "type": "transaction",
+        "entry": [
+          {
+            "fullUrl": "urn:uuid:patient-1",
+            "resource": {
+              "resourceType": "Patient",
+              "id": "patient-1"
+            },
+            "request": {
+              "method": "POST",
+              "url": "Patient"
+            }
+          }
+        ]
+      },
+      "expected": "reject",
+      "expected_error_contains": "Only Bundle.type = collection"
+    },
+    {
+      "id": "searchset_bundle_unsupported",
+      "bundle": {
+        "resourceType": "Bundle",
+        "type": "searchset",
+        "entry": [
+          {
+            "fullUrl": "urn:uuid:patient-1",
+            "resource": {
+              "resourceType": "Patient",
+              "id": "patient-1"
+            },
+            "search": {
+              "mode": "match"
+            }
+          }
+        ]
+      },
+      "expected": "reject",
+      "expected_error_contains": "Only Bundle.type = collection"
+    },
+    {
+      "id": "request_metadata_forbidden_in_collection",
+      "bundle": {
+        "resourceType": "Bundle",
+        "type": "collection",
+        "entry": [
+          {
+            "fullUrl": "urn:uuid:patient-1",
+            "resource": {
+              "resourceType": "Patient",
+              "id": "patient-1"
+            },
+            "request": {
+              "method": "GET",
+              "url": "Patient"
+            }
+          }
+        ]
+      },
+      "expected": "reject",
+      "expected_error_contains": "request is not allowed"
+    },
+    {
+      "id": "response_metadata_forbidden_in_collection",
+      "bundle": {
+        "resourceType": "Bundle",
+        "type": "collection",
+        "entry": [
+          {
+            "fullUrl": "urn:uuid:patient-1",
+            "resource": {
+              "resourceType": "Patient",
+              "id": "patient-1"
+            },
+            "response": {
+              "status": "200"
+            }
+          }
+        ]
+      },
+      "expected": "reject",
+      "expected_error_contains": "response is not allowed"
+    },
+    {
+      "id": "search_metadata_forbidden_in_collection",
+      "bundle": {
+        "resourceType": "Bundle",
+        "type": "collection",
+        "entry": [
+          {
+            "fullUrl": "urn:uuid:patient-1",
+            "resource": {
+              "resourceType": "Patient",
+              "id": "patient-1"
+            },
+            "search": {
+              "mode": "match"
+            }
+          }
+        ]
+      },
+      "expected": "reject",
+      "expected_error_contains": "search is not allowed"
+    },
+    {
+      "id": "empty_collection_rejected",
+      "bundle": {
+        "resourceType": "Bundle",
+        "type": "collection",
+        "entry": []
+      },
+      "expected": "reject",
+      "expected_error_contains": "at least one resource entry"
+    },
+    {
+      "id": "missing_entry_array_rejected",
+      "bundle": {
+        "resourceType": "Bundle",
+        "type": "collection"
+      },
+      "expected": "reject",
+      "expected_error_contains": "Bundle.entry must be an array"
+    },
+    {
+      "id": "invalid_urn_rejected",
+      "bundle": {
+        "resourceType": "Bundle",
+        "type": "collection",
+        "entry": [
+          {
+            "fullUrl": "urn:",
+            "resource": {
+              "resourceType": "Patient",
+              "id": "patient-1"
+            }
+          }
+        ]
+      },
+      "expected": "reject",
+      "expected_error_contains": "valid opaque URN"
+    },
+    {
+      "id": "urn_with_whitespace_rejected",
+      "bundle": {
+        "resourceType": "Bundle",
+        "type": "collection",
+        "entry": [
+          {
+            "fullUrl": "urn:uuid:patient one",
+            "resource": {
+              "resourceType": "Patient",
+              "id": "patient-1"
+            }
+          }
+        ]
+      },
+      "expected": "reject",
+      "expected_error_contains": "valid opaque URN"
+    }
+  ]
+}

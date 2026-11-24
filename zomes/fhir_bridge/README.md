@@ -4,6 +4,20 @@
 
 ## Overview
 
+## Ingestion profile
+
+The coordinator currently accepts only Bundle.type = collection. Before any
+Patient or clinical resource write, the complete entry list is preflighted:
+every entry must contain a resource, resourceType, persistent resource ID and
+unique absolute HTTP(S) or opaque URN fullUrl. RESTful fullUrl type and ID must
+match the embedded resource. Transaction/batch request and response metadata,
+search metadata, version-specific fullUrls and other Bundle types are rejected.
+
+A rejected envelope stores an unlinked IngestReport only; it does not partially
+ingest a valid Patient beside malformed entries. This is a supported ingestion
+subset, not full FHIR R4 Bundle conformance.
+
+
 The FHIR Bridge zome provides bidirectional data exchange between Mycelix-Health and external EHR systems using the FHIR R4 standard. It handles bundle ingestion, resource mapping, deduplication, and FHIR-compliant exports.
 
 ## Architecture
