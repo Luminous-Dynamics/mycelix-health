@@ -41,8 +41,6 @@ export interface PullOptions {
   patientId?: string;
   /** Include related resources */
   includeRelated?: boolean;
-  /** Override the source system identifier */
-  sourceSystem?: string;
 }
 
 export interface PullResult {
@@ -97,7 +95,7 @@ export class PullService {
     this.syncResults = [];
 
     const resourceTypes = options.resourceTypes || DEFAULT_RESOURCE_TYPES;
-    const sourceSystem = options.sourceSystem || this.config.defaultSourceSystem || 'unknown-ehr';
+    const sourceSystem = this.config.defaultSourceSystem || 'unknown-ehr';
 
     // Collect all resources into bundle entries
     const bundleEntries: Array<{ fullUrl?: string; resource: unknown }> = [];

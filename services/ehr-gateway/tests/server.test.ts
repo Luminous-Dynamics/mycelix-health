@@ -27,7 +27,7 @@ const mockHolochainClient = {
 
 // Mock gateway
 const mockGateway = {
-  isConnected: vi.fn(),
+  isConnected: vi.fn((connectionId: string) => connectionId === 'test-connection'),
   getConnectionIds: vi.fn().mockReturnValue(['test-connection']),
   getConnectionInfo: vi.fn().mockReturnValue({
     system: 'epic',
@@ -312,7 +312,6 @@ describe('EHR Gateway Server', () => {
     });
 
     it('GET /auth/smart/launch redirects to auth URL', async () => {
-      mockGateway.isConnected.mockReturnValueOnce(true);
       mockGateway.getAuthorizationUrl.mockResolvedValueOnce(
         'https://fhir.epic.com/authorize?client_id=test'
       );
@@ -360,11 +359,13 @@ describe('EHR Gateway Server', () => {
     });
 
     it('POST /sync/patient/:id returns 404 for unknown connection', async () => {
-      mockGateway.isConnected.mockReturnValueOnce(false);
-
       const res = await app.request(
-        '/sync/patient/123?connection=unknown&tokenKey=token1',
-        { method: 'POST' }
+        '/sync/patient/123?connection=unknown',
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ tokenKey: 'token1' }),
+        }
       );
       const body = await res.json();
 
@@ -372,13 +373,47 @@ describe('EHR Gateway Server', () => {
       expect(body.error).toBe('Connection not found');
     });
 
+    it('POST /sync/patient/:id rejects tokenKey in the query string', async () => {
+      const res = await app.request(
+        '/sync/patient/123?connection=test-connection&tokenKey=secret-value',
+        { method: 'POST' }
+      );
+      expect(res.status).toBe(400);
+      expect((await res.json()).error).toBe('Invalid tokenKey location');
+    });
+
+    it('POST /sync/patient/:id rejects caller-controlled sourceSystem', async () => {
+      const res = await app.request(
+        '/sync/patient/123?connection=test-connection&sourceSystem=attacker-controlled',
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ tokenKey: 'token1' }),
+        }
+      );
+      expect(res.status).toBe(400);
+      expect((await res.json()).error).toBe('Invalid sourceSystem override');
+    });
+
+    it('POST /sync/patient/:id requires tokenKey in JSON body', async () => {
+      const res = await app.request('/sync/patient/123?connection=test-connection', {
+        method: 'POST',
+      });
+      expect(res.status).toBe(400);
+      expect((await res.json()).error).toBe('Invalid request body');
+    });
+
     it('POST /sync/patient/:id with async=true returns job ID', async () => {
       mockGateway.isConnected.mockReturnValueOnce(true);
       mockGateway.pullPatientData.mockResolvedValueOnce([]);
 
       const res = await app.request(
-        '/sync/patient/123?connection=test-connection&tokenKey=token1&async=true',
-        { method: 'POST' }
+        '/sync/patient/123?connection=test-connection&async=true',
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ tokenKey: 'token1' }),
+        }
       );
       const body = await res.json();
 
@@ -386,6 +421,33 @@ describe('EHR Gateway Server', () => {
       expect(body.status).toBe('accepted');
       expect(body.job_id).toBeDefined();
       expect(body.status_url).toContain('/sync/status/');
+    });
+
+    it('POST /sync/bidirectional/:id rejects tokenKey and patientHash in query', async () => {
+      const res = await app.request(
+        '/sync/bidirectional/123?connection=test-connection&tokenKey=secret&patientHash=patient-hash',
+        { method: 'POST' }
+      );
+      expect(res.status).toBe(400);
+      expect((await res.json()).error).toBe('Invalid sensitive parameter location');
+    });
+
+    it('POST /sync/bidirectional/:id accepts sensitive values only in JSON body', async () => {
+      mockGateway.syncPatient.mockResolvedValueOnce({
+        pullResults: [],
+        pushResults: [],
+        conflicts: [],
+      });
+      const res = await app.request('/sync/bidirectional/123?connection=test-connection', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          tokenKey: 'token1',
+          patientHash: Buffer.from('patient-hash').toString('base64'),
+        }),
+      });
+      expect(res.status).toBe(200);
+      expect((await res.json()).status).toBe('success');
     });
 
     it('GET /sync/jobs lists sync jobs', async () => {

@@ -165,6 +165,16 @@ or cryptographic source-system attestation. It does not close P0 issue #289.
 Do not use real patient data or expose the service to untrusted networks until
 the complete #289 authority boundary and independent security review pass.
 
+### Sync request secret handling
+
+The sync API never accepts `tokenKey` or `patientHash` in query parameters.
+Supply these values in a JSON request body. URL query strings are routinely
+captured by reverse proxies, access logs and observability systems. Caller
+supplied `sourceSystem` overrides are rejected; the sync source namespace is
+derived from the server-configured connection registry. This namespace is not
+a cryptographic attestation of the EHR issuer; authenticated source identity
+remains part of P0 issue #289.
+
 ### Endpoints
 
 | Method | Path | Description |
