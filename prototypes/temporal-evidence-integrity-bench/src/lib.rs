@@ -1115,7 +1115,6 @@ mod tests {
         assert!(result.exact_match);
     }
 
-
     #[test]
     fn submission_must_be_bound_to_the_requested_task() {
         let tasks = load_fixture().expect("fixture must validate");
@@ -1133,7 +1132,9 @@ mod tests {
         let tasks = load_fixture().expect("fixture must validate");
         let quarantine_task = tasks.iter().find(|task| task.task_id == "T07").unwrap();
         let mut quarantine_submission = reference_submission(quarantine_task);
-        quarantine_submission.quarantined_event_ids.push("EXTRA".to_owned());
+        quarantine_submission
+            .quarantined_event_ids
+            .push("EXTRA".to_owned());
         let quarantine_score = evaluate(quarantine_task, &quarantine_submission);
         assert_eq!(quarantine_score.quarantine_precision, 0.5);
         assert_eq!(quarantine_score.quarantine_recall, 1.0);
