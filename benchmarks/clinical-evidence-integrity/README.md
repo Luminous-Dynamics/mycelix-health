@@ -15,6 +15,23 @@ It tests the coordinator's pre-ingest identity policy, not clinical correctness,
 de-identification, real EHR interoperability, deployed Holochain authorization,
 or diagnostic performance.
 
+## Focused host-runner qualification
+
+The full workspace CI includes unrelated TypeScript, cargo-deny and integration
+jobs. To keep the FHIR evidence contracts independently executable, the
+dedicated FHIR Evidence Contract Benchmarks workflow runs only the FHIR
+coordinator's subject-binding, temporal-fidelity and Bundle-preflight corpus
+tests on the host target.
+
+Run the same focused suite locally from the repository root:
+
+    ./scripts/run-clinical-evidence-fhir-corpora.sh
+
+The script prints the exact source commit, Rust version, host target and SHA-256
+of each frozen corpus before running all tests whose name ends in v1_corpus.
+This signal is separate from full workspace qualification and Holochain
+conductor Sweettests.
+
 ## FHIR Bundle preflight v1
 
 The coordinator's declared ingestion profile is limited to Bundle.type =
