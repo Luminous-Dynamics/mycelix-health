@@ -79,9 +79,18 @@ export interface VerifiedNativeClinicalCountersigningEvidenceV1 {
   intent_digest: Uint8Array;
   app_entry_hash_binding: string;
   countersigned_entry_hash_binding: string;
-  participants: VerifiedClinicalCountersigningParticipantV1[];
-  participant_action_hashes: string[];
+  participants: ReadonlyArray<Readonly<VerifiedClinicalCountersigningParticipantV1>>;
+  participant_action_hashes: ReadonlyArray<string>;
 }
+
+interface VerifiedNativeClinicalCountersigningFacts {
+  readonly intentDigest: Uint8Array;
+  readonly participants: ReadonlyArray<Readonly<VerifiedClinicalCountersigningParticipantV1>>;
+  readonly participantActionHashes: ReadonlySet<string>;
+}
+
+const verifiedNativeClinicalCountersigningFacts =
+  new WeakMap<object, VerifiedNativeClinicalCountersigningFacts>();
 
 export type NativeCountersigningObservationStateV1 =
   | "missing"
@@ -108,7 +117,7 @@ export interface NativeTerminalCountersigningObservationV1 {
   participant_binding: string;
   state: "completed";
   intent_digest: Uint8Array;
-  action_hash_binding: string | null;
+  action_hash_binding: string;
   observed_at_ms: bigint;
   nonce: Uint8Array;
   terminal: true;
@@ -576,15 +585,27 @@ export async function verifyNativeClinicalCountersigningEvidenceV1(
   }
 
   const intentDigest = await clinicalCountersigningIntentDigestV1(evidence.intent);
-  return {
+  const immutableParticipants = Object.freeze(
+    verifiedParticipants.map((participant) => Object.freeze({ ...participant })),
+  );
+  const participantActionHashes = Object.freeze(
+    immutableParticipants.map((participant) => participant.action_hash),
+  );
+  const verifiedResult: VerifiedNativeClinicalCountersigningEvidenceV1 = Object.freeze({
     [VERIFIED_NATIVE_COUNTERSIGNING_EVIDENCE]: true,
     evidence_version: 1,
-    intent_digest: intentDigest,
+    intent_digest: copyBytes(intentDigest),
     app_entry_hash_binding: evidence.app_entry_hash_binding,
     countersigned_entry_hash_binding: evidence.countersigned_entry_hash_binding,
-    participants: verifiedParticipants,
-    participant_action_hashes: verifiedParticipants.map((participant) => participant.action_hash),
-  };
+    participants: immutableParticipants,
+    participant_action_hashes: participantActionHashes,
+  });
+  verifiedNativeClinicalCountersigningFacts.set(verifiedResult, {
+    intentDigest: copyBytes(intentDigest),
+    participants: immutableParticipants,
+    participantActionHashes: new Set(participantActionHashes),
+  });
+  return verifiedResult;
 }
 
 function getStateVariant(state: CountersigningSessionState | null): { kind: string; value: unknown } | null {
@@ -672,15 +693,19 @@ export async function createTerminalCountersigningObservationV1(
     || verifiedEvidence[VERIFIED_NATIVE_COUNTERSIGNING_EVIDENCE] !== true) {
     throw new Error("A private verifier-produced evidence result is required for terminal completion");
   }
+  const facts = verifiedNativeClinicalCountersigningFacts.get(verifiedEvidence);
+  if (!facts) {
+    throw new Error("Verified evidence provenance is missing from the private verifier registry");
+  }
 
   const intentDigest = await clinicalCountersigningIntentDigestV1(intent);
-  if (!bytesEqual(verifiedEvidence.intent_digest, intentDigest)) {
+  if (!bytesEqual(facts.intentDigest, intentDigest)) {
     throw new Error("Verified countersigning evidence does not match the exact clinical intent");
   }
-  const participant = verifiedEvidence.participants.find(
+  const participant = facts.participants.find(
     (candidate) => candidate.agent_binding === participantBinding,
   );
-  if (!participant || !verifiedEvidence.participant_action_hashes.includes(participant.action_hash)) {
+  if (!participant || !facts.participantActionHashes.has(participant.action_hash)) {
     throw new Error("Terminal observation participant has no verified countersigned action");
   }
   if (observedAtMs < 0n) throw new Error("Terminal observation time must be non-negative");
