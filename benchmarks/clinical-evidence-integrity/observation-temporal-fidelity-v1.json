@@ -1,0 +1,178 @@
+{
+  "schema_version": 1,
+  "benchmark_id": "mycelix-clinical-evidence-integrity.observation-temporal-fidelity.v1",
+  "release_status": "fixture-corpus-only",
+  "data_classification": "fully_synthetic_no_phi",
+  "timestamp_representation": "Holochain Timestamp microseconds",
+  "profile": "FHIR R4 Observation.effective[x] supported mapping subset",
+  "cases": [
+    {
+      "id": "utc_event_and_issued",
+      "resource": {
+        "effectiveDateTime": "2025-01-10T08:20:00Z",
+        "issued": "2025-01-10T08:25:30Z"
+      },
+      "expected": "accept",
+      "expected_effective_micros": 1736497200000000,
+      "expected_issued_micros": 1736497530000000
+    },
+    {
+      "id": "offset_equivalent_event",
+      "resource": {
+        "effectiveDateTime": "2025-01-10T10:20:00+02:00"
+      },
+      "expected": "accept",
+      "expected_effective_micros": 1736497200000000,
+      "expected_issued_micros": null
+    },
+    {
+      "id": "fractional_microseconds_preserved",
+      "resource": {
+        "effectiveDateTime": "2025-01-10T08:20:00.123456Z"
+      },
+      "expected": "accept",
+      "expected_effective_micros": 1736497200123456,
+      "expected_issued_micros": null
+    },
+    {
+      "id": "fractional_offset_equivalence",
+      "resource": {
+        "effectiveDateTime": "2025-01-10T09:20:00.123456+01:00"
+      },
+      "expected": "accept",
+      "expected_effective_micros": 1736497200123456,
+      "expected_issued_micros": null
+    },
+    {
+      "id": "issued_is_not_event_time",
+      "resource": {
+        "effectiveDateTime": "2025-01-10T08:20:00Z",
+        "issued": "2025-01-10T10:30:00+02:00"
+      },
+      "expected": "accept",
+      "expected_effective_micros": 1736497200000000,
+      "expected_issued_micros": 1736497800000000
+    },
+    {
+      "id": "issued_is_optional_not_inferred",
+      "resource": {
+        "effectiveDateTime": "2025-01-10T08:20:00Z"
+      },
+      "expected": "accept",
+      "expected_effective_micros": 1736497200000000,
+      "expected_issued_micros": null
+    },
+    {
+      "id": "trailing_zero_fraction_exactly_representable",
+      "resource": {
+        "effectiveDateTime": "2025-01-10T08:20:00.1234560Z"
+      },
+      "expected": "accept",
+      "expected_effective_micros": 1736497200123456,
+      "expected_issued_micros": null
+    },
+    {
+      "id": "missing_effective_choice",
+      "resource": {
+        "issued": "2025-01-10T08:25:30Z"
+      },
+      "expected": "reject",
+      "expected_error_contains": "no effective[x]"
+    },
+    {
+      "id": "date_only_effective_rejected",
+      "resource": {
+        "effectiveDateTime": "2025-01-10"
+      },
+      "expected": "reject",
+      "expected_error_contains": "timezone-qualified RFC3339 instant"
+    },
+    {
+      "id": "wall_clock_effective_without_zone_rejected",
+      "resource": {
+        "effectiveDateTime": "2025-01-10T08:20:00"
+      },
+      "expected": "reject",
+      "expected_error_contains": "timezone-qualified RFC3339 instant"
+    },
+    {
+      "id": "effective_period_not_collapsed_to_point",
+      "resource": {
+        "effectivePeriod": {
+          "start": "2025-01-10T08:00:00Z",
+          "end": "2025-01-10T08:30:00Z"
+        }
+      },
+      "expected": "reject",
+      "expected_error_contains": "effectivePeriod"
+    },
+    {
+      "id": "effective_timing_not_collapsed_to_point",
+      "resource": {
+        "effectiveTiming": {
+          "repeat": {
+            "frequency": 1,
+            "period": 1,
+            "periodUnit": "d"
+          }
+        }
+      },
+      "expected": "reject",
+      "expected_error_contains": "effectiveTiming"
+    },
+    {
+      "id": "effective_instant_not_silently_coerced",
+      "resource": {
+        "effectiveInstant": "2025-01-10T08:20:00Z"
+      },
+      "expected": "reject",
+      "expected_error_contains": "effectiveInstant"
+    },
+    {
+      "id": "multiple_effective_choices_rejected",
+      "resource": {
+        "effectiveDateTime": "2025-01-10T08:20:00Z",
+        "effectivePeriod": {
+          "start": "2025-01-10T08:00:00Z"
+        }
+      },
+      "expected": "reject",
+      "expected_error_contains": "multiple effective[x]"
+    },
+    {
+      "id": "effective_submicrosecond_precision_rejected",
+      "resource": {
+        "effectiveDateTime": "2025-01-10T08:20:00.123456789Z"
+      },
+      "expected": "reject",
+      "expected_error_contains": "sub-microsecond precision"
+    },
+    {
+      "id": "issued_submicrosecond_precision_rejected",
+      "resource": {
+        "effectiveDateTime": "2025-01-10T08:20:00Z",
+        "issued": "2025-01-10T08:25:30.123456789Z"
+      },
+      "expected": "reject",
+      "expected_error_contains": "sub-microsecond precision"
+    },
+    {
+      "id": "issued_null_is_not_missing",
+      "resource": {
+        "effectiveDateTime": "2025-01-10T08:20:00Z",
+        "issued": null
+      },
+      "expected": "reject",
+      "expected_error_contains": "issued must be a string"
+    },
+    {
+      "id": "issued_malformed_rejected",
+      "resource": {
+        "effectiveDateTime": "2025-01-10T08:20:00Z",
+        "issued": "not-a-time"
+      },
+      "expected": "reject",
+      "expected_error_contains": "Observation.issued"
+    }
+  ]
+}

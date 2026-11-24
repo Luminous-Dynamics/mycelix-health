@@ -4,6 +4,21 @@
 
 ## Overview
 
+## Ingestion profile
+
+The coordinator currently accepts only Bundle.type = collection. Before any
+Patient or clinical resource write, the complete entry list is preflighted:
+every entry must contain a resource, resourceType, persistent resource ID and
+unique (fullUrl, meta.versionId) identity. Repeated fullUrls are permitted only
+for distinct non-empty resource meta.versionId values. RESTful fullUrl type
+and ID must match the embedded resource. Transaction/batch request and response metadata,
+search metadata, version-specific fullUrls and other Bundle types are rejected.
+
+A rejected envelope stores an unlinked IngestReport only; it does not partially
+ingest a valid Patient beside malformed entries. This is a supported ingestion
+subset, not full FHIR R4 Bundle conformance.
+
+
 The FHIR Bridge zome provides bidirectional data exchange between Mycelix-Health and external EHR systems using the FHIR R4 standard. It handles bundle ingestion, resource mapping, deduplication, and FHIR-compliant exports.
 
 ## Architecture
@@ -147,7 +162,7 @@ const report = await appClient.callZome({
       type: 'collection',
       entry: [
         {
-          fullUrl: 'Patient/12345',
+          fullUrl: 'https://ehr.example/fhir/Patient/12345',
           resource: {
             resourceType: 'Patient',
             id: '12345',
@@ -156,7 +171,7 @@ const report = await appClient.callZome({
           },
         },
         {
-          fullUrl: 'Condition/67890',
+          fullUrl: 'https://ehr.example/fhir/Condition/67890',
           resource: {
             resourceType: 'Condition',
             id: '67890',
@@ -214,6 +229,30 @@ const results = await gateway.pullPatientData(
 
 // The gateway internally calls fhir_bridge.ingest_bundle
 ```
+
+## Patient subject binding
+
+The current `ingest_bundle` coordinator is a **single-patient** ingestion API.
+
+- A Bundle containing more than one Patient resource is rejected before any Patient is created.
+- Every patient-scoped resource must carry a resolvable `subject.reference` or `patient.reference`.
+- Relative `Patient/{id}` references are expanded from the referencing entry's RESTful `fullUrl`; the expanded URL must resolve uniquely to the selected Patient. Version-specific references must also match `Resource.meta.versionId`.
+- Absolute and `urn:uuid` references are accepted only when they exactly match one unique Bundle `entry.fullUrl` whose target is the selected Patient.
+- Missing, identifier-only, unresolved, ambiguous or mismatched references cause that resource to be skipped and described in the `IngestReport.parse_errors` list.
+- The bridge does not infer patient identity from Bundle proximity, timestamp, name similarity or a URL suffix.
+- A Bundle without a Patient resource is rejected for now. Existing-patient attachment remains disabled until the source identity is authenticated and bound as tracked by issue #289.
+
+This is intentionally conservative. Identifier-only matching, multi-patient Bundles and cross-system master-patient-index reconciliation require separate versioned and audited policies; they are not guessed by this endpoint.
+
+## Observation temporal semantics
+
+The current Observation mapping profile preserves three separate time values:
+
+- `effective_datetime`: the source clinical event time from a timezone-qualified `Observation.effectiveDateTime`;
+- `issued`: the independent timezone-qualified `Observation.issued` instant, when present;
+- `last_synced`: local ingestion/synchronization time.
+
+The current mapping profile is deliberately narrower than all FHIR R4 temporal choices. It rejects missing, date-only, timezone-free, `effectivePeriod`, `effectiveTiming`, and `effectiveInstant` values rather than silently substituting import time or coercing intervals into points. A future versioned temporal envelope must preserve the original FHIR choice and precision.
 
 ## Deduplication
 
@@ -292,10 +331,8 @@ cargo test fhir_bridge --target x86_64-unknown-linux-gnu
 
 ## FHIR Compliance
 
-- **FHIR R4**: Full support for R4 resources
-- **US Core**: Export in US Core profile format
-- **IPS**: International Patient Summary export
-- **C-CDA**: Clinical Document Architecture export
+- **FHIR R4**: Implements a deliberately limited ingest/export mapping subset. This is not full FHIR R4 resource or element coverage, and it does not by itself establish profile conformance.
+- **US Core / IPS / C-CDA**: Export format options exist, but their presence is not evidence of profile/document conformance. Each requires separate profile validation and interoperability testing before making a conformance claim.
 
 ## Privacy & Consent
 

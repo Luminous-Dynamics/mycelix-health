@@ -1,0 +1,423 @@
+{
+  "schema_version": 1,
+  "benchmark_id": "mycelix-clinical-evidence-integrity.fhir-subject-binding.v1",
+  "release_status": "fixture-corpus-only",
+  "data_classification": "fully_synthetic_no_phi",
+  "reference_standard": {
+    "fhir_version": "4.0.1",
+    "profile": "FHIR R4 Bundle reference-resolution subset",
+    "resolution_policy": "exact Bundle identity; relative references expanded from referencing entry RESTful fullUrl; version-specific references require exact meta.versionId; unresolved or ambiguous bindings fail closed",
+    "expected_outcome_semantics": {
+      "accept": "exactly one Patient resource; all relevant RESTful fullUrl/resource identities agree; source entry is valid; subject reference resolves uniquely to the selected Patient",
+      "reject": "any missing, malformed, ambiguous, wrong-version, wrong-resource, wrong-patient or internally inconsistent identity condition"
+    }
+  },
+  "cases": [
+    {
+      "id": "relative_same_patient",
+      "category": "positive_relative",
+      "reference": "Patient/p-1",
+      "source_entry": {
+        "fullUrl": "https://ehr.example/fhir/Observation/o-1",
+        "resource": {
+          "resourceType": "Observation",
+          "id": "o-1"
+        }
+      },
+      "selected_patient_id": "p-1",
+      "entries": [
+        {
+          "fullUrl": "https://ehr.example/fhir/Patient/p-1",
+          "resource": {
+            "resourceType": "Patient",
+            "id": "p-1"
+          }
+        }
+      ],
+      "expected_binding": "matches",
+      "expected_ingest": "accept"
+    },
+    {
+      "id": "absolute_exact_full_url",
+      "category": "positive_absolute",
+      "reference": "https://ehr.example/fhir/Patient/p-1",
+      "source_entry": {
+        "fullUrl": "https://ehr.example/fhir/Observation/o-2",
+        "resource": {
+          "resourceType": "Observation",
+          "id": "o-2"
+        }
+      },
+      "selected_patient_id": "p-1",
+      "entries": [
+        {
+          "fullUrl": "https://ehr.example/fhir/Patient/p-1",
+          "resource": {
+            "resourceType": "Patient",
+            "id": "p-1"
+          }
+        }
+      ],
+      "expected_binding": "matches",
+      "expected_ingest": "accept"
+    },
+    {
+      "id": "urn_exact_full_url",
+      "category": "positive_urn",
+      "reference": "urn:uuid:00000000-0000-4000-8000-000000000001",
+      "source_entry": {
+        "fullUrl": "urn:uuid:00000000-0000-4000-8000-000000000002",
+        "resource": {
+          "resourceType": "Observation",
+          "id": "o-3"
+        }
+      },
+      "selected_patient_id": "p-1",
+      "entries": [
+        {
+          "fullUrl": "urn:uuid:00000000-0000-4000-8000-000000000001",
+          "resource": {
+            "resourceType": "Patient",
+            "id": "p-1"
+          }
+        }
+      ],
+      "expected_binding": "matches",
+      "expected_ingest": "accept"
+    },
+    {
+      "id": "relative_version_exact",
+      "category": "positive_versioned",
+      "reference": "Patient/p-1/_history/3",
+      "source_entry": {
+        "fullUrl": "https://ehr.example/fhir/Observation/o-4",
+        "resource": {
+          "resourceType": "Observation",
+          "id": "o-4"
+        }
+      },
+      "selected_patient_id": "p-1",
+      "entries": [
+        {
+          "fullUrl": "https://ehr.example/fhir/Patient/p-1",
+          "resource": {
+            "resourceType": "Patient",
+            "id": "p-1",
+            "meta": {
+              "versionId": "3"
+            }
+          }
+        }
+      ],
+      "expected_binding": "matches",
+      "expected_ingest": "accept"
+    },
+    {
+      "id": "absolute_version_exact",
+      "category": "positive_versioned",
+      "reference": "https://ehr.example/fhir/Patient/p-1/_history/9",
+      "source_entry": {
+        "fullUrl": "https://ehr.example/fhir/Observation/o-5",
+        "resource": {
+          "resourceType": "Observation",
+          "id": "o-5"
+        }
+      },
+      "selected_patient_id": "p-1",
+      "entries": [
+        {
+          "fullUrl": "https://ehr.example/fhir/Patient/p-1",
+          "resource": {
+            "resourceType": "Patient",
+            "id": "p-1",
+            "meta": {
+              "versionId": "9"
+            }
+          }
+        }
+      ],
+      "expected_binding": "matches",
+      "expected_ingest": "accept"
+    },
+    {
+      "id": "wrong_patient_even_with_valid_reference",
+      "category": "negative_cross_patient",
+      "reference": "Patient/p-2",
+      "source_entry": {
+        "fullUrl": "https://ehr.example/fhir/Observation/o-6",
+        "resource": {
+          "resourceType": "Observation",
+          "id": "o-6"
+        }
+      },
+      "selected_patient_id": "p-1",
+      "entries": [
+        {
+          "fullUrl": "https://ehr.example/fhir/Patient/p-2",
+          "resource": {
+            "resourceType": "Patient",
+            "id": "p-2"
+          }
+        }
+      ],
+      "expected_binding": "different_patient",
+      "expected_ingest": "reject"
+    },
+    {
+      "id": "urn_source_cannot_expand_relative_reference",
+      "category": "negative_missing_context",
+      "reference": "Patient/p-1",
+      "source_entry": {
+        "fullUrl": "urn:uuid:00000000-0000-4000-8000-000000000010",
+        "resource": {
+          "resourceType": "Observation",
+          "id": "o-7"
+        }
+      },
+      "selected_patient_id": "p-1",
+      "entries": [
+        {
+          "fullUrl": "https://ehr.example/fhir/Patient/p-1",
+          "resource": {
+            "resourceType": "Patient",
+            "id": "p-1"
+          }
+        }
+      ],
+      "expected_binding": "unresolved",
+      "expected_ingest": "reject"
+    },
+    {
+      "id": "source_full_url_disagrees_with_resource_id",
+      "category": "negative_source_identity",
+      "reference": "Patient/p-1",
+      "source_entry": {
+        "fullUrl": "https://ehr.example/fhir/Observation/o-spoofed",
+        "resource": {
+          "resourceType": "Observation",
+          "id": "o-8"
+        }
+      },
+      "selected_patient_id": "p-1",
+      "entries": [
+        {
+          "fullUrl": "https://ehr.example/fhir/Patient/p-1",
+          "resource": {
+            "resourceType": "Patient",
+            "id": "p-1"
+          }
+        }
+      ],
+      "expected_binding": "unresolved",
+      "expected_ingest": "reject"
+    },
+    {
+      "id": "target_full_url_disagrees_with_patient_id",
+      "category": "negative_target_identity",
+      "reference": "https://ehr.example/fhir/Patient/p-spoofed",
+      "source_entry": {
+        "fullUrl": "https://ehr.example/fhir/Observation/o-9",
+        "resource": {
+          "resourceType": "Observation",
+          "id": "o-9"
+        }
+      },
+      "selected_patient_id": "p-1",
+      "entries": [
+        {
+          "fullUrl": "https://ehr.example/fhir/Patient/p-spoofed",
+          "resource": {
+            "resourceType": "Patient",
+            "id": "p-1"
+          }
+        }
+      ],
+      "expected_binding": "unresolved",
+      "expected_ingest": "reject"
+    },
+    {
+      "id": "wrong_history_version",
+      "category": "negative_version",
+      "reference": "Patient/p-1/_history/8",
+      "source_entry": {
+        "fullUrl": "https://ehr.example/fhir/Observation/o-10",
+        "resource": {
+          "resourceType": "Observation",
+          "id": "o-10"
+        }
+      },
+      "selected_patient_id": "p-1",
+      "entries": [
+        {
+          "fullUrl": "https://ehr.example/fhir/Patient/p-1",
+          "resource": {
+            "resourceType": "Patient",
+            "id": "p-1",
+            "meta": {
+              "versionId": "9"
+            }
+          }
+        }
+      ],
+      "expected_binding": "unresolved",
+      "expected_ingest": "reject"
+    },
+    {
+      "id": "suffix_only_absolute_match_is_not_enough",
+      "category": "negative_exact_match",
+      "reference": "https://other-ehr.example/fhir/Patient/p-1",
+      "source_entry": {
+        "fullUrl": "https://ehr.example/fhir/Observation/o-11",
+        "resource": {
+          "resourceType": "Observation",
+          "id": "o-11"
+        }
+      },
+      "selected_patient_id": "p-1",
+      "entries": [
+        {
+          "fullUrl": "https://ehr.example/fhir/Patient/p-1",
+          "resource": {
+            "resourceType": "Patient",
+            "id": "p-1"
+          }
+        }
+      ],
+      "expected_binding": "unresolved",
+      "expected_ingest": "reject"
+    },
+    {
+      "id": "missing_subject",
+      "category": "negative_missing_subject",
+      "reference": null,
+      "source_entry": {
+        "fullUrl": "https://ehr.example/fhir/Observation/o-12",
+        "resource": {
+          "resourceType": "Observation",
+          "id": "o-12"
+        }
+      },
+      "selected_patient_id": "p-1",
+      "entries": [
+        {
+          "fullUrl": "https://ehr.example/fhir/Patient/p-1",
+          "resource": {
+            "resourceType": "Patient",
+            "id": "p-1"
+          }
+        }
+      ],
+      "expected_binding": "unresolved",
+      "expected_ingest": "reject"
+    },
+    {
+      "id": "duplicate_full_url_is_ambiguous",
+      "category": "negative_ambiguity",
+      "reference": "https://ehr.example/fhir/Patient/p-1",
+      "source_entry": {
+        "fullUrl": "https://ehr.example/fhir/Observation/o-13",
+        "resource": {
+          "resourceType": "Observation",
+          "id": "o-13"
+        }
+      },
+      "selected_patient_id": "p-1",
+      "entries": [
+        {
+          "fullUrl": "https://ehr.example/fhir/Patient/p-1",
+          "resource": {
+            "resourceType": "Patient",
+            "id": "p-1"
+          }
+        },
+        {
+          "fullUrl": "https://ehr.example/fhir/Patient/p-1"
+        }
+      ],
+      "expected_binding": "unresolved",
+      "expected_ingest": "reject"
+    },
+    {
+      "id": "multi_patient_bundle_rejected_even_when_reference_is_exact",
+      "category": "negative_multi_patient_bundle",
+      "reference": "Patient/p-1",
+      "source_entry": {
+        "fullUrl": "https://ehr.example/fhir/Observation/o-14",
+        "resource": {
+          "resourceType": "Observation",
+          "id": "o-14"
+        }
+      },
+      "selected_patient_id": "p-1",
+      "entries": [
+        {
+          "fullUrl": "https://ehr.example/fhir/Patient/p-1",
+          "resource": {
+            "resourceType": "Patient",
+            "id": "p-1"
+          }
+        },
+        {
+          "fullUrl": "https://ehr.example/fhir/Patient/p-2",
+          "resource": {
+            "resourceType": "Patient",
+            "id": "p-2"
+          }
+        }
+      ],
+      "expected_binding": "matches",
+      "expected_ingest": "reject"
+    },
+    {
+      "id": "reference_resolves_to_non_patient",
+      "category": "negative_resource_type",
+      "reference": "https://ehr.example/fhir/Organization/org-1",
+      "source_entry": {
+        "fullUrl": "https://ehr.example/fhir/Observation/o-15",
+        "resource": {
+          "resourceType": "Observation",
+          "id": "o-15"
+        }
+      },
+      "selected_patient_id": "p-1",
+      "entries": [
+        {
+          "fullUrl": "https://ehr.example/fhir/Organization/org-1",
+          "resource": {
+            "resourceType": "Organization",
+            "id": "org-1"
+          }
+        }
+      ],
+      "expected_binding": "unresolved",
+      "expected_ingest": "reject"
+    },
+    {
+      "id": "malformed_version_reference",
+      "category": "negative_malformed",
+      "reference": "Patient/p-1/_history/",
+      "source_entry": {
+        "fullUrl": "https://ehr.example/fhir/Observation/o-16",
+        "resource": {
+          "resourceType": "Observation",
+          "id": "o-16"
+        }
+      },
+      "selected_patient_id": "p-1",
+      "entries": [
+        {
+          "fullUrl": "https://ehr.example/fhir/Patient/p-1",
+          "resource": {
+            "resourceType": "Patient",
+            "id": "p-1",
+            "meta": {
+              "versionId": "3"
+            }
+          }
+        }
+      ],
+      "expected_binding": "unresolved",
+      "expected_ingest": "reject"
+    }
+  ]
+}

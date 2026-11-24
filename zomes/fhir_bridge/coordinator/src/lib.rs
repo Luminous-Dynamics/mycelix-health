@@ -17,6 +17,15 @@
 use fhir_bridge_integrity::*;
 use hdk::prelude::*;
 
+mod bundle_preflight;
+mod patient_subject;
+use bundle_preflight::validate_collection_bundle;
+use patient_subject::{
+    bundle_entry_full_url_matches_resource, resolve_patient_subject, PatientSubjectBinding,
+};
+mod observation_time;
+use observation_time::parse_observation_temporal_evidence;
+
 // Local mirrors of fhir_mapping_integrity types to avoid duplicate __num_entry_types
 // symbols when compiling to WASM. These must match the serialization layout exactly.
 
@@ -99,7 +108,10 @@ pub struct FhirObservationMapping {
     pub value_codeable_concept: Option<FhirCodeableConcept>,
     pub value_string: Option<String>,
     pub value_boolean: Option<bool>,
+    /// Clinical event time parsed from FHIR Observation.effectiveDateTime.
+    /// Never substitute local import time for this field.
     pub effective_datetime: Timestamp,
+    /// Independent FHIR Observation.issued instant, when supplied.
     pub issued: Option<Timestamp>,
     pub reference_range: Option<ObservationReferenceRange>,
     pub interpretation: Vec<FhirCodeableConcept>,
@@ -197,72 +209,94 @@ pub fn ingest_bundle(input: IngestBundleInput) -> ExternResult<IngestReport> {
         parse_errors: Vec::new(),
     };
 
-    // Extract entries from bundle
-    let entries = match input.bundle.get("entry") {
-        Some(JsonValue::Array(entries)) => entries.clone(),
-        _ => {
-            report
-                .parse_errors
-                .push("Bundle has no 'entry' array".to_string());
-            // Store the report even on error
+    // Validate the complete supported Bundle envelope before any Patient or
+    // clinical-resource mutation. Rejected Bundles produce only an unlinked
+    // IngestReport; no partial ingestion is attempted.
+    let entries = match validate_collection_bundle(&input.bundle) {
+        Ok(entries) => entries,
+        Err(errors) => {
+            report.parse_errors.extend(errors);
             create_entry(&EntryTypes::IngestReport(report.clone()))?;
             return Ok(report);
         }
     };
 
-    // First pass: find and process Patient resources to establish patient hash
+    // This entrypoint is intentionally single-patient. Do not silently select
+    // the first Patient from a multi-patient Bundle.
+    let patient_entries: Vec<&JsonValue> = entries
+        .iter()
+        .filter(|entry| {
+            entry
+                .get("resource")
+                .map(|resource| get_resource_type(resource).as_deref() == Some("Patient"))
+                .unwrap_or(false)
+        })
+        .collect();
+
+    if patient_entries.len() > 1 {
+        report.parse_errors.push(format!(
+            "Bundle contains {} Patient resources; single-patient ingestion requires exactly one",
+            patient_entries.len()
+        ));
+        create_entry(&EntryTypes::IngestReport(report.clone()))?;
+        return Ok(report);
+    }
+
+    // First pass: establish exactly one patient identity or resolve an existing
+    // source-system patient through a supported relative Patient/{id} reference.
     let mut patient_hash: Option<ActionHash> = None;
-    let mut patient_fhir_id: Option<String> = None;
+    let patient_fhir_id: Option<String>;
 
-    for entry in &entries {
-        let resource = match entry.get("resource") {
-            Some(r) => r,
-            None => continue,
+    if let Some(patient_entry) = patient_entries.first() {
+        if !bundle_entry_full_url_matches_resource(patient_entry) {
+            report.parse_errors.push(
+                "Patient entry fullUrl disagrees with its embedded Patient resource identity"
+                    .to_string(),
+            );
+            create_entry(&EntryTypes::IngestReport(report.clone()))?;
+            return Ok(report);
+        }
+        let Some(resource) = patient_entry.get("resource") else {
+            report
+                .parse_errors
+                .push("Patient entry has no resource".to_string());
+            create_entry(&EntryTypes::IngestReport(report.clone()))?;
+            return Ok(report);
         };
-
-        if get_resource_type(resource) == Some("Patient".to_string()) {
-            match process_patient(resource, &input.source_system) {
-                Ok((hash, created)) => {
-                    patient_hash = Some(hash);
-                    patient_fhir_id = get_resource_id(resource);
-                    report.total_processed += 1;
-                    if created {
-                        report.patients_created += 1;
-                    } else {
-                        report.patients_updated += 1;
-                    }
-                }
-                Err(e) => {
-                    report.parse_errors.push(format!("Patient: {}", e));
+        patient_fhir_id = get_resource_id(resource);
+        match process_patient(resource, &input.source_system) {
+            Ok((hash, created)) => {
+                patient_hash = Some(hash);
+                report.total_processed += 1;
+                if created {
+                    report.patients_created += 1;
+                } else {
+                    report.patients_updated += 1;
                 }
             }
-            break; // Only expect one Patient per bundle
+            Err(e) => report.parse_errors.push(format!("Patient: {}", e)),
         }
+    } else {
+        // The request currently carries a caller-supplied source_system label,
+        // not a verified EHR principal. Do not use it to attach an existing
+        // patient until the gateway/source-authority boundary in issue #289
+        // is implemented and qualified.
+        report.parse_errors.push(
+            "Bundle has no Patient resource; existing-patient resolution is disabled until authenticated source authority is bound"
+                .to_string(),
+        );
+        create_entry(&EntryTypes::IngestReport(report.clone()))?;
+        return Ok(report);
     }
 
-    // If no patient found, try to find patient reference from other resources
-    if patient_hash.is_none() {
-        for entry in &entries {
-            if let Some(resource) = entry.get("resource") {
-                if let Some(patient_ref) = get_patient_reference(resource) {
-                    // Try to look up existing patient by reference
-                    if let Some(hash) =
-                        lookup_patient_by_fhir_reference(&patient_ref, &input.source_system)?
-                    {
-                        patient_hash = Some(hash);
-                        break;
-                    }
-                }
-            }
-        }
-    }
-
-    // If still no patient, we can't process other resources
+    // If the source patient cannot be resolved unambiguously, no resource can
+    // be safely attached to a patient.
     let patient_hash = match patient_hash {
         Some(h) => h,
         None => {
             report.parse_errors.push(
-                "No Patient resource found and could not resolve patient reference".to_string(),
+                "No single Patient resource found and no supported source-system Patient/{id} reference resolved"
+                    .to_string(),
             );
             create_entry(&EntryTypes::IngestReport(report.clone()))?;
             return Ok(report);
@@ -291,25 +325,56 @@ pub fn ingest_bundle(input: IngestBundleInput) -> ExternResult<IngestReport> {
             continue;
         }
 
-        // A bundle may only contribute resources for the patient it establishes.
-        // `patient_fhir_id` was captured in the first pass for exactly this check,
-        // which was never written -- so every non-Patient resource was attached to
-        // `patient_hash` regardless of whom its subject/patient reference named.
-        //
-        // Only an UNAMBIGUOUS mismatch rejects: a relative "Patient/<id>" reference
-        // whose id differs from the bundle's Patient. Absolute URLs, urn:uuid
-        // references, and resources carrying no reference are passed through, since
-        // those cannot be compared reliably and silently dropping data would be the
-        // worse failure. A rejected resource is reported, not swallowed.
-        if let (Some(bundle_id), Some(reference)) =
-            (patient_fhir_id.as_ref(), get_patient_reference(resource))
-        {
-            if let Some(ref_id) = reference.strip_prefix("Patient/") {
-                if ref_id != bundle_id {
+        // All resource types mapped into a patient record require an exact,
+        // unambiguous patient binding. Missing/unresolved subjects are not inferred
+        // from the presence of some other Patient resource in the Bundle.
+        let patient_scoped = matches!(
+            resource_type.as_str(),
+            "Observation"
+                | "Condition"
+                | "MedicationRequest"
+                | "MedicationStatement"
+                | "AllergyIntolerance"
+                | "Immunization"
+                | "Procedure"
+                | "DiagnosticReport"
+                | "CarePlan"
+        );
+
+        if patient_scoped {
+            if !bundle_entry_full_url_matches_resource(entry) {
+                report.parse_errors.push(format!(
+                    "{resource_type}: Bundle fullUrl disagrees with embedded resourceType/id; skipped"
+                ));
+                continue;
+            }
+
+            let Some(bundle_patient_id) = patient_fhir_id.as_deref() else {
+                report.parse_errors.push(format!(
+                    "{resource_type}: selected patient has no FHIR id; subject binding is unresolved; skipped"
+                ));
+                continue;
+            };
+
+            let reference = get_patient_reference(resource);
+            match resolve_patient_subject(
+                reference.as_deref(),
+                Some(entry),
+                bundle_patient_id,
+                &entries,
+            ) {
+                PatientSubjectBinding::MatchesBundlePatient => {}
+                PatientSubjectBinding::DifferentPatient {
+                    referenced_patient_id,
+                } => {
                     report.parse_errors.push(format!(
-                        "{resource_type}: subject references Patient/{ref_id} but this bundle \
-                         establishes Patient/{bundle_id}; skipped rather than attributing data \
-                         to the wrong patient"
+                        "{resource_type}: subject resolves to Patient/{referenced_patient_id}, but the selected patient is Patient/{bundle_patient_id}; skipped"
+                    ));
+                    continue;
+                }
+                PatientSubjectBinding::Unresolved { reason } => {
+                    report.parse_errors.push(format!(
+                        "{resource_type}: patient subject could not be bound safely ({reason}); skipped"
                     ));
                     continue;
                 }
@@ -627,6 +692,13 @@ fn process_observation(
     let (code, display, system) = extract_coding(resource, "code");
     let loinc_code = code.clone().unwrap_or_else(|| "unknown".to_string());
     let status = get_fhir_string(resource, "status").unwrap_or_else(|| "unknown".to_string());
+
+    // The event time, issue time and local import time are independent facts.
+    // This mapping version supports timezone-qualified effectiveDateTime only.
+    // Unsupported effective[x] forms are rejected rather than replaced with now.
+    let temporal = parse_observation_temporal_evidence(resource)?;
+    let effective_datetime = temporal.effective_datetime;
+    let issued = temporal.issued;
     let now = sys_time().map_err(|e| e.to_string())?;
 
     let mapping = FhirObservationMapping {
@@ -643,8 +715,8 @@ fn process_observation(
         value_codeable_concept: None,
         value_string: extract_value(resource),
         value_boolean: resource.get("valueBoolean").and_then(|v| v.as_bool()),
-        effective_datetime: now,
-        issued: None,
+        effective_datetime,
+        issued,
         reference_range: None,
         interpretation: Vec::new(),
         note: Vec::new(),
@@ -1274,21 +1346,6 @@ fn create_resource_anchor(
     .map_err(|e| e.to_string())?;
 
     Ok(())
-}
-
-fn lookup_patient_by_fhir_reference(
-    reference: &str,
-    source_system: &str,
-) -> ExternResult<Option<ActionHash>> {
-    // Reference format: "Patient/123"
-    let parts: Vec<&str> = reference.split('/').collect();
-    if parts.len() == 2 && parts[0] == "Patient" {
-        let source_key = format!("{}:Patient:{}", source_system, parts[1]);
-        if let Some(anchor) = lookup_resource_anchor(&source_key)? {
-            return Ok(Some(anchor.internal_hash));
-        }
-    }
-    Ok(None)
 }
 
 fn extract_patient_name(resource: &JsonValue) -> (Option<String>, Option<String>) {

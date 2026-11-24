@@ -109,6 +109,53 @@ jobs:
         run: cargo test --workspace --target "$(rustc -vV | awk '/^host:/{print $2}')"
 
 
+
+  # Focused FHIR contract corpora: independent of SDK, cargo-deny and conductor jobs.
+  fhir-evidence-contracts:
+    name: FHIR Evidence Contract Benchmarks
+    runs-on: ubuntu-latest
+    env:
+      CARGO_TERM_COLOR: always
+      RUST_BACKTRACE: 1
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Restore parent workspace sibling crates
+        run: |
+          git clone --depth 1 https://github.com/Luminous-Dynamics/mycelix.git /tmp/mycelix-parent
+          mkdir -p ../crates ../mycelix-core ../mycelix-workspace/mycelix-core
+          cp -r /tmp/mycelix-parent/crates/. ../crates/
+          cp -r /tmp/mycelix-parent/mycelix-core/. ../mycelix-core/
+          cp -r /tmp/mycelix-parent/mycelix-core/. ../mycelix-workspace/mycelix-core/
+          rm -rf /tmp/mycelix-parent
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@1.96.0
+        with:
+          components: rustfmt
+
+      - name: Install Holochain build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libssl-dev pkg-config
+
+      - name: Cache Cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-fhir-evidence-${{ hashFiles('Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-fhir-evidence-
+
+      - name: Check FHIR coordinator formatting
+        run: cargo fmt -p fhir_bridge -- --check
+
+      - name: Run frozen FHIR evidence corpora
+        run: ./scripts/run-clinical-evidence-fhir-corpora.sh
+
   deny:
     runs-on: ubuntu-latest
     steps:
