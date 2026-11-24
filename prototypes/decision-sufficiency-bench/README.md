@@ -69,7 +69,7 @@ The catalogue in fixtures/v1-cases.tsv enumerates the v1 cases. The unit tests c
 
 ## Metrics for the full research benchmark
 
-This reference implementation supplies machine-checkable foundations, not model scores. The 15-row TSV is a frozen scenario catalogue; the executable task inputs are currently constructed in the typed Rust tests. This is an evaluator-contract slice, not yet the complete 25–40-task model-comparison corpus proposed by #299.
+This reference implementation supplies machine-checkable foundations, not model scores. The 15-row TSV is a frozen scenario catalogue whose profile column drives the typed Rust reference tasks; each row is evaluated against its expected sufficient / insufficient / invalid outcome. This is an evaluator-contract slice, not yet the complete 25–40-task model-comparison corpus proposed by #299.
 
 The full #299 experiment should additionally report:
 
