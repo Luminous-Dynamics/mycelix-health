@@ -123,8 +123,6 @@ impl From<&EvidenceEvent> for EventCitation {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
-
 /// Evidence fields exposed to an evaluated agent. No answer-key disposition,
 /// current/history/quarantine role, or conflict-group label is included.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -172,6 +170,7 @@ impl From<&VisibleEvidenceEvent> for EventCitation {
     }
 }
 
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Submission {
     pub task_id: String,
     pub disposition: Disposition,
