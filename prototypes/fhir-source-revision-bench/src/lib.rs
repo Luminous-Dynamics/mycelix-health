@@ -199,13 +199,13 @@ pub fn classify_revision(
     if let Some(version_id) = &incoming.version_id {
         for prior in &existing {
             if prior.version_id.as_ref() == Some(version_id) {
-                if prior.payload_digest != incoming.payload_digest {
-                    return Ok(assessment(RevisionDisposition::VersionEquivocation));
-                }
                 if prior.canonicalization_profile != incoming.canonicalization_profile {
                     return Ok(assessment(
                         RevisionDisposition::CanonicalizationProfileConflict,
                     ));
+                }
+                if prior.payload_digest != incoming.payload_digest {
+                    return Ok(assessment(RevisionDisposition::VersionEquivocation));
                 }
                 if prior.source_order != incoming.source_order {
                     return Ok(assessment(
@@ -450,6 +450,52 @@ mod tests {
             classify_revision(&incoming_other_tenant, &[prior], None).unwrap().disposition,
             RevisionDisposition::FirstRevision
         );
+    }
+
+    #[test]
+    fn source_principal_partitions_logical_identity() {
+        let prior = revision("tenant-a", "issuer-a", Some("v1"), 1, Some(1));
+        let incoming_other_source = revision("tenant-a", "issuer-b", Some("v1"), 1, Some(1));
+        assert_eq!(
+            classify_revision(&incoming_other_source, &[prior], None)
+                .unwrap()
+                .disposition,
+            RevisionDisposition::FirstRevision
+        );
+    }
+
+    #[test]
+    fn fixture_catalogue_is_frozen_and_has_unique_case_ids() {
+        let mut ids = std::collections::BTreeSet::new();
+        let mut rows = 0usize;
+        for line in include_str!("../fixtures/v1-cases.tsv").lines() {
+            if line.is_empty() || line.starts_with('#') {
+                continue;
+            }
+            let fields: Vec<&str> = line.split('|').collect();
+            assert_eq!(fields.len(), 4, "malformed fixture catalogue row");
+            assert!(!fields[0].trim().is_empty(), "fixture ID must not be empty");
+            assert!(ids.insert(fields[0]), "duplicate fixture ID: {}", fields[0]);
+            assert!(
+                [
+                    "FirstRevision",
+                    "ExactReplay",
+                    "VersionEquivocation",
+                    "CanonicalizationProfileConflict",
+                    "NewerBySourceSequence",
+                    "OlderBySourceSequence",
+                    "SourceSequenceCollision",
+                    "OrderUnknown",
+                    "InvalidInput"
+                ]
+                .contains(&fields[2]),
+                "unknown disposition in fixture {}",
+                fields[0]
+            );
+            assert!(!fields[3].trim().is_empty(), "fixture effect must not be empty");
+            rows += 1;
+        }
+        assert_eq!(rows, 15, "v1 fixture catalogue size changed");
     }
 
     #[test]
