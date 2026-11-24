@@ -265,10 +265,13 @@ jobs:
         run: |
           HOST="$(rustc -vV | sed -n 's/^host: //p')"
           cargo run --locked --manifest-path prototypes/temporal-evidence-integrity-bench/Cargo.toml --target "$HOST" --bin naive_baseline > temporal-evidence-naive-baseline.tsv
+          cargo run --locked --manifest-path prototypes/temporal-evidence-integrity-bench/Cargo.toml --target "$HOST" --bin revision_baseline > temporal-evidence-revision-baseline.tsv
       - name: Publish reproducible baseline report
         uses: actions/upload-artifact@v4
         with:
-          name: temporal-evidence-integrity-naive-baseline
-          path: temporal-evidence-naive-baseline.tsv
+          name: temporal-evidence-baseline-matrix-v1
+          path: |
+            temporal-evidence-naive-baseline.tsv
+            temporal-evidence-revision-baseline.tsv
           if-no-files-found: error
           retention-days: 30
