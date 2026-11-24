@@ -61,6 +61,8 @@ pub struct EvidenceEvent {
     pub patient_binding: String,
     pub source_principal: String,
     pub resource_version: String,
+    pub resource_type: String,
+    pub resource_id: String,
     pub payload_digest: String,
     pub measurement_method: Option<String>,
     pub measurement_unit: Option<String>,
@@ -100,6 +102,8 @@ pub struct EventCitation {
     pub event_id: String,
     pub source_principal: String,
     pub resource_version: String,
+    pub resource_type: String,
+    pub resource_id: String,
     pub payload_digest: String,
     pub measurement_method: Option<String>,
     pub measurement_unit: Option<String>,
@@ -121,6 +125,8 @@ impl From<&EvidenceEvent> for EventCitation {
             event_id: event.event_id.clone(),
             source_principal: event.source_principal.clone(),
             resource_version: event.resource_version.clone(),
+            resource_type: event.resource_type.clone(),
+            resource_id: event.resource_id.clone(),
             payload_digest: event.payload_digest.clone(),
             measurement_method: event.measurement_method.clone(),
             measurement_unit: event.measurement_unit.clone(),
@@ -146,6 +152,8 @@ pub struct VisibleEvidenceEvent {
     pub patient_binding: String,
     pub source_principal: String,
     pub resource_version: String,
+    pub resource_type: String,
+    pub resource_id: String,
     pub payload_digest: String,
     pub measurement_method: Option<String>,
     pub measurement_unit: Option<String>,
@@ -180,6 +188,8 @@ impl From<&VisibleEvidenceEvent> for EventCitation {
             event_id: event.event_id.clone(),
             source_principal: event.source_principal.clone(),
             resource_version: event.resource_version.clone(),
+            resource_type: event.resource_type.clone(),
+            resource_id: event.resource_id.clone(),
             payload_digest: event.payload_digest.clone(),
             measurement_method: event.measurement_method.clone(),
             measurement_unit: event.measurement_unit.clone(),
@@ -377,9 +387,9 @@ fn parse_visible_events(
             continue;
         }
         let fields: Vec<&str> = line.split('\t').collect();
-        if fields.len() != 22 {
+        if fields.len() != 24 {
             return Err(format!(
-                "visible events.tsv line {}: expected 22 columns, got {}",
+                "visible events.tsv line {}: expected 24 columns, got {}",
                 line_index + 1,
                 fields.len()
             ));
@@ -399,6 +409,8 @@ fn parse_visible_events(
             patient_binding: fields[2].to_owned(),
             source_principal: fields[3].to_owned(),
             resource_version: fields[4].to_owned(),
+            resource_type: fields[22].to_owned(),
+            resource_id: fields[23].to_owned(),
             payload_digest: fields[5].to_owned(),
             measurement_method: optional_text(fields[6]),
             measurement_unit: optional_text(fields[7]),
@@ -439,6 +451,8 @@ fn parse_visible_events(
             || event.patient_binding.is_empty()
             || event.source_principal.is_empty()
             || event.resource_version.is_empty()
+            || event.resource_type.is_empty()
+            || event.resource_id.is_empty()
             || event.payload_digest.len() != 64
             || !event
                 .payload_digest
@@ -463,9 +477,9 @@ fn parse_events(input: &str) -> Result<BTreeMap<String, Vec<EvidenceEvent>>, Str
             continue;
         }
         let fields: Vec<&str> = line.split('\t').collect();
-        if fields.len() != 24 {
+        if fields.len() != 26 {
             return Err(format!(
-                "answer-key-events.tsv line {}: expected 24 columns, got {}",
+                "answer-key-events.tsv line {}: expected 26 columns, got {}",
                 line_index + 1,
                 fields.len()
             ));
@@ -486,6 +500,8 @@ fn parse_events(input: &str) -> Result<BTreeMap<String, Vec<EvidenceEvent>>, Str
             patient_binding: fields[2].to_owned(),
             source_principal: fields[3].to_owned(),
             resource_version: fields[4].to_owned(),
+            resource_type: fields[24].to_owned(),
+            resource_id: fields[25].to_owned(),
             payload_digest: fields[5].to_owned(),
             measurement_method: optional_text(fields[6]),
             measurement_unit: optional_text(fields[7]),
@@ -528,6 +544,8 @@ fn parse_events(input: &str) -> Result<BTreeMap<String, Vec<EvidenceEvent>>, Str
             || event.patient_binding.is_empty()
             || event.source_principal.is_empty()
             || event.resource_version.is_empty()
+            || event.resource_type.is_empty()
+            || event.resource_id.is_empty()
             || event.payload_digest.len() != 64
             || !event
                 .payload_digest
@@ -742,6 +760,8 @@ fn citation_matches(event: &EvidenceEvent, citation: &EventCitation) -> bool {
     event.event_id == citation.event_id
         && event.source_principal == citation.source_principal
         && event.resource_version == citation.resource_version
+        && event.resource_type == citation.resource_type
+        && event.resource_id == citation.resource_id
         && event.payload_digest == citation.payload_digest
         && event.measurement_method == citation.measurement_method
         && event.measurement_unit == citation.measurement_unit
