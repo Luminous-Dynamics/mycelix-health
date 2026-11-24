@@ -169,6 +169,21 @@ function expectHash(value: unknown, label: string): Uint8Array {
   return expectBytes(value, HOLOHASH_BYTES, label);
 }
 
+function agentPublicKeyCore(value: unknown, label: string): Uint8Array {
+  const agentHash = expectHash(value, label);
+  // HoloHash<Agent> = 3-byte type prefix (0x84 0x20 0x24)
+  // + 32-byte Ed25519 public-key digest + 4-byte DHT location.
+  if (agentHash[0] !== 0x84 || agentHash[1] !== 0x20 || agentHash[2] !== 0x24) {
+    throw new Error(`${label} does not have the AgentPubKey HoloHash prefix`);
+  }
+  const core = agentHash.slice(3, 35);
+  const canonical = hashFrom32AndType(core, "Agent");
+  if (!bytesEqual(agentHash, canonical)) {
+    throw new Error(`${label} has an invalid HoloHash DHT-location suffix`);
+  }
+  return core;
+}
+
 function expectNonEmpty(value: unknown, label: string): string {
   if (typeof value !== "string" || value.trim().length === 0) {
     throw new Error(`${label} must be a non-empty string`);
@@ -370,7 +385,7 @@ async function verifyEd25519(
 ): Promise<boolean> {
   if (signatureBytes.byteLength !== 64 || publicKeyBytes.byteLength < 32) return false;
   try {
-    const rawPublicKey = publicKeyBytes.slice(-32);
+    const rawPublicKey = agentPublicKeyCore(publicKeyBytes, "Ed25519 verification key");
     const key = await crypto.subtle.importKey("raw", rawPublicKey, { name: "Ed25519" }, false, ["verify"]);
     return crypto.subtle.verify(
       { name: "Ed25519" },
@@ -473,6 +488,7 @@ export async function verifyNativeClinicalCountersigningEvidenceV1(
 
   for (const action of evidence.participant_actions) {
     const authorBytes = expectHash(action.author_bytes, "Source-chain author bytes");
+    agentPublicKeyCore(authorBytes, "Source-chain author AgentPubKey");
     const authorBinding = encodeHashToBase64(authorBytes);
     const expectedParticipant = expectedParticipants.get(authorBinding);
     if (!expectedParticipant || seenParticipants.has(authorBinding)) {
