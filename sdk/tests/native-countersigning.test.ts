@@ -268,6 +268,9 @@ describe('native clinical countersigning evidence', () => {
     )).rejects.toThrow(/verifier-produced evidence/i);
 
     const verified = await verifyNativeClinicalCountersigningEvidenceV1(evidence);
+    // A caller may mutate the public byte-array view, but terminal authority
+    // must be checked against the verifier's private immutable facts.
+    verified.intent_digest[0] ^= 0xff;
     const observation = await createTerminalCountersigningObservationV1(
       'observer',
       participantBinding,
