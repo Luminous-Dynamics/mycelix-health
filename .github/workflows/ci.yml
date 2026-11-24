@@ -156,6 +156,38 @@ jobs:
       - name: Run frozen FHIR evidence corpora
         run: ./scripts/run-clinical-evidence-fhir-corpora.sh
 
+  # Official HL7-maintained validator, pinned independently of the Rust preflight.
+  official-fhir-r4-core:
+    name: Official FHIR R4 Core Validator
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Cache pinned HL7 validator
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/mycelix-health/fhir-validator
+          key: ${{ runner.os }}-hl7-fhir-validator-7.0.6-2686590539f0b3ba7683149b25d78249f6886c04e2c326e884c5049d8947df89
+
+      - name: Install jq
+        run: sudo apt-get update && sudo apt-get install -y jq
+
+      - name: Validate frozen synthetic cases against FHIR R4 4.0.1
+        run: bash ./scripts/run-official-fhir-r4-validator.sh
+
+      - name: Upload per-case OperationOutcome evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: official-fhir-r4-core-v1
+          path: .artifacts/official-fhir-r4-core-v1/
+          if-no-files-found: warn
   deny:
     runs-on: ubuntu-latest
     steps:
