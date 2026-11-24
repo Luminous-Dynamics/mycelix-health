@@ -1159,7 +1159,6 @@ mod tests {
         assert_eq!(submission.timeline[0].result_issued_at_ms, Some(25_000));
     }
 
-
     #[test]
     fn measurement_method_and_terminology_versions_remain_explicit() {
         let tasks = load_fixture().expect("fixture must validate");
@@ -1196,9 +1195,18 @@ mod tests {
             terminology_a.terminology_system.as_deref(),
             Some("urn:mycelix:synthetic-terminology")
         );
-        assert_eq!(terminology_a.terminology_version.as_deref(), Some("2026-01"));
-        assert_eq!(terminology_b.terminology_version.as_deref(), Some("2026-06"));
-        assert_eq!(terminology_a.terminology_code, terminology_b.terminology_code);
+        assert_eq!(
+            terminology_a.terminology_version.as_deref(),
+            Some("2026-01")
+        );
+        assert_eq!(
+            terminology_b.terminology_version.as_deref(),
+            Some("2026-06")
+        );
+        assert_eq!(
+            terminology_a.terminology_code,
+            terminology_b.terminology_code
+        );
 
         let visible_method_task = visible.iter().find(|task| task.task_id == "T18").unwrap();
         let visible_method_a = visible_method_task
@@ -1206,7 +1214,10 @@ mod tests {
             .iter()
             .find(|event| event.event_id == "E28")
             .unwrap();
-        assert_eq!(visible_method_a.measurement_method.as_deref(), Some("assay-A"));
+        assert_eq!(
+            visible_method_a.measurement_method.as_deref(),
+            Some("assay-A")
+        );
         assert!(!visible_method_task.request.trim().is_empty());
 
         let citation = EventCitation::from(method_a);
