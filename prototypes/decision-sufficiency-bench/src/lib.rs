@@ -22,6 +22,7 @@ pub enum EvidenceStatus {
     UnauthenticatedIssuer,
     MissingVersion,
     UnsupportedSemantics,
+    IncompleteVerification,
 }
 
 impl EvidenceStatus {
@@ -30,11 +31,95 @@ impl EvidenceStatus {
     }
 }
 
+/// Independent evidence dimensions. A record is not verified merely because
+/// a producer labels the whole object "Verified": every required dimension must
+/// have exactly one passing check.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
+pub enum EvidenceDimension {
+    EvidencePresence,
+    SubjectBinding,
+    IssuerAuthenticity,
+    ResourceVersion,
+    TemporalValidity,
+    SemanticSupport,
+    ProvenanceLineage,
+    ApplicationAuthority,
+    ConflictReconciliation,
+}
+
+pub const REQUIRED_EVIDENCE_DIMENSIONS: [EvidenceDimension; 9] = [
+    EvidenceDimension::EvidencePresence,
+    EvidenceDimension::SubjectBinding,
+    EvidenceDimension::IssuerAuthenticity,
+    EvidenceDimension::ResourceVersion,
+    EvidenceDimension::TemporalValidity,
+    EvidenceDimension::SemanticSupport,
+    EvidenceDimension::ProvenanceLineage,
+    EvidenceDimension::ApplicationAuthority,
+    EvidenceDimension::ConflictReconciliation,
+];
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
+pub enum EvidenceGateState {
+    Verified,
+    Missing,
+    Failed,
+    Conflicted,
+    Duplicate,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct EvidenceGate {
+    pub dimension: EvidenceDimension,
+    pub state: EvidenceGateState,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
+pub struct EvidenceGateBlocker {
+    pub source_id: String,
+    pub dimension: EvidenceDimension,
+    pub state: EvidenceGateState,
+}
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct EvidenceRecord {
     pub obligation_id: String,
     pub source_id: String,
+    /// Coarse benchmark disposition. This value alone never grants sufficiency.
     pub status: EvidenceStatus,
+    /// Independent checks required for acceptance of this source assertion.
+    pub gates: Vec<EvidenceGate>,
+}
+
+impl EvidenceRecord {
+    pub fn gate_blockers(&self) -> Vec<EvidenceGateBlocker> {
+        let mut blockers = Vec::new();
+        for dimension in REQUIRED_EVIDENCE_DIMENSIONS {
+            let matching: Vec<&EvidenceGate> = self
+                .gates
+                .iter()
+                .filter(|gate| gate.dimension == dimension)
+                .collect();
+            let state = match matching.as_slice() {
+                [] => Some(EvidenceGateState::Missing),
+                [gate] if gate.state == EvidenceGateState::Verified => None,
+                [gate] => Some(gate.state),
+                _ => Some(EvidenceGateState::Duplicate),
+            };
+            if let Some(state) = state {
+                blockers.push(EvidenceGateBlocker {
+                    source_id: self.source_id.clone(),
+                    dimension,
+                    state,
+                });
+            }
+        }
+        blockers
+    }
+
+    pub fn is_verified(&self) -> bool {
+        self.status.is_verified() && self.gate_blockers().is_empty()
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -91,6 +176,7 @@ pub struct ObligationResult {
     pub satisfied: bool,
     pub verified_source_ids: Vec<String>,
     pub blockers: Vec<EvidenceStatus>,
+    pub gate_blockers: Vec<EvidenceGateBlocker>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
