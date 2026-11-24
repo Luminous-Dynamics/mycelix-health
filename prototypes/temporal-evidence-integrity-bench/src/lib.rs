@@ -1325,6 +1325,22 @@ mod tests {
     }
 
 
+ 
+    #[test]
+    fn semantic_assertion_identity_and_value_are_bound_into_citations() {
+        let tasks = load_fixture().expect("answer key must validate");
+        let task = tasks.iter().find(|task| task.task_id == "T17").unwrap();
+        let event = task.events.iter().find(|event| event.event_id == "E26").unwrap();
+        assert_eq!(
+            event.assertion_key.as_deref(),
+            Some("subject:PAT-A|concept:synthetic-condition-status|effective:21000")
+        );
+        assert_eq!(event.normalized_assertion_value.as_deref(), Some("present"));
+        let mut citation = EventCitation::from(event);
+        citation.normalized_assertion_value = Some("absent".to_owned());
+        assert!(!citation_matches(event, &citation));
+    }
+
     #[test]
     fn source_sequence_baseline_respects_resource_revision_and_replay_semantics() {
         let visible = load_visible_fixture().expect("visible fixture must validate");
@@ -1338,7 +1354,7 @@ mod tests {
             .map(|task| (task.task_id.as_str(), task))
             .collect();
 
-        for task_id in ["T03", "T04", "T05", "T06", "T16", "T20"] {
+        for task_id in ["T03", "T04", "T05", "T06", "T16", "T17", "T20"] {
             let submission = source_sequence_revision_baseline(visible_by_id[task_id]);
             let score = evaluate(truth_by_id[task_id], &submission);
             assert!(score.exact_match, "{task_id} did not match: {score:?}");
@@ -1360,15 +1376,20 @@ mod tests {
     }
 
     #[test]
-    fn source_sequence_baseline_does_not_invent_cross_source_semantic_reconciliation() {
+    fn source_sequence_baseline_detects_cross_source_semantic_conflict() {
         let visible = load_visible_fixture().expect("visible fixture must validate");
         let answer_key = load_fixture().expect("answer key must validate");
         let truth = answer_key.iter().find(|task| task.task_id == "T17").unwrap();
         let input = visible.iter().find(|task| task.task_id == "T17").unwrap();
         let submission = source_sequence_revision_baseline(input);
         let score = evaluate(truth, &submission);
-        assert!(!score.exact_match);
-        assert!(!score.unsafe_acceptances.is_empty());
+        assert!(score.exact_match, "{score:?}");
+        assert!(score.hard_gates_pass);
+        assert!(submission.timeline.is_empty());
+        assert_eq!(
+            submission.unresolved_conflict_groups,
+            vec!["assertion:subject:PAT-A|concept:synthetic-condition-status|effective:21000".to_owned()]
+        );
     }
 
     #[test]
