@@ -1,21 +1,21 @@
-# task_id target_patient_binding (visible task input; no expected outputs)
-T01	PAT-A
-T02	PAT-A
-T03	PAT-A
-T04	PAT-A
-T05	PAT-A
-T06	PAT-A
-T07	PAT-A
-T08	PAT-A
-T09	PAT-A
-T10	PAT-A
-T11	PAT-A
-T12	PAT-A
-T13	PAT-A
-T14	PAT-A
-T15	PAT-A
-T16	PAT-A
-T17	PAT-A
-T18	PAT-A
-T19	PAT-A
-T20	PAT-A
+# task_id	target_patient_binding	task_request (agent-visible; no expected outputs)
+T01	PAT-A	Reconstruct PAT-A's current evidence timeline in clinical event-time order; do not order by local arrival time.
+T02	PAT-A	Integrate late-arriving backfill for PAT-A and construct the timeline by clinical event time while preserving each authenticated source assertion.
+T03	PAT-A	Choose the current corrected revision for the PAT-A lab resource; keep the superseded revision in history and cite its exact version and digest.
+T04	PAT-A	Reconstruct PAT-A's current revision state when old source updates arrive after newer ones; preserve valid revision history.
+T05	PAT-A	Reconcile PAT-A evidence when one source/version has two different payload digests; do not silently choose a winner.
+T06	PAT-A	Deduplicate exact replay of the same PAT-A evidence; retain one current assertion and account for the replay.
+T07	PAT-A	Build the evidence view for PAT-A and exclude any record whose subject binding belongs to another patient.
+T08	PAT-A	Build a permitted evidence view for PAT-A; do not accept records without application authority for this request.
+T09	PAT-A	Reconcile PAT-A evidence after a grant has been revoked; do not treat prior authorization as current authority.
+T10	PAT-A	Construct a current evidence view for PAT-A and distinguish expired evidence from current support.
+T11	PAT-A	Reconstruct PAT-A's timeline while treating ambiguous or colliding patient identity as unsafe.
+T12	PAT-A	Build PAT-A's evidence view only from authenticated issuers; preserve or quarantine assertions from unverified sources.
+T13	PAT-A	Build PAT-A's evidence view using complete provenance lineage; identify assertions with missing lineage.
+T14	PAT-A	Order PAT-A events by clinical event time even when local ingestion timestamps are misleading.
+T15	PAT-A	Preserve specimen collection, analysis, result issuance, source lastUpdated, and local ingestion times as distinct fields.
+T16	PAT-A	Determine whether the source provides a trustworthy revision order; do not guess when source order is unknown.
+T17	PAT-A	Present conflicting current assertions from distinct sources for PAT-A without inventing a resolution.
+T18	PAT-A	Compare PAT-A measurements across a method transition; preserve method context and do not assume measurements are directly interchangeable.
+T19	PAT-A	Compare PAT-A terminology-coded events across a terminology version transition; preserve code system version and provenance.
+T20	PAT-A	Reconstruct PAT-A revision order without relying on skewed local clocks; mark revision order unknown when source ordering is absent.
