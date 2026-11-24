@@ -1143,9 +1143,9 @@ mod tests {
             },
         ];
         let curve = evaluate_net_benefit(&predictions, 7_500).unwrap();
-        assert_eq!(curve.model.numerator, 1 * 2_500 - 1 * 7_500);
+        assert_eq!(curve.model.numerator, -5_000);
         assert_eq!(curve.model.denominator, 3 * 2_500);
-        assert_eq!(curve.act_all.numerator, 1 * 2_500 - 2 * 7_500);
+        assert_eq!(curve.act_all.numerator, -12_500);
         assert_eq!(curve.act_none.numerator, 0);
     }
 
