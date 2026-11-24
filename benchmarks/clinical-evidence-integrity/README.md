@@ -58,3 +58,26 @@ this finite synthetic fixture set. It does not establish complete FHIR R4
 conformance, SMART security, issuer authenticity, patient matching across
 institutions, clinical validity, privacy, production readiness or regulatory
 compliance.
+
+
+## Observation temporal fidelity v1
+
+The temporal suite is a separate fixture corpus:
+\`observation-temporal-fidelity-v1.json\`.
+
+It evaluates independent event and issue times, timezone normalization,
+microsecond exactness, absent issue time, and fail-closed treatment of
+unsupported \`effective[x]\` choices and lossy precision. The pure helper and
+corpus test are part of the FHIR coordinator unit suite.
+
+Run both first slices from the repository root:
+
+\`\`\`bash
+HOST="$(rustc -vV | sed -n 's/^host: //p')"
+cargo test -p fhir_bridge_coordinator --target "$HOST" fhir_subject_binding_v1_corpus
+cargo test -p fhir_bridge_coordinator --target "$HOST" observation_temporal_fidelity_v1_corpus
+\`\`\`
+
+A successful test result demonstrates only exact behavior for these finite,
+synthetic fixtures. It does not establish temporal correctness for every FHIR
+date/time primitive, clinical validity or longitudinal reasoning quality.

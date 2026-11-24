@@ -22,7 +22,7 @@ use patient_subject::{
     bundle_entry_full_url_matches_resource, resolve_patient_subject, PatientSubjectBinding,
 };
 mod observation_time;
-use observation_time::parse_fhir_instant;
+use observation_time::parse_observation_temporal_evidence;
 
 // Local mirrors of fhir_mapping_integrity types to avoid duplicate __num_entry_types
 // symbols when compiling to WASM. These must match the serialization layout exactly.
@@ -695,13 +695,9 @@ fn process_observation(
     // The event time, issue time and local import time are independent facts.
     // This mapping version supports timezone-qualified effectiveDateTime only.
     // Unsupported effective[x] forms are rejected rather than replaced with now.
-    let effective_raw = get_fhir_string(resource, "effectiveDateTime").ok_or_else(|| {
-        "Observation has no effectiveDateTime; effectivePeriod/effectiveTiming/effectiveInstant and date-only precision are not supported by this mapping version".to_string()
-    })?;
-    let effective_datetime = parse_fhir_instant(&effective_raw, "Observation.effectiveDateTime")?;
-    let issued = get_fhir_string(resource, "issued")
-        .map(|value| parse_fhir_instant(&value, "Observation.issued"))
-        .transpose()?;
+    let temporal = parse_observation_temporal_evidence(resource)?;
+    let effective_datetime = temporal.effective_datetime;
+    let issued = temporal.issued;
     let now = sys_time().map_err(|e| e.to_string())?;
 
     let mapping = FhirObservationMapping {
