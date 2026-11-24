@@ -1,0 +1,309 @@
+{
+  "schema_version": 1,
+  "benchmark_id": "mycelix-clinical-evidence-integrity.official-fhir-r4-core-validator.v1",
+  "release_status": "frozen-synthetic-validator-corpus",
+  "data_classification": "fully_synthetic_no_phi",
+  "validator_release": "7.0.6",
+  "fhir_version": "4.0.1",
+  "cases": [
+    {
+      "id": "valid_restful_collection",
+      "expected": "valid",
+      "purpose": "FHIR-valid collection with absolute RESTful fullUrl",
+      "bundle": {
+        "resourceType": "Bundle",
+        "type": "collection",
+        "entry": [
+          {
+            "fullUrl": "https://ehr.example/fhir/Patient/patient-1",
+            "resource": {
+              "resourceType": "Patient",
+              "id": "patient-1"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "valid_uuid_collection",
+      "expected": "valid",
+      "purpose": "FHIR-valid opaque UUID fullUrl",
+      "bundle": {
+        "resourceType": "Bundle",
+        "type": "collection",
+        "entry": [
+          {
+            "fullUrl": "urn:uuid:00000000-0000-4000-8000-000000000001",
+            "resource": {
+              "resourceType": "Patient",
+              "id": "patient-1"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "valid_transaction_post_without_fullurl_or_resource_id",
+      "expected": "valid",
+      "purpose": "R4 transaction POST exception: resource has no persistent identity",
+      "bundle": {
+        "resourceType": "Bundle",
+        "type": "transaction",
+        "entry": [
+          {
+            "resource": {
+              "resourceType": "Patient"
+            },
+            "request": {
+              "method": "POST",
+              "url": "Patient"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "valid_empty_collection",
+      "expected": "valid",
+      "purpose": "R4 Collection entry cardinality is zero-or-more",
+      "bundle": {
+        "resourceType": "Bundle",
+        "type": "collection",
+        "entry": []
+      }
+    },
+    {
+      "id": "valid_same_fullurl_distinct_versions",
+      "expected": "valid",
+      "purpose": "R4 permits repeated fullUrl where resource meta.versionId values are distinct",
+      "bundle": {
+        "resourceType": "Bundle",
+        "type": "collection",
+        "entry": [
+          {
+            "fullUrl": "https://ehr.example/fhir/Patient/patient-1",
+            "resource": {
+              "resourceType": "Patient",
+              "id": "patient-1",
+              "meta": {
+                "versionId": "1"
+              }
+            }
+          },
+          {
+            "fullUrl": "https://ehr.example/fhir/Patient/patient-1",
+            "resource": {
+              "resourceType": "Patient",
+              "id": "patient-1",
+              "meta": {
+                "versionId": "2"
+              }
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "valid_64_character_resource_id",
+      "expected": "valid",
+      "purpose": "FHIR id maximum length boundary",
+      "bundle": {
+        "resourceType": "Bundle",
+        "type": "collection",
+        "entry": [
+          {
+            "fullUrl": "urn:uuid:00000000-0000-4000-8000-000000000006",
+            "resource": {
+              "resourceType": "Patient",
+              "id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "invalid_collection_missing_fullurl",
+      "expected": "invalid",
+      "purpose": "R4 Bundle identity rule requires fullUrl except transaction/batch POST without persistent identity",
+      "bundle": {
+        "resourceType": "Bundle",
+        "type": "collection",
+        "entry": [
+          {
+            "resource": {
+              "resourceType": "Patient",
+              "id": "patient-1"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "invalid_version_specific_fullurl",
+      "expected": "invalid",
+      "purpose": "R4 bdl-8 prohibits a version-specific fullUrl",
+      "bundle": {
+        "resourceType": "Bundle",
+        "type": "collection",
+        "entry": [
+          {
+            "fullUrl": "https://ehr.example/fhir/Patient/patient-1/_history/2",
+            "resource": {
+              "resourceType": "Patient",
+              "id": "patient-1"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "invalid_same_fullurl_same_version",
+      "expected": "invalid",
+      "purpose": "R4 bdl-7 requires distinct fullUrl/meta.versionId pairs",
+      "bundle": {
+        "resourceType": "Bundle",
+        "type": "collection",
+        "entry": [
+          {
+            "fullUrl": "https://ehr.example/fhir/Patient/patient-1",
+            "resource": {
+              "resourceType": "Patient",
+              "id": "patient-1",
+              "meta": {
+                "versionId": "2"
+              }
+            }
+          },
+          {
+            "fullUrl": "https://ehr.example/fhir/Patient/patient-1",
+            "resource": {
+              "resourceType": "Patient",
+              "id": "patient-1",
+              "meta": {
+                "versionId": "2"
+              }
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "invalid_collection_request_metadata",
+      "expected": "invalid",
+      "purpose": "R4 bdl-3 prohibits entry.request outside batch/transaction/history",
+      "bundle": {
+        "resourceType": "Bundle",
+        "type": "collection",
+        "entry": [
+          {
+            "fullUrl": "https://ehr.example/fhir/Patient/patient-1",
+            "resource": {
+              "resourceType": "Patient",
+              "id": "patient-1"
+            },
+            "request": {
+              "method": "GET",
+              "url": "Patient"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "invalid_collection_response_metadata",
+      "expected": "invalid",
+      "purpose": "R4 bdl-4 prohibits entry.response outside batch-response/transaction-response/history",
+      "bundle": {
+        "resourceType": "Bundle",
+        "type": "collection",
+        "entry": [
+          {
+            "fullUrl": "https://ehr.example/fhir/Patient/patient-1",
+            "resource": {
+              "resourceType": "Patient",
+              "id": "patient-1"
+            },
+            "response": {
+              "status": "200"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "invalid_collection_search_metadata",
+      "expected": "invalid",
+      "purpose": "R4 bdl-2 permits entry.search only for searchset Bundles",
+      "bundle": {
+        "resourceType": "Bundle",
+        "type": "collection",
+        "entry": [
+          {
+            "fullUrl": "https://ehr.example/fhir/Patient/patient-1",
+            "resource": {
+              "resourceType": "Patient",
+              "id": "patient-1"
+            },
+            "search": {
+              "mode": "match"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "invalid_fhir_id_contains_space",
+      "expected": "invalid",
+      "purpose": "FHIR id primitive permits only ASCII letters, digits, hyphen and period",
+      "bundle": {
+        "resourceType": "Bundle",
+        "type": "collection",
+        "entry": [
+          {
+            "fullUrl": "urn:uuid:00000000-0000-4000-8000-000000000012",
+            "resource": {
+              "resourceType": "Patient",
+              "id": "patient one"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "invalid_fhir_id_over_64_characters",
+      "expected": "invalid",
+      "purpose": "FHIR id primitive maximum length is 64 characters",
+      "bundle": {
+        "resourceType": "Bundle",
+        "type": "collection",
+        "entry": [
+          {
+            "fullUrl": "urn:uuid:00000000-0000-4000-8000-000000000013",
+            "resource": {
+              "resourceType": "Patient",
+              "id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "invalid_resource_type_token",
+      "expected": "invalid",
+      "purpose": "FHIR resourceType is case-sensitive and must resolve to a defined resource type",
+      "bundle": {
+        "resourceType": "Bundle",
+        "type": "collection",
+        "entry": [
+          {
+            "fullUrl": "urn:uuid:00000000-0000-4000-8000-000000000014",
+            "resource": {
+              "resourceType": "patient",
+              "id": "patient-1"
+            }
+          }
+        ]
+      }
+    }
+  ]
+}
