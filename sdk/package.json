@@ -38,6 +38,9 @@
   ],
   "author": "Luminous Dynamics",
   "license": "AGPL-3.0-or-later",
+  "overrides": {
+    "libsodium-wrappers": "0.7.13"
+  },
   "dependencies": {
     "@holochain/client": "0.20.0"
   },
