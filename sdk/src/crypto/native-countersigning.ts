@@ -135,6 +135,12 @@ function copyBytes(value: Uint8Array): Uint8Array {
   return Uint8Array.from(value);
 }
 
+function exactBigInt(value: unknown, label: string): bigint {
+  if (typeof value === "bigint") return value;
+  if (typeof value === "number" && Number.isSafeInteger(value)) return BigInt(value);
+  throw new Error(`${label} must be an exact safe integer or bigint`);
+}
+
 function concatBytes(...values: Uint8Array[]): Uint8Array {
   const length = values.reduce((sum, value) => sum + value.byteLength, 0);
   const combined = new Uint8Array(length);
@@ -326,11 +332,13 @@ function assertPreflightMatchesIntentBytes(
   }
 
   const sessionTimes = asRecord(preflight.session_times);
-  if (!sessionTimes
-    || typeof sessionTimes.start !== "bigint"
-    || typeof sessionTimes.end !== "bigint"
-    || sessionTimes.start !== intent.session_start_ms * 1000n
-    || sessionTimes.end !== intent.session_end_ms * 1000n) {
+  if (!sessionTimes) {
+    throw new Error("Preflight session window is missing");
+  }
+  const sessionStartMicros = exactBigInt(sessionTimes.start, "Preflight session start");
+  const sessionEndMicros = exactBigInt(sessionTimes.end, "Preflight session end");
+  if (sessionStartMicros !== intent.session_start_ms * 1000n
+    || sessionEndMicros !== intent.session_end_ms * 1000n) {
     throw new Error("Preflight session window does not match the clinical intent");
   }
 
@@ -504,8 +512,8 @@ export async function verifyNativeClinicalCountersigningEvidenceV1(
       throw new Error("Source-chain action sequence mismatch");
     }
 
-    const timestamp = decodedAction.timestamp;
-    if (typeof timestamp !== "bigint" || timestamp !== action.timestamp_micros) {
+    const timestamp = exactBigInt(decodedAction.timestamp, "Source-chain action timestamp");
+    if (timestamp !== action.timestamp_micros) {
       throw new Error("Source-chain timestamp mismatch");
     }
     const startMicros = evidence.intent.session_start_ms * 1000n;
