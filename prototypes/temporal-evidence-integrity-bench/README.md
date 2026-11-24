@@ -6,7 +6,7 @@ This standalone, dependency-free Rust crate is the first executable slice of [he
 
 Can an agent reconstruct a longitudinal evidence view without allowing arrival order, record-update time, stale revisions, ambiguous identity, missing provenance, or revoked authority to silently become clinical truth?
 
-The benchmark evaluates **evidence operations**, not just answer text:
+The benchmark evaluates **evidence operations**, not just answer text. It separates source-level identity from cross-source proposition identity: a FHIR resource ID scopes its own revision history, while an assertion key can connect independently sourced claims that refer to the same concept and effective time.
 - which source/version assertions enter the current timeline;
 - which valid superseded versions remain available as history;
 - which records are quarantined;
