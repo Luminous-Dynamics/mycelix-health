@@ -246,6 +246,7 @@ jobs:
           components: rustfmt, clippy
       - name: Verify frozen corpus digests
         run: |
+          sha256sum prototypes/temporal-evidence-integrity-bench/fixtures/v1-task-inputs.tsv
           sha256sum prototypes/temporal-evidence-integrity-bench/fixtures/v1-events.tsv
           sha256sum prototypes/temporal-evidence-integrity-bench/fixtures/v1-cases.tsv
           sha256sum prototypes/temporal-evidence-integrity-bench/fixtures/v1-answer-key-events.tsv
