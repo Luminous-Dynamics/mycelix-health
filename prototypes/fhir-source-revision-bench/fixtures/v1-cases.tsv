@@ -1,0 +1,16 @@
+# id|scenario|expected disposition|projection effect
+first_revision|no prior source revision|FirstRevision|Promote
+same_version_same_digest|same version and exact canonical payload|ExactReplay|NoChange
+new_version_with_order|strictly greater trusted source sequence|NewerBySourceSequence|Promote
+late_old_revision|older trusted source sequence arrives late|OlderBySourceSequence|PreserveHistoryOnly
+same_version_changed_digest|same opaque version ID with changed payload digest|VersionEquivocation|Quarantine
+canonicalization_profile_change|same version under a different canonicalization profile|CanonicalizationProfileConflict|Quarantine
+missing_version_changed_payload|no meta.versionId and new digest|OrderUnknown|PreserveHistoryOnly
+unversioned_exact_replay|no meta.versionId but exact digest replay|ExactReplay|NoChange
+opaque_version_order|v10 and v9 without source sequence|OrderUnknown|PreserveHistoryOnly
+timestamp_not_order|source lastUpdated and received times disagree|OrderUnknown|PreserveHistoryOnly
+different_order_profile|source sequences from different ordering profiles|OrderUnknown|PreserveHistoryOnly
+source_sequence_collision|different versions claim one source sequence|SourceSequenceCollision|Quarantine
+tenant_partition|same logical ID across tenants|FirstRevision|Promote
+invalid_version|FHIR version identifier malformed|InvalidInput|Reject
+principal_missing|source principal absent|InvalidInput|Reject
