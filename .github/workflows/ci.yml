@@ -109,6 +109,22 @@ jobs:
         run: cargo test --workspace --target "$(rustc -vV | awk '/^host:/{print $2}')"
 
 
+  # Dependency-free research evaluator; deliberately independent of the main workspace,
+  # SDK, Holochain conductor and sibling path dependencies.
+  decision-sufficiency-benchmark:
+    name: Decision Sufficiency Reference Benchmark
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@1.96.0
+        with:
+          components: rustfmt
+
+      - name: Run frozen decision-sufficiency evaluator
+        run: ./scripts/run-decision-sufficiency-benchmark.sh
+
   deny:
     runs-on: ubuntu-latest
     steps:
