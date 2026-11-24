@@ -63,6 +63,10 @@ pub struct EvidenceEvent {
     pub resource_version: String,
     pub resource_type: String,
     pub resource_id: String,
+    /// Canonical proposition + subject + effective-time identity, where supplied.
+    pub assertion_key: Option<String>,
+    /// Synthetic normalized value used to detect cross-source disagreement.
+    pub normalized_assertion_value: Option<String>,
     pub payload_digest: String,
     pub measurement_method: Option<String>,
     pub measurement_unit: Option<String>,
@@ -104,6 +108,10 @@ pub struct EventCitation {
     pub resource_version: String,
     pub resource_type: String,
     pub resource_id: String,
+    /// Canonical proposition + subject + effective-time identity, where supplied.
+    pub assertion_key: Option<String>,
+    /// Synthetic normalized value used to detect cross-source disagreement.
+    pub normalized_assertion_value: Option<String>,
     pub payload_digest: String,
     pub measurement_method: Option<String>,
     pub measurement_unit: Option<String>,
@@ -127,6 +135,8 @@ impl From<&EvidenceEvent> for EventCitation {
             resource_version: event.resource_version.clone(),
             resource_type: event.resource_type.clone(),
             resource_id: event.resource_id.clone(),
+            assertion_key: event.assertion_key.clone(),
+            normalized_assertion_value: event.normalized_assertion_value.clone(),
             payload_digest: event.payload_digest.clone(),
             measurement_method: event.measurement_method.clone(),
             measurement_unit: event.measurement_unit.clone(),
@@ -154,6 +164,10 @@ pub struct VisibleEvidenceEvent {
     pub resource_version: String,
     pub resource_type: String,
     pub resource_id: String,
+    /// Canonical proposition + subject + effective-time identity, where supplied.
+    pub assertion_key: Option<String>,
+    /// Synthetic normalized value used to detect cross-source disagreement.
+    pub normalized_assertion_value: Option<String>,
     pub payload_digest: String,
     pub measurement_method: Option<String>,
     pub measurement_unit: Option<String>,
@@ -190,6 +204,8 @@ impl From<&VisibleEvidenceEvent> for EventCitation {
             resource_version: event.resource_version.clone(),
             resource_type: event.resource_type.clone(),
             resource_id: event.resource_id.clone(),
+            assertion_key: event.assertion_key.clone(),
+            normalized_assertion_value: event.normalized_assertion_value.clone(),
             payload_digest: event.payload_digest.clone(),
             measurement_method: event.measurement_method.clone(),
             measurement_unit: event.measurement_unit.clone(),
@@ -387,9 +403,9 @@ fn parse_visible_events(
             continue;
         }
         let fields: Vec<&str> = line.split('\t').collect();
-        if fields.len() != 24 {
+        if fields.len() != 26 {
             return Err(format!(
-                "visible events.tsv line {}: expected 24 columns, got {}",
+                "visible events.tsv line {}: expected 26 columns, got {}",
                 line_index + 1,
                 fields.len()
             ));
@@ -411,6 +427,8 @@ fn parse_visible_events(
             resource_version: fields[4].to_owned(),
             resource_type: fields[22].to_owned(),
             resource_id: fields[23].to_owned(),
+            assertion_key: optional_text(fields[24]),
+            normalized_assertion_value: optional_text(fields[25]),
             payload_digest: fields[5].to_owned(),
             measurement_method: optional_text(fields[6]),
             measurement_unit: optional_text(fields[7]),
@@ -447,7 +465,8 @@ fn parse_visible_events(
             lineage_complete: parse_bool(fields[20], "lineage_complete")?,
             expired: parse_bool(fields[21], "expired")?,
         };
-        if event.event_id.is_empty()
+        if event.assertion_key.is_some() != event.normalized_assertion_value.is_some()
+            || event.event_id.is_empty()
             || event.patient_binding.is_empty()
             || event.source_principal.is_empty()
             || event.resource_version.is_empty()
@@ -477,9 +496,9 @@ fn parse_events(input: &str) -> Result<BTreeMap<String, Vec<EvidenceEvent>>, Str
             continue;
         }
         let fields: Vec<&str> = line.split('\t').collect();
-        if fields.len() != 26 {
+        if fields.len() != 28 {
             return Err(format!(
-                "answer-key-events.tsv line {}: expected 26 columns, got {}",
+                "answer-key-events.tsv line {}: expected 28 columns, got {}",
                 line_index + 1,
                 fields.len()
             ));
@@ -502,6 +521,8 @@ fn parse_events(input: &str) -> Result<BTreeMap<String, Vec<EvidenceEvent>>, Str
             resource_version: fields[4].to_owned(),
             resource_type: fields[24].to_owned(),
             resource_id: fields[25].to_owned(),
+            assertion_key: optional_text(fields[26]),
+            normalized_assertion_value: optional_text(fields[27]),
             payload_digest: fields[5].to_owned(),
             measurement_method: optional_text(fields[6]),
             measurement_unit: optional_text(fields[7]),
@@ -540,7 +561,8 @@ fn parse_events(input: &str) -> Result<BTreeMap<String, Vec<EvidenceEvent>>, Str
             role: EventRole::parse(fields[22])?,
             conflict_group,
         };
-        if event.event_id.is_empty()
+        if event.assertion_key.is_some() != event.normalized_assertion_value.is_some()
+            || event.event_id.is_empty()
             || event.patient_binding.is_empty()
             || event.source_principal.is_empty()
             || event.resource_version.is_empty()
@@ -762,6 +784,8 @@ fn citation_matches(event: &EvidenceEvent, citation: &EventCitation) -> bool {
         && event.resource_version == citation.resource_version
         && event.resource_type == citation.resource_type
         && event.resource_id == citation.resource_id
+        && event.assertion_key == citation.assertion_key
+        && event.normalized_assertion_value == citation.normalized_assertion_value
         && event.payload_digest == citation.payload_digest
         && event.measurement_method == citation.measurement_method
         && event.measurement_unit == citation.measurement_unit
@@ -1064,6 +1088,40 @@ pub fn source_sequence_revision_baseline(input: &VisibleTaskInput) -> Submission
             timeline.push(EventCitation::from(current));
         }
         retained_history.extend(unique_revisions.into_iter().map(EventCitation::from));
+    }
+
+
+    // Detect disagreement across independent resources only where the visible
+    // input explicitly says they address the same canonical proposition.
+    let mut values_by_assertion: BTreeMap<&str, BTreeSet<&str>> = BTreeMap::new();
+    for citation in &timeline {
+        if let (Some(assertion_key), Some(value)) = (
+            citation.assertion_key.as_deref(),
+            citation.normalized_assertion_value.as_deref(),
+        ) {
+            values_by_assertion
+                .entry(assertion_key)
+                .or_default()
+                .insert(value);
+        }
+    }
+    let conflicting_assertions: BTreeSet<&str> = values_by_assertion
+        .iter()
+        .filter(|(_, values)| values.len() > 1)
+        .map(|(assertion_key, _)| *assertion_key)
+        .collect();
+    if !conflicting_assertions.is_empty() {
+        unresolved_conflict_groups.extend(
+            conflicting_assertions
+                .iter()
+                .map(|assertion_key| format!("assertion:{assertion_key}")),
+        );
+        timeline.retain(|citation| {
+            !citation
+                .assertion_key
+                .as_deref()
+                .is_some_and(|key| conflicting_assertions.contains(key))
+        });
     }
 
     let timeline_order = |left: &EventCitation, right: &EventCitation| {
