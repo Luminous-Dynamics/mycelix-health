@@ -244,7 +244,7 @@ pub fn ingest_bundle(input: IngestBundleInput) -> ExternResult<IngestReport> {
     // First pass: establish exactly one patient identity or resolve an existing
     // source-system patient through a supported relative Patient/{id} reference.
     let mut patient_hash: Option<ActionHash> = None;
-    let mut patient_fhir_id: Option<String> = None;
+    let patient_fhir_id: Option<String>;
 
     if let Some(patient_entry) = patient_entries.first() {
         if !bundle_entry_full_url_matches_resource(patient_entry) {
