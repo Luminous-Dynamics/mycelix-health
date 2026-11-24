@@ -9,8 +9,9 @@
 The coordinator currently accepts only Bundle.type = collection. Before any
 Patient or clinical resource write, the complete entry list is preflighted:
 every entry must contain a resource, resourceType, persistent resource ID and
-unique absolute HTTP(S) or opaque URN fullUrl. RESTful fullUrl type and ID must
-match the embedded resource. Transaction/batch request and response metadata,
+unique (fullUrl, meta.versionId) identity. Repeated fullUrls are permitted only
+for distinct non-empty resource meta.versionId values. RESTful fullUrl type
+and ID must match the embedded resource. Transaction/batch request and response metadata,
 search metadata, version-specific fullUrls and other Bundle types are rejected.
 
 A rejected envelope stores an unlinked IngestReport only; it does not partially

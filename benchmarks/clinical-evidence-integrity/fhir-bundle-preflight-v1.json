@@ -15,8 +15,9 @@
       "history",
       "searchset"
     ],
-    "full_url_policy": "resource-bearing entries require a unique absolute HTTP(S) fullUrl or opaque URN; RESTful type/id must match embedded resourceType/id; version-specific fullUrls are rejected",
-    "no_mutation_on_reject": true
+    "full_url_policy": "resource-bearing entries require an absolute HTTP(S) fullUrl or opaque URN; RESTful type/id must match embedded resourceType/id; repeated fullUrl is allowed only when each entry has a distinct non-empty meta.versionId; version-specific fullUrls are rejected",
+    "no_mutation_on_reject": true,
+    "versioned_resource_policy": "unversioned reference to multiple versions of one fullUrl is ambiguous and rejected; version-specific references must match exact meta.versionId"
   },
   "cases": [
     {
@@ -421,6 +422,68 @@
       },
       "expected": "reject",
       "expected_error_contains": "valid opaque URN"
+    },
+    {
+      "id": "same_full_url_distinct_versions_allowed",
+      "bundle": {
+        "resourceType": "Bundle",
+        "type": "collection",
+        "entry": [
+          {
+            "fullUrl": "https://ehr.example/fhir/Patient/patient-1",
+            "resource": {
+              "resourceType": "Patient",
+              "id": "patient-1",
+              "meta": {
+                "versionId": "1"
+              }
+            }
+          },
+          {
+            "fullUrl": "https://ehr.example/fhir/Patient/patient-1",
+            "resource": {
+              "resourceType": "Patient",
+              "id": "patient-1",
+              "meta": {
+                "versionId": "2"
+              }
+            }
+          }
+        ]
+      },
+      "expected": "accept",
+      "expected_entry_count": 2
+    },
+    {
+      "id": "same_full_url_same_version_rejected",
+      "bundle": {
+        "resourceType": "Bundle",
+        "type": "collection",
+        "entry": [
+          {
+            "fullUrl": "https://ehr.example/fhir/Patient/patient-1",
+            "resource": {
+              "resourceType": "Patient",
+              "id": "patient-1",
+              "meta": {
+                "versionId": "2"
+              }
+            }
+          },
+          {
+            "fullUrl": "https://ehr.example/fhir/Patient/patient-1",
+            "resource": {
+              "resourceType": "Patient",
+              "id": "patient-1",
+              "meta": {
+                "versionId": "2"
+              }
+            }
+          }
+        ]
+      },
+      "expected": "reject",
+      "expected_error_contains": "duplicates another Bundle entry"
     }
   ]
 }

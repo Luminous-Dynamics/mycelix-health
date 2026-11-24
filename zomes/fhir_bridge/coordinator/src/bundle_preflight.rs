@@ -41,7 +41,7 @@ pub fn validate_collection_bundle(bundle: &Value) -> Result<Vec<Value>, Vec<Stri
         errors.push("Bundle.entry must contain at least one resource entry".to_string());
     }
 
-    let mut seen_full_urls = BTreeSet::new();
+    let mut seen_resource_revisions = BTreeSet::new();
 
     for (index, entry) in entries.iter().enumerate() {
         let prefix = format!("Bundle.entry[{index}]");
@@ -93,8 +93,33 @@ pub fn validate_collection_bundle(bundle: &Value) -> Result<Vec<Value>, Vec<Stri
             continue;
         };
 
-        if !seen_full_urls.insert(full_url) {
-            errors.push(format!("{prefix}.fullUrl duplicates another Bundle entry"));
+        let version_id = match resource.get("meta") {
+            None => None,
+            Some(meta) if !meta.is_object() => {
+                errors.push(format!("{prefix}.resource.meta must be an object"));
+                None
+            }
+            Some(meta) => match meta.get("versionId") {
+                None => None,
+                Some(value) => match value.as_str().filter(|value| !value.is_empty()) {
+                    Some(value) => Some(value.to_string()),
+                    None => {
+                        errors.push(format!(
+                            "{prefix}.resource.meta.versionId must be a non-empty string when present"
+                        ));
+                        None
+                    }
+                },
+            },
+        };
+
+        // FHIR R4 permits a repeated fullUrl when each entry is a distinct
+        // version of that resource. The identity key is (fullUrl, meta.versionId),
+        // not fullUrl alone. A repeated unversioned entry remains ambiguous.
+        if !seen_resource_revisions.insert((full_url.to_string(), version_id)) {
+            errors.push(format!(
+                "{prefix}.fullUrl and meta.versionId duplicate another Bundle entry"
+            ));
         }
 
         if full_url.starts_with("urn:") {

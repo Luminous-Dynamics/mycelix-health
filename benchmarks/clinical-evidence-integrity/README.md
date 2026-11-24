@@ -35,10 +35,11 @@ conductor Sweettests.
 ## FHIR Bundle preflight v1
 
 The coordinator's declared ingestion profile is limited to Bundle.type =
-collection. The 22-case synthetic corpus covers valid URN/RESTful entries and
-malformed envelopes, including missing/duplicate fullUrl, missing resource
-fields, URL/resource identity disagreement, unsupported Bundle types, and
-forbidden request/response/search metadata.
+collection. The 24-case synthetic corpus covers valid URN/RESTful entries, distinct versions
+sharing one version-independent fullUrl, and malformed envelopes including
+missing fullUrl, duplicate (fullUrl, meta.versionId), missing resource fields,
+URL/resource identity disagreement, unsupported Bundle types, and forbidden
+request/response/search metadata.
 
 Run the preflight corpus from the repository root:
 
