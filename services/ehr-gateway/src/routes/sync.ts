@@ -72,12 +72,6 @@ export function createSyncRoutes(ctx: AppContext): Hono {
       }, 400);
     }
 
-    if (!tokenKey) {
-      return c.json({
-        error: 'Missing tokenKey parameter',
-      }, 400);
-    }
-
     // Check connection exists
     if (!ctx.gateway.isConnected(connectionId)) {
       return c.json({
