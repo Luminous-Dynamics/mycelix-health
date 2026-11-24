@@ -31,6 +31,7 @@ FHIR R4 Bundle rules and the Mycelix ingestion profile are different contracts.
 Examples:
 - A Collection entry without a fullUrl violates the Bundle identity rules, even though Bundle.entry.fullUrl has element cardinality 0..1.
 - A transaction POST entry without fullUrl may be valid when the resource has no persistent identity.
+- A zero-entry Collection is represented by omitting `entry`; explicitly encoding `"entry": []` is invalid FHIR JSON because empty arrays are not serialized for empty repeating elements.
 - A Bundle can be valid FHIR R4 but unsupported by this ingestion endpoint, which currently accepts only a deliberately narrow Collection profile.
 - Two entries can share the same fullUrl when their resource meta.versionId values are distinct; the unversioned reference to multiple versions remains potentially ambiguous.
 - FHIR core validation does not prove that the embedded Patient is the intended patient, that the issuer is authenticated, that the caller is authorized, or that a clinical assertion is true.
