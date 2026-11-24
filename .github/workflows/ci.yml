@@ -263,7 +263,8 @@ jobs:
 
       - name: Execute deterministic negative-control baseline
         run: |
-          cargo run --locked --manifest-path prototypes/temporal-evidence-integrity-bench/Cargo.toml --bin naive_baseline > temporal-evidence-naive-baseline.tsv
+          HOST="$(rustc -vV | sed -n 's/^host: //p')"
+          cargo run --locked --manifest-path prototypes/temporal-evidence-integrity-bench/Cargo.toml --target "$HOST" --bin naive_baseline > temporal-evidence-naive-baseline.tsv
       - name: Publish reproducible baseline report
         uses: actions/upload-artifact@v4
         with:
