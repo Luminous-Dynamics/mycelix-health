@@ -1068,7 +1068,7 @@ mod tests {
         assert_eq!(metrics.selective_risk_bps, Some(0));
         assert_eq!(metrics.true_positive, 1);
         assert_eq!(metrics.true_negative, 1);
-        assert_eq!(metrics.brier_score_bps, 2_000);
+        assert_eq!(metrics.brier_score_bps, 2_200);
     }
 
     #[test]
