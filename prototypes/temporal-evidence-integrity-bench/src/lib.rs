@@ -1061,7 +1061,6 @@ mod tests {
         assert!(!wrong_patient_attack.hard_gates_pass);
     }
 
-
     #[test]
     fn naive_baseline_generates_one_scored_output_for_every_visible_task() {
         let visible = load_visible_fixture().expect("visible fixture must validate");
