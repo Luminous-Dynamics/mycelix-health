@@ -70,7 +70,11 @@ export interface VerifiedClinicalCountersigningParticipantV1 {
   timestamp_micros: bigint;
 }
 
+const VERIFIED_NATIVE_COUNTERSIGNING_EVIDENCE: unique symbol = Symbol("VerifiedNativeClinicalCountersigningEvidenceV1");
+
 export interface VerifiedNativeClinicalCountersigningEvidenceV1 {
+  /** Non-exported unique-symbol brand: ordinary callers cannot construct this type structurally. */
+  readonly [VERIFIED_NATIVE_COUNTERSIGNING_EVIDENCE]: true;
   evidence_version: 1;
   intent_digest: Uint8Array;
   app_entry_hash_binding: string;
@@ -102,7 +106,7 @@ export interface NativeTerminalCountersigningObservationV1 {
   observation_version: 1;
   observer_id: string;
   participant_binding: string;
-  state: "completed" | "abandoned";
+  state: "completed";
   intent_digest: Uint8Array;
   action_hash_binding: string | null;
   observed_at_ms: bigint;
@@ -573,6 +577,7 @@ export async function verifyNativeClinicalCountersigningEvidenceV1(
 
   const intentDigest = await clinicalCountersigningIntentDigestV1(evidence.intent);
   return {
+    [VERIFIED_NATIVE_COUNTERSIGNING_EVIDENCE]: true,
     evidence_version: 1,
     intent_digest: intentDigest,
     app_entry_hash_binding: evidence.app_entry_hash_binding,
@@ -657,31 +662,37 @@ export async function createTerminalCountersigningObservationV1(
   observerId: string,
   participantBinding: string,
   intent: ClinicalCountersigningIntentV1,
-  state: "completed" | "abandoned",
-  actionHashBinding: string | null,
+  verifiedEvidence: VerifiedNativeClinicalCountersigningEvidenceV1,
   observedAtMs: bigint,
   nonce: Uint8Array,
 ): Promise<NativeTerminalCountersigningObservationV1> {
   expectNonEmpty(observerId, "observer_id");
   validateIntent(intent);
-  if (!intent.participants.some((participant) => participant.agent_binding === participantBinding)) {
-    throw new Error("Terminal observation participant binding is not declared in the intent");
+  if (!verifiedEvidence
+    || verifiedEvidence[VERIFIED_NATIVE_COUNTERSIGNING_EVIDENCE] !== true) {
+    throw new Error("A private verifier-produced evidence result is required for terminal completion");
   }
-  if (state === "completed" && (!actionHashBinding || actionHashBinding.trim().length === 0)) {
-    throw new Error("A completed terminal observation requires an action hash");
+
+  const intentDigest = await clinicalCountersigningIntentDigestV1(intent);
+  if (!bytesEqual(verifiedEvidence.intent_digest, intentDigest)) {
+    throw new Error("Verified countersigning evidence does not match the exact clinical intent");
   }
-  if (actionHashBinding !== null) {
-    expectNonEmpty(actionHashBinding, "action_hash_binding");
+  const participant = verifiedEvidence.participants.find(
+    (candidate) => candidate.agent_binding === participantBinding,
+  );
+  if (!participant || !verifiedEvidence.participant_action_hashes.includes(participant.action_hash)) {
+    throw new Error("Terminal observation participant has no verified countersigned action");
   }
   if (observedAtMs < 0n) throw new Error("Terminal observation time must be non-negative");
   expectBytes(nonce, REQUIRED_COMMITMENT_BYTES, "terminal observation nonce");
+
   return {
     observation_version: 1,
     observer_id: observerId,
     participant_binding: participantBinding,
-    state,
-    intent_digest: await clinicalCountersigningIntentDigestV1(intent),
-    action_hash_binding: actionHashBinding,
+    state: "completed",
+    intent_digest: intentDigest,
+    action_hash_binding: participant.action_hash,
     observed_at_ms: observedAtMs,
     nonce: copyBytes(nonce),
     terminal: true,
