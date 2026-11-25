@@ -771,11 +771,10 @@ pub fn source_sequence_revision_baseline(input: &VisibleTaskInput) -> Submission
                 .into_values()
                 .next()
                 .expect("version group contains at least one digest");
-            replay_group.sort_by(|left, right| {
-                left.ingested_at_ms
-                    .cmp(&right.ingested_at_ms)
-                    .then_with(|| left.event_id.cmp(&right.event_id))
-            });
+            // Local arrival time is not source revision order or replay identity.
+            // Choose a stable representative so clock/arrival perturbations cannot
+            // change which identical source assertion becomes the canonical copy.
+            replay_group.sort_by(|left, right| left.event_id.cmp(&right.event_id));
             if let Some(original) = replay_group.first() {
                 unique_revisions.push(*original);
                 quarantined_event_ids.extend(
