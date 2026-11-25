@@ -876,6 +876,49 @@ pub fn source_sequence_revision_baseline(input: &VisibleTaskInput) -> Submission
     }
 }
 
+
+/// Exact one-sided Clopper-Pearson upper confidence bound when zero failures
+/// are observed in independent Bernoulli trials.
+///
+/// This function is deliberately undefined for a non-zero observed failure
+/// count; use an exact beta-quantile implementation for that case. The caller
+/// must define an independent trial unit. Tasks sharing one synthetic subject
+/// are not independent patient-level trials.
+pub fn zero_failure_upper_confidence_bound(
+    independent_trials: usize,
+    confidence_level: f64,
+) -> Result<f64, String> {
+    if independent_trials == 0 {
+        return Err("independent_trials must be greater than zero".to_owned());
+    }
+    if !confidence_level.is_finite() || confidence_level <= 0.0 || confidence_level >= 1.0 {
+        return Err("confidence_level must be finite and strictly between zero and one".to_owned());
+    }
+    Ok(1.0 - (1.0 - confidence_level).powf(1.0 / independent_trials as f64))
+}
+
+/// Minimum independent zero-failure trials required to put the one-sided
+/// Clopper-Pearson upper bound at or below maximum_failure_rate.
+pub fn minimum_zero_failure_trials(
+    maximum_failure_rate: f64,
+    confidence_level: f64,
+) -> Result<usize, String> {
+    if !maximum_failure_rate.is_finite()
+        || maximum_failure_rate <= 0.0
+        || maximum_failure_rate >= 1.0
+    {
+        return Err("maximum_failure_rate must be finite and strictly between zero and one".to_owned());
+    }
+    if !confidence_level.is_finite() || confidence_level <= 0.0 || confidence_level >= 1.0 {
+        return Err("confidence_level must be finite and strictly between zero and one".to_owned());
+    }
+    let trials = ((1.0 - confidence_level).ln() / (1.0 - maximum_failure_rate).ln()).ceil();
+    if !trials.is_finite() || trials > usize::MAX as f64 {
+        return Err("required independent trial count is not representable".to_owned());
+    }
+    Ok(trials.max(1.0) as usize)
+}
+
 /// Evaluate a complete batch. Missing, extra, and duplicate task outputs are errors.
 pub fn evaluate_batch(tasks: &[Task], submissions: &[Submission]) -> Result<BatchReport, String> {
     let task_ids: BTreeSet<&str> = tasks.iter().map(|task| task.task_id.as_str()).collect();
@@ -951,6 +994,21 @@ pub fn evaluate_batch(tasks: &[Task], submissions: &[Submission]) -> Result<Batc
 #[cfg(test)]
 mod tests {
     use super::*;
+
+
+    #[test]
+    fn zero_failure_confidence_bound_requires_independent_trials_and_valid_confidence() {
+        let upper_21 = zero_failure_upper_confidence_bound(21, 0.95).unwrap();
+        assert!(upper_21 > 0.13 && upper_21 < 0.14);
+
+        let upper_299 = zero_failure_upper_confidence_bound(299, 0.95).unwrap();
+        assert!(upper_299 < 0.01);
+
+        assert_eq!(minimum_zero_failure_trials(0.01, 0.95).unwrap(), 299);
+        assert!(zero_failure_upper_confidence_bound(0, 0.95).is_err());
+        assert!(zero_failure_upper_confidence_bound(21, 1.0).is_err());
+        assert!(minimum_zero_failure_trials(0.0, 0.95).is_err());
+    }
 
     #[test]
     fn frozen_v1_corpus_loads_twenty_one_synthetic_tasks() {
