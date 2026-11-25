@@ -15,7 +15,7 @@
 // Core Gateway
 export { EhrGateway, type EhrGatewayConfig } from './gateway.js';
 
-// Gateway request authority contract (reference primitive; route wiring tracked in #289)
+// Gateway request authority and fail-closed route-guard contracts (production provider pending)
 export {
   GATEWAY_ACTIONS_V1,
   GATEWAY_CONTEXT_CLOCK_SKEW_MS,
