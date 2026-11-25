@@ -123,10 +123,21 @@ export async function requireGatewayRouteAuthorizationV1(
   provider: GatewayRouteAuthorizationProviderV1 | null | undefined,
   request: Request,
   intent: GatewayRouteIntentV1,
-): Promise<{ authorized: true } | { authorized: false; response: Response }> {
+): Promise<
+  | {
+      authorized: true;
+      authorization: Extract<GatewayRouteAuthorizationResultV1, { authorized: true }>;
+      authorizedResourceIds?: readonly string[];
+    }
+  | { authorized: false; response: Response }
+> {
   const result = await authorizeGatewayRouteV1(provider, request, intent);
   if (result.authorized) {
-    return { authorized: true };
+    return {
+      authorized: true,
+      authorization: result.authorization,
+      authorizedResourceIds: result.authorizedResourceIds,
+    };
   }
   const status = gatewayAuthorizationHttpStatusV1(result.reason);
   return {
