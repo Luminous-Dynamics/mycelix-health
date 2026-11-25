@@ -69,6 +69,14 @@ pub struct EvidenceReleaseReceiptV1 {
     pub source_receipt_digest: String,
     pub channel_id: String,
     pub outcome_id: String,
+    /// Source-authenticated clinical event time; not inferred from arrival.
+    pub clinical_event_time_ms: i64,
+    pub specimen_collected_at_ms: Option<i64>,
+    pub analysis_performed_at_ms: Option<i64>,
+    pub result_issued_at_ms: Option<i64>,
+    pub source_last_updated_at_ms: Option<i64>,
+    pub source_sequence: Option<u64>,
+    pub ingested_at_ms: i64,
     pub issued_at_ms: i64,
     pub expires_at_ms: i64,
     pub gates: Vec<EvidenceGateAttestationV1>,
@@ -130,6 +138,7 @@ pub enum BridgeErrorV1 {
     DuplicateEvidenceGate(EvidenceDimensionV1),
     VerifierRejected,
     ReplayDetected,
+    ReceiptIdentityCollision,
     VerifierUnavailable,
     EpisodeMismatch,
     TenantMismatch,
@@ -204,6 +213,13 @@ pub struct EvidenceReferenceV1 {
     pub resource_version: String,
     pub payload_digest: String,
     pub source_receipt_digest: String,
+    pub clinical_event_time_ms: i64,
+    pub specimen_collected_at_ms: Option<i64>,
+    pub analysis_performed_at_ms: Option<i64>,
+    pub result_issued_at_ms: Option<i64>,
+    pub source_last_updated_at_ms: Option<i64>,
+    pub source_sequence: Option<u64>,
+    pub ingested_at_ms: i64,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -214,6 +230,16 @@ pub struct SignalEvidenceReferenceV1 {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ProbeAuthorityReferenceV1 {
+    pub probe_id: String,
+    pub receipt_id: String,
+    pub action_id: String,
+    pub allowed_resource_types: Vec<String>,
+    pub authority_receipt_digest: String,
+    pub expires_at_ms: i64,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct EvidenceReferenceManifestV1 {
     pub version: u16,
     pub episode_id: String,
@@ -221,7 +247,9 @@ pub struct EvidenceReferenceManifestV1 {
     pub subject_binding: String,
     pub purpose: String,
     pub recipient_id: String,
+    pub as_of_time_ms: i64,
     pub signals: Vec<SignalEvidenceReferenceV1>,
+    pub probes: Vec<ProbeAuthorityReferenceV1>,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -373,6 +401,7 @@ pub struct EpisodeContextV1 {
     pub subject_binding: String,
     pub purpose: String,
     pub recipient_id: String,
+    pub as_of_time_ms: i64,
     pub current_step: u64,
     pub decision_deadline_step: u64,
     pub remaining_probe_budget: f64,
@@ -418,6 +447,8 @@ pub fn project_episode_v1(
     }
 
     let mut grouped: BTreeMap<(String, String), Vec<EvidenceReferenceV1>> = BTreeMap::new();
+    let mut receipt_identity: BTreeMap<String, (String, String, EvidenceReferenceV1)> =
+        BTreeMap::new();
     for signal in signals {
         let receipt = &signal.receipt;
         if receipt.episode_id != context.episode_id {
@@ -438,23 +469,44 @@ pub fn project_episode_v1(
         if receipt.expires_at_ms <= now_ms {
             return Err(BridgeErrorV1::ReceiptExpired);
         }
+        let reference = EvidenceReferenceV1 {
+            receipt_id: receipt.receipt_id.clone(),
+            event_id: receipt.event_id.clone(),
+            source_principal: receipt.source_principal.clone(),
+            source_connection_id: receipt.source_connection_id.clone(),
+            resource_type: receipt.resource_type.clone(),
+            resource_id: receipt.resource_id.clone(),
+            resource_version: receipt.resource_version.clone(),
+            payload_digest: receipt.payload_digest.clone(),
+            source_receipt_digest: receipt.source_receipt_digest.clone(),
+            clinical_event_time_ms: receipt.clinical_event_time_ms,
+            specimen_collected_at_ms: receipt.specimen_collected_at_ms,
+            analysis_performed_at_ms: receipt.analysis_performed_at_ms,
+            result_issued_at_ms: receipt.result_issued_at_ms,
+            source_last_updated_at_ms: receipt.source_last_updated_at_ms,
+            source_sequence: receipt.source_sequence,
+            ingested_at_ms: receipt.ingested_at_ms,
+        };
+        let identity = (
+            receipt.channel_id.clone(),
+            receipt.outcome_id.clone(),
+            reference.clone(),
+        );
+        if let Some(existing) = receipt_identity.get(&receipt.receipt_id) {
+            if existing != &identity {
+                return Err(BridgeErrorV1::ReceiptIdentityCollision);
+            }
+        } else {
+            receipt_identity.insert(receipt.receipt_id.clone(), identity);
+        }
         grouped
             .entry((receipt.channel_id.clone(), receipt.outcome_id.clone()))
             .or_default()
-            .push(EvidenceReferenceV1 {
-                receipt_id: receipt.receipt_id.clone(),
-                event_id: receipt.event_id.clone(),
-                source_principal: receipt.source_principal.clone(),
-                source_connection_id: receipt.source_connection_id.clone(),
-                resource_type: receipt.resource_type.clone(),
-                resource_id: receipt.resource_id.clone(),
-                resource_version: receipt.resource_version.clone(),
-                payload_digest: receipt.payload_digest.clone(),
-                source_receipt_digest: receipt.source_receipt_digest.clone(),
-            });
+            .push(reference);
     }
 
     let mut permitted_probe_options = Vec::with_capacity(probes.len());
+    let mut probe_references = Vec::with_capacity(probes.len());
     let mut seen_probes = BTreeSet::new();
     for probe in probes {
         let receipt = &probe.receipt;
@@ -484,8 +536,19 @@ pub fn project_episode_v1(
             acquisition_cost: receipt.acquisition_cost,
             result_delay_steps: receipt.result_delay_steps,
         });
+        let mut allowed_resource_types = receipt.allowed_resource_types.clone();
+        allowed_resource_types.sort();
+        probe_references.push(ProbeAuthorityReferenceV1 {
+            probe_id: receipt.probe_id.clone(),
+            receipt_id: receipt.receipt_id.clone(),
+            action_id: receipt.action_id.clone(),
+            allowed_resource_types,
+            authority_receipt_digest: receipt.authority_receipt_digest.clone(),
+            expires_at_ms: receipt.expires_at_ms,
+        });
     }
     permitted_probe_options.sort_by(|left, right| left.probe_id.cmp(&right.probe_id));
+    probe_references.sort_by(|left, right| left.probe_id.cmp(&right.probe_id));
 
     let mut evidence = Vec::with_capacity(grouped.len());
     let mut reference_signals = Vec::with_capacity(grouped.len());
@@ -521,7 +584,9 @@ pub fn project_episode_v1(
         subject_binding: context.subject_binding,
         purpose: context.purpose,
         recipient_id: context.recipient_id,
+        as_of_time_ms: context.as_of_time_ms,
         signals: reference_signals,
+        probes: probe_references,
     };
 
     Ok(EpisodeProjectionV1 {
@@ -623,6 +688,13 @@ mod tests {
             source_receipt_digest: digest(),
             channel_id: "lab-potassium".into(),
             outcome_id: "elevated".into(),
+            clinical_event_time_ms: 900,
+            specimen_collected_at_ms: Some(800),
+            analysis_performed_at_ms: Some(850),
+            result_issued_at_ms: Some(900),
+            source_last_updated_at_ms: Some(910),
+            source_sequence: Some(7),
+            ingested_at_ms: 1_500,
             issued_at_ms: 1_000,
             expires_at_ms: 250_000,
             gates: REQUIRED_EVIDENCE_DIMENSIONS_V1
@@ -662,6 +734,7 @@ mod tests {
             subject_binding: "subject-opaque-1".into(),
             purpose: "treatment".into(),
             recipient_id: "recipient-1".into(),
+            as_of_time_ms: 2_000,
             current_step: 2,
             decision_deadline_step: 10,
             remaining_probe_budget: 2.0,
@@ -689,6 +762,20 @@ mod tests {
             "release-1"
         );
         assert_eq!(projection.operator_manifest.subject_binding, "subject-opaque-1");
+        assert_eq!(projection.operator_manifest.as_of_time_ms, 2_000);
+        assert_eq!(
+            projection.operator_manifest.signals[0].evidence[0].clinical_event_time_ms,
+            900
+        );
+        assert_eq!(
+            projection.operator_manifest.signals[0].evidence[0].source_sequence,
+            Some(7)
+        );
+        assert_eq!(projection.operator_manifest.probes.len(), 1);
+        assert_eq!(
+            projection.operator_manifest.probes[0].action_id,
+            "fhir_read_observation"
+        );
         assert_eq!(projection.candidate_episode.permitted_probes.len(), 1);
         assert_eq!(
             projection.candidate_episode.permitted_probes[0].probe_id,
