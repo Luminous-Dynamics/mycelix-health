@@ -30,6 +30,15 @@ export {
   type GatewayRequestContextV1,
 } from './auth/gateway-request-context.js';
 
+export {
+  authorizeGatewayRouteV1,
+  gatewayAuthorizationHttpStatusV1,
+  requireGatewayRouteAuthorizationV1,
+  type GatewayRouteAuthorizationProviderV1,
+  type GatewayRouteAuthorizationResultV1,
+  type GatewayRouteIntentV1,
+} from './auth/gateway-route-guard.js';
+
 // Authentication
 export { SmartOnFhirAuth, type SmartAuthConfig } from './auth/smart-on-fhir.js';
 export { TokenManager, type TokenInfo } from './auth/token-manager.js';
