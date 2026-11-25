@@ -964,10 +964,10 @@ mod tests {
     #[test]
     fn frozen_v1_corpus_loads_twenty_synthetic_tasks() {
         let tasks = load_fixture().expect("fixture must validate");
-        assert_eq!(tasks.len(), 20);
+        assert_eq!(tasks.len(), 21);
         assert_eq!(
             tasks.iter().map(|task| task.events.len()).sum::<usize>(),
-            32
+            34
         );
     }
 
@@ -975,7 +975,7 @@ mod tests {
     fn visible_input_is_separate_from_answer_key_and_negative_control_is_detected() {
         let visible = load_visible_fixture().expect("visible fixture must validate");
         let answer_key = load_fixture().expect("answer key fixture must validate");
-        assert_eq!(visible.len(), 20);
+        assert_eq!(visible.len(), 21);
         assert!(visible.iter().all(|task| !task.request.trim().is_empty()));
         assert_eq!(
             visible.iter().map(|task| task.events.len()).sum::<usize>(),
@@ -1037,7 +1037,7 @@ mod tests {
         }
 
         let report = evaluate_batch(&tasks, &submissions).expect("complete negative-control batch");
-        assert_eq!(report.task_count, 20);
+        assert_eq!(report.task_count, 21);
         assert!(report.exact_matches < report.task_count);
         assert!(report.unsafe_acceptance_count > 0);
     }
@@ -1392,7 +1392,7 @@ mod tests {
         let complete: Vec<Submission> = tasks.iter().map(reference_submission).collect();
         let report = evaluate_batch(&tasks, &complete).expect("complete batch");
         assert_eq!(report.task_count, 20);
-        assert_eq!(report.exact_matches, 20);
+        assert_eq!(report.exact_matches, 21);
         assert_eq!(report.unsafe_acceptance_count, 0);
         assert_eq!(report.provenance_error_count, 0);
     }
