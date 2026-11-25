@@ -211,13 +211,15 @@ jobs:
         with:
           components: rustfmt, clippy
 
-      - name: Validate versioned JSON Schemas
+      - name: Parse schemas and check contract invariants
         run: |
           for schema in prototypes/mycelix-symthaea-bridge-contract/schema/*.json; do
             jq -e . "$schema" > /dev/null
           done
-          jq -e '.properties.gates.minItems == 9 and .properties.gates.maxItems == 9' \
+          jq -e '.properties.gates.minItems == 9 and .properties.gates.maxItems == 9 and (.allOf | length == 9)' \
             prototypes/mycelix-symthaea-bridge-contract/schema/evidence-release-receipt-v1.schema.json > /dev/null
+          jq -e '.additionalProperties == false and (.required | index("evidence") != null)' \
+            prototypes/mycelix-symthaea-bridge-contract/schema/health-decision-episode-v1.schema.json > /dev/null
 
       - name: Check formatting
         run: cargo fmt --manifest-path prototypes/mycelix-symthaea-bridge-contract/Cargo.toml -- --check
