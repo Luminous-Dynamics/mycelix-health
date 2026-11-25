@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2021"
 license = "AGPL-3.0-or-later"
 publish = false
-description = "Dependency-free benchmark evaluator for temporal, provenance, revision, and authority integrity"
+description = "Isolated benchmark evaluator for temporal, provenance, revision, and authority integrity"
 
 [dependencies]
 mycelix-temporal-evidence-agent-contract = { path = "../temporal-evidence-agent-contract" }
