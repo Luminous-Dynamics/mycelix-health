@@ -50,6 +50,8 @@ The SMART launch/callback and EHR connection administration routes (`/auth/conne
 
 The current application startup does not supply a production route authorizer. Consequently, protected FHIR and sync operations are intentionally unavailable (503) until an independently reviewed provider is configured. This prevents accidental operation under the old unauthenticated route behavior, but is not proof of complete gateway security.
 
+The `async=true` background-sync option is also disabled (503). The previous implementation queued work after HTTP authorization and executed later without a worker-time revocation/replay check. It must not be re-enabled until a background job carries a consume-once execution receipt and the worker revalidates current authority immediately before the source read.
+
 ## Qualification
 
 The gateway test suite covers:
