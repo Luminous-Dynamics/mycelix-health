@@ -9,10 +9,7 @@
  */
 
 import { Hono } from 'hono';
-import { randomUUID } from 'crypto';
 import type { AppContext } from '../server.js';
-import type { SyncJob, IngestReport } from '../types.js';
-import { PullService } from '../sync/pull-service.js';
 import { requireGatewayRouteAuthorizationV1 } from '../auth/gateway-route-guard.js';
 
 /**
@@ -85,27 +82,13 @@ export function createSyncRoutes(ctx: AppContext): Hono {
       ? resourceTypesParam.split(',')
       : undefined;
 
-    // For async operations, create a job and return immediately
+    // Background execution is disabled until the worker can consume a fresh,
+    // one-time authorization receipt and re-check revocation at execution time.
     if (isAsync) {
-      const jobId = randomUUID();
-      const job: SyncJob = {
-        id: jobId,
-        connectionId,
-        patientId,
-        status: 'pending',
-        startedAt: new Date(),
-      };
-      ctx.syncJobs.set(jobId, job);
-
-      // Start sync in background
-      runSyncInBackground(ctx, job, tokenKey, resourceTypes, sourceSystem);
-
       return c.json({
-        status: 'accepted',
-        job_id: jobId,
-        message: 'Sync started in background',
-        status_url: `/sync/status/${jobId}`,
-      }, 202);
+        error: 'Background sync unavailable',
+        message: 'Async execution is disabled until worker-time authorization and replay protection are configured.',
+      }, 503);
     }
 
     // Synchronous sync
@@ -457,43 +440,4 @@ export function createSyncRoutes(ctx: AppContext): Hono {
   });
 
   return app;
-}
-
-/**
- * Run sync operation in background and update job status
- */
-async function runSyncInBackground(
-  ctx: AppContext,
-  job: SyncJob,
-  tokenKey: string,
-  resourceTypes?: string[],
-  sourceSystem?: string
-): Promise<void> {
-  // Update job status
-  job.status = 'running';
-  ctx.syncJobs.set(job.id, job);
-
-  try {
-    const result = await ctx.gateway!.pullPatientData(
-      job.connectionId,
-      job.patientId,
-      tokenKey,
-      {
-        resourceTypes,
-        sourceSystem,
-      }
-    );
-
-    // Update job with results
-    job.status = 'completed';
-    job.completedAt = new Date();
-    job.results = result;
-    ctx.syncJobs.set(job.id, job);
-  } catch (error) {
-    // Update job with error
-    job.status = 'failed';
-    job.completedAt = new Date();
-    job.error = (error as Error).message;
-    ctx.syncJobs.set(job.id, job);
-  }
 }
