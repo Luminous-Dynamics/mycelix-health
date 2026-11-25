@@ -2,7 +2,10 @@ name: CI
 
 on:
   push:
-    branches: [main, develop]
+    branches:
+      - main
+      - develop
+      - security/ehr-gateway-loopback-cors-v1
   pull_request:
     branches: [main, develop]
 
