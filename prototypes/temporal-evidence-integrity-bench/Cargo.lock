@@ -3,5 +3,12 @@
 version = 4
 
 [[package]]
+name = "mycelix-temporal-evidence-agent-contract"
+version = "0.1.0"
+
+[[package]]
 name = "mycelix-temporal-evidence-integrity-bench"
 version = "0.1.0"
+dependencies = [
+ "mycelix-temporal-evidence-agent-contract",
+]
