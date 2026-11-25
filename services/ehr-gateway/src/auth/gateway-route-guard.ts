@@ -5,8 +5,8 @@
 import {
   GATEWAY_ACTIONS_V1,
   type GatewayActionV1,
-  GatewayAuthorizationFailureV1,
-  GatewayAuthorizationResultV1,
+  type GatewayAuthorizationFailureV1,
+  type GatewayAuthorizationResultV1,
 } from './gateway-request-context.js';
 
 /**
