@@ -1,0 +1,324 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://luminousdynamics.io/schemas/health-evidence-release-receipt-v1.schema.json",
+  "title": "Mycelix Verified Evidence Release Receipt v1",
+  "description": "Operator-side signed receipt requiring independent cryptographic verification; a digest or schema-valid object is not proof.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "receipt_id",
+    "nonce",
+    "episode_id",
+    "tenant_id",
+    "subject_binding",
+    "purpose",
+    "recipient_id",
+    "source_connection_id",
+    "source_principal",
+    "event_id",
+    "resource_type",
+    "resource_id",
+    "resource_version",
+    "payload_digest",
+    "source_receipt_digest",
+    "channel_id",
+    "outcome_id",
+    "issued_at_ms",
+    "expires_at_ms",
+    "gates"
+  ],
+  "properties": {
+    "receipt_id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 256
+    },
+    "nonce": {
+      "type": "string",
+      "minLength": 16,
+      "maxLength": 256
+    },
+    "episode_id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128
+    },
+    "tenant_id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 256
+    },
+    "subject_binding": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 256
+    },
+    "purpose": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128
+    },
+    "recipient_id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 256
+    },
+    "source_connection_id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 256
+    },
+    "source_principal": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 512
+    },
+    "event_id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 256
+    },
+    "resource_type": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128
+    },
+    "resource_id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 256
+    },
+    "resource_version": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 256
+    },
+    "payload_digest": {
+      "type": "string",
+      "pattern": "^[A-Fa-f0-9]{64}$"
+    },
+    "source_receipt_digest": {
+      "type": "string",
+      "pattern": "^[A-Fa-f0-9]{64}$"
+    },
+    "channel_id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 256
+    },
+    "outcome_id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 256
+    },
+    "issued_at_ms": {
+      "type": "integer"
+    },
+    "expires_at_ms": {
+      "type": "integer"
+    },
+    "gates": {
+      "type": "array",
+      "minItems": 9,
+      "maxItems": 9,
+      "uniqueItems": true,
+      "items": {
+        "$ref": "#/$defs/gate"
+      }
+    }
+  },
+  "allOf": [
+    {
+      "properties": {
+        "gates": {
+          "contains": {
+            "properties": {
+              "dimension": {
+                "const": "evidence_presence"
+              }
+            },
+            "required": [
+              "dimension"
+            ]
+          },
+          "minContains": 1,
+          "maxContains": 1
+        }
+      }
+    },
+    {
+      "properties": {
+        "gates": {
+          "contains": {
+            "properties": {
+              "dimension": {
+                "const": "subject_binding"
+              }
+            },
+            "required": [
+              "dimension"
+            ]
+          },
+          "minContains": 1,
+          "maxContains": 1
+        }
+      }
+    },
+    {
+      "properties": {
+        "gates": {
+          "contains": {
+            "properties": {
+              "dimension": {
+                "const": "issuer_authenticity"
+              }
+            },
+            "required": [
+              "dimension"
+            ]
+          },
+          "minContains": 1,
+          "maxContains": 1
+        }
+      }
+    },
+    {
+      "properties": {
+        "gates": {
+          "contains": {
+            "properties": {
+              "dimension": {
+                "const": "resource_version"
+              }
+            },
+            "required": [
+              "dimension"
+            ]
+          },
+          "minContains": 1,
+          "maxContains": 1
+        }
+      }
+    },
+    {
+      "properties": {
+        "gates": {
+          "contains": {
+            "properties": {
+              "dimension": {
+                "const": "temporal_validity"
+              }
+            },
+            "required": [
+              "dimension"
+            ]
+          },
+          "minContains": 1,
+          "maxContains": 1
+        }
+      }
+    },
+    {
+      "properties": {
+        "gates": {
+          "contains": {
+            "properties": {
+              "dimension": {
+                "const": "semantic_support"
+              }
+            },
+            "required": [
+              "dimension"
+            ]
+          },
+          "minContains": 1,
+          "maxContains": 1
+        }
+      }
+    },
+    {
+      "properties": {
+        "gates": {
+          "contains": {
+            "properties": {
+              "dimension": {
+                "const": "provenance_lineage"
+              }
+            },
+            "required": [
+              "dimension"
+            ]
+          },
+          "minContains": 1,
+          "maxContains": 1
+        }
+      }
+    },
+    {
+      "properties": {
+        "gates": {
+          "contains": {
+            "properties": {
+              "dimension": {
+                "const": "application_authority"
+              }
+            },
+            "required": [
+              "dimension"
+            ]
+          },
+          "minContains": 1,
+          "maxContains": 1
+        }
+      }
+    },
+    {
+      "properties": {
+        "gates": {
+          "contains": {
+            "properties": {
+              "dimension": {
+                "const": "conflict_reconciliation"
+              }
+            },
+            "required": [
+              "dimension"
+            ]
+          },
+          "minContains": 1,
+          "maxContains": 1
+        }
+      }
+    }
+  ],
+  "$defs": {
+    "gate": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "dimension",
+        "attestation_digest"
+      ],
+      "properties": {
+        "dimension": {
+          "type": "string",
+          "enum": [
+            "evidence_presence",
+            "subject_binding",
+            "issuer_authenticity",
+            "resource_version",
+            "temporal_validity",
+            "semantic_support",
+            "provenance_lineage",
+            "application_authority",
+            "conflict_reconciliation"
+          ]
+        },
+        "attestation_digest": {
+          "type": "string",
+          "pattern": "^[A-Fa-f0-9]{64}$"
+        }
+      }
+    }
+  }
+}
