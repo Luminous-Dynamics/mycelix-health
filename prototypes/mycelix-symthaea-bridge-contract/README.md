@@ -24,13 +24,13 @@ HealthDecisionEpisodeV1 is a field-for-field transport analogue of Symthaea's cu
 | evidence[channel_id, outcome_id] | ObservedSignal |
 | permitted_probes[probe_id, acquisition_cost, result_delay_steps] | PublicProbeOption |
 
-The candidate episode contains no patient identifier, source principal, FHIR resource, payload, signature, receipt digest, priors, likelihoods, hidden state, loss table, or evaluator label.
+The candidate episode contains no patient identifier, source principal, FHIR resource, payload, signature, receipt digest, priors, likelihoods, hidden state, loss table, or evaluator label. The current structs and schemas define the contract but do not yet supply a JSON serializer, JCS implementation, detached-signature implementation, or deserializer.
 
 ## Independent release and lineage
 
 A candidate signal can only be projected from a VerifiedEvidenceSignalV1. Its fields are private; verify_evidence_release_v1 checks structural requirements and calls the injected EvidenceReceiptVerifierV1.
 
-The production verifier must verify the signature over every field, authenticate source/issuer and all nine gate attestations against configured trust roots, bind them to the same event/payload/subject/tenant/episode/purpose/recipient, check current authority and revocation, and atomically consume the nonce.
+The evidence-release and probe-offer receipts carry a signing key ID, an explicit Ed25519 or ES256 algorithm, and an unpadded base64url detached signature. The production verifier must verify the signature over the RFC 8785 canonical JSON representation of all receipt fields except the signature itself (including key ID and algorithm), authenticate source/issuer and all nine gate attestations against configured trust roots, bind them to the same event/payload/subject/tenant/episode/purpose/recipient, check current authority and revocation, and atomically consume the evidence-release nonce. ES256 signatures use the fixed 64-byte P1363 R||S representation before base64url encoding.
 
 A true flag, digest string, caller-provided JSON field, Rust private type, or fake verifier is not cryptographic proof. Tests use a fake verifier solely to exercise the adapter contract. No production verifier is supplied.
 
