@@ -796,11 +796,19 @@ pub fn source_sequence_revision_baseline(input: &VisibleTaskInput) -> Submission
             continue;
         }
 
-        unique_revisions.sort_by(|left, right| {
-            left.source_sequence
-                .cmp(&right.source_sequence)
-                .then_with(|| left.event_id.cmp(&right.event_id))
+        let mut observed_sequences = BTreeSet::new();
+        let sequence_order_is_ambiguous = unique_revisions.iter().any(|event| {
+            event
+                .source_sequence
+                .is_none_or(|sequence| !observed_sequences.insert(sequence))
         });
+        if sequence_order_is_ambiguous {
+            unknown_order = true;
+            retained_history.extend(unique_revisions.into_iter().map(EventCitation::from));
+            continue;
+        }
+
+        unique_revisions.sort_by_key(|event| event.source_sequence);
         if let Some(current) = unique_revisions.pop() {
             timeline.push(EventCitation::from(current));
         }
@@ -1066,7 +1074,7 @@ mod tests {
             .map(|task| (task.task_id.as_str(), task))
             .collect();
 
-        for task_id in ["T03", "T04", "T05", "T06", "T16", "T17", "T20"] {
+        for task_id in ["T03", "T04", "T05", "T06", "T16", "T17", "T20", "T21"] {
             let submission = source_sequence_revision_baseline(visible_by_id[task_id]);
             let score = evaluate(truth_by_id[task_id], &submission);
             assert!(score.exact_match, "{task_id} did not match: {score:?}");
@@ -1085,6 +1093,17 @@ mod tests {
         assert_eq!(unknown.disposition, Disposition::UnknownOrder);
         assert!(unknown.timeline.is_empty());
         assert_eq!(unknown.retained_history[0].event_id, "E25");
+
+        let tied = source_sequence_revision_baseline(visible_by_id["T21"]);
+        assert_eq!(tied.disposition, Disposition::UnknownOrder);
+        assert!(tied.timeline.is_empty());
+        assert_eq!(
+            tied.retained_history
+                .iter()
+                .map(|event| event.event_id.as_str())
+                .collect::<Vec<_>>(),
+            vec!["E33", "E34"]
+        );
     }
 
     #[test]
