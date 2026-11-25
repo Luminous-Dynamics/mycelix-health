@@ -137,7 +137,7 @@ pub trait EvidenceReceiptVerifierV1 {
     /// current source/consent/recipient/action/resource authority. This only
     /// permits the option to be shown to the candidate. Execution requires a fresh
     /// independent authorization check after candidate return.
-    fn verify_probe_offer(
+    fn verify_and_consume_probe_offer(
         &self,
         receipt: &ProbeOfferReceiptV1,
     ) -> Result<(), VerifierFailureV1>;
@@ -439,7 +439,7 @@ pub fn verify_probe_offer_v1<V: EvidenceReceiptVerifierV1>(
     }
     validate_receipt_window(receipt.issued_at_ms, receipt.expires_at_ms, now_ms)?;
     verifier
-        .verify_probe_offer(&receipt)
+        .verify_and_consume_probe_offer(&receipt)
         .map_err(map_verifier_failure)?;
     Ok(VerifiedProbeOfferV1 { receipt })
 }
@@ -694,7 +694,7 @@ mod tests {
             Ok(())
         }
 
-        fn verify_probe_offer(
+        fn verify_and_consume_probe_offer(
             &self,
             _receipt: &ProbeOfferReceiptV1,
         ) -> Result<(), VerifierFailureV1> {
@@ -712,7 +712,7 @@ mod tests {
             Err(VerifierFailureV1::Rejected)
         }
 
-        fn verify_probe_offer(
+        fn verify_and_consume_probe_offer(
             &self,
             _receipt: &ProbeOfferReceiptV1,
         ) -> Result<(), VerifierFailureV1> {
@@ -919,7 +919,7 @@ mod tests {
             ) -> Result<(), VerifierFailureV1> {
                 Err(VerifierFailureV1::ReplayDetected)
             }
-            fn verify_probe_offer(
+            fn verify_and_consume_probe_offer(
                 &self,
                 _receipt: &ProbeOfferReceiptV1,
             ) -> Result<(), VerifierFailureV1> {
@@ -994,6 +994,29 @@ mod tests {
                 .map(|item| item.receipt_id.as_str())
                 .collect::<Vec<_>>(),
             vec!["release-1", "release-2"]
+        );
+    }
+
+    #[test]
+    fn probe_offer_nonce_is_consume_once_and_replay_fails_closed() {
+        struct ProbeReplayVerifier;
+        impl EvidenceReceiptVerifierV1 for ProbeReplayVerifier {
+            fn verify_and_consume_evidence(
+                &self,
+                _receipt: &EvidenceReleaseReceiptV1,
+            ) -> Result<(), VerifierFailureV1> {
+                Ok(())
+            }
+            fn verify_and_consume_probe_offer(
+                &self,
+                _receipt: &ProbeOfferReceiptV1,
+            ) -> Result<(), VerifierFailureV1> {
+                Err(VerifierFailureV1::ReplayDetected)
+            }
+        }
+        assert_eq!(
+            verify_probe_offer_v1(probe_receipt(), 2_000, &ProbeReplayVerifier),
+            Err(BridgeErrorV1::ReplayDetected)
         );
     }
 
