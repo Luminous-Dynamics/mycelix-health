@@ -327,6 +327,90 @@ describe('EHR Gateway Server', () => {
       expect(Array.isArray(body.jobs)).toBe(true);
     });
 
+    it('filters job and conflict collections to explicitly authorized resource IDs', async () => {
+      const startedAt = new Date('2026-01-01T00:00:00.000Z');
+      const visibleJob = {
+        id: 'job-visible',
+        connectionId: 'test-connection',
+        patientId: 'patient-visible',
+        status: 'completed' as const,
+        startedAt,
+      };
+      const hiddenJob = {
+        ...visibleJob,
+        id: 'job-hidden',
+        patientId: 'patient-hidden',
+      };
+      const scopedGateway = {
+        ...mockGateway,
+        getPendingConflicts: vi.fn().mockReturnValue([
+          {
+            resourceType: 'Observation',
+            resourceId: 'resource-visible',
+            localVersion: '1',
+            remoteVersion: '2',
+            localData: { note: 'visible' },
+            remoteData: { note: 'visible-remote' },
+            conflictType: 'update',
+          },
+          {
+            resourceType: 'Observation',
+            resourceId: 'resource-hidden',
+            localVersion: '1',
+            remoteVersion: '2',
+            localData: { note: 'must-not-leak' },
+            remoteData: { note: 'must-not-leak' },
+            conflictType: 'update',
+          },
+        ]),
+        getConflictStats: vi.fn(),
+      };
+      const scopedContext: AppContext = {
+        ...ctx,
+        gateway: scopedGateway as any,
+        syncJobs: new Map([
+          [visibleJob.id, visibleJob as any],
+          [hiddenJob.id, hiddenJob as any],
+        ]),
+        gatewayRouteAuthorizer: {
+          authorize: vi.fn(async (_request, intent) => ({
+            authorized: true as const,
+            grantId: 'scoped-grant',
+            requestId: 'scoped-request',
+            principal: {
+              issuer: 'https://idp.example.test',
+              subject: 'test-subject',
+              clientId: 'test-client',
+              organizationId: 'test-org',
+            },
+            tenantId: 'test-tenant',
+            patientBinding: 'opaque-test-patient',
+            action: intent.action,
+            expiresAtMs: Date.now() + 60_000,
+            authorizedResourceIds: intent.action === 'sync_job_list'
+              ? ['job-visible']
+              : [JSON.stringify(['Observation', 'resource-visible'])],
+          })),
+        },
+      };
+      const scopedApp = createApp(scopedContext);
+
+      const jobsResponse = await scopedApp.request('/sync/jobs');
+      const jobsBody = await jobsResponse.json();
+      expect(jobsResponse.status).toBe(200);
+      expect(jobsBody.total).toBe(1);
+      expect(jobsBody.jobs.map((job: { id: string }) => job.id)).toEqual(['job-visible']);
+
+      const conflictsResponse = await scopedApp.request('/sync/conflicts');
+      const conflictsBody = await conflictsResponse.json();
+      expect(conflictsResponse.status).toBe(200);
+      expect(conflictsBody.pending_count).toBe(1);
+      expect(conflictsBody.conflicts.map((item: { resourceId: string }) => item.resourceId))
+        .toEqual(['resource-visible']);
+      expect(JSON.stringify(conflictsBody)).not.toContain('must-not-leak');
+      expect(conflictsBody.statistics).toBeUndefined();
+    });
+
     it('GET /sync/conflicts lists pending conflicts', async () => {
       const res = await app.request('/sync/conflicts');
       const body = await res.json();
