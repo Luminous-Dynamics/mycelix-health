@@ -15,6 +15,21 @@
 // Core Gateway
 export { EhrGateway, type EhrGatewayConfig } from './gateway.js';
 
+// Gateway request authority contract (reference primitive; route wiring tracked in #289)
+export {
+  GATEWAY_ACTIONS_V1,
+  GATEWAY_CONTEXT_CLOCK_SKEW_MS,
+  GATEWAY_CONTEXT_MAX_TTL_MS,
+  authorizeGatewayRequestV1,
+  type GatewayActionV1,
+  type GatewayAuthorizationFailureV1,
+  type GatewayAuthorizationResultV1,
+  type GatewayAuthorityGrantV1,
+  type GatewayPrincipalV1,
+  type GatewayReceiptVerifierV1,
+  type GatewayRequestContextV1,
+} from './auth/gateway-request-context.js';
+
 // Authentication
 export { SmartOnFhirAuth, type SmartAuthConfig } from './auth/smart-on-fhir.js';
 export { TokenManager, type TokenInfo } from './auth/token-manager.js';
