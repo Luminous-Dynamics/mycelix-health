@@ -1,0 +1,90 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://luminousdynamics.io/schemas/temporal-evidence-submission-v1.schema.json",
+  "title": "Temporal Evidence Integrity Submission v1",
+  "description": "Candidate output contract. Contains no evaluator labels, expected timelines, or hidden conflict annotations.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "task_id",
+    "disposition",
+    "timeline",
+    "retained_history",
+    "quarantined_event_ids",
+    "unresolved_conflict_groups",
+    "evidence_graph"
+  ],
+  "properties": {
+    "task_id": { "type": "string", "minLength": 1, "maxLength": 128 },
+    "disposition": {
+      "type": "string",
+      "enum": [
+        "supported",
+        "insufficient",
+        "conflicted",
+        "authority_blocked",
+        "identity_blocked",
+        "stale",
+        "unknown_order"
+      ]
+    },
+    "timeline": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/eventCitation" }
+    },
+    "retained_history": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/eventCitation" }
+    },
+    "quarantined_event_ids": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": { "type": "string", "minLength": 1, "maxLength": 256 }
+    },
+    "unresolved_conflict_groups": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": { "type": "string", "minLength": 1, "maxLength": 1024 }
+    },
+    "evidence_graph": {
+      "$ref": "https://luminousdynamics.io/schemas/temporal-evidence-graph-v1.schema.json"
+    }
+  },
+  "$defs": {
+    "eventCitation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "event_id",
+        "source_principal",
+        "resource_version",
+        "resource_type",
+        "resource_id",
+        "payload_digest",
+        "clinical_event_time_ms"
+      ],
+      "properties": {
+        "event_id": { "type": "string", "minLength": 1, "maxLength": 256 },
+        "source_principal": { "type": "string", "minLength": 1, "maxLength": 512 },
+        "resource_version": { "type": "string", "minLength": 1, "maxLength": 256 },
+        "resource_type": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "resource_id": { "type": "string", "minLength": 1, "maxLength": 256 },
+        "assertion_key": { "type": ["string", "null"], "maxLength": 1024 },
+        "normalized_assertion_value": { "type": ["string", "null"], "maxLength": 2048 },
+        "payload_digest": { "type": "string", "pattern": "^[A-Fa-f0-9]{64}$" },
+        "measurement_method": { "type": ["string", "null"], "maxLength": 256 },
+        "measurement_unit": { "type": ["string", "null"], "maxLength": 128 },
+        "terminology_system": { "type": ["string", "null"], "maxLength": 512 },
+        "terminology_version": { "type": ["string", "null"], "maxLength": 128 },
+        "terminology_code": { "type": ["string", "null"], "maxLength": 256 },
+        "clinical_event_time_ms": { "type": "integer" },
+        "specimen_collected_at_ms": { "type": ["integer", "null"] },
+        "analysis_performed_at_ms": { "type": ["integer", "null"] },
+        "result_issued_at_ms": { "type": ["integer", "null"] },
+        "source_last_updated_at_ms": { "type": ["integer", "null"] },
+        "ingested_at_ms": { "type": "integer" },
+        "source_sequence": { "type": ["integer", "null"], "minimum": 0 }
+      }
+    }
+  }
+}

@@ -1,0 +1,44 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://luminousdynamics.io/schemas/temporal-evidence-graph-v1.schema.json",
+  "title": "Temporal Evidence Graph v1",
+  "description": "Candidate-visible typed relationships. Edges are evidence relationships, not clinical truth or authorization decisions.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["nodes", "relations"],
+  "properties": {
+    "nodes": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": { "type": "string", "minLength": 1, "maxLength": 256 }
+    },
+    "relations": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": { "$ref": "#/$defs/relation" }
+    }
+  },
+  "$defs": {
+    "relation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["from_event_id", "to_event_id", "kind"],
+      "properties": {
+        "from_event_id": { "type": "string", "minLength": 1, "maxLength": 256 },
+        "to_event_id": { "type": "string", "minLength": 1, "maxLength": 256 },
+        "kind": {
+          "type": "string",
+          "enum": [
+            "same_resource_different_version",
+            "exact_replay",
+            "version_payload_collision",
+            "source_sequence_precedes",
+            "ambiguous_source_order",
+            "same_clinical_assertion",
+            "contradictory_clinical_assertion"
+          ]
+        }
+      }
+    }
+  }
+}
