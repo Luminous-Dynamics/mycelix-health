@@ -40,6 +40,27 @@ if [[ "$case_count" -lt 1 ]]; then
   exit 1
 fi
 
+# The corpus is a versioned benchmark input. Reject malformed, duplicate, or
+# unclassified cases before invoking the official validator.
+unique_case_count="$(jq '[.cases[].id] | unique | length' "$CORPUS")"
+if [[ "$unique_case_count" -ne "$case_count" ]]; then
+  echo "FHIR validator corpus contains duplicate case IDs" >&2
+  exit 1
+fi
+if ! jq -e '
+  (.schema_version == 1)
+  and (.fhir_version == "4.0.1")
+  and (.cases | all(
+    (.id | type == "string" and length > 0)
+    and (.purpose | type == "string" and length > 0)
+    and (.expected == "valid" or .expected == "invalid")
+    and (.bundle.resourceType == "Bundle")
+  ))
+' "$CORPUS" >/dev/null; then
+  echo "FHIR validator corpus failed its manifest contract" >&2
+  exit 1
+fi
+
 summary="$OUT_DIR/summary.tsv"
 printf 'case_id\texpected\tactual_errors\tstatus\n' > "$summary"
 processed=0
