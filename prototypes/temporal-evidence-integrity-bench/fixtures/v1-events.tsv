@@ -32,3 +32,4 @@ T19	E30	PAT-A	SRC-IMM	v1	8888888888888888888888888888888888888888888888888888888
 T19	E31	PAT-A	SRC-IMM	v2	9999999999999999999999999999999999999999999999999999999999999999	-	-	urn:mycelix:synthetic-terminology	2026-06	OBS-ALPHA	25000	-	-	-	35000	35500	2	true	true	true	false	Observation	t19-e31	-	-
 T20	E32	PAT-A	SRC-EDGE	v2	aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa	-	-	-	-	-	26000	-	-	-	18000	18500	-	true	true	true	false	Observation	t20-e32	-	-
 T21	E33	PAT-A	SRC-LAB	v1	bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb	-	-	-	-	-	28000	-	-	-	30000	31000	7	true	true	true	false	Observation	lab-panel-21	-	-
+T21	E34	PAT-A	SRC-LAB	v2	cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc	-	-	-	-	-	28000	-	-	-	32000	33000	7	true	true	true	false	Observation	lab-panel-21	-	-
