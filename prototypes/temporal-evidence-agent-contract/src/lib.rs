@@ -211,19 +211,21 @@ pub fn build_evidence_graph_v1(events: &[VisibleEvidenceEvent]) -> EvidenceGraph
                 }
             }
 
-            if let (Some(left_key), Some(right_key)) = (
-                left.assertion_key.as_deref(),
-                right.assertion_key.as_deref(),
-            ) {
-                if left_key == right_key {
-                    let same_value = left.normalized_assertion_value
-                        == right.normalized_assertion_value;
-                    let kind = if same_value {
-                        EvidenceRelationKindV1::SameClinicalAssertion
-                    } else {
-                        EvidenceRelationKindV1::ContradictoryClinicalAssertion
-                    };
-                    relations.push(symmetric_relation(left, right, kind));
+            if left.patient_binding == right.patient_binding {
+                if let (Some(left_key), Some(right_key)) = (
+                    left.assertion_key.as_deref(),
+                    right.assertion_key.as_deref(),
+                ) {
+                    if left_key == right_key {
+                        let same_value = left.normalized_assertion_value
+                            == right.normalized_assertion_value;
+                        let kind = if same_value {
+                            EvidenceRelationKindV1::SameClinicalAssertion
+                        } else {
+                            EvidenceRelationKindV1::ContradictoryClinicalAssertion
+                        };
+                        relations.push(symmetric_relation(left, right, kind));
+                    }
                 }
             }
         }
@@ -571,6 +573,28 @@ mod tests {
         assert!(single_unsequenced.relations.is_empty());
     }
 
+
+    #[test]
+    fn evidence_graph_never_links_clinical_assertions_across_subject_bindings() {
+        let tasks = load_visible_fixture().expect("visible fixtures must validate");
+        let task = tasks.iter().find(|task| task.task_id == "T17").unwrap();
+        let mut events = task.events.clone();
+        let mut cross_subject = events[1].clone();
+        cross_subject.event_id = "CROSS-SUBJECT".to_owned();
+        cross_subject.patient_binding = "PAT-B".to_owned();
+        events.push(cross_subject);
+
+        let graph = build_evidence_graph_v1(&events);
+        assert!(!graph.relations.iter().any(|relation| {
+            relation.from_event_id == "E26"
+                && relation.to_event_id == "CROSS-SUBJECT"
+                && matches!(
+                    relation.kind,
+                    EvidenceRelationKindV1::SameClinicalAssertion
+                        | EvidenceRelationKindV1::ContradictoryClinicalAssertion
+                )
+        }));
+    }
 
     #[test]
     fn evidence_graph_never_infers_edges_from_timestamps_alone() {
