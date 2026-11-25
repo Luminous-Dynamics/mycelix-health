@@ -85,3 +85,28 @@ export function gatewayAuthorizationHttpStatusV1(
 ): 403 | 503 {
   return reason === 'verification_unavailable' ? 503 : 403;
 }
+
+/** Return a standards-neutral HTTP denial response for protected route handlers. */
+export async function requireGatewayRouteAuthorizationV1(
+  provider: GatewayRouteAuthorizationProviderV1 | null | undefined,
+  request: Request,
+  intent: GatewayRouteIntentV1,
+): Promise<{ authorized: true } | { authorized: false; response: Response }> {
+  const result = await authorizeGatewayRouteV1(provider, request, intent);
+  if (result.authorized) {
+    return { authorized: true };
+  }
+  const status = gatewayAuthorizationHttpStatusV1(result.reason);
+  return {
+    authorized: false,
+    response: new Response(
+      JSON.stringify({
+        error: status === 503 ? 'Authorization service unavailable' : 'Forbidden',
+      }),
+      {
+        status,
+        headers: { 'content-type': 'application/json; charset=utf-8' },
+      },
+    ),
+  };
+}
