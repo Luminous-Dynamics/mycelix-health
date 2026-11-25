@@ -60,6 +60,31 @@ The crate supplies a typed evaluator, an agent-visible input loader, and an orac
 
 All systems must receive identical visible evidence and tool permissions. Report task-level paired results, bootstrap confidence intervals, hard-gate counts, coverage, wall time, tokens/API cost, and reviewer effort. Keep HealthAgentBench, LongMedBench, and EHRFlowBench results as separate external comparators; do not blend their scores into this corpus.
 
+
+## Statistical interpretation and sample-size discipline
+
+The evaluator exposes `zero_failure_upper_confidence_bound(n, confidence)` and
+`minimum_zero_failure_trials(target_rate, confidence)`. For zero observed
+critical failures in independent Bernoulli trials, the exact one-sided
+Clopper-Pearson upper bound is:
+
+`upper = 1 - (1 - confidence)^(1/n)`
+
+At 95% confidence, zero failures in 21 independent trials still permits an
+upper failure probability of about **13.3%**. Approximately **299 independent
+trials** with zero failures are required to bound the rate below **1%**;
+approximately **2,995** are required to bound it below **0.1%**.
+
+These are illustrative finite-suite statistical bounds, not clinical risk
+estimates. V1 has 21 tasks but only **one synthetic subject binding**, so its
+tasks are not 21 independent patient-level trials. V1 is an adversarial
+coverage and evaluator-contract fixture, not a population reliability sample.
+V2 must report patient/subject-clustered bootstrap intervals and use held-out
+subject clusters. Do not count repeated tasks, resources, or assertions from
+one subject as independent samples. A zero-failure result from synthetic
+fixtures does not establish real-world safety, representativeness, or clinical
+effectiveness.
+
 ## Known scope limits
 
 An earlier v1 predecessor passed its dedicated Rust lane, but the present revision adds a separate candidate contract crate, a second executable baseline, and equal-sequence ambiguity fixtures. Those latest changes require fresh exact-head qualification; no result is claimed for them yet.
