@@ -55,6 +55,25 @@ describe('EHR Gateway Server', () => {
       holochainClient: mockHolochainClient as any,
       config: getTestConfig(),
       syncJobs: new Map(),
+      // This is a test-only allow fixture. Production must inject a verifier-
+      // backed provider; the server itself defaults to deny.
+      gatewayRouteAuthorizer: {
+        authorize: vi.fn(async (_request, intent) => ({
+          authorized: true as const,
+          grantId: 'test-grant',
+          requestId: 'test-request',
+          principal: {
+            issuer: 'https://idp.example.test',
+            subject: 'test-subject',
+            clientId: 'test-client',
+            organizationId: 'test-org',
+          },
+          tenantId: 'test-tenant',
+          patientBinding: 'opaque-test-patient',
+          action: intent.action,
+          expiresAtMs: Date.now() + 60_000,
+        })),
+      },
     };
     app = createApp(ctx);
   });
@@ -94,6 +113,41 @@ describe('EHR Gateway Server', () => {
 
       expect(res.status).toBe(503);
       expect(body.status).toBe('not ready');
+    });
+  });
+
+  describe('Fail-closed route authorization', () => {
+    it('denies FHIR and sync data routes when no trusted authorizer is configured', async () => {
+      const appWithoutAuthorizer = createApp({
+        ...ctx,
+        gatewayRouteAuthorizer: undefined,
+      });
+
+      const blockedRequests = [
+        appWithoutAuthorizer.request('/fhir/Bundle', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ resourceType: 'Bundle', type: 'collection' }),
+        }),
+        appWithoutAuthorizer.request('/fhir/Bundle/patient-123'),
+        appWithoutAuthorizer.request('/sync/status/unguessable-job-id'),
+        appWithoutAuthorizer.request('/sync/jobs'),
+        appWithoutAuthorizer.request('/sync/conflicts'),
+      ];
+      const responses = await Promise.all(blockedRequests);
+
+      expect(responses.every((response) => response.status === 503)).toBe(true);
+      expect(mockHolochainClient.callZome).not.toHaveBeenCalled();
+      expect(mockGateway.getPendingConflicts).not.toHaveBeenCalled();
+    });
+
+    it('keeps health and FHIR capability metadata public without a data authorizer', async () => {
+      const appWithoutAuthorizer = createApp({
+        ...ctx,
+        gatewayRouteAuthorizer: undefined,
+      });
+      expect((await appWithoutAuthorizer.request('/health')).status).toBe(200);
+      expect((await appWithoutAuthorizer.request('/fhir/metadata')).status).toBe(200);
     });
   });
 
