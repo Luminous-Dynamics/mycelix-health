@@ -73,3 +73,35 @@ This is evaluator infrastructure, not a production FHIR ingestion engine, identi
 - [EHRFlowBench / HealthFlow](https://www.nature.com/articles/s41746-026-03097-0): 100 expert-curated EHR analysis tasks focused on executable analysis pipelines.
 
 These are context and potential interoperability targets, not directly comparable numerical baselines.
+
+
+## Candidate/evaluator package boundary (v1)
+
+The candidate contract is a separate Cargo package at
+`prototypes/temporal-evidence-agent-contract`. Candidate adapters should depend
+on this package only. It exposes:
+
+- `VisibleTaskInput`, with the task request and subject binding;
+- `VisibleEvidenceEvent`, with source, resource, revision, temporal, semantic,
+  issuer, authority and lineage fields supplied to the candidate;
+- `Submission` and `EventCitation`, with a versioned JSON Schema at
+  `schema/submission-v1.schema.json`;
+- `load_visible_fixture()`, which compiles only the answer-free task manifest
+  and visible event envelope.
+
+The evaluator package separately owns `Task`, `EvidenceEvent`, expected
+dispositions, expected current/history/quarantine sets, conflict answer keys,
+and scoring. The candidate contract has no Cargo dependency on the evaluator.
+The dedicated workflow builds/tests the contract by its own manifest and uses
+`cargo tree` to fail if the evaluator appears in that dependency graph.
+
+**Operational limitation:** packages in one public repository are not a process
+sandbox. For model trials, build the candidate adapter in a separate workspace
+and mount only `v1-task-inputs.tsv`, `v1-events.tsv`, and the submission
+schema into its runtime. Keep `v1-cases.tsv` and
+`v1-answer-key-events.tsv` in a separately permissioned evaluator workspace.
+The in-repository package split proves a dependency boundary, not filesystem
+isolation against an agent that can inspect the whole checkout.
+
+Local runner also qualifies the candidate contract separately before running
+the evaluator and reference baselines.
