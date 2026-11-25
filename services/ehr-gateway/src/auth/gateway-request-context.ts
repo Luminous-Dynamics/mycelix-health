@@ -147,33 +147,47 @@ function samePrincipal(left: GatewayPrincipalV1, right: GatewayPrincipalV1): boo
     && left.organizationId === right.organizationId;
 }
 
-function validPrincipal(principal: GatewayPrincipalV1): boolean {
-  return nonEmpty(principal.issuer)
-    && nonEmpty(principal.subject)
-    && nonEmpty(principal.clientId)
-    && nonEmpty(principal.organizationId);
+function validPrincipal(principal: unknown): principal is GatewayPrincipalV1 {
+  if (!principal || typeof principal !== 'object') {
+    return false;
+  }
+  const candidate = principal as Record<string, unknown>;
+  return nonEmpty(candidate.issuer)
+    && nonEmpty(candidate.subject)
+    && nonEmpty(candidate.clientId)
+    && nonEmpty(candidate.organizationId);
 }
 
 function fail(reason: GatewayAuthorizationFailureV1): GatewayAuthorizationResultV1 {
   return { authorized: false, reason };
 }
 
-function validGrant(grant: GatewayAuthorityGrantV1): boolean {
-  return nonEmpty(grant.grantId)
-    && validPrincipal(grant.principal)
-    && nonEmpty(grant.tenantId)
-    && nonEmpty(grant.patientBinding)
-    && nonEmpty(grant.sourceConnectionId)
-    && nonEmpty(grant.purpose)
-    && nonEmpty(grant.recipientId)
-    && Array.isArray(grant.allowedActions)
-    && grant.allowedActions.every((action) => GATEWAY_ACTIONS_V1.includes(action))
-    && Array.isArray(grant.allowedResourceTypes)
-    && grant.allowedResourceTypes.every(nonEmpty)
-    && isFiniteTime(grant.notBeforeMs)
-    && isFiniteTime(grant.expiresAtMs)
-    && grant.expiresAtMs > grant.notBeforeMs
-    && (grant.revokedAtMs === null || isFiniteTime(grant.revokedAtMs));
+function validGrant(grant: unknown): grant is GatewayAuthorityGrantV1 {
+  if (!grant || typeof grant !== 'object') {
+    return false;
+  }
+  const candidate = grant as Record<string, unknown>;
+  const allowedActions = candidate.allowedActions;
+  const allowedResourceTypes = candidate.allowedResourceTypes;
+  const notBeforeMs = candidate.notBeforeMs;
+  const expiresAtMs = candidate.expiresAtMs;
+  const revokedAtMs = candidate.revokedAtMs;
+
+  return nonEmpty(candidate.grantId)
+    && validPrincipal(candidate.principal)
+    && nonEmpty(candidate.tenantId)
+    && nonEmpty(candidate.patientBinding)
+    && nonEmpty(candidate.sourceConnectionId)
+    && nonEmpty(candidate.purpose)
+    && nonEmpty(candidate.recipientId)
+    && Array.isArray(allowedActions)
+    && allowedActions.every((action) => GATEWAY_ACTIONS_V1.includes(action))
+    && Array.isArray(allowedResourceTypes)
+    && allowedResourceTypes.every(nonEmpty)
+    && isFiniteTime(notBeforeMs)
+    && isFiniteTime(expiresAtMs)
+    && expiresAtMs > notBeforeMs
+    && (revokedAtMs === null || isFiniteTime(revokedAtMs));
 }
 
 
@@ -185,13 +199,15 @@ function validGrant(grant: GatewayAuthorityGrantV1): boolean {
  * the caller, and receipt digests are not accepted without verifier callbacks.
  */
 export async function authorizeGatewayRequestV1(
-  context: GatewayRequestContextV1,
-  grant: GatewayAuthorityGrantV1 | null,
+  context: GatewayRequestContextV1 | null | undefined,
+  grant: GatewayAuthorityGrantV1 | null | undefined,
   nowMs: number,
   verifier: GatewayReceiptVerifierV1 | null,
 ): Promise<GatewayAuthorizationResultV1> {
   if (
-    context.version !== 1
+    !context
+    || typeof context !== 'object'
+    || context.version !== 1
     || !nonEmpty(context.requestId)
     || !validPrincipal(context.principal)
     || !nonEmpty(context.tenantId)
