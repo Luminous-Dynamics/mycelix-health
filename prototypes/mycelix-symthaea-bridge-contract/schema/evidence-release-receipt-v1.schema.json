@@ -32,7 +32,10 @@
     "result_issued_at_ms",
     "source_last_updated_at_ms",
     "source_sequence",
-    "ingested_at_ms"
+    "ingested_at_ms",
+    "signing_key_id",
+    "signature_algorithm",
+    "signature"
   ],
   "properties": {
     "receipt_id": {
@@ -169,6 +172,22 @@
     },
     "ingested_at_ms": {
       "type": "integer"
+    },
+    "signing_key_id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 256
+    },
+    "signature_algorithm": {
+      "type": "string",
+      "enum": [
+        "Ed25519",
+        "ES256"
+      ]
+    },
+    "signature": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9_-]{80,}$"
     }
   },
   "allOf": [
