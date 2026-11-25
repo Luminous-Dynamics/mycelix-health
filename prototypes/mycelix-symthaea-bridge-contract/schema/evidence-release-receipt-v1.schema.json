@@ -25,7 +25,14 @@
     "outcome_id",
     "issued_at_ms",
     "expires_at_ms",
-    "gates"
+    "gates",
+    "clinical_event_time_ms",
+    "specimen_collected_at_ms",
+    "analysis_performed_at_ms",
+    "result_issued_at_ms",
+    "source_last_updated_at_ms",
+    "source_sequence",
+    "ingested_at_ms"
   ],
   "properties": {
     "receipt_id": {
@@ -125,6 +132,43 @@
       "items": {
         "$ref": "#/$defs/gate"
       }
+    },
+    "clinical_event_time_ms": {
+      "type": "integer"
+    },
+    "specimen_collected_at_ms": {
+      "type": [
+        "integer",
+        "null"
+      ]
+    },
+    "analysis_performed_at_ms": {
+      "type": [
+        "integer",
+        "null"
+      ]
+    },
+    "result_issued_at_ms": {
+      "type": [
+        "integer",
+        "null"
+      ]
+    },
+    "source_last_updated_at_ms": {
+      "type": [
+        "integer",
+        "null"
+      ]
+    },
+    "source_sequence": {
+      "type": [
+        "integer",
+        "null"
+      ],
+      "minimum": 0
+    },
+    "ingested_at_ms": {
+      "type": "integer"
     }
   },
   "allOf": [
