@@ -18,6 +18,7 @@
     "requestedResourceTypes",
     "issuedAtMs",
     "expiresAtMs",
+    "gatewayContextReceiptDigest",
     "authenticationReceiptDigest",
     "consentReceiptDigest"
   ],
@@ -53,6 +54,7 @@
     },
     "issuedAtMs": { "type": "integer" },
     "expiresAtMs": { "type": "integer" },
+    "gatewayContextReceiptDigest": { "type": "string", "pattern": "^[A-Fa-f0-9]{64}$" },
     "authenticationReceiptDigest": { "type": "string", "pattern": "^[A-Fa-f0-9]{64}$" },
     "consentReceiptDigest": { "type": "string", "pattern": "^[A-Fa-f0-9]{64}$" }
   },
