@@ -20,7 +20,10 @@
     "result_delay_steps",
     "issued_at_ms",
     "expires_at_ms",
-    "authority_receipt_digest"
+    "authority_receipt_digest",
+    "signing_key_id",
+    "signature_algorithm",
+    "signature"
   ],
   "properties": {
     "receipt_id": {
@@ -95,6 +98,22 @@
     "authority_receipt_digest": {
       "type": "string",
       "pattern": "^[A-Fa-f0-9]{64}$"
+    },
+    "signing_key_id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 256
+    },
+    "signature_algorithm": {
+      "type": "string",
+      "enum": [
+        "Ed25519",
+        "ES256"
+      ]
+    },
+    "signature": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9_-]{80,}$"
     }
   }
 }
