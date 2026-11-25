@@ -787,15 +787,6 @@ pub fn source_sequence_revision_baseline(input: &VisibleTaskInput) -> Submission
             }
         }
 
-        if unique_revisions
-            .iter()
-            .any(|event| event.source_sequence.is_none())
-        {
-            unknown_order = true;
-            retained_history.extend(unique_revisions.into_iter().map(EventCitation::from));
-            continue;
-        }
-
         let mut observed_sequences = BTreeSet::new();
         let sequence_order_is_ambiguous = unique_revisions.iter().any(|event| {
             event
@@ -962,7 +953,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn frozen_v1_corpus_loads_twenty_synthetic_tasks() {
+    fn frozen_v1_corpus_loads_twenty_one_synthetic_tasks() {
         let tasks = load_fixture().expect("fixture must validate");
         assert_eq!(tasks.len(), 21);
         assert_eq!(
@@ -979,7 +970,7 @@ mod tests {
         assert!(visible.iter().all(|task| !task.request.trim().is_empty()));
         assert_eq!(
             visible.iter().map(|task| task.events.len()).sum::<usize>(),
-            32
+            34
         );
 
         let visible_by_id: BTreeMap<&str, &VisibleTaskInput> = visible
@@ -1387,11 +1378,11 @@ mod tests {
     #[test]
     fn batch_requires_one_output_per_task() {
         let tasks = load_fixture().expect("fixture must validate");
-        let partial: Vec<Submission> = tasks.iter().take(19).map(reference_submission).collect();
+        let partial: Vec<Submission> = tasks.iter().take(20).map(reference_submission).collect();
         assert!(evaluate_batch(&tasks, &partial).is_err());
         let complete: Vec<Submission> = tasks.iter().map(reference_submission).collect();
         let report = evaluate_batch(&tasks, &complete).expect("complete batch");
-        assert_eq!(report.task_count, 20);
+        assert_eq!(report.task_count, 21);
         assert_eq!(report.exact_matches, 21);
         assert_eq!(report.unsafe_acceptance_count, 0);
         assert_eq!(report.provenance_error_count, 0);
