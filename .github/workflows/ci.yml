@@ -233,3 +233,65 @@ jobs:
           cd tests/integration
           npm ci
           npm test
+
+  # Isolated, dependency-free research benchmark. This lane is independently
+  # runnable and does not require the parent mycelix workspace path crates.
+  temporal-evidence-bench:
+    name: Temporal Evidence Integrity Benchmark
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@1.96.0
+        with:
+          components: rustfmt, clippy
+      - name: Verify frozen corpus digests
+        run: |
+          sha256sum prototypes/temporal-evidence-integrity-bench/fixtures/v1-task-inputs.tsv
+          sha256sum prototypes/temporal-evidence-integrity-bench/fixtures/v1-events.tsv
+          sha256sum prototypes/temporal-evidence-integrity-bench/fixtures/v1-cases.tsv
+          sha256sum prototypes/temporal-evidence-integrity-bench/fixtures/v1-answer-key-events.tsv
+      - name: Check candidate contract formatting
+        run: cargo fmt --manifest-path prototypes/temporal-evidence-agent-contract/Cargo.toml -- --check
+      - name: Check evaluator formatting
+        run: cargo fmt --manifest-path prototypes/temporal-evidence-integrity-bench/Cargo.toml -- --check
+      - name: Qualify isolated candidate contract
+        run: |
+          HOST="$(rustc -vV | sed -n 's/^host: //p')"
+          CONTRACT="prototypes/temporal-evidence-agent-contract/Cargo.toml"
+          cargo clippy --locked --manifest-path "$CONTRACT" --target "$HOST" --all-targets -- -D warnings
+          cargo test --locked --manifest-path "$CONTRACT" --target "$HOST"
+      - name: Prove candidate contract does not depend on evaluator
+        run: |
+          HOST="$(rustc -vV | sed -n 's/^host: //p')"
+          CONTRACT="prototypes/temporal-evidence-agent-contract/Cargo.toml"
+          TREE="$(cargo tree --locked --manifest-path "$CONTRACT" --target "$HOST")"
+          printf '%s\\n' "$TREE"
+          if printf '%s\\n' "$TREE" | grep -Fq 'mycelix-temporal-evidence-integrity-bench'; then
+            echo "Candidate contract unexpectedly depends on evaluator package" >&2
+            exit 1
+          fi
+      - name: Validate candidate JSON schemas
+        run: |
+          jq -e . prototypes/temporal-evidence-agent-contract/schema/submission-v1.schema.json > /dev/null
+          jq -e . prototypes/temporal-evidence-agent-contract/schema/evidence-graph-v1.schema.json > /dev/null
+      - name: Run evaluator Clippy and tests
+        run: |
+          HOST="$(rustc -vV | sed -n 's/^host: //p')"
+          EVALUATOR="prototypes/temporal-evidence-integrity-bench/Cargo.toml"
+          cargo clippy --locked --manifest-path "$EVALUATOR" --target "$HOST" --all-targets -- -D warnings
+          cargo test --locked --manifest-path "$EVALUATOR" --target "$HOST"
+
+      - name: Execute deterministic negative-control baseline
+        run: |
+          HOST="$(rustc -vV | sed -n 's/^host: //p')"
+          cargo run --locked --manifest-path prototypes/temporal-evidence-integrity-bench/Cargo.toml --target "$HOST" --bin naive_baseline > temporal-evidence-naive-baseline.tsv
+          cargo run --locked --manifest-path prototypes/temporal-evidence-integrity-bench/Cargo.toml --target "$HOST" --bin revision_baseline > temporal-evidence-revision-baseline.tsv
+      - name: Publish reproducible baseline report
+        uses: actions/upload-artifact@v4
+        with:
+          name: temporal-evidence-baseline-matrix-v1
+          path: |
+            temporal-evidence-naive-baseline.tsv
+            temporal-evidence-revision-baseline.tsv
+          if-no-files-found: error
+          retention-days: 30

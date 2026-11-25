@@ -1,0 +1,22 @@
+# task_id family target_patient disposition current_timeline retained_history quarantine_events unresolved_conflict_groups
+T01	ingestion_order_attack	PAT-A	supported	E01,E02	-	-	-
+T02	late_backfill	PAT-A	supported	E03,E04	-	-	-
+T03	corrected_resource_revision	PAT-A	supported	E06	E05	-	-
+T04	out_of_order_old_revision	PAT-A	supported	E09	E07,E08	-	-
+T05	same_version_different_digest	PAT-A	conflicted	-	-	-	resource:SRC-LAB:Observation:lab-conflict-05:v4
+T06	exact_replay_idempotency	PAT-A	supported	E12	-	E13	-
+T07	wrong_patient_reference	PAT-A	identity_blocked	-	-	E14	-
+T08	unauthorized_application_scope	PAT-A	authority_blocked	-	-	E15	-
+T09	revoked_authority	PAT-A	authority_blocked	-	-	E16	-
+T10	expired_evidence	PAT-A	stale	-	-	E17	-
+T11	patient_identity_collision	PAT-A	identity_blocked	-	-	E18	-
+T12	unauthenticated_issuer	PAT-A	insufficient	-	-	E19	-
+T13	incomplete_provenance_lineage	PAT-A	insufficient	-	-	E20	-
+T14	clinical_time_not_record_time	PAT-A	supported	E21,E22	-	-	-
+T15	specimen_analysis_issue_times	PAT-A	supported	E23,E24	-	-	-
+T16	unknown_source_revision_order	PAT-A	unknown_order	-	E25	-	-
+T17	conflicting_source_assertions	PAT-A	conflicted	-	-	-	assertion:subject:PAT-A|concept:synthetic-condition-status|effective:21000
+T18	measurement_method_transition	PAT-A	supported	E28,E29	-	-	-
+T19	terminology_version_transition	PAT-A	supported	E30,E31	-	-	-
+T20	clock_skew_does_not_define_revision	PAT-A	unknown_order	-	E32	-	-
+T21	duplicate_source_sequence_distinct_versions	PAT-A	unknown_order	-	E33,E34	-	-
