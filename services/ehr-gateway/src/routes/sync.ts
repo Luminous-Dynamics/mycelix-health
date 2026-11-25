@@ -191,14 +191,16 @@ export function createSyncRoutes(ctx: AppContext): Hono {
     const authorization = await requireGatewayRouteAuthorizationV1(
       ctx.gatewayRouteAuthorizer,
       c.req.raw,
-      { action: 'sync_job_list', resourceTypes: [] },
+      { action: 'sync_job_list', resourceTypes: [], requireScopedResourceList: true },
     );
     if (!authorization.authorized) return authorization.response;
 
     const statusFilter = c.req.query('status');
     const limit = parseInt(c.req.query('limit') || '100', 10);
 
-    let jobs = Array.from(ctx.syncJobs.values());
+    const visibleJobIds = new Set(authorization.authorizedResourceIds ?? []);
+    let jobs = Array.from(ctx.syncJobs.values())
+      .filter((job) => visibleJobIds.has(job.id));
 
     // Filter by status
     if (statusFilter) {
@@ -212,7 +214,8 @@ export function createSyncRoutes(ctx: AppContext): Hono {
     jobs = jobs.slice(0, limit);
 
     return c.json({
-      total: ctx.syncJobs.size,
+      // Count only server-authorized jobs; never leak tenant-wide totals.
+      total: jobs.length,
       returned: jobs.length,
       jobs: jobs.map(job => ({
         id: job.id,
@@ -359,7 +362,7 @@ export function createSyncRoutes(ctx: AppContext): Hono {
     const authorization = await requireGatewayRouteAuthorizationV1(
       ctx.gatewayRouteAuthorizer,
       c.req.raw,
-      { action: 'sync_conflicts_read', resourceTypes: [] },
+      { action: 'sync_conflicts_read', resourceTypes: [], requireScopedResourceList: true },
     );
     if (!authorization.authorized) return authorization.response;
 
@@ -369,13 +372,15 @@ export function createSyncRoutes(ctx: AppContext): Hono {
       }, 503);
     }
 
-    const conflicts = ctx.gateway.getPendingConflicts();
-    const stats = ctx.gateway.getConflictStats();
+    const visibleConflictKeys = new Set(authorization.authorizedResourceIds ?? []);
+    const conflicts = ctx.gateway.getPendingConflicts().filter((conflict) =>
+      visibleConflictKeys.has(JSON.stringify([conflict.resourceType, conflict.resourceId]))
+    );
 
     return c.json({
+      // Do not return unfiltered global conflict counts or statistics.
       pending_count: conflicts.length,
       conflicts,
-      statistics: stats,
     });
   });
 
