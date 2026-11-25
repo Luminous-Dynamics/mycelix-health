@@ -17,6 +17,12 @@ use std::collections::{BTreeMap, BTreeSet};
 pub const MAX_RECEIPT_TTL_MS: i64 = 300_000;
 pub const REQUIRED_GATE_COUNT: usize = 9;
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum SignatureAlgorithmV1 {
+    Ed25519,
+    Es256,
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub enum EvidenceDimensionV1 {
     EvidencePresence,
@@ -80,6 +86,10 @@ pub struct EvidenceReleaseReceiptV1 {
     pub issued_at_ms: i64,
     pub expires_at_ms: i64,
     pub gates: Vec<EvidenceGateAttestationV1>,
+    pub signing_key_id: String,
+    pub signature_algorithm: SignatureAlgorithmV1,
+    /// Unpadded base64url detached signature over the canonical unsigned receipt.
+    pub signature: String,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -99,6 +109,10 @@ pub struct ProbeOfferReceiptV1 {
     pub issued_at_ms: i64,
     pub expires_at_ms: i64,
     pub authority_receipt_digest: String,
+    pub signing_key_id: String,
+    pub signature_algorithm: SignatureAlgorithmV1,
+    /// Unpadded base64url detached signature over the canonical unsigned receipt.
+    pub signature: String,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -109,9 +123,11 @@ pub enum VerifierFailureV1 {
 }
 
 pub trait EvidenceReceiptVerifierV1 {
-    /// Verify the signature over every receipt field, bind the nine gate
-    /// attestations to the same evidence/subject/scope, check current revocation,
-    /// and atomically consume the nonce. A digest alone is never proof.
+    /// Verify the detached signature over the RFC 8785 canonical JSON payload
+    /// (all receipt fields except signature; signing_key_id and algorithm are
+    /// included), bind all nine gate attestations to the same evidence/subject/
+    /// scope, check revocation, and atomically consume the nonce. A digest alone
+    /// is never proof.
     fn verify_and_consume_evidence(
         &self,
         receipt: &EvidenceReleaseReceiptV1,
@@ -131,6 +147,7 @@ pub enum BridgeErrorV1 {
     EmptyField(&'static str),
     InvalidNonce,
     InvalidDigest(&'static str),
+    InvalidSignature,
     InvalidReceiptWindow,
     ReceiptExpired,
     ReceiptNotYetValid,
@@ -272,6 +289,13 @@ fn valid_digest(value: &str) -> bool {
     value.len() == 64 && value.bytes().all(|byte| byte.is_ascii_hexdigit())
 }
 
+fn valid_base64url_signature(value: &str) -> bool {
+    value.len() >= 80
+        && value
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || byte == b'-' || byte == b'_')
+}
+
 fn validate_receipt_window(
     issued_at_ms: i64,
     expires_at_ms: i64,
@@ -324,10 +348,14 @@ pub fn verify_evidence_release_v1<V: EvidenceReceiptVerifierV1>(
         (receipt.resource_version.as_str(), "resource_version"),
         (receipt.channel_id.as_str(), "channel_id"),
         (receipt.outcome_id.as_str(), "outcome_id"),
+        (receipt.signing_key_id.as_str(), "signing_key_id"),
     ] {
         non_empty(value, field)?;
     }
 
+    if !valid_base64url_signature(&receipt.signature) {
+        return Err(BridgeErrorV1::InvalidSignature);
+    }
     if !valid_digest(&receipt.payload_digest) {
         return Err(BridgeErrorV1::InvalidDigest("payload_digest"));
     }
@@ -381,8 +409,12 @@ pub fn verify_probe_offer_v1<V: EvidenceReceiptVerifierV1>(
         (receipt.recipient_id.as_str(), "probe_recipient_id"),
         (receipt.probe_id.as_str(), "probe_id"),
         (receipt.action_id.as_str(), "probe_action_id"),
+        (receipt.signing_key_id.as_str(), "probe_signing_key_id"),
     ] {
         non_empty(value, field)?;
+    }
+    if !valid_base64url_signature(&receipt.signature) {
+        return Err(BridgeErrorV1::InvalidSignature);
     }
     if !valid_digest(&receipt.authority_receipt_digest) {
         return Err(BridgeErrorV1::InvalidDigest("authority_receipt_digest"));
@@ -719,6 +751,9 @@ mod tests {
                     attestation_digest: digest(),
                 })
                 .collect(),
+            signing_key_id: "health-release-kid-01".into(),
+            signature_algorithm: SignatureAlgorithmV1::Ed25519,
+            signature: "A".repeat(86),
         }
     }
 
@@ -739,6 +774,9 @@ mod tests {
             issued_at_ms: 1_000,
             expires_at_ms: 250_000,
             authority_receipt_digest: digest(),
+            signing_key_id: "health-probe-kid-01".into(),
+            signature_algorithm: SignatureAlgorithmV1::Ed25519,
+            signature: "A".repeat(86),
         }
     }
 
