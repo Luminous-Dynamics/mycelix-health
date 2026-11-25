@@ -133,9 +133,10 @@ pub trait EvidenceReceiptVerifierV1 {
         receipt: &EvidenceReleaseReceiptV1,
     ) -> Result<(), VerifierFailureV1>;
 
-    /// Verify current source/consent/recipient/action/resource authority.
-    /// This only permits the option to be shown to the candidate. Execution
-    /// requires a fresh independent authorization check after candidate return.
+    /// Verify the detached signature over the canonical receipt, then verify
+    /// current source/consent/recipient/action/resource authority. This only
+    /// permits the option to be shown to the candidate. Execution requires a fresh
+    /// independent authorization check after candidate return.
     fn verify_probe_offer(
         &self,
         receipt: &ProbeOfferReceiptV1,
@@ -149,6 +150,7 @@ pub enum BridgeErrorV1 {
     InvalidDigest(&'static str),
     InvalidSignature,
     InvalidReceiptWindow,
+    InvalidAsOfTime,
     ReceiptExpired,
     ReceiptNotYetValid,
     ReceiptTtlExceeded,
@@ -290,7 +292,7 @@ fn valid_digest(value: &str) -> bool {
 }
 
 fn valid_base64url_signature(value: &str) -> bool {
-    value.len() >= 80
+    value.len() == 86
         && value
             .bytes()
             .all(|byte| byte.is_ascii_alphanumeric() || byte == b'-' || byte == b'_')
@@ -475,6 +477,9 @@ pub fn project_episode_v1(
     if context.decision_deadline_step < context.current_step {
         return Err(BridgeErrorV1::InvalidEpisodeWindow);
     }
+    if context.as_of_time_ms < 0 || context.as_of_time_ms > now_ms {
+        return Err(BridgeErrorV1::InvalidAsOfTime);
+    }
     if !context.remaining_probe_budget.is_finite() || context.remaining_probe_budget < 0.0 {
         return Err(BridgeErrorV1::InvalidBudget);
     }
@@ -575,6 +580,9 @@ pub fn project_episode_v1(
             return Err(BridgeErrorV1::RecipientMismatch);
         }
         validate_receipt_window(receipt.issued_at_ms, receipt.expires_at_ms, now_ms)?;
+        if receipt.issued_at_ms > context.as_of_time_ms {
+            return Err(BridgeErrorV1::ReceiptNotYetValid);
+        }
         if !seen_probes.insert(receipt.probe_id.as_str()) {
             return Err(BridgeErrorV1::DuplicateProbe(receipt.probe_id.clone()));
         }
