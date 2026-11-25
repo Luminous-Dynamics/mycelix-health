@@ -355,11 +355,11 @@ mod tests {
     #[test]
     fn candidate_contract_loads_only_answer_free_visible_fixtures() {
         let tasks = load_visible_fixture().expect("visible fixture must validate");
-        assert_eq!(tasks.len(), 20);
+        assert_eq!(tasks.len(), 21);
         assert!(tasks.iter().all(|task| !task.request.trim().is_empty()));
         assert_eq!(
             tasks.iter().map(|task| task.events.len()).sum::<usize>(),
-            32
+            34
         );
     }
 
