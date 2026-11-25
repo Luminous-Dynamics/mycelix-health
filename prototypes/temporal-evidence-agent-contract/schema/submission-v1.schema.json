@@ -47,7 +47,7 @@
       "items": { "type": "string", "minLength": 1, "maxLength": 1024 }
     },
     "evidence_graph": {
-      "$ref": "evidence-graph-v1.schema.json"
+      "$ref": "https://luminousdynamics.io/schemas/temporal-evidence-graph-v1.schema.json"
     }
   },
   "$defs": {
