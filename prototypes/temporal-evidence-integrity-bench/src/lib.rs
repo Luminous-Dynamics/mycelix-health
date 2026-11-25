@@ -1703,7 +1703,7 @@ mod tests {
 
         assert!(revision.evidence_graph.exact_match);
         assert!(!naive.evidence_graph.exact_match);
-        assert_eq!(revision.timeline_exact, naive.timeline_exact);
+        assert_ne!(revision.timeline_exact, naive.timeline_exact);
     }
 
 }
