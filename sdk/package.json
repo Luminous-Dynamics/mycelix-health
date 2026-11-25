@@ -7,14 +7,14 @@
   "module": "dist/index.mjs",
   "exports": {
     ".": {
+      "types": "./dist/index.d.ts",
       "import": "./dist/index.mjs",
-      "require": "./dist/index.js",
-      "types": "./dist/index.d.ts"
+      "require": "./dist/index.js"
     },
     "./privacy": {
+      "types": "./dist/privacy/index.d.ts",
       "import": "./dist/privacy/index.mjs",
-      "require": "./dist/privacy/index.js",
-      "types": "./dist/privacy/index.d.ts"
+      "require": "./dist/privacy/index.js"
     }
   },
   "files": [
@@ -62,6 +62,7 @@
     "directory": "sdk"
   },
   "overrides": {
+    "libsodium": "0.7.15",
     "libsodium-wrappers": "0.7.15"
   }
 }
