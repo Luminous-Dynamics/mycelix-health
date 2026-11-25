@@ -23,19 +23,43 @@
     "consentReceiptDigest"
   ],
   "properties": {
-    "version": { "const": 1 },
-    "requestId": { "type": "string", "minLength": 1, "maxLength": 256 },
-    "principal": { "$ref": "#/$defs/principal" },
-    "tenantId": { "type": "string", "minLength": 1, "maxLength": 256 },
+    "version": {
+      "const": 1
+    },
+    "requestId": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 256
+    },
+    "principal": {
+      "$ref": "#/$defs/principal"
+    },
+    "tenantId": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 256
+    },
     "patientBinding": {
       "type": "string",
       "minLength": 1,
       "maxLength": 512,
       "description": "Opaque registered binding; not a raw patient identifier."
     },
-    "sourceConnectionId": { "type": "string", "minLength": 1, "maxLength": 256 },
-    "purpose": { "type": "string", "minLength": 1, "maxLength": 128 },
-    "recipientId": { "type": "string", "minLength": 1, "maxLength": 256 },
+    "sourceConnectionId": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 256
+    },
+    "purpose": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128
+    },
+    "recipientId": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 256
+    },
     "action": {
       "type": "string",
       "enum": [
@@ -44,30 +68,73 @@
         "sync_pull",
         "sync_push",
         "sync_status",
-        "sync_job_list"
+        "sync_job_list",
+        "sync_job_delete",
+        "sync_bidirectional",
+        "sync_conflicts_read",
+        "sync_conflict_resolve"
       ]
     },
     "requestedResourceTypes": {
       "type": "array",
       "uniqueItems": true,
-      "items": { "type": "string", "minLength": 1, "maxLength": 128 }
+      "items": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 128
+      }
     },
-    "issuedAtMs": { "type": "integer" },
-    "expiresAtMs": { "type": "integer" },
-    "gatewayContextReceiptDigest": { "type": "string", "pattern": "^[A-Fa-f0-9]{64}$" },
-    "authenticationReceiptDigest": { "type": "string", "pattern": "^[A-Fa-f0-9]{64}$" },
-    "consentReceiptDigest": { "type": "string", "pattern": "^[A-Fa-f0-9]{64}$" }
+    "issuedAtMs": {
+      "type": "integer"
+    },
+    "expiresAtMs": {
+      "type": "integer"
+    },
+    "gatewayContextReceiptDigest": {
+      "type": "string",
+      "pattern": "^[A-Fa-f0-9]{64}$"
+    },
+    "authenticationReceiptDigest": {
+      "type": "string",
+      "pattern": "^[A-Fa-f0-9]{64}$"
+    },
+    "consentReceiptDigest": {
+      "type": "string",
+      "pattern": "^[A-Fa-f0-9]{64}$"
+    }
   },
   "$defs": {
     "principal": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["issuer", "subject", "clientId", "organizationId"],
+      "required": [
+        "issuer",
+        "subject",
+        "clientId",
+        "organizationId"
+      ],
       "properties": {
-        "issuer": { "type": "string", "format": "uri", "minLength": 1, "maxLength": 1024 },
-        "subject": { "type": "string", "minLength": 1, "maxLength": 512 },
-        "clientId": { "type": "string", "minLength": 1, "maxLength": 512 },
-        "organizationId": { "type": "string", "minLength": 1, "maxLength": 512 }
+        "issuer": {
+          "type": "string",
+          "format": "uri",
+          "minLength": 1,
+          "maxLength": 1024
+        },
+        "subject": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 512
+        },
+        "clientId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 512
+        },
+        "organizationId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 512
+        }
       }
     }
   }
