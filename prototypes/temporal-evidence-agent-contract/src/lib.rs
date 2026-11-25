@@ -568,6 +568,21 @@ mod tests {
         assert!(single_unsequenced.relations.is_empty());
     }
 
+
+    #[test]
+    fn evidence_graph_never_infers_edges_from_timestamps_alone() {
+        let tasks = load_visible_fixture().expect("visible fixture must validate");
+        let task = tasks.iter().find(|task| task.task_id == "T01").unwrap();
+        assert_ne!(
+            task.events[0].clinical_event_time_ms,
+            task.events[1].clinical_event_time_ms
+        );
+        assert_ne!(task.events[0].resource_id, task.events[1].resource_id);
+
+        let graph = build_evidence_graph_v1(&task.events);
+        assert!(graph.relations.is_empty());
+    }
+
     #[test]
     fn evidence_graph_projection_is_deterministic_under_input_permutation() {
         let tasks = load_visible_fixture().expect("visible fixture must validate");
