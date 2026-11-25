@@ -2,8 +2,9 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Commercial licensing: see COMMERCIAL_LICENSE.md at repository root
 
-import type {
-  GatewayActionV1,
+import {
+  GATEWAY_ACTIONS_V1,
+  type GatewayActionV1,
   GatewayAuthorizationFailureV1,
   GatewayAuthorizationResultV1,
 } from './gateway-request-context.js';
@@ -65,7 +66,13 @@ export async function authorizeGatewayRouteV1(
   request: Request,
   intent: GatewayRouteIntentV1,
 ): Promise<GatewayRouteGuardResultV1> {
-  if (!provider || !intent || !Array.isArray(intent.resourceTypes ?? [])) {
+  if (
+    !provider
+    || !intent
+    || !GATEWAY_ACTIONS_V1.includes(intent.action)
+    || !Array.isArray(intent.resourceTypes ?? [])
+    || (intent.resourceTypes ?? []).some((value) => typeof value !== 'string' || value.trim().length === 0)
+  ) {
     return failure('verification_unavailable');
   }
 
