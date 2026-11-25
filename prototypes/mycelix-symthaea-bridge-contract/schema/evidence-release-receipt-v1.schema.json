@@ -187,7 +187,7 @@
     },
     "signature": {
       "type": "string",
-      "pattern": "^[A-Za-z0-9_-]{80,}$"
+      "pattern": "^[A-Za-z0-9_-]{86}$"
     }
   },
   "allOf": [
