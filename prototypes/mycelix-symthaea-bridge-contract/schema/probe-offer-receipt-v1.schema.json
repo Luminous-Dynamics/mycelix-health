@@ -1,0 +1,100 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://luminousdynamics.io/schemas/health-probe-offer-receipt-v1.schema.json",
+  "title": "Mycelix Probe Offer Receipt v1",
+  "description": "Operator-side permission to display a candidate probe option. Does not authorize execution.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "receipt_id",
+    "nonce",
+    "episode_id",
+    "tenant_id",
+    "subject_binding",
+    "purpose",
+    "recipient_id",
+    "probe_id",
+    "action_id",
+    "allowed_resource_types",
+    "acquisition_cost",
+    "result_delay_steps",
+    "issued_at_ms",
+    "expires_at_ms",
+    "authority_receipt_digest"
+  ],
+  "properties": {
+    "receipt_id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 256
+    },
+    "nonce": {
+      "type": "string",
+      "minLength": 16,
+      "maxLength": 256
+    },
+    "episode_id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128
+    },
+    "tenant_id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 256
+    },
+    "subject_binding": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 256
+    },
+    "purpose": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128
+    },
+    "recipient_id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 256
+    },
+    "probe_id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 256
+    },
+    "action_id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 256
+    },
+    "allowed_resource_types": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 128
+      }
+    },
+    "acquisition_cost": {
+      "type": "number",
+      "minimum": 0
+    },
+    "result_delay_steps": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "issued_at_ms": {
+      "type": "integer"
+    },
+    "expires_at_ms": {
+      "type": "integer"
+    },
+    "authority_receipt_digest": {
+      "type": "string",
+      "pattern": "^[A-Fa-f0-9]{64}$"
+    }
+  }
+}
