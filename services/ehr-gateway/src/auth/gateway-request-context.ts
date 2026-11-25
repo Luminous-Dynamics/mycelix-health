@@ -254,7 +254,7 @@ export async function authorizeGatewayRequestV1(
   }
 
   try {
-    if (!(await verifier.verifyPrincipal(context))) {
+    if ((await verifier.verifyPrincipal(context)) !== true) {
       return fail('principal_unverified');
     }
   } catch {
@@ -272,7 +272,7 @@ export async function authorizeGatewayRequestV1(
   }
 
   try {
-    if (!(await verifier.verifyConsent(context, grant))) {
+    if ((await verifier.verifyConsent(context, grant)) !== true) {
       return fail('consent_unverified');
     }
   } catch {
