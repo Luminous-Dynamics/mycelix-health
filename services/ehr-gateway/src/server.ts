@@ -11,11 +11,12 @@
  * - Health checks
  */
 
-import { Hono } from 'hono';
+import { Hono, type Context, type Next } from 'hono';
 import { serve } from '@hono/node-server';
 import { cors } from 'hono/cors';
 import { logger } from 'hono/logger';
 import { AppWebsocket, type AppClient } from '@holochain/client';
+import { timingSafeEqual } from 'node:crypto';
 
 import { loadServerConfig, type ServerConfig } from './config.js';
 import { EhrGateway, type EhrGatewayConfig } from './gateway.js';
@@ -54,11 +55,50 @@ export function createApp(ctx: AppContext): Hono {
   app.use('*', cors({
     origin: ctx.config.corsOrigins,
     allowMethods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-    allowHeaders: ['Content-Type', 'Authorization', 'X-Source-System'],
+    // X-Source-System is caller-controlled metadata, not an authenticated
+    // source identity. Browser clients must not use it as an authority signal.
+    allowHeaders: ['Content-Type', 'Authorization'],
     exposeHeaders: ['X-Request-Id'],
-    credentials: true,
+    credentials: ctx.config.corsOrigins.length > 0,
     maxAge: 86400,
   }));
+
+  // A configured service bearer protects FHIR, sync and administrative routes.
+  // This is a coarse service boundary only; it is not user identity, SMART token
+  // validation, patient/tenant authorization, or a replacement for issue #289.
+  if (ctx.config.apiBearerToken) {
+    const expected = Buffer.from(ctx.config.apiBearerToken, "utf8");
+    const requireApiBearer = async (c: Context, next: Next) => {
+      // CORS preflight carries no credentials. The subsequent request remains protected.
+      if (c.req.method === "OPTIONS") {
+        return next();
+      }
+
+      // The EHR must be able to complete the SMART redirect; OAuth state is validated
+      // by the callback handler. Every other auth/admin route remains protected.
+      if (c.req.path === "/auth/smart/callback") {
+        return next();
+      }
+
+      const match = c.req.header("Authorization")?.match(/^Bearer ([^\s]+)$/i);
+      if (!match) {
+        c.header("WWW-Authenticate", 'Bearer realm="mycelix-ehr-gateway"');
+        return c.json({ error: "Unauthorized" }, 401);
+      }
+
+      const supplied = Buffer.from(match[1], "utf8");
+      if (supplied.length !== expected.length || !timingSafeEqual(supplied, expected)) {
+        c.header("WWW-Authenticate", 'Bearer realm="mycelix-ehr-gateway"');
+        return c.json({ error: "Unauthorized" }, 401);
+      }
+
+      return next();
+    };
+
+    app.use("/fhir/*", requireApiBearer);
+    app.use("/sync/*", requireApiBearer);
+    app.use("/auth/*", requireApiBearer);
+  }
 
   // Health check endpoint
   app.get('/health', (c) => {

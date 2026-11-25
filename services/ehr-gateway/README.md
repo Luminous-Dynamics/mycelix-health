@@ -129,12 +129,51 @@ The gateway can run as a standalone HTTP server for receiving FHIR webhooks and 
 # Build
 npm run build
 
-# Start (connects to Holochain at ws://localhost:8888)
+# Start on loopback only (connects to Holochain at ws://localhost:8888)
 npm run start
 
-# Or with custom configuration
-PORT=3000 HOLOCHAIN_URL=ws://localhost:8888 npm run start
+# Explicitly configure exact browser origins if a local UI needs CORS
+CORS_ORIGINS=https://localhost:5173 npm run start
+
+# A non-loopback bind is an explicit deployment decision, not a safe default
+EHR_GATEWAY_HOST=127.0.0.1 PORT=3000 HOLOCHAIN_URL=ws://localhost:8888 npm run start
 ```
+
+### Security boundary (important)
+
+The gateway defaults to loopback binding and denies browser cross-origin
+access unless exact origins are configured. Wildcard CORS is rejected. This is
+defense-in-depth only: CORS is not authentication, and the current FHIR/sync
+routes are not yet qualified for network exposure. Do not bind this service to
+a non-loopback interface or connect it to real patient data until P0 issue #289
+has a verified caller identity, route authorization, tenant/patient scoping,
+source-authority binding, secret/PHI-safe logging, and adversarial tests.
+
+`X-Source-System` is untrusted request metadata. It must never be treated as
+proof of EHR origin, provider identity, or authorization.
+
+### Network binding and API bearer boundary
+
+Non-loopback binding requires `EHR_GATEWAY_API_BEARER_TOKEN` (at least 32
+characters). When configured, FHIR, sync and administrative routes require
+`Authorization: Bearer ...`; `/health`, `/ready`, CORS preflight and the
+SMART OAuth callback remain reachable as documented.
+
+This is a coarse service-level shared-secret guard, not per-user identity,
+SMART access-token validation, patient/tenant scoping, role-based authorization,
+or cryptographic source-system attestation. It does not close P0 issue #289.
+Do not use real patient data or expose the service to untrusted networks until
+the complete #289 authority boundary and independent security review pass.
+
+### Sync request secret handling
+
+The sync API never accepts `tokenKey` or `patientHash` in query parameters.
+Supply these values in a JSON request body. URL query strings are routinely
+captured by reverse proxies, access logs and observability systems. Caller
+supplied `sourceSystem` overrides are rejected; the sync source namespace is
+derived from the server-configured connection registry. This namespace is not
+a cryptographic attestation of the EHR issuer; authenticated source identity
+remains part of P0 issue #289.
 
 ### Endpoints
 
@@ -151,6 +190,26 @@ PORT=3000 HOLOCHAIN_URL=ws://localhost:8888 npm run start
 | GET | `/sync/status/:syncId` | Check sync status |
 
 ---
+
+## Sync request security
+
+`POST /sync/patient/:patientId` keeps the server-side connection identifier and
+the optional `async=true` flag in the URL. The stored `tokenKey` and optional
+`resourceTypes` array are supplied in a JSON body:
+
+```json
+{
+  "tokenKey": "server-stored-token-key",
+  "resourceTypes": ["Patient", "Observation"]
+}
+```
+
+`POST /sync/bidirectional/:patientId` accepts `tokenKey` and the base64
+`patientHash` in its JSON body. Neither route accepts `tokenKey`,
+`patientHash`, or caller-selected `sourceSystem` query overrides. The source
+namespace is selected from the server-side connection registry. It is not a
+cryptographic assertion about the EHR issuer; source authentication remains
+part of P0 issue #289.
 
 ## Local Development with Holochain
 
@@ -330,7 +389,10 @@ This gateway is compatible with **Holochain 0.6.0**:
 ```bash
 # HTTP Server
 PORT=3000                           # Server port (default: 3000)
-EHR_GATEWAY_HOST=0.0.0.0           # Bind address (default: 0.0.0.0)
+EHR_GATEWAY_HOST=127.0.0.1        # Bind address (default: loopback only)
+
+# Network-bound API access (required when EHR_GATEWAY_HOST is not loopback)
+EHR_GATEWAY_API_BEARER_TOKEN=replace-with-at-least-32-random-characters
 
 # Holochain Connection
 HOLOCHAIN_URL=ws://localhost:8888   # Conductor WebSocket URL
@@ -345,7 +407,7 @@ LOG_LEVEL=info                      # debug, info, warn, error
 ENABLE_REQUEST_LOGGING=true         # Log all requests
 
 # CORS
-CORS_ORIGINS=*                      # Comma-separated origins
+CORS_ORIGINS=https://app.example  # Exact origin allowlist; unset means deny cross-origin
 
 # OAuth (for SMART on FHIR redirects)
 OAUTH_CALLBACK_BASE_URL=http://localhost:3000

@@ -17,7 +17,7 @@ vi.mock('@holochain/client', () => ({
 }));
 
 import { createApp, type AppContext } from '../src/server.js';
-import { getTestConfig } from '../src/config.js';
+import { getTestConfig, ServerConfigSchema } from '../src/config.js';
 import type { FhirBundle, IngestReport } from '../src/types.js';
 
 // Mock Holochain client
@@ -27,7 +27,7 @@ const mockHolochainClient = {
 
 // Mock gateway
 const mockGateway = {
-  isConnected: vi.fn(),
+  isConnected: vi.fn((connectionId: string) => connectionId === 'test-connection'),
   getConnectionIds: vi.fn().mockReturnValue(['test-connection']),
   getConnectionInfo: vi.fn().mockReturnValue({
     system: 'epic',
@@ -61,6 +61,119 @@ describe('EHR Gateway Server', () => {
 
   afterAll(() => {
     vi.clearAllMocks();
+  });
+
+  describe('Secure Configuration and CORS Defaults', () => {
+    it('defaults to loopback binding and no cross-origin access', () => {
+      const config = ServerConfigSchema.parse({});
+      expect(config.host).toBe('127.0.0.1');
+      expect(config.corsOrigins).toEqual([]);
+    });
+
+    it('rejects wildcard and non-origin CORS configuration', () => {
+      expect(() => ServerConfigSchema.parse({ corsOrigins: ['*'] })).toThrow();
+      expect(() => ServerConfigSchema.parse({
+        corsOrigins: ['https://trusted.example/path'],
+      })).toThrow();
+    });
+
+    it('does not grant CORS access to an unconfigured origin', async () => {
+      const noCorsApp = createApp({
+        ...ctx,
+        config: getTestConfig({ corsOrigins: [] }),
+      });
+      const res = await noCorsApp.request('/health', {
+        headers: { Origin: 'https://attacker.example' },
+      });
+
+      expect(res.status).toBe(200);
+      expect(res.headers.get('Access-Control-Allow-Origin')).toBeNull();
+      expect(res.headers.get('Access-Control-Allow-Credentials')).toBeNull();
+    });
+
+    it('returns only the exact configured CORS origin', async () => {
+      const allowlistedApp = createApp({
+        ...ctx,
+        config: getTestConfig({ corsOrigins: ['https://trusted.example'] }),
+      });
+      const trusted = await allowlistedApp.request('/health', {
+        headers: { Origin: 'https://trusted.example' },
+      });
+      const attacker = await allowlistedApp.request('/health', {
+        headers: { Origin: 'https://attacker.example' },
+      });
+
+      expect(trusted.headers.get('Access-Control-Allow-Origin'))
+        .toBe('https://trusted.example');
+      expect(attacker.headers.get('Access-Control-Allow-Origin')).toBeNull();
+    });
+  });
+
+  describe('Network-bound API bearer guard', () => {
+    const bearer = 'test-gateway-api-bearer-secret-32-bytes-minimum';
+
+    it('rejects non-loopback binding without a strong API bearer', () => {
+      expect(() => ServerConfigSchema.parse({ host: '0.0.0.0' }))
+        .toThrow('EHR_GATEWAY_API_BEARER_TOKEN is required');
+    });
+
+    it('requires a valid bearer for FHIR, sync and admin routes when configured', async () => {
+      const secureApp = createApp({
+        ...ctx,
+        config: getTestConfig({
+          host: '0.0.0.0',
+          apiBearerToken: bearer,
+        }),
+      });
+
+      const noAuth = await secureApp.request('/fhir/metadata');
+      expect(noAuth.status).toBe(401);
+      expect(noAuth.headers.get('WWW-Authenticate')).toContain('Bearer');
+
+      const wrongAuth = await secureApp.request('/sync/jobs', {
+        headers: { Authorization: 'Bearer wrong-token' },
+      });
+      expect(wrongAuth.status).toBe(401);
+
+      const authorized = await secureApp.request('/fhir/metadata', {
+        headers: { Authorization: `Bearer ${bearer}` },
+      });
+      expect(authorized.status).toBe(200);
+
+      const adminAuthorized = await secureApp.request('/auth/connections', {
+        headers: { Authorization: `Bearer ${bearer}` },
+      });
+      expect(adminAuthorized.status).toBe(200);
+    });
+
+    it('keeps the SMART callback reachable without the gateway API bearer', async () => {
+      const secureApp = createApp({
+        ...ctx,
+        config: getTestConfig({
+          host: '0.0.0.0',
+          apiBearerToken: bearer,
+        }),
+      });
+
+      const callback = await secureApp.request(
+        '/auth/smart/callback?error=access_denied&error_description=User%20denied'
+      );
+      expect(callback.status).toBe(400);
+      expect((await callback.json()).error).toBe('Authorization denied');
+    });
+
+    it('keeps health and readiness public when the API bearer is configured', async () => {
+      const secureApp = createApp({
+        ...ctx,
+        config: getTestConfig({
+          host: '0.0.0.0',
+          apiBearerToken: bearer,
+        }),
+      });
+
+      expect((await secureApp.request('/health')).status).toBe(200);
+      expect((await secureApp.request('/ready')).status).toBe(200);
+    });
   });
 
   describe('Health Endpoints', () => {
@@ -199,7 +312,6 @@ describe('EHR Gateway Server', () => {
     });
 
     it('GET /auth/smart/launch redirects to auth URL', async () => {
-      mockGateway.isConnected.mockReturnValueOnce(true);
       mockGateway.getAuthorizationUrl.mockResolvedValueOnce(
         'https://fhir.epic.com/authorize?client_id=test'
       );
@@ -208,6 +320,19 @@ describe('EHR Gateway Server', () => {
 
       expect(res.status).toBe(302);
       expect(res.headers.get('Location')).toContain('fhir.epic.com');
+    });
+
+    it('GET /auth/smart/launch rejects caller-controlled redirect_uri', async () => {
+      mockGateway.getAuthorizationUrl.mockClear();
+
+      const res = await app.request(
+        '/auth/smart/launch?connection=test-connection&redirect_uri=https%3A%2F%2Fattacker.example%2Fcallback'
+      );
+      const body = await res.json();
+
+      expect(res.status).toBe(400);
+      expect(body.error).toBe('Invalid redirect_uri');
+      expect(mockGateway.getAuthorizationUrl).not.toHaveBeenCalled();
     });
 
     it('GET /auth/smart/callback handles error from EHR', async () => {
@@ -233,11 +358,13 @@ describe('EHR Gateway Server', () => {
     });
 
     it('POST /sync/patient/:id returns 404 for unknown connection', async () => {
-      mockGateway.isConnected.mockReturnValueOnce(false);
-
       const res = await app.request(
-        '/sync/patient/123?connection=unknown&tokenKey=token1',
-        { method: 'POST' }
+        '/sync/patient/123?connection=unknown',
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ tokenKey: 'token1' }),
+        }
       );
       const body = await res.json();
 
@@ -245,13 +372,46 @@ describe('EHR Gateway Server', () => {
       expect(body.error).toBe('Connection not found');
     });
 
+    it('POST /sync/patient/:id rejects tokenKey in the query string', async () => {
+      const res = await app.request(
+        '/sync/patient/123?connection=test-connection&tokenKey=secret-value',
+        { method: 'POST' }
+      );
+      expect(res.status).toBe(400);
+      expect((await res.json()).error).toBe('Invalid tokenKey location');
+    });
+
+    it('POST /sync/patient/:id rejects caller-controlled sourceSystem', async () => {
+      const res = await app.request(
+        '/sync/patient/123?connection=test-connection&sourceSystem=attacker-controlled',
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ tokenKey: 'token1' }),
+        }
+      );
+      expect(res.status).toBe(400);
+      expect((await res.json()).error).toBe('Invalid sourceSystem override');
+    });
+
+    it('POST /sync/patient/:id requires tokenKey in JSON body', async () => {
+      const res = await app.request('/sync/patient/123?connection=test-connection', {
+        method: 'POST',
+      });
+      expect(res.status).toBe(400);
+      expect((await res.json()).error).toBe('Invalid request body');
+    });
+
     it('POST /sync/patient/:id with async=true returns job ID', async () => {
-      mockGateway.isConnected.mockReturnValueOnce(true);
       mockGateway.pullPatientData.mockResolvedValueOnce([]);
 
       const res = await app.request(
-        '/sync/patient/123?connection=test-connection&tokenKey=token1&async=true',
-        { method: 'POST' }
+        '/sync/patient/123?connection=test-connection&async=true',
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ tokenKey: 'token1' }),
+        }
       );
       const body = await res.json();
 
@@ -259,6 +419,33 @@ describe('EHR Gateway Server', () => {
       expect(body.status).toBe('accepted');
       expect(body.job_id).toBeDefined();
       expect(body.status_url).toContain('/sync/status/');
+    });
+
+    it('POST /sync/bidirectional/:id rejects tokenKey and patientHash in query', async () => {
+      const res = await app.request(
+        '/sync/bidirectional/123?connection=test-connection&tokenKey=secret&patientHash=patient-hash',
+        { method: 'POST' }
+      );
+      expect(res.status).toBe(400);
+      expect((await res.json()).error).toBe('Invalid sensitive parameter location');
+    });
+
+    it('POST /sync/bidirectional/:id accepts sensitive values only in JSON body', async () => {
+      mockGateway.syncPatient.mockResolvedValueOnce({
+        pullResults: [],
+        pushResults: [],
+        conflicts: [],
+      });
+      const res = await app.request('/sync/bidirectional/123?connection=test-connection', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          tokenKey: 'token1',
+          patientHash: Buffer.from('patient-hash').toString('base64'),
+        }),
+      });
+      expect(res.status).toBe(200);
+      expect((await res.json()).status).toBe('success');
     });
 
     it('GET /sync/jobs lists sync jobs', async () => {

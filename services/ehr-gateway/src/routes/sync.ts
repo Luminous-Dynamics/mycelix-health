@@ -29,11 +29,15 @@ export function createSyncRoutes(ctx: AppContext): Hono {
    *   patientId: Patient ID in the EHR system
    *
    * Query params:
-   *   connection: Connection ID (required)
-   *   tokenKey: Key for stored token (required)
-   *   resourceTypes: Comma-separated resource types (optional)
-   *   sourceSystem: Override source system identifier (optional)
+   *   connection: Server-configured connection ID (required)
    *   async: If true, return immediately with a job ID (optional)
+   *
+   * JSON body:
+   *   tokenKey: Stored token lookup key (required; never accepted in URL)
+   *   resourceTypes: Requested FHIR resource types (optional)
+   *
+   * The source-system namespace is derived from the server-side connection registry.
+   * Caller-controlled tokenKey/sourceSystem query parameters are rejected.
    *
    * Returns: SyncResult or job ID (if async)
    */
@@ -46,21 +50,25 @@ export function createSyncRoutes(ctx: AppContext): Hono {
 
     const patientId = c.req.param('patientId');
     const connectionId = c.req.query('connection');
-    const tokenKey = c.req.query('tokenKey');
-    const resourceTypesParam = c.req.query('resourceTypes');
-    const sourceSystem = c.req.query('sourceSystem');
     const isAsync = c.req.query('async') === 'true';
+
+    if (c.req.query('tokenKey') !== undefined) {
+      return c.json({
+        error: 'Invalid tokenKey location',
+        message: 'tokenKey must be supplied in the JSON body, not the URL',
+      }, 400);
+    }
+    if (c.req.query('sourceSystem') !== undefined) {
+      return c.json({
+        error: 'Invalid sourceSystem override',
+        message: 'The source-system namespace is derived from the server-side connection',
+      }, 400);
+    }
 
     // Validate required params
     if (!connectionId) {
       return c.json({
         error: 'Missing connection parameter',
-      }, 400);
-    }
-
-    if (!tokenKey) {
-      return c.json({
-        error: 'Missing tokenKey parameter',
       }, 400);
     }
 
@@ -72,10 +80,39 @@ export function createSyncRoutes(ctx: AppContext): Hono {
       }, 404);
     }
 
-    // Parse resource types
-    const resourceTypes = resourceTypesParam
-      ? resourceTypesParam.split(',')
-      : undefined;
+    let requestBody: { tokenKey?: unknown; resourceTypes?: unknown };
+    try {
+      requestBody = await c.req.json();
+    } catch {
+      return c.json({
+        error: 'Invalid request body',
+        message: 'Expected JSON containing tokenKey',
+      }, 400);
+    }
+
+    if (
+      !requestBody ||
+      typeof requestBody !== 'object' ||
+      typeof requestBody.tokenKey !== 'string' ||
+      requestBody.tokenKey.length === 0
+    ) {
+      return c.json({
+        error: 'Missing tokenKey in JSON body',
+      }, 400);
+    }
+    const tokenKey = requestBody.tokenKey;
+
+    if (
+      requestBody.resourceTypes !== undefined &&
+      (!Array.isArray(requestBody.resourceTypes) ||
+        !requestBody.resourceTypes.every(value => typeof value === 'string' && value.length > 0))
+    ) {
+      return c.json({
+        error: 'Invalid resourceTypes',
+        message: 'resourceTypes must be an array of non-empty strings',
+      }, 400);
+    }
+    const resourceTypes = requestBody.resourceTypes as string[] | undefined;
 
     // For async operations, create a job and return immediately
     if (isAsync) {
@@ -90,7 +127,7 @@ export function createSyncRoutes(ctx: AppContext): Hono {
       ctx.syncJobs.set(jobId, job);
 
       // Start sync in background
-      runSyncInBackground(ctx, job, tokenKey, resourceTypes, sourceSystem);
+      runSyncInBackground(ctx, job, tokenKey, resourceTypes);
 
       return c.json({
         status: 'accepted',
@@ -108,7 +145,6 @@ export function createSyncRoutes(ctx: AppContext): Hono {
         tokenKey,
         {
           resourceTypes,
-          sourceSystem,
         }
       );
 
@@ -249,9 +285,13 @@ export function createSyncRoutes(ctx: AppContext): Hono {
    *   patientId: Patient ID in the EHR system
    *
    * Query params:
-   *   connection: Connection ID (required)
-   *   tokenKey: Key for stored token (required)
+   *   connection: Server-configured connection ID (required)
+   *
+   * JSON body:
+   *   tokenKey: Stored token lookup key (required; never accepted in URL)
    *   patientHash: Holochain patient hash (required for push)
+   *
+   * tokenKey and patientHash are rejected in the URL to avoid access-log leakage.
    *
    * Returns: Combined sync results
    */
@@ -264,15 +304,45 @@ export function createSyncRoutes(ctx: AppContext): Hono {
 
     const patientId = c.req.param('patientId');
     const connectionId = c.req.query('connection');
-    const tokenKey = c.req.query('tokenKey');
-    const patientHash = c.req.query('patientHash');
 
-    if (!connectionId || !tokenKey || !patientHash) {
+    if (!connectionId) {
       return c.json({
-        error: 'Missing required parameters',
-        required: ['connection', 'tokenKey', 'patientHash'],
+        error: 'Missing connection parameter',
       }, 400);
     }
+    if (
+      c.req.query('tokenKey') !== undefined ||
+      c.req.query('patientHash') !== undefined
+    ) {
+      return c.json({
+        error: 'Invalid sensitive parameter location',
+        message: 'tokenKey and patientHash must be supplied in the JSON body',
+      }, 400);
+    }
+
+    let requestBody: { tokenKey?: unknown; patientHash?: unknown };
+    try {
+      requestBody = await c.req.json();
+    } catch {
+      return c.json({ error: 'Invalid request body' }, 400);
+    }
+
+    if (
+      !requestBody ||
+      typeof requestBody !== 'object' ||
+      typeof requestBody.tokenKey !== 'string' ||
+      requestBody.tokenKey.length === 0 ||
+      typeof requestBody.patientHash !== 'string' ||
+      requestBody.patientHash.length === 0
+    ) {
+      return c.json({
+        error: 'Missing required body fields',
+        required: ['tokenKey', 'patientHash'],
+      }, 400);
+    }
+
+    const tokenKey = requestBody.tokenKey;
+    const patientHash = requestBody.patientHash;
 
     if (!ctx.gateway.isConnected(connectionId)) {
       return c.json({
@@ -411,8 +481,7 @@ async function runSyncInBackground(
   ctx: AppContext,
   job: SyncJob,
   tokenKey: string,
-  resourceTypes?: string[],
-  sourceSystem?: string
+  resourceTypes?: string[]
 ): Promise<void> {
   // Update job status
   job.status = 'running';
@@ -425,7 +494,6 @@ async function runSyncInBackground(
       tokenKey,
       {
         resourceTypes,
-        sourceSystem,
       }
     );
 

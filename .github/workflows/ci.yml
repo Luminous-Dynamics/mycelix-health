@@ -2,7 +2,10 @@ name: CI
 
 on:
   push:
-    branches: [main, develop]
+    branches:
+      - main
+      - develop
+      - security/ehr-gateway-loopback-cors-v1
   pull_request:
     branches: [main, develop]
 
@@ -138,9 +141,20 @@ jobs:
           cp -r /tmp/mycelix-parent/mycelix-core/. ../mycelix-workspace/mycelix-core/
           rm -rf /tmp/mycelix-parent
 
-      - uses: EmbarkStudios/cargo-deny-action@v2
+      # Run cargo-deny on the host runner, not inside its Docker action.
+      # This workspace depends on sibling ../crates and ../mycelix-core paths;
+      # a Docker action mounts only the repository workspace and cannot resolve
+      # those paths (see the previous /github/crates/... failure).
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@1.96.0
+
+      - name: Install cargo-deny
+        uses: taiki-e/install-action@v2
         with:
-          command: check
+          tool: cargo-deny@0.22.0
+
+      - name: Run cargo-deny on host
+        run: cargo deny check
 
   # TypeScript SDK
   sdk:

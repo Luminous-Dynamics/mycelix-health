@@ -119,6 +119,9 @@ export class EhrGateway {
     const pullService = new PullService({
       holochainClient: this.config.holochainClient,
       fhirAdapter: adapter,
+      // Stable server-side namespace for the configured connection.
+      // This label is not proof of upstream issuer authenticity; #289 still owns that boundary.
+      defaultSourceSystem: connectionId,
     });
 
     const pushService = new PushService({

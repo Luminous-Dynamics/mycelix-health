@@ -25,7 +25,7 @@ export function createAuthRoutes(ctx: AppContext): Hono {
    * Query params:
    *   connection: Connection ID (configured in environment)
    *   launch: Optional SMART launch context (for EHR launch)
-   *   redirect_uri: Optional custom redirect URI
+   *   redirect_uri: Not accepted; the callback URI is fixed by server configuration
    *
    * Returns: 302 redirect to EHR authorization URL
    */
@@ -39,7 +39,15 @@ export function createAuthRoutes(ctx: AppContext): Hono {
 
     const connectionId = c.req.query('connection');
     const launchContext = c.req.query('launch');
-    const redirectUri = c.req.query('redirect_uri');
+
+    // OAuth redirect_uri is registered with the EHR and fixed by server config.
+    // Never let a caller rewrite it through a request parameter.
+    if (c.req.query('redirect_uri')) {
+      return c.json({
+        error: 'Invalid redirect_uri',
+        message: 'The OAuth callback URI is fixed by server configuration',
+      }, 400);
+    }
 
     if (!connectionId) {
       return c.json({
@@ -61,13 +69,8 @@ export function createAuthRoutes(ctx: AppContext): Hono {
       // Build authorization URL
       const authUrl = await ctx.gateway.getAuthorizationUrl(connectionId, launchContext);
 
-      // Add custom redirect_uri if provided
-      if (redirectUri) {
-        const url = new URL(authUrl);
-        url.searchParams.set('redirect_uri', redirectUri);
-        return c.redirect(url.toString());
-      }
-
+      // The EHR authorization URL already contains the server-registered
+      // redirect_uri. Caller-controlled redirect targets are never applied.
       return c.redirect(authUrl);
     } catch (error) {
       console.error('Failed to build authorization URL:', error);
