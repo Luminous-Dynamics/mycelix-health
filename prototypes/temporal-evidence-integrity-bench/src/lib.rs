@@ -1073,7 +1073,10 @@ pub fn source_sequence_revision_baseline(input: &VisibleTaskInput) -> Submission
             }
         }
 
-        if unique_revisions.iter().any(|event| event.source_sequence.is_none()) {
+        if unique_revisions
+            .iter()
+            .any(|event| event.source_sequence.is_none())
+        {
             unknown_order = true;
             retained_history.extend(unique_revisions.into_iter().map(EventCitation::from));
             continue;
@@ -1089,7 +1092,6 @@ pub fn source_sequence_revision_baseline(input: &VisibleTaskInput) -> Submission
         }
         retained_history.extend(unique_revisions.into_iter().map(EventCitation::from));
     }
-
 
     // Detect disagreement across independent resources only where the visible
     // input explicitly says they address the same canonical proposition.
@@ -1139,17 +1141,11 @@ pub fn source_sequence_revision_baseline(input: &VisibleTaskInput) -> Submission
         Disposition::Conflicted
     } else if timeline.is_empty() && retained_history.is_empty() && identity_blocked {
         Disposition::IdentityBlocked
-    } else if timeline.is_empty()
-        && retained_history.is_empty()
-        && authority_blocked
-    {
+    } else if timeline.is_empty() && retained_history.is_empty() && authority_blocked {
         Disposition::AuthorityBlocked
     } else if timeline.is_empty() && retained_history.is_empty() && stale {
         Disposition::Stale
-    } else if timeline.is_empty()
-        && retained_history.is_empty()
-        && insufficient
-    {
+    } else if timeline.is_empty() && retained_history.is_empty() && insufficient {
         Disposition::Insufficient
     } else if timeline.is_empty() && unknown_order {
         Disposition::UnknownOrder
@@ -1324,13 +1320,15 @@ mod tests {
         assert!(report.unsafe_acceptance_count > 0);
     }
 
-
- 
     #[test]
     fn semantic_assertion_identity_and_value_are_bound_into_citations() {
         let tasks = load_fixture().expect("answer key must validate");
         let task = tasks.iter().find(|task| task.task_id == "T17").unwrap();
-        let event = task.events.iter().find(|event| event.event_id == "E26").unwrap();
+        let event = task
+            .events
+            .iter()
+            .find(|event| event.event_id == "E26")
+            .unwrap();
         assert_eq!(
             event.assertion_key.as_deref(),
             Some("subject:PAT-A|concept:synthetic-condition-status|effective:21000")
@@ -1379,7 +1377,10 @@ mod tests {
     fn source_sequence_baseline_detects_cross_source_semantic_conflict() {
         let visible = load_visible_fixture().expect("visible fixture must validate");
         let answer_key = load_fixture().expect("answer key must validate");
-        let truth = answer_key.iter().find(|task| task.task_id == "T17").unwrap();
+        let truth = answer_key
+            .iter()
+            .find(|task| task.task_id == "T17")
+            .unwrap();
         let input = visible.iter().find(|task| task.task_id == "T17").unwrap();
         let submission = source_sequence_revision_baseline(input);
         let score = evaluate(truth, &submission);
@@ -1388,7 +1389,10 @@ mod tests {
         assert!(submission.timeline.is_empty());
         assert_eq!(
             submission.unresolved_conflict_groups,
-            vec!["assertion:subject:PAT-A|concept:synthetic-condition-status|effective:21000".to_owned()]
+            vec![
+                "assertion:subject:PAT-A|concept:synthetic-condition-status|effective:21000"
+                    .to_owned()
+            ]
         );
     }
 
@@ -1436,7 +1440,6 @@ mod tests {
         assert_eq!(result.unsafe_acceptances, vec![rejected.event_id.clone()]);
         assert!(!result.hard_gates_pass);
     }
-
 
     #[test]
     fn logical_resource_identity_is_visible_and_part_of_exact_provenance() {
