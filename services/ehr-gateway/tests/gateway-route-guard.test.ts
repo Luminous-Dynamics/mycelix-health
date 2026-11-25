@@ -112,6 +112,47 @@ describe('authorizeGatewayRouteV1', () => {
     if (!outage.authorized) expect(outage.response.status).toBe(503);
   });
 
+  it('requires explicit server-resolved resource IDs for collection routes', async () => {
+    const noScope = authorizedProvider();
+    const denied = await authorizeGatewayRouteV1(
+      noScope,
+      new Request('https://gateway.example.test/sync/jobs'),
+      { action: 'sync_job_list', requireScopedResourceList: true },
+    );
+    expect(denied).toEqual({
+      authorized: false,
+      reason: 'resource_type_not_permitted',
+    });
+
+    const scoped: GatewayRouteAuthorizationProviderV1 = {
+      authorize: vi.fn(async (_request, requestedIntent) => ({
+        authorized: true as const,
+        grantId: 'grant-1',
+        requestId: 'request-1',
+        principal: {
+          issuer: 'https://issuer.example.test',
+          subject: 'subject-1',
+          clientId: 'client-1',
+          organizationId: 'org-1',
+        },
+        tenantId: 'tenant-1',
+        patientBinding: 'opaque-subject-1',
+        action: requestedIntent.action,
+        expiresAtMs: 200_000,
+        authorizedResourceIds: ['job-visible-1'],
+      })),
+    };
+    const allowed = await authorizeGatewayRouteV1(
+      scoped,
+      new Request('https://gateway.example.test/sync/jobs'),
+      { action: 'sync_job_list', requireScopedResourceList: true },
+    );
+    expect(allowed.authorized).toBe(true);
+    if (allowed.authorized) {
+      expect(allowed.authorizedResourceIds).toEqual(['job-visible-1']);
+    }
+  });
+
   it('never lets a provider exception or malformed result grant access', async () => {
     const throwing: GatewayRouteAuthorizationProviderV1 = {
       authorize: vi.fn(async () => {
