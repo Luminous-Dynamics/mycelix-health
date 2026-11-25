@@ -34,6 +34,7 @@ const context: GatewayRequestContextV1 = {
   requestedResourceTypes: ['Patient', 'Observation'],
   issuedAtMs: 90_000,
   expiresAtMs: 200_000,
+  gatewayContextReceiptDigest: 'c'.repeat(64),
   authenticationReceiptDigest: digest,
   consentReceiptDigest: 'b'.repeat(64),
 };
@@ -57,6 +58,7 @@ function verifier(
   overrides: Partial<GatewayReceiptVerifierV1> = {},
 ): GatewayReceiptVerifierV1 {
   return {
+    verifyGatewayContext: vi.fn().mockResolvedValue(true),
     verifyPrincipal: vi.fn().mockResolvedValue(true),
     verifyConsent: vi.fn().mockResolvedValue(true),
     ...overrides,
@@ -83,6 +85,28 @@ describe('authorizeGatewayRequestV1', () => {
     expect(await authorizeGatewayRequestV1(context, grant, NOW, null))
       .toEqual({ authorized: false, reason: 'verification_unavailable' });
     expect(await authorizeGatewayRequestV1(context, null, NOW, verifier()))
+      .toEqual({ authorized: false, reason: 'verification_unavailable' });
+  });
+
+  it('requires a gateway-signed context receipt and consume-once replay check', async () => {
+    const rejectedContext = verifier({
+      verifyGatewayContext: vi.fn().mockResolvedValue(false),
+    });
+    expect(await authorizeGatewayRequestV1(context, grant, NOW, rejectedContext))
+      .toEqual({ authorized: false, reason: 'gateway_context_unverified' });
+    expect(rejectedContext.verifyPrincipal).not.toHaveBeenCalled();
+    expect(rejectedContext.verifyConsent).not.toHaveBeenCalled();
+
+    const truthyContext = verifier({
+      verifyGatewayContext: vi.fn().mockResolvedValue('verified' as unknown as boolean),
+    });
+    expect(await authorizeGatewayRequestV1(context, grant, NOW, truthyContext))
+      .toEqual({ authorized: false, reason: 'gateway_context_unverified' });
+
+    const thrownContext = verifier({
+      verifyGatewayContext: vi.fn().mockRejectedValue(new Error('replay store unavailable')),
+    });
+    expect(await authorizeGatewayRequestV1(context, grant, NOW, thrownContext))
       .toEqual({ authorized: false, reason: 'verification_unavailable' });
   });
 
@@ -218,7 +242,7 @@ describe('authorizeGatewayRequestV1', () => {
 
   it('rejects missing or malformed receipt digests and incomplete context', async () => {
     expect(await authorizeGatewayRequestV1(
-      { ...context, authenticationReceiptDigest: 'not-a-digest' },
+      { ...context, gatewayContextReceiptDigest: 'not-a-digest' },
       grant,
       NOW,
       verifier(),
