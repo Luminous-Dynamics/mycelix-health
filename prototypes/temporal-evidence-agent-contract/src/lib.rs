@@ -246,6 +246,9 @@ pub struct Submission {
     pub quarantined_event_ids: Vec<String>,
     /// Unresolved source-resource or semantic assertion conflict groups.
     pub unresolved_conflict_groups: Vec<String>,
+    /// Candidate-returned typed evidence relationships, scored separately from
+    /// timeline correctness and never interpreted as clinical truth.
+    pub evidence_graph: EvidenceGraphV1,
 }
 
 impl From<&VisibleEvidenceEvent> for EventCitation {
@@ -608,6 +611,7 @@ mod tests {
         let task = load_visible_fixture().unwrap().remove(0);
         let event = &task.events[0];
         assert!(!event.event_id.is_empty());
+        let evidence_graph = build_evidence_graph_v1(&task.events);
         let _submission = Submission {
             task_id: task.task_id,
             disposition: Disposition::Insufficient,
@@ -615,6 +619,7 @@ mod tests {
             retained_history: Vec::new(),
             quarantined_event_ids: Vec::new(),
             unresolved_conflict_groups: Vec::new(),
+            evidence_graph,
         };
     }
 
