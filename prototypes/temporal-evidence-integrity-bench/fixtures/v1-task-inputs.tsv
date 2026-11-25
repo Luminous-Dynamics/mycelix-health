@@ -19,3 +19,4 @@ T17	PAT-A	Present conflicting current assertions from distinct sources for PAT-A
 T18	PAT-A	Compare PAT-A measurements across a method transition; preserve method context and do not assume measurements are directly interchangeable.
 T19	PAT-A	Compare PAT-A terminology-coded events across a terminology version transition; preserve code system version and provenance.
 T20	PAT-A	Reconstruct PAT-A revision order without relying on skewed local clocks; mark revision order unknown when source ordering is absent.
+T21	PAT-A	Two versions of the same PAT-A source resource have the same source sequence but different version IDs. Do not choose a winner using ingestion time, update time, or event ID; preserve both and mark revision order unknown.
