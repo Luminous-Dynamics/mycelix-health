@@ -563,10 +563,9 @@ mod tests {
             edge.kind == EvidenceRelationKindV1::SourceSequencePrecedes
         }));
 
-        let missing = build_evidence_graph_v1(&by_id["T20"].events);
-        assert!(missing.relations.iter().any(|edge| {
-            edge.kind == EvidenceRelationKindV1::AmbiguousSourceOrder
-        }));
+        let single_unsequenced = build_evidence_graph_v1(&by_id["T20"].events);
+        assert_eq!(single_unsequenced.nodes, vec!["E32".to_owned()]);
+        assert!(single_unsequenced.relations.is_empty());
     }
 
     #[test]
