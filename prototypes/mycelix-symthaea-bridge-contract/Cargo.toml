@@ -1,0 +1,9 @@
+[package]
+name = "mycelix-symthaea-bridge-contract"
+version = "0.1.0"
+edition = "2021"
+license = "AGPL-3.0-or-later"
+publish = false
+description = "Answer-free, fail-closed evidence handoff contract for Mycelix Health and Symthaea"
+
+[workspace]

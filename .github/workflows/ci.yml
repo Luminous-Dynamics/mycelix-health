@@ -200,6 +200,36 @@ jobs:
       - name: Test
         run: npm test
 
+  symthaea-bridge-contract:
+    name: Mycelix-Symthaea Bridge Contract
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@1.96.0
+        with:
+          components: rustfmt, clippy
+
+      - name: Parse schemas and check contract invariants
+        run: |
+          for schema in prototypes/mycelix-symthaea-bridge-contract/schema/*.json; do
+            jq -e . "$schema" > /dev/null
+          done
+          jq -e '.properties.gates.minItems == 9 and .properties.gates.maxItems == 9 and (.allOf | length == 9)' \
+            prototypes/mycelix-symthaea-bridge-contract/schema/evidence-release-receipt-v1.schema.json > /dev/null
+          jq -e '.additionalProperties == false and (.required | index("evidence") != null)' \
+            prototypes/mycelix-symthaea-bridge-contract/schema/health-decision-episode-v1.schema.json > /dev/null
+
+      - name: Check formatting
+        run: cargo fmt --manifest-path prototypes/mycelix-symthaea-bridge-contract/Cargo.toml -- --check
+
+      - name: Run strict Clippy
+        run: cargo clippy --manifest-path prototypes/mycelix-symthaea-bridge-contract/Cargo.toml --locked --all-targets -- -D warnings
+
+      - name: Run contract tests
+        run: cargo test --manifest-path prototypes/mycelix-symthaea-bridge-contract/Cargo.toml --locked
+
   # Integration tests (requires Holochain conductor)
   integration:
     name: Integration Tests

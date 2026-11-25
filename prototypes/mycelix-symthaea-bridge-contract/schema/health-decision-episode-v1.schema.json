@@ -1,0 +1,116 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://luminousdynamics.io/schemas/health-decision-episode-v1.schema.json",
+  "title": "Mycelix Health to Symthaea Candidate Episode v1",
+  "description": "Candidate-visible minimal episode. No patient/source identity, evidence receipts, PHI, priors, likelihoods, loss tables or evaluator labels.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "version",
+    "episode_id",
+    "current_step",
+    "decision_deadline_step",
+    "remaining_probe_budget",
+    "maximum_worst_case_loss",
+    "allowed_decision_ids",
+    "evidence",
+    "permitted_probes"
+  ],
+  "properties": {
+    "version": {
+      "const": 1
+    },
+    "episode_id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128
+    },
+    "current_step": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "decision_deadline_step": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "remaining_probe_budget": {
+      "type": "number",
+      "minimum": 0
+    },
+    "maximum_worst_case_loss": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 1
+    },
+    "allowed_decision_ids": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 128
+      }
+    },
+    "evidence": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/observedSignal"
+      },
+      "uniqueItems": true
+    },
+    "permitted_probes": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/probeOption"
+      },
+      "uniqueItems": true
+    }
+  },
+  "$defs": {
+    "observedSignal": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "channel_id",
+        "outcome_id"
+      ],
+      "properties": {
+        "channel_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256
+        },
+        "outcome_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256
+        }
+      }
+    },
+    "probeOption": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "probe_id",
+        "acquisition_cost",
+        "result_delay_steps"
+      ],
+      "properties": {
+        "probe_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256
+        },
+        "acquisition_cost": {
+          "type": "number",
+          "minimum": 0
+        },
+        "result_delay_steps": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    }
+  }
+}
