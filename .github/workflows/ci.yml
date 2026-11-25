@@ -270,8 +270,10 @@ jobs:
             echo "Candidate contract unexpectedly depends on evaluator package" >&2
             exit 1
           fi
-      - name: Validate candidate submission schema
-        run: jq -e . prototypes/temporal-evidence-agent-contract/schema/submission-v1.schema.json > /dev/null
+      - name: Validate candidate JSON schemas
+        run: |
+          jq -e . prototypes/temporal-evidence-agent-contract/schema/submission-v1.schema.json > /dev/null
+          jq -e . prototypes/temporal-evidence-agent-contract/schema/evidence-graph-v1.schema.json > /dev/null
       - name: Run evaluator Clippy and tests
         run: |
           HOST="$(rustc -vV | sed -n 's/^host: //p')"
