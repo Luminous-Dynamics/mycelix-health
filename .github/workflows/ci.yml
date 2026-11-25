@@ -188,6 +188,10 @@ jobs:
           cache: 'npm'
           cache-dependency-path: services/ehr-gateway/package-lock.json
 
+      - name: Validate gateway authority schemas
+        run: |
+          node -e "for (const f of ['schemas/gateway-request-context-v1.schema.json', 'schemas/gateway-authority-grant-v1.schema.json']) JSON.parse(require('node:fs').readFileSync(f, 'utf8'))"
+
       - name: Install dependencies
         run: npm ci
 

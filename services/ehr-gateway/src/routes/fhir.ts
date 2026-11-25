@@ -13,6 +13,7 @@ import { z } from 'zod';
 import type { AppContext } from '../server.js';
 import { FhirBundleSchema, type FhirBundle, type IngestReport } from '../types.js';
 import { PullService } from '../sync/pull-service.js';
+import { requireGatewayRouteAuthorizationV1 } from '../auth/gateway-route-guard.js';
 
 /**
  * Create FHIR routes
@@ -34,6 +35,13 @@ export function createFhirRoutes(ctx: AppContext): Hono {
    * Returns: IngestReport
    */
   app.post('/Bundle', async (c) => {
+    const authorization = await requireGatewayRouteAuthorizationV1(
+      ctx.gatewayRouteAuthorizer,
+      c.req.raw,
+      { action: 'fhir_ingest', resourceTypes: ['Bundle'] },
+    );
+    if (!authorization.authorized) return authorization.response;
+
     // Check Holochain connection
     if (!ctx.holochainClient) {
       return c.json({
@@ -113,6 +121,19 @@ export function createFhirRoutes(ctx: AppContext): Hono {
    * Returns: FHIR R4 Bundle
    */
   app.get('/Bundle/:patientHash', async (c) => {
+    const authorization = await requireGatewayRouteAuthorizationV1(
+      ctx.gatewayRouteAuthorizer,
+      c.req.raw,
+      {
+        action: 'fhir_export',
+        resourceTypes: [
+          'Patient', 'Observation', 'Condition', 'MedicationRequest',
+          'AllergyIntolerance', 'Immunization', 'Procedure',
+        ],
+      },
+    );
+    if (!authorization.authorized) return authorization.response;
+
     if (!ctx.holochainClient) {
       return c.json({
         error: 'Holochain not connected',
