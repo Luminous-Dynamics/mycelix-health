@@ -121,13 +121,26 @@ The pinned HL7 Validator CLI 7.0.6 / FHIR R4 4.0.1 corpus grows from 16 to 23 fu
 
 The validator lane uses terminology mode `n/a`; its results qualify FHIR R4 structural/core invariants only. It does not validate terminology bindings, jurisdiction-specific profiles, signature/legal enforceability, source authenticity, consent enforcement or clinical truth.
 
-## 6. Remaining engineering work
+## 6. Source-audited current implementation boundary
 
-- Add supported-resource ingestion and persistence for Provenance, AuditEvent and Consent without claiming the gateway's current `z.any()` Bundle entry accepts/qualifies their semantics.
+The current repository has partial native infrastructure, but not the complete FHIR mapping:
+
+- `zomes/fhir_bridge/coordinator/src/lib.rs` handles Patient, Observation, Condition, MedicationRequest/Statement, AllergyIntolerance, Immunization, Procedure, DiagnosticReport and CarePlan. Other resource types are added to `IngestReport.unknown_types`; their raw Provenance, AuditEvent and Consent content is not persisted by that switch.
+- `FhirResourceAnchor` currently holds source key, resource type, internal hash and first/last-ingestion timestamps. It does not itself carry source resource version or payload digest. The separate source-revision work must supply that missing version/digest authority.
+- `zomes/consent/integrity` already defines patient-bound consent, data categories, permissions, grantee variants, date ranges, encounter restrictions and `DataAccessLog`.
+- `zomes/consent/coordinator::check_authorization` currently checks active status/expiry/revocation, grantee branch, category, exclusions and permission. The inspected request DTO does not carry clinical event time or encounter context, so it cannot enforce `ConsentScope.date_range` or `encounter_hashes`. Provider and Organization grantee branches are explicitly fail-closed pending resolver/membership work. See [issue #333](https://github.com/Luminous-Dynamics/mycelix-health/issues/333).
+- The existing `DataAccessLog` is useful but coarser than a complete FHIR AuditEvent: it does not natively bind exact resource ID/version/digest, request ID, intended recipient, purpose, or a typed success/failure outcome in the inspected schema.
+- The shared chained-audit helper hashes a supplied `entry_hash`, while the coordinator entry point stores a caller-provided event description and digest in `DataAccessLog.access_reason`. The current path needs to recompute the canonical event digest, bind actor identity to the authenticated caller, and independently verify the persisted chain. See [issue #332](https://github.com/Luminous-Dynamics/mycelix-health/issues/332).
+
+These are source-level implementation gaps, not proof of an exploited deployment. The new FHIR validator fixtures qualify R4 core syntax only and do not close these custody, authorization or audit gaps.
+
+## 7. Remaining engineering work
+
+- Add supported-resource ingestion and persistence for Provenance, AuditEvent and Consent; do not treat the gateway's current `z.any()` Bundle entry as semantic qualification.
 - Preserve version-specific Provenance target refs and all independent clock fields in the source revision ledger.
-- Build a source-attested Provenance verifier and immutable AuditEvent writer with independent replay/receipt controls.
-- Connect Consent indexes to the current grant/revocation registry; do not make FHIR Consent itself the authorization engine.
+- Build a source-attested Provenance verifier and immutable AuditEvent writer with independent replay/receipt controls, tracked in #332.
+- Connect Consent indexes to the current grant/revocation registry and enforce date/encounter/resource/recipient/purpose scope, tracked in #333.
 - Add multi-agent Holochain integration tests and independent security review.
-- Add implementation-guide/terminology tests in a separate lane after the core R4 cases are qualified.
+- Add a terminology/implementation-guide lane separately from the current R4 core validator, whose mode `-tx n/a` does not prove terminology bindings or legal consent validity.
 
 Synthetic validator fixtures only; no PHI. No clinical safety, legal compliance, production-readiness or SOTA claim follows from this increment.
