@@ -95,6 +95,145 @@ pub struct VisibleTaskInput {
     pub events: Vec<VisibleEvidenceEvent>,
 }
 
+
+/// Typed relationship between two candidate-visible evidence events.
+///
+/// Symmetric relationships are stored with lexicographically ordered event IDs.
+/// Source-sequence precedence is directed from the lower sequence to the higher.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
+pub enum EvidenceRelationKindV1 {
+    SameResourceDifferentVersion,
+    ExactReplay,
+    VersionPayloadCollision,
+    SourceSequencePrecedes,
+    AmbiguousSourceOrder,
+    SameClinicalAssertion,
+    ContradictoryClinicalAssertion,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
+pub struct EvidenceRelationV1 {
+    pub from_event_id: String,
+    pub to_event_id: String,
+    pub kind: EvidenceRelationKindV1,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct EvidenceGraphV1 {
+    pub nodes: Vec<String>,
+    pub relations: Vec<EvidenceRelationV1>,
+}
+
+fn symmetric_relation(
+    left: &VisibleEvidenceEvent,
+    right: &VisibleEvidenceEvent,
+    kind: EvidenceRelationKindV1,
+) -> EvidenceRelationV1 {
+    if left.event_id <= right.event_id {
+        EvidenceRelationV1 {
+            from_event_id: left.event_id.clone(),
+            to_event_id: right.event_id.clone(),
+            kind,
+        }
+    } else {
+        EvidenceRelationV1 {
+            from_event_id: right.event_id.clone(),
+            to_event_id: left.event_id.clone(),
+            kind,
+        }
+    }
+}
+
+/// Build a deterministic graph from visible evidence metadata only.
+///
+/// No relation is inferred from clinical/event/ingestion timestamps. A directed
+/// source-order edge exists only when the same source/resource identity has two
+/// distinct, explicit, unequal source sequence values. Equal or missing values
+/// produce an ambiguity edge instead of an invented order.
+pub fn build_evidence_graph_v1(events: &[VisibleEvidenceEvent]) -> EvidenceGraphV1 {
+    let mut nodes: Vec<String> = events.iter().map(|event| event.event_id.clone()).collect();
+    nodes.sort();
+    nodes.dedup();
+
+    let mut relations = Vec::new();
+    for left_index in 0..events.len() {
+        for right_index in (left_index + 1)..events.len() {
+            let left = &events[left_index];
+            let right = &events[right_index];
+
+            let same_resource = left.patient_binding == right.patient_binding
+                && left.source_principal == right.source_principal
+                && left.resource_type == right.resource_type
+                && left.resource_id == right.resource_id;
+
+            if same_resource {
+                if left.resource_version == right.resource_version {
+                    let kind = if left.payload_digest == right.payload_digest {
+                        Some(EvidenceRelationKindV1::ExactReplay)
+                    } else {
+                        Some(EvidenceRelationKindV1::VersionPayloadCollision)
+                    };
+                    if let Some(kind) = kind {
+                        relations.push(symmetric_relation(left, right, kind));
+                    }
+                } else {
+                    relations.push(symmetric_relation(
+                        left,
+                        right,
+                        EvidenceRelationKindV1::SameResourceDifferentVersion,
+                    ));
+
+                    match (left.source_sequence, right.source_sequence) {
+                        (Some(left_sequence), Some(right_sequence))
+                            if left_sequence < right_sequence =>
+                        {
+                            relations.push(EvidenceRelationV1 {
+                                from_event_id: left.event_id.clone(),
+                                to_event_id: right.event_id.clone(),
+                                kind: EvidenceRelationKindV1::SourceSequencePrecedes,
+                            });
+                        }
+                        (Some(left_sequence), Some(right_sequence))
+                            if right_sequence < left_sequence =>
+                        {
+                            relations.push(EvidenceRelationV1 {
+                                from_event_id: right.event_id.clone(),
+                                to_event_id: left.event_id.clone(),
+                                kind: EvidenceRelationKindV1::SourceSequencePrecedes,
+                            });
+                        }
+                        _ => relations.push(symmetric_relation(
+                            left,
+                            right,
+                            EvidenceRelationKindV1::AmbiguousSourceOrder,
+                        )),
+                    }
+                }
+            }
+
+            if let (Some(left_key), Some(right_key)) = (
+                left.assertion_key.as_deref(),
+                right.assertion_key.as_deref(),
+            ) {
+                if left_key == right_key {
+                    let same_value = left.normalized_assertion_value
+                        == right.normalized_assertion_value;
+                    let kind = if same_value {
+                        EvidenceRelationKindV1::SameClinicalAssertion
+                    } else {
+                        EvidenceRelationKindV1::ContradictoryClinicalAssertion
+                    };
+                    relations.push(symmetric_relation(left, right, kind));
+                }
+            }
+        }
+    }
+
+    relations.sort();
+    relations.dedup();
+    EvidenceGraphV1 { nodes, relations }
+}
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Submission {
     pub task_id: String,
@@ -361,6 +500,93 @@ mod tests {
             tasks.iter().map(|task| task.events.len()).sum::<usize>(),
             34
         );
+    }
+
+
+    #[test]
+    fn evidence_graph_separates_revision_collision_replay_and_assertion_conflict() {
+        let tasks = load_visible_fixture().expect("visible fixture must validate");
+        let by_id: BTreeMap<&str, &VisibleTaskInput> = tasks
+            .iter()
+            .map(|task| (task.task_id.as_str(), task))
+            .collect();
+
+        let t03 = build_evidence_graph_v1(&by_id["T03"].events);
+        assert!(t03.relations.contains(&EvidenceRelationV1 {
+            from_event_id: "E05".to_owned(),
+            to_event_id: "E06".to_owned(),
+            kind: EvidenceRelationKindV1::SourceSequencePrecedes,
+        }));
+        assert!(t03.relations.contains(&EvidenceRelationV1 {
+            from_event_id: "E05".to_owned(),
+            to_event_id: "E06".to_owned(),
+            kind: EvidenceRelationKindV1::SameResourceDifferentVersion,
+        }));
+
+        let t05 = build_evidence_graph_v1(&by_id["T05"].events);
+        assert!(t05.relations.iter().any(|edge| {
+            edge.kind == EvidenceRelationKindV1::VersionPayloadCollision
+                && edge.from_event_id == "E10"
+                && edge.to_event_id == "E11"
+        }));
+
+        let t06 = build_evidence_graph_v1(&by_id["T06"].events);
+        assert!(t06.relations.iter().any(|edge| {
+            edge.kind == EvidenceRelationKindV1::ExactReplay
+                && edge.from_event_id == "E12"
+                && edge.to_event_id == "E13"
+        }));
+
+        let t17 = build_evidence_graph_v1(&by_id["T17"].events);
+        assert!(t17.relations.iter().any(|edge| {
+            edge.kind == EvidenceRelationKindV1::ContradictoryClinicalAssertion
+                && edge.from_event_id == "E26"
+                && edge.to_event_id == "E27"
+        }));
+    }
+
+    #[test]
+    fn evidence_graph_marks_equal_or_missing_source_sequence_as_ambiguous() {
+        let tasks = load_visible_fixture().expect("visible fixture must validate");
+        let by_id: BTreeMap<&str, &VisibleTaskInput> = tasks
+            .iter()
+            .map(|task| (task.task_id.as_str(), task))
+            .collect();
+
+        let tied = build_evidence_graph_v1(&by_id["T21"].events);
+        assert!(tied.relations.iter().any(|edge| {
+            edge.kind == EvidenceRelationKindV1::AmbiguousSourceOrder
+                && edge.from_event_id == "E33"
+                && edge.to_event_id == "E34"
+        }));
+        assert!(!tied.relations.iter().any(|edge| {
+            edge.kind == EvidenceRelationKindV1::SourceSequencePrecedes
+        }));
+
+        let missing = build_evidence_graph_v1(&by_id["T20"].events);
+        assert!(missing.relations.iter().any(|edge| {
+            edge.kind == EvidenceRelationKindV1::AmbiguousSourceOrder
+        }));
+    }
+
+    #[test]
+    fn evidence_graph_projection_is_deterministic_under_input_permutation() {
+        let tasks = load_visible_fixture().expect("visible fixture must validate");
+        let mut events = tasks
+            .iter()
+            .find(|task| task.task_id == "T17")
+            .unwrap()
+            .events
+            .clone();
+        let first = build_evidence_graph_v1(&events);
+        events.reverse();
+        let second = build_evidence_graph_v1(&events);
+        assert_eq!(first, second);
+        assert!(first.nodes.windows(2).all(|pair| pair[0] < pair[1]));
+        assert!(first
+            .relations
+            .windows(2)
+            .all(|pair| pair[0] < pair[1]));
     }
 
     #[test]
