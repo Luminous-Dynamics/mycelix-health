@@ -13,6 +13,7 @@ import { randomUUID } from 'crypto';
 import type { AppContext } from '../server.js';
 import type { SyncJob, IngestReport } from '../types.js';
 import { PullService } from '../sync/pull-service.js';
+import { requireGatewayRouteAuthorizationV1 } from '../auth/gateway-route-guard.js';
 
 /**
  * Create sync routes
@@ -38,6 +39,13 @@ export function createSyncRoutes(ctx: AppContext): Hono {
    * Returns: SyncResult or job ID (if async)
    */
   app.post('/patient/:patientId', async (c) => {
+    const authorization = await requireGatewayRouteAuthorizationV1(
+      ctx.gatewayRouteAuthorizer,
+      c.req.raw,
+      { action: 'sync_pull', resourceTypes: ['Patient'] },
+    );
+    if (!authorization.authorized) return authorization.response;
+
     if (!ctx.gateway) {
       return c.json({
         error: 'Gateway not initialized',
@@ -138,6 +146,13 @@ export function createSyncRoutes(ctx: AppContext): Hono {
    * Returns: SyncJob status
    */
   app.get('/status/:jobId', (c) => {
+    const authorization = await requireGatewayRouteAuthorizationV1(
+      ctx.gatewayRouteAuthorizer,
+      c.req.raw,
+      { action: 'sync_status', resourceTypes: [] },
+    );
+    if (!authorization.authorized) return authorization.response;
+
     const jobId = c.req.param('jobId');
     const job = ctx.syncJobs.get(jobId);
 
@@ -173,6 +188,13 @@ export function createSyncRoutes(ctx: AppContext): Hono {
    * Returns: Array of SyncJob summaries
    */
   app.get('/jobs', (c) => {
+    const authorization = await requireGatewayRouteAuthorizationV1(
+      ctx.gatewayRouteAuthorizer,
+      c.req.raw,
+      { action: 'sync_job_list', resourceTypes: [] },
+    );
+    if (!authorization.authorized) return authorization.response;
+
     const statusFilter = c.req.query('status');
     const limit = parseInt(c.req.query('limit') || '100', 10);
 
@@ -213,6 +235,13 @@ export function createSyncRoutes(ctx: AppContext): Hono {
    * Returns: Success message
    */
   app.delete('/jobs/:jobId', (c) => {
+    const authorization = await requireGatewayRouteAuthorizationV1(
+      ctx.gatewayRouteAuthorizer,
+      c.req.raw,
+      { action: 'sync_job_delete', resourceTypes: [] },
+    );
+    if (!authorization.authorized) return authorization.response;
+
     const jobId = c.req.param('jobId');
     const job = ctx.syncJobs.get(jobId);
 
@@ -256,6 +285,13 @@ export function createSyncRoutes(ctx: AppContext): Hono {
    * Returns: Combined sync results
    */
   app.post('/bidirectional/:patientId', async (c) => {
+    const authorization = await requireGatewayRouteAuthorizationV1(
+      ctx.gatewayRouteAuthorizer,
+      c.req.raw,
+      { action: 'sync_bidirectional', resourceTypes: ['Patient'] },
+    );
+    if (!authorization.authorized) return authorization.response;
+
     if (!ctx.gateway) {
       return c.json({
         error: 'Gateway not initialized',
@@ -320,6 +356,13 @@ export function createSyncRoutes(ctx: AppContext): Hono {
    * Returns: Array of ConflictInfo
    */
   app.get('/conflicts', (c) => {
+    const authorization = await requireGatewayRouteAuthorizationV1(
+      ctx.gatewayRouteAuthorizer,
+      c.req.raw,
+      { action: 'sync_conflicts_read', resourceTypes: [] },
+    );
+    if (!authorization.authorized) return authorization.response;
+
     if (!ctx.gateway) {
       return c.json({
         error: 'Gateway not initialized',
@@ -351,6 +394,13 @@ export function createSyncRoutes(ctx: AppContext): Hono {
    * Returns: Resolution result
    */
   app.post('/conflicts/:conflictId/resolve', async (c) => {
+    const authorization = await requireGatewayRouteAuthorizationV1(
+      ctx.gatewayRouteAuthorizer,
+      c.req.raw,
+      { action: 'sync_conflict_resolve', resourceTypes: [] },
+    );
+    if (!authorization.authorized) return authorization.response;
+
     if (!ctx.gateway) {
       return c.json({
         error: 'Gateway not initialized',
