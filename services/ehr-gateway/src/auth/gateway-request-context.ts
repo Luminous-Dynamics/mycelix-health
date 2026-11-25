@@ -50,6 +50,8 @@ export interface GatewayRequestContextV1 {
   requestedResourceTypes: string[];
   issuedAtMs: number;
   expiresAtMs: number;
+  /** Digest of the gateway-signed, immutable context envelope. */
+  gatewayContextReceiptDigest: string;
   /** Digest of the authentication evidence verified by the injected verifier. */
   authenticationReceiptDigest: string;
   /** Digest of the consent/authority evidence verified by the injected verifier. */
@@ -73,6 +75,12 @@ export interface GatewayAuthorityGrantV1 {
 
 export interface GatewayReceiptVerifierV1 {
   /**
+   * Verify the gateway signature over the complete request context and
+   * atomically consume requestId in a replay-protection store. A successful
+   * result binds every context field to the signed receipt and prevents reuse.
+   */
+  verifyGatewayContext(context: GatewayRequestContextV1): Promise<boolean>;
+  /**
    * Verify the actual authentication mechanism (e.g. issuer/JWKS JWT
    * validation or a verified mTLS identity) and bind it to context.principal.
    */
@@ -94,6 +102,7 @@ export type GatewayAuthorizationFailureV1 =
   | 'context_not_yet_valid'
   | 'context_expired'
   | 'context_ttl_exceeded'
+  | 'gateway_context_unverified'
   | 'principal_unverified'
   | 'consent_unverified'
   | 'grant_not_yet_valid'
@@ -227,7 +236,8 @@ export async function authorizeGatewayRequestV1(
   }
 
   if (
-    !isDigest(context.authenticationReceiptDigest)
+    !isDigest(context.gatewayContextReceiptDigest)
+    || !isDigest(context.authenticationReceiptDigest)
     || !isDigest(context.consentReceiptDigest)
   ) {
     return fail('invalid_receipt_digest');
@@ -250,6 +260,16 @@ export async function authorizeGatewayRequestV1(
     return fail('invalid_grant');
   }
   if (!verifier) {
+    return fail('verification_unavailable');
+  }
+
+  try {
+    // Verify the gateway-authored context envelope and atomically consume its
+    // request ID before trusting any of its authority-bearing fields.
+    if ((await verifier.verifyGatewayContext(context)) !== true) {
+      return fail('gateway_context_unverified');
+    }
+  } catch {
     return fail('verification_unavailable');
   }
 
