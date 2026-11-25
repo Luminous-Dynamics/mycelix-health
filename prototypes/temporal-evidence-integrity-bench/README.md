@@ -81,6 +81,32 @@ a typed candidate-side projection and regression suite, not yet a measured
 model leaderboard metric. Graph precision/recall and relation-specific error
 costs are the next evaluation increment.
 
+
+## Metamorphic regression suite (v1)
+
+The benchmark includes a metamorphic integration suite under
+`tests/metamorphic_v1.rs`. It tests invariants that static scenario fixtures
+cannot establish by themselves:
+
+- permuting the visible event array does not change the semantic evidence view;
+- changing local ingestion timestamps or source `lastUpdated` values does
+  not override explicit source-sequence revision order;
+- exact replay representative selection is independent of arrival time;
+- removing application authority, issuer authentication, or lineage—or
+  changing the patient binding—cannot increase accepted evidence;
+- equal source-sequence values remain unresolved after clock perturbations;
+- adding an exact replay does not create a second accepted assertion.
+
+The source-sequence reference baseline now chooses the exact-replay
+representative by stable event ID rather than earliest local ingestion time.
+This is a deterministic benchmark tie-breaker, not a statement that lexical
+event IDs are clinical authority. A production integration should retain the
+full replay equivalence class and its source-authenticated receipt.
+
+These are deterministic metamorphic regression tests, not independent
+patient-level trials, agent scores, clinical safety estimates, or SOTA results.
+They are run by the existing `cargo test` command for this standalone crate.
+
 ## Statistical interpretation and sample-size discipline
 
 The evaluator exposes `zero_failure_upper_confidence_bound(n, confidence)` and
