@@ -168,9 +168,9 @@ on this package only. It exposes:
 - `VisibleTaskInput`, with the task request and subject binding;
 - `VisibleEvidenceEvent`, with source, resource, revision, temporal, semantic,
   issuer, authority and lineage fields supplied to the candidate;
-- `Submission` and `EventCitation`, with a versioned JSON Schema at
-  `schema/submission-v1.schema.json` and the separate
-`schema/evidence-graph-v1.schema.json`;
+- `Submission` and `EventCitation`, with required `evidence_graph`
+  output, a versioned JSON Schema at `schema/submission-v1.schema.json`,
+  and the referenced `schema/evidence-graph-v1.schema.json`;
 - `load_visible_fixture()`, which compiles only the answer-free task manifest
   and visible event envelope.
 
