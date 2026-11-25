@@ -2,7 +2,10 @@ name: CI
 
 on:
   push:
-    branches: [main, develop]
+    branches:
+      - main
+      - develop
+      - ci/fix-native-cargo-deny-and-holonix-integration-v1
   pull_request:
     branches: [main, develop]
 
