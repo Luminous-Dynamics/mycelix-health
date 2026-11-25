@@ -132,12 +132,26 @@ describe('authorizeGatewayRequestV1', () => {
       .toEqual({ authorized: false, reason });
   });
 
-  it('rejects malformed authority grants before invoking verifiers', async () => {
-    const invalidGrant = { ...grant, expiresAtMs: Number.NaN };
+  it('rejects malformed runtime context and authority grant shapes', async () => {
     const receiptVerifier = verifier();
+    expect(await authorizeGatewayRequestV1(
+      null as unknown as GatewayRequestContextV1,
+      grant,
+      NOW,
+      receiptVerifier,
+    )).toEqual({ authorized: false, reason: 'invalid_context' });
 
-    expect(await authorizeGatewayRequestV1(context, invalidGrant, NOW, receiptVerifier))
+    const invalidPrincipal = {
+      ...grant,
+      principal: null,
+    } as unknown as GatewayAuthorityGrantV1;
+    expect(await authorizeGatewayRequestV1(context, invalidPrincipal, NOW, receiptVerifier))
       .toEqual({ authorized: false, reason: 'invalid_grant' });
+
+    const invalidExpiry = { ...grant, expiresAtMs: Number.NaN };
+    expect(await authorizeGatewayRequestV1(context, invalidExpiry, NOW, receiptVerifier))
+      .toEqual({ authorized: false, reason: 'invalid_grant' });
+
     expect(receiptVerifier.verifyPrincipal).not.toHaveBeenCalled();
     expect(receiptVerifier.verifyConsent).not.toHaveBeenCalled();
   });
