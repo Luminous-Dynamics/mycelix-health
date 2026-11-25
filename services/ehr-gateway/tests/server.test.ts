@@ -302,9 +302,8 @@ describe('EHR Gateway Server', () => {
       expect(body.error).toBe('Connection not found');
     });
 
-    it('POST /sync/patient/:id with async=true returns job ID', async () => {
+    it('POST /sync/patient/:id denies async execution until worker-time authorization exists', async () => {
       mockGateway.isConnected.mockReturnValueOnce(true);
-      mockGateway.pullPatientData.mockResolvedValueOnce([]);
 
       const res = await app.request(
         '/sync/patient/123?connection=test-connection&tokenKey=token1&async=true',
@@ -312,10 +311,10 @@ describe('EHR Gateway Server', () => {
       );
       const body = await res.json();
 
-      expect(res.status).toBe(202);
-      expect(body.status).toBe('accepted');
-      expect(body.job_id).toBeDefined();
-      expect(body.status_url).toContain('/sync/status/');
+      expect(res.status).toBe(503);
+      expect(body.error).toBe('Background sync unavailable');
+      expect(mockGateway.pullPatientData).not.toHaveBeenCalled();
+      expect(ctx.syncJobs.size).toBe(0);
     });
 
     it('GET /sync/jobs lists sync jobs', async () => {
