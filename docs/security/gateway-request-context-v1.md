@@ -1,6 +1,6 @@
 # Gateway Request Context v1 — authority contract
 
-**Status:** typed policy-evaluation primitive and denial-matrix tests added; runtime authentication, consent verification, and route integration are not yet implemented.  
+**Status:** typed policy-evaluation primitive and denial-matrix tests added; fail-closed FHIR/sync route guard wiring is staged in the gateway route-guard increment. Runtime authentication and consent verification remain unimplemented.  
 **Security issue:** #289.  
 **Date:** 2026-11-25.
 
@@ -45,15 +45,17 @@ A digest is a binding value, not proof. The injected verifier must authenticate 
 - A Holochain zome must independently validate the gateway/provider capability or signed context; the HTTP gateway's successful check alone must not authorize a universal service agent.
 
 **Route integration**
-- Protect FHIR ingest/export, sync pull/push, sync status, job listing/deletion, and conflict routes.
+- FHIR ingest/export, sync pull, bidirectional sync, sync status, job list/delete, and conflict read/resolution now invoke the injected route-authorizer before proceeding.
+- Collection routes require explicit server-resolved authorized job IDs or resource-type/resource-ID pairs and filter results before serialization; global job totals and conflict statistics are not returned.
 - Scope status/job access to the same principal, tenant and patient as the originating operation. An unguessable job ID is not an authorization token.
+- The server does not configure a production provider yet; protected routes therefore return 503 by default. See 'docs/security/gateway-route-guard-v1.md'.
 - Remove token/refresh secret material from query strings. Prefer server-side token handles bound to the verified principal, connection, scope and expiry.
 - Derive source principal from the verified principal/connection registry; do not use a caller-supplied source label as provenance.
 - Redact query values, credentials, patient identifiers and payloads from application and proxy logs.
 
 ## Explicit boundary and non-claims
 
-This module is **not wired into 'createApp' or the FHIR/sync routes** and does not yet authenticate a JWT, verify mTLS, retrieve consent, or change runtime behavior. The injected verifier interface is a contract, not a deployment-ready trust root. The existing gateway remains blocked for network-exposed deployment by #289.
+This module's authorization function is still a policy primitive. Route handlers now fail closed through an injected route-authorizer interface, but no production provider is configured and no route becomes usable until one is implemented. The code does not yet authenticate a JWT, verify mTLS, retrieve consent, or supply a deployment-ready trust root. The gateway remains blocked for network-exposed deployment by #289.
 
 Tests use fake verifier callbacks to exercise the pure policy function. They do not prove JWT, JWKS, mTLS, SMART, consent-registry, Holochain capability, tenant isolation, or multi-agent security. Those require separate integration tests and independent security review.
 
