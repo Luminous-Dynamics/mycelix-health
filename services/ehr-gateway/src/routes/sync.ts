@@ -145,7 +145,7 @@ export function createSyncRoutes(ctx: AppContext): Hono {
    *
    * Returns: SyncJob status
    */
-  app.get('/status/:jobId', (c) => {
+  app.get('/status/:jobId', async (c) => {
     const authorization = await requireGatewayRouteAuthorizationV1(
       ctx.gatewayRouteAuthorizer,
       c.req.raw,
@@ -187,7 +187,7 @@ export function createSyncRoutes(ctx: AppContext): Hono {
    *
    * Returns: Array of SyncJob summaries
    */
-  app.get('/jobs', (c) => {
+  app.get('/jobs', async (c) => {
     const authorization = await requireGatewayRouteAuthorizationV1(
       ctx.gatewayRouteAuthorizer,
       c.req.raw,
@@ -237,7 +237,7 @@ export function createSyncRoutes(ctx: AppContext): Hono {
    *
    * Returns: Success message
    */
-  app.delete('/jobs/:jobId', (c) => {
+  app.delete('/jobs/:jobId', async (c) => {
     const authorization = await requireGatewayRouteAuthorizationV1(
       ctx.gatewayRouteAuthorizer,
       c.req.raw,
@@ -358,7 +358,7 @@ export function createSyncRoutes(ctx: AppContext): Hono {
    *
    * Returns: Array of ConflictInfo
    */
-  app.get('/conflicts', (c) => {
+  app.get('/conflicts', async (c) => {
     const authorization = await requireGatewayRouteAuthorizationV1(
       ctx.gatewayRouteAuthorizer,
       c.req.raw,
