@@ -274,6 +274,9 @@ jobs:
         run: |
           jq -e . prototypes/temporal-evidence-agent-contract/schema/submission-v1.schema.json > /dev/null
           jq -e . prototypes/temporal-evidence-agent-contract/schema/evidence-graph-v1.schema.json > /dev/null
+          test -f prototypes/temporal-evidence-agent-contract/schema/evidence-graph-v1.schema.json
+          jq -e '.properties.evidence_graph."$ref" == "https://luminousdynamics.io/schemas/temporal-evidence-graph-v1.schema.json"' \
+            prototypes/temporal-evidence-agent-contract/schema/submission-v1.schema.json > /dev/null
       - name: Run evaluator Clippy and tests
         run: |
           HOST="$(rustc -vV | sed -n 's/^host: //p')"
