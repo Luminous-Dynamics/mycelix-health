@@ -1,4 +1,7 @@
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 import { describe, expect, it, vi } from 'vitest';
+import { GATEWAY_ACTIONS_V1 } from '../src/auth/gateway-request-context.js';
 import {
   authorizeGatewayRouteV1,
   gatewayAuthorizationHttpStatusV1,
@@ -30,6 +33,30 @@ function authorizedProvider(): GatewayRouteAuthorizationProviderV1 {
     })),
   };
 }
+
+describe('gateway route action contract', () => {
+  it('keeps the TypeScript action set in parity with the JSON schema', () => {
+    const schemaPath = fileURLToPath(
+      new URL('../schemas/gateway-request-context-v1.schema.json', import.meta.url),
+    );
+    const schema = JSON.parse(readFileSync(schemaPath, 'utf8')) as {
+      properties: { action: { enum: string[] } };
+    };
+    expect([...GATEWAY_ACTIONS_V1].sort()).toEqual([...schema.properties.action.enum].sort());
+    expect(GATEWAY_ACTIONS_V1).toEqual(expect.arrayContaining([
+      'fhir_ingest',
+      'fhir_export',
+      'sync_pull',
+      'sync_push',
+      'sync_status',
+      'sync_job_list',
+      'sync_job_delete',
+      'sync_bidirectional',
+      'sync_conflicts_read',
+      'sync_conflict_resolve',
+    ]));
+  });
+});
 
 describe('authorizeGatewayRouteV1', () => {
   it('denies when no trusted provider is configured', async () => {
