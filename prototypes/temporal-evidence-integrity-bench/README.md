@@ -61,6 +61,26 @@ The crate supplies a typed evaluator, an agent-visible input loader, and an orac
 All systems must receive identical visible evidence and tool permissions. Report task-level paired results, bootstrap confidence intervals, hard-gate counts, coverage, wall time, tokens/API cost, and reviewer effort. Keep HealthAgentBench, LongMedBench, and EHRFlowBench results as separate external comparators; do not blend their scores into this corpus.
 
 
+
+## Evidence graph projection
+
+The answer-free candidate contract also exposes a deterministic
+`EvidenceGraphV1` projection. It separates:
+- same-resource, different-version relationships;
+- exact replays versus same-version/different-payload integrity collisions;
+- directed source-sequence precedence, emitted only for explicit unequal
+  sequence values;
+- ambiguous source-order pairs when the sequence is equal or missing;
+- same-proposition agreement versus contradictory values for a shared
+  subject/concept/effective-time assertion key.
+
+The graph never infers causality from clinical, update, or ingestion timestamps.
+A single event with no sequence remains a visible isolated node; ambiguity is
+an edge only when two candidate revisions exist but cannot be ordered. This is
+a typed candidate-side projection and regression suite, not yet a measured
+model leaderboard metric. Graph precision/recall and relation-specific error
+costs are the next evaluation increment.
+
 ## Statistical interpretation and sample-size discipline
 
 The evaluator exposes `zero_failure_upper_confidence_bound(n, confidence)` and
