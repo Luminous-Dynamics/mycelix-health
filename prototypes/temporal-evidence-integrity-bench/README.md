@@ -76,10 +76,23 @@ The answer-free candidate contract also exposes a deterministic
 
 The graph never infers causality from clinical, update, or ingestion timestamps.
 A single event with no sequence remains a visible isolated node; ambiguity is
-an edge only when two candidate revisions exist but cannot be ordered. This is
-a typed candidate-side projection and regression suite, not yet a measured
-model leaderboard metric. Graph precision/recall and relation-specific error
-costs are the next evaluation increment.
+an edge only when two candidate revisions exist but cannot be ordered.
+
+The graph is now a required `evidence_graph` field in the candidate
+`Submission` contract and in `submission-v1.schema.json`. The evaluator
+scores graph nodes and relations separately from the timeline:
+- node precision and recall;
+- edge precision and recall;
+- structural validity (duplicate nodes/relations, dangling endpoints, and
+  unknown node IDs);
+- exact node-and-edge-set match.
+
+Graph structure is deliberately not folded into the clinical-safety hard gate.
+A missing edge reduces graph recall; an unsupported edge reduces graph
+precision; malformed structure fails graph structural validity. None of these
+metrics decide which clinical assertion is true, authenticate an issuer, or
+grant application authority. The baseline report emits per-task graph metrics
+and aggregate graph coverage alongside the existing timeline metrics.
 
 
 ## Metamorphic regression suite (v1)
