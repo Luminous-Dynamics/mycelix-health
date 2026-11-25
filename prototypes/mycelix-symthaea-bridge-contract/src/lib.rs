@@ -837,6 +837,23 @@ mod tests {
     }
 
     #[test]
+    fn malformed_detached_signatures_fail_before_external_verifier() {
+        let mut evidence = evidence_receipt();
+        evidence.signature = "not-a-signature".into();
+        assert_eq!(
+            verify_evidence_release_v1(evidence, 2_000, &AcceptingVerifier),
+            Err(BridgeErrorV1::InvalidSignature)
+        );
+
+        let mut probe = probe_receipt();
+        probe.signature = "not-a-signature".into();
+        assert_eq!(
+            verify_probe_offer_v1(probe, 2_000, &AcceptingVerifier),
+            Err(BridgeErrorV1::InvalidSignature)
+        );
+    }
+
+    #[test]
     fn missing_or_duplicate_gate_receipt_fails_before_external_verifier() {
         let mut missing = evidence_receipt();
         missing.gates.pop();
