@@ -40,14 +40,14 @@ fn run() -> Result<(), String> {
     let report = evaluate_batch(&answer_key, &submissions)?;
 
     println!(
-        "task_id\ttask_identity_correct\tdisposition_correct\ttimeline_exact\ttimeline_precision\ttimeline_recall\ttemporal_order_accuracy\thistory_exact\thistory_recall\tquarantine_precision\tquarantine_recall\tconflict_precision\tconflict_recall\tunsafe_acceptances\tprovenance_errors\tduplicate_acceptances\thard_gates_pass\texact_match"
+        "task_id\ttask_identity_correct\tdisposition_correct\ttimeline_exact\ttimeline_precision\ttimeline_recall\ttemporal_order_accuracy\thistory_exact\thistory_recall\tquarantine_precision\tquarantine_recall\tconflict_precision\tconflict_recall\tunsafe_acceptances\tprovenance_errors\tduplicate_acceptances\thard_gates_pass\texact_match\tgraph_node_precision\tgraph_node_recall\tgraph_edge_precision\tgraph_edge_recall\tgraph_structurally_valid\tgraph_exact_match"
     );
     for score in &scores {
         print_score(score);
     }
 
     eprintln!(
-        "summary\t{}\tdisposition_correct={}\texact_matches={}\ttimeline_exact={}\thistory_exact={}\tunsafe_acceptances={}\tprovenance_errors={}\tmean_temporal_order_accuracy={:.6}\tmean_quarantine_precision={:.6}\tmean_quarantine_recall={:.6}\tmean_conflict_precision={:.6}\tmean_conflict_recall={:.6}",
+        "summary\t{}\tdisposition_correct={}\texact_matches={}\ttimeline_exact={}\thistory_exact={}\tunsafe_acceptances={}\tprovenance_errors={}\tmean_temporal_order_accuracy={:.6}\tmean_quarantine_precision={:.6}\tmean_quarantine_recall={:.6}\tmean_conflict_precision={:.6}\tmean_conflict_recall={:.6}\tgraph_exact_matches={}\tgraph_structural_invalid={}\tmean_graph_node_precision={:.6}\tmean_graph_node_recall={:.6}\tmean_graph_edge_precision={:.6}\tmean_graph_edge_recall={:.6}",
         report.task_count,
         report.disposition_correct,
         report.exact_matches,
@@ -60,6 +60,12 @@ fn run() -> Result<(), String> {
         report.quarantine_recall_mean,
         report.conflict_precision_mean,
         report.conflict_recall_mean,
+        report.graph_exact_matches,
+        report.graph_structural_invalid_count,
+        report.graph_node_precision_mean,
+        report.graph_node_recall_mean,
+        report.graph_edge_precision_mean,
+        report.graph_edge_recall_mean,
     );
 
     Ok(())
@@ -67,7 +73,7 @@ fn run() -> Result<(), String> {
 
 fn print_score(score: &TaskScore) {
     println!(
-        "{}\t{}\t{}\t{}\t{:.6}\t{:.6}\t{:.6}\t{}\t{:.6}\t{:.6}\t{:.6}\t{:.6}\t{:.6}\t{}\t{}\t{}\t{}\t{}",
+        "{}\t{}\t{}\t{}\t{:.6}\t{:.6}\t{:.6}\t{}\t{:.6}\t{:.6}\t{:.6}\t{:.6}\t{:.6}\t{}\t{}\t{}\t{}\t{}\t{:.6}\t{:.6}\t{:.6}\t{:.6}\t{}\t{}",
         score.task_id,
         score.task_identity_correct,
         score.disposition_correct,
@@ -86,5 +92,11 @@ fn print_score(score: &TaskScore) {
         score.duplicate_acceptances.len(),
         score.hard_gates_pass,
         score.exact_match,
+        score.evidence_graph.node_precision,
+        score.evidence_graph.node_recall,
+        score.evidence_graph.edge_precision,
+        score.evidence_graph.edge_recall,
+        score.evidence_graph.structurally_valid,
+        score.evidence_graph.exact_match,
     );
 }
