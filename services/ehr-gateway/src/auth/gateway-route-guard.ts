@@ -78,7 +78,7 @@ export async function authorizeGatewayRouteV1(
 
   try {
     const result = await provider.authorize(request.clone(), {
-      action: intent.action,
+      ...intent,
       resourceTypes: intent.resourceTypes ? [...intent.resourceTypes] : [],
     });
 
