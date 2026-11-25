@@ -17,6 +17,16 @@ import type {
 export interface GatewayRouteIntentV1 {
   action: GatewayActionV1;
   resourceTypes?: readonly string[];
+  /** Require explicit resource IDs for collection/list responses. */
+  requireScopedResourceList?: boolean;
+}
+
+export type GatewayRouteAuthorizationResultV1 = GatewayAuthorizationResultV1 & {
+  /**
+   * Server-resolved IDs that this principal may see for list routes.
+   * Job lists use job IDs. Conflict lists use JSON.stringify([resourceType, resourceId]).
+   */
+  authorizedResourceIds?: readonly string[];
 }
 
 export interface GatewayRouteAuthorizationProviderV1 {
@@ -30,11 +40,15 @@ export interface GatewayRouteAuthorizationProviderV1 {
   authorize(
     request: Request,
     intent: GatewayRouteIntentV1,
-  ): Promise<GatewayAuthorizationResultV1>;
+  ): Promise<GatewayRouteAuthorizationResultV1>;
 }
 
 export type GatewayRouteGuardResultV1 =
-  | { authorized: true; authorization: Extract<GatewayAuthorizationResultV1, { authorized: true }> }
+  | {
+      authorized: true;
+      authorization: Extract<GatewayRouteAuthorizationResultV1, { authorized: true }>;
+      authorizedResourceIds?: readonly string[];
+    }
   | { authorized: false; reason: GatewayAuthorizationFailureV1 };
 
 function failure(reason: GatewayAuthorizationFailureV1): GatewayRouteGuardResultV1 {
@@ -73,7 +87,18 @@ export async function authorizeGatewayRouteV1(
     if (!result.requestId || !result.tenantId || !result.patientBinding) {
       return failure('invalid_context');
     }
-    return { authorized: true, authorization: result };
+    if (
+      intent.requireScopedResourceList
+      && (!Array.isArray(result.authorizedResourceIds)
+        || result.authorizedResourceIds.some((id) => typeof id !== 'string' || id.length === 0))
+    ) {
+      return failure('resource_type_not_permitted');
+    }
+    return {
+      authorized: true,
+      authorization: result,
+      authorizedResourceIds: result.authorizedResourceIds,
+    };
   } catch {
     return failure('verification_unavailable');
   }
