@@ -132,6 +132,16 @@ describe('authorizeGatewayRequestV1', () => {
       .toEqual({ authorized: false, reason });
   });
 
+  it('rejects malformed authority grants before invoking verifiers', async () => {
+    const invalidGrant = { ...grant, expiresAtMs: Number.NaN };
+    const receiptVerifier = verifier();
+
+    expect(await authorizeGatewayRequestV1(context, invalidGrant, NOW, receiptVerifier))
+      .toEqual({ authorized: false, reason: 'invalid_grant' });
+    expect(receiptVerifier.verifyPrincipal).not.toHaveBeenCalled();
+    expect(receiptVerifier.verifyConsent).not.toHaveBeenCalled();
+  });
+
   it('rejects revoked, expired and not-yet-valid grants', async () => {
     expect(await authorizeGatewayRequestV1(
       context,
