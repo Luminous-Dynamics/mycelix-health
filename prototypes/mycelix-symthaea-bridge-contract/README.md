@@ -34,7 +34,9 @@ The production verifier must verify the signature over every field, authenticate
 
 A true flag, digest string, caller-provided JSON field, Rust private type, or fake verifier is not cryptographic proof. Tests use a fake verifier solely to exercise the adapter contract. No production verifier is supplied.
 
-The operator-side EvidenceReferenceManifestV1 remains separate from HealthDecisionEpisodeV1. It maps each channel/outcome pair to exact receipt IDs, source principal/connection, event ID, FHIR resource identity/version and payload/source-receipt digests. Do not send this manifest to the candidate process.
+The operator-side EvidenceReferenceManifestV1 remains separate from HealthDecisionEpisodeV1. It maps each channel/outcome pair to exact receipt IDs, source principal/connection, event ID, FHIR resource identity/version, payload/source-receipt digests, clinical event time, specimen/analysis/result times, source lastUpdated, source sequence and local ingestion time. It also preserves the authority receipt, action and resource scope for each offered probe. The manifest carries the operator's as-of time. Do not send this manifest to the candidate process.
+
+The current upstream Symthaea ObservedSignal type contains only channel_id and outcome_id. Therefore this v1 wire projection is suitable for bounded channel/outcome tasks; it is not yet a complete longitudinal-temporal interface. Do not run temporal-reasoning evaluations through this adapter until event-time semantics are added to the candidate contract in coordination with Symthaea's observation-semantics owner.
 
 ## Probe and execution boundary
 
