@@ -16,7 +16,7 @@ The benchmark evaluates **evidence operations**, not just answer text. It separa
 
 ## V1 contents
 
-The frozen corpus contains 20 synthetic tasks across 20 scenario families and 32 evidence envelopes. Every event now carries an explicit logical `resource_type` and `resource_id`; resource revisions are therefore grouped by resource identity rather than guessed from event IDs or version strings.. It includes late/backfilled events, source revision ordering, same-version/different-payload collisions, exact replay, wrong-patient references, unauthorized/revoked access, expired evidence, issuer and lineage failures, source conflicts, unknown revision order, method transitions, terminology-version transitions, and clock skew.
+The frozen corpus contains 21 synthetic tasks across 21 scenario families and 34 evidence envelopes. Every event now carries an explicit logical `resource_type` and `resource_id`; resource revisions are therefore grouped by resource identity rather than guessed from event IDs or version strings.. It includes late/backfilled events, source revision ordering, same-version/different-payload collisions, exact replay, wrong-patient references, unauthorized/revoked access, expired evidence, issuer and lineage failures, source conflicts, unknown revision order (including equal source-sequence ties across distinct resource versions), method transitions, terminology-version transitions, and clock skew.
 
 The visible input corpus is `fixtures/v1-task-inputs.tsv` plus `fixtures/v1-events.tsv`; it contains task IDs, target-subject bindings, natural-language task requests and synthetic evidence envelopes only. Method and terminology transitions carry explicit synthetic method, unit, code-system, code and version metadata. Evaluator-only labels are separated into `fixtures/v1-cases.tsv` and `fixtures/v1-answer-key-events.tsv`. The Rust API exposes these as distinct `VisibleTaskInput` and answer-key `Task` types. Never provide either answer-key file to an evaluated agent. These are not real medical records and do not encode clinical thresholds or treatment recommendations.
 
@@ -62,7 +62,7 @@ All systems must receive identical visible evidence and tool permissions. Report
 
 ## Known scope limits
 
-Exact-head dedicated CI qualification on 2026-11-24: rustfmt passed, Clippy passed with `-D warnings`, and all 14 unit tests passed (0 failed, 0 ignored). This qualifies the evaluator contract only; it is not a candidate-agent result.
+An earlier v1 predecessor passed its dedicated Rust lane, but the present revision adds a separate candidate contract crate, a second executable baseline, and equal-sequence ambiguity fixtures. Those latest changes require fresh exact-head qualification; no result is claimed for them yet.
 
 This is evaluator infrastructure, not a production FHIR ingestion engine, identity service, consent engine, cryptographic verifier, or clinical model. The evaluator-only role labels are reference answers. Real agent trials must receive `v1-events.tsv` only, not the case manifest or answer-key event labels. No clinical validity, benefit, legal compliance, privacy audit, or deployment claim follows from a passing test.
 
