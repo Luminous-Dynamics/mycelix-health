@@ -1336,6 +1336,12 @@ mod tests {
                 "{} failed a hard gate",
                 task.task_id
             );
+            assert!(
+                result.evidence_graph.exact_match,
+                "{} did not exactly match its reference evidence graph: {:?}",
+                task.task_id,
+                result.evidence_graph
+            );
         }
     }
 
@@ -1587,6 +1593,10 @@ mod tests {
         assert_eq!(report.exact_matches, 21);
         assert_eq!(report.unsafe_acceptance_count, 0);
         assert_eq!(report.provenance_error_count, 0);
+        assert_eq!(report.graph_exact_matches, 21);
+        assert_eq!(report.graph_structural_invalid_count, 0);
+        assert_eq!(report.graph_edge_precision_mean, 1.0);
+        assert_eq!(report.graph_edge_recall_mean, 1.0);
     }
 
     #[test]
@@ -1599,4 +1609,101 @@ mod tests {
         assert_eq!(result.duplicate_acceptances, vec!["E03".to_owned()]);
         assert!(!result.hard_gates_pass);
     }
+
+    #[test]
+    fn evidence_graph_score_is_exact_for_reference_outputs() {
+        let tasks = load_fixture().expect("fixture must validate");
+        for task in &tasks {
+            let expected = expected_evidence_graph(task);
+            let score = evaluate_evidence_graph_v1(
+                &expected,
+                &reference_submission(task).evidence_graph,
+            );
+            assert!(score.exact_match, "{} graph mismatch: {score:?}", task.task_id);
+            assert!(score.structurally_valid);
+            assert_eq!(score.node_precision, 1.0);
+            assert_eq!(score.node_recall, 1.0);
+            assert_eq!(score.edge_precision, 1.0);
+            assert_eq!(score.edge_recall, 1.0);
+        }
+    }
+
+    #[test]
+    fn graph_edge_omission_and_substitution_are_scored_separately_from_timeline() {
+        let tasks = load_fixture().expect("fixture must validate");
+        let task = tasks.iter().find(|task| task.task_id == "T03").unwrap();
+        let mut submission = reference_submission(task);
+        let timeline_exact_before = evaluate(task, &submission).timeline_exact;
+        assert!(submission.evidence_graph.relations.len() >= 2);
+
+        submission.evidence_graph.relations.pop();
+        let missing_edge = evaluate(task, &submission);
+        assert!(missing_edge.evidence_graph.edge_recall < 1.0);
+        assert_eq!(missing_edge.timeline_exact, timeline_exact_before);
+        assert!(missing_edge.hard_gates_pass);
+
+        let mut unsupported = reference_submission(task);
+        unsupported.evidence_graph.relations.push(EvidenceRelationV1 {
+            from_event_id: "E05".to_owned(),
+            to_event_id: "E06".to_owned(),
+            kind: EvidenceRelationKindV1::ContradictoryClinicalAssertion,
+        });
+        let extra_edge = evaluate(task, &unsupported);
+        assert!(extra_edge.evidence_graph.edge_precision < 1.0);
+        assert_eq!(extra_edge.evidence_graph.edge_recall, 1.0);
+        assert!(extra_edge.evidence_graph.structurally_valid);
+        assert_eq!(extra_edge.timeline_exact, timeline_exact_before);
+    }
+
+    #[test]
+    fn graph_scorer_rejects_dangling_and_unknown_structure() {
+        let tasks = load_fixture().expect("fixture must validate");
+        let task = tasks.iter().find(|task| task.task_id == "T03").unwrap();
+        let expected = expected_evidence_graph(task);
+        let mut actual = expected.clone();
+        actual.relations.push(EvidenceRelationV1 {
+            from_event_id: "UNKNOWN-EVENT".to_owned(),
+            to_event_id: "E06".to_owned(),
+            kind: EvidenceRelationKindV1::VersionPayloadCollision,
+        });
+        actual.nodes.push("UNSEEN-NODE".to_owned());
+
+        let score = evaluate_evidence_graph_v1(&expected, &actual);
+        assert!(!score.structurally_valid);
+        assert_eq!(score.dangling_relation_count, 1);
+        assert_eq!(score.unknown_node_count, 1);
+        assert!(!score.exact_match);
+    }
+
+    #[test]
+    fn graph_scorer_rejects_duplicate_nodes_and_relations() {
+        let tasks = load_fixture().expect("fixture must validate");
+        let task = tasks.iter().find(|task| task.task_id == "T03").unwrap();
+        let expected = expected_evidence_graph(task);
+        let mut actual = expected.clone();
+        actual.nodes.push(actual.nodes[0].clone());
+        actual.relations.push(actual.relations[0].clone());
+
+        let score = evaluate_evidence_graph_v1(&expected, &actual);
+        assert!(!score.structurally_valid);
+        assert_eq!(score.duplicate_node_count, 1);
+        assert_eq!(score.duplicate_relation_count, 1);
+        assert!(!score.exact_match);
+    }
+
+    #[test]
+    fn source_revision_baseline_emits_exact_graph_while_naive_control_does_not() {
+        let visible = load_visible_fixture().expect("visible fixtures must validate");
+        let tasks = load_fixture().expect("answer key must validate");
+        let visible_task = visible.iter().find(|task| task.task_id == "T17").unwrap();
+        let task = tasks.iter().find(|task| task.task_id == "T17").unwrap();
+
+        let revision = evaluate(task, &source_sequence_revision_baseline(visible_task));
+        let naive = evaluate(task, &naive_ingestion_order_baseline(visible_task));
+
+        assert!(revision.evidence_graph.exact_match);
+        assert!(!naive.evidence_graph.exact_match);
+        assert_eq!(revision.timeline_exact, naive.timeline_exact);
+    }
+
 }
