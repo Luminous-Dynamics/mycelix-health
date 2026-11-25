@@ -687,7 +687,7 @@ mod tests {
     fn evidence_receipt() -> EvidenceReleaseReceiptV1 {
         EvidenceReleaseReceiptV1 {
             receipt_id: "release-1".into(),
-            nonce: "nonce-1".into(),
+            nonce: "nonce-evidence-0001".into(),
             episode_id: "episode-1".into(),
             tenant_id: "tenant-1".into(),
             subject_binding: "subject-opaque-1".into(),
@@ -725,7 +725,7 @@ mod tests {
     fn probe_receipt() -> ProbeOfferReceiptV1 {
         ProbeOfferReceiptV1 {
             receipt_id: "probe-offer-1".into(),
-            nonce: "probe-nonce-1".into(),
+            nonce: "nonce-probe-offer-0001".into(),
             episode_id: "episode-1".into(),
             tenant_id: "tenant-1".into(),
             subject_binding: "subject-opaque-1".into(),
@@ -915,7 +915,7 @@ mod tests {
         second_receipt.receipt_id = "release-2".into();
         second_receipt.event_id = "event-2".into();
         second_receipt.resource_id = "resource-2".into();
-        second_receipt.nonce = "nonce-2".into();
+        second_receipt.nonce = "nonce-evidence-0002".into();
         let second =
             verify_evidence_release_v1(second_receipt, 2_000, &AcceptingVerifier)
                 .expect("second release");
@@ -941,7 +941,7 @@ mod tests {
         let mut changed = evidence_receipt();
         changed.event_id = "different-event".into();
         changed.resource_id = "different-resource".into();
-        changed.nonce = "nonce-changed-2".into();
+        changed.nonce = "nonce-changed-0002".into();
         let second = verify_evidence_release_v1(changed, 2_000, &AcceptingVerifier)
             .expect("second release");
 
