@@ -9,31 +9,10 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum Disposition {
-    Supported,
-    Insufficient,
-    Conflicted,
-    AuthorityBlocked,
-    IdentityBlocked,
-    Stale,
-    UnknownOrder,
-}
-
-impl Disposition {
-    fn parse(value: &str) -> Result<Self, String> {
-        match value {
-            "supported" => Ok(Self::Supported),
-            "insufficient" => Ok(Self::Insufficient),
-            "conflicted" => Ok(Self::Conflicted),
-            "authority_blocked" => Ok(Self::AuthorityBlocked),
-            "identity_blocked" => Ok(Self::IdentityBlocked),
-            "stale" => Ok(Self::Stale),
-            "unknown_order" => Ok(Self::UnknownOrder),
-            _ => Err(format!("unknown disposition: {value}")),
-        }
-    }
-}
+pub use mycelix_temporal_evidence_agent_contract::{
+    load_visible_fixture, Disposition, EventCitation, Submission, VisibleEvidenceEvent,
+    VisibleTaskInput,
+};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum EventRole {
@@ -101,32 +80,6 @@ pub struct Task {
     pub events: Vec<EvidenceEvent>,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct EventCitation {
-    pub event_id: String,
-    pub source_principal: String,
-    pub resource_version: String,
-    pub resource_type: String,
-    pub resource_id: String,
-    /// Canonical proposition + subject + effective-time identity, where supplied.
-    pub assertion_key: Option<String>,
-    /// Synthetic normalized value used to detect cross-source disagreement.
-    pub normalized_assertion_value: Option<String>,
-    pub payload_digest: String,
-    pub measurement_method: Option<String>,
-    pub measurement_unit: Option<String>,
-    pub terminology_system: Option<String>,
-    pub terminology_version: Option<String>,
-    pub terminology_code: Option<String>,
-    pub clinical_event_time_ms: i64,
-    pub specimen_collected_at_ms: Option<i64>,
-    pub analysis_performed_at_ms: Option<i64>,
-    pub result_issued_at_ms: Option<i64>,
-    pub source_last_updated_at_ms: Option<i64>,
-    pub ingested_at_ms: i64,
-    pub source_sequence: Option<u64>,
-}
-
 impl From<&EvidenceEvent> for EventCitation {
     fn from(event: &EvidenceEvent) -> Self {
         Self {
@@ -152,89 +105,6 @@ impl From<&EvidenceEvent> for EventCitation {
             source_sequence: event.source_sequence,
         }
     }
-}
-
-/// Evidence fields exposed to an evaluated agent. No answer-key disposition,
-/// current/history/quarantine role, or conflict-group label is included.
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct VisibleEvidenceEvent {
-    pub event_id: String,
-    pub patient_binding: String,
-    pub source_principal: String,
-    pub resource_version: String,
-    pub resource_type: String,
-    pub resource_id: String,
-    /// Canonical proposition + subject + effective-time identity, where supplied.
-    pub assertion_key: Option<String>,
-    /// Synthetic normalized value used to detect cross-source disagreement.
-    pub normalized_assertion_value: Option<String>,
-    pub payload_digest: String,
-    pub measurement_method: Option<String>,
-    pub measurement_unit: Option<String>,
-    pub terminology_system: Option<String>,
-    pub terminology_version: Option<String>,
-    pub terminology_code: Option<String>,
-    pub clinical_event_time_ms: i64,
-    pub specimen_collected_at_ms: Option<i64>,
-    pub analysis_performed_at_ms: Option<i64>,
-    pub result_issued_at_ms: Option<i64>,
-    pub source_last_updated_at_ms: Option<i64>,
-    pub ingested_at_ms: i64,
-    pub source_sequence: Option<u64>,
-    pub issuer_authenticated: bool,
-    pub application_authorized: bool,
-    pub lineage_complete: bool,
-    pub expired: bool,
-}
-
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct VisibleTaskInput {
-    pub task_id: String,
-    pub target_patient_binding: String,
-    /// Natural-language task request shown to the evaluated agent.
-    pub request: String,
-    pub events: Vec<VisibleEvidenceEvent>,
-}
-
-impl From<&VisibleEvidenceEvent> for EventCitation {
-    fn from(event: &VisibleEvidenceEvent) -> Self {
-        Self {
-            event_id: event.event_id.clone(),
-            source_principal: event.source_principal.clone(),
-            resource_version: event.resource_version.clone(),
-            resource_type: event.resource_type.clone(),
-            resource_id: event.resource_id.clone(),
-            assertion_key: event.assertion_key.clone(),
-            normalized_assertion_value: event.normalized_assertion_value.clone(),
-            payload_digest: event.payload_digest.clone(),
-            measurement_method: event.measurement_method.clone(),
-            measurement_unit: event.measurement_unit.clone(),
-            terminology_system: event.terminology_system.clone(),
-            terminology_version: event.terminology_version.clone(),
-            terminology_code: event.terminology_code.clone(),
-            clinical_event_time_ms: event.clinical_event_time_ms,
-            specimen_collected_at_ms: event.specimen_collected_at_ms,
-            analysis_performed_at_ms: event.analysis_performed_at_ms,
-            result_issued_at_ms: event.result_issued_at_ms,
-            source_last_updated_at_ms: event.source_last_updated_at_ms,
-            ingested_at_ms: event.ingested_at_ms,
-            source_sequence: event.source_sequence,
-        }
-    }
-}
-
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct Submission {
-    pub task_id: String,
-    pub disposition: Disposition,
-    /// Current, accepted event projection, ordered by clinical event time.
-    pub timeline: Vec<EventCitation>,
-    /// Superseded or non-current but valid evidence retained as history.
-    pub retained_history: Vec<EventCitation>,
-    /// Explicitly rejected evidence IDs.
-    pub quarantined_event_ids: Vec<String>,
-    /// Conflict groups which remain unresolved rather than silently reconciled.
-    pub unresolved_conflict_groups: Vec<String>,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -335,43 +205,6 @@ fn parse_cases(input: &str) -> Result<Vec<Task>, String> {
     Ok(tasks)
 }
 
-fn parse_visible_task_manifest(input: &str) -> Result<BTreeMap<String, (String, String)>, String> {
-    let mut tasks = BTreeMap::new();
-    for (line_index, line) in input.lines().enumerate() {
-        if line.is_empty() || line.starts_with('#') {
-            continue;
-        }
-        let fields: Vec<&str> = line.split('\t').collect();
-        if fields.len() != 3
-            || fields[0].is_empty()
-            || fields[1].is_empty()
-            || fields[2].trim().is_empty()
-        {
-            return Err(format!(
-                "task-inputs.tsv line {}: expected task id, patient binding, and task request",
-                line_index + 1
-            ));
-        }
-        if tasks
-            .insert(
-                fields[0].to_owned(),
-                (fields[1].to_owned(), fields[2].to_owned()),
-            )
-            .is_some()
-        {
-            return Err(format!(
-                "task-inputs.tsv line {}: duplicate task id {}",
-                line_index + 1,
-                fields[0]
-            ));
-        }
-    }
-    if tasks.is_empty() {
-        return Err("task-inputs.tsv contains no tasks".to_owned());
-    }
-    Ok(tasks)
-}
-
 fn parse_optional_i64(value: &str, field: &str, line_index: usize) -> Result<Option<i64>, String> {
     if value == "-" {
         Ok(None)
@@ -391,101 +224,6 @@ fn optional_text(value: &str) -> Option<String> {
     } else {
         Some(value.to_owned())
     }
-}
-
-fn parse_visible_events(
-    input: &str,
-) -> Result<BTreeMap<String, Vec<VisibleEvidenceEvent>>, String> {
-    let mut events = BTreeMap::<String, Vec<VisibleEvidenceEvent>>::new();
-
-    for (line_index, line) in input.lines().enumerate() {
-        if line.is_empty() || line.starts_with('#') {
-            continue;
-        }
-        let fields: Vec<&str> = line.split('\t').collect();
-        if fields.len() != 26 {
-            return Err(format!(
-                "visible events.tsv line {}: expected 26 columns, got {}",
-                line_index + 1,
-                fields.len()
-            ));
-        }
-        let source_sequence = if fields[17] == "-" {
-            None
-        } else {
-            Some(fields[17].parse::<u64>().map_err(|error| {
-                format!(
-                    "visible events.tsv line {}: invalid source sequence: {error}",
-                    line_index + 1
-                )
-            })?)
-        };
-        let event = VisibleEvidenceEvent {
-            event_id: fields[1].to_owned(),
-            patient_binding: fields[2].to_owned(),
-            source_principal: fields[3].to_owned(),
-            resource_version: fields[4].to_owned(),
-            resource_type: fields[22].to_owned(),
-            resource_id: fields[23].to_owned(),
-            assertion_key: optional_text(fields[24]),
-            normalized_assertion_value: optional_text(fields[25]),
-            payload_digest: fields[5].to_owned(),
-            measurement_method: optional_text(fields[6]),
-            measurement_unit: optional_text(fields[7]),
-            terminology_system: optional_text(fields[8]),
-            terminology_version: optional_text(fields[9]),
-            terminology_code: optional_text(fields[10]),
-            clinical_event_time_ms: fields[11].parse::<i64>().map_err(|error| {
-                format!(
-                    "visible events.tsv line {}: invalid clinical event time: {error}",
-                    line_index + 1
-                )
-            })?,
-            specimen_collected_at_ms: parse_optional_i64(
-                fields[12],
-                "specimen collection time",
-                line_index,
-            )?,
-            analysis_performed_at_ms: parse_optional_i64(fields[13], "analysis time", line_index)?,
-            result_issued_at_ms: parse_optional_i64(fields[14], "result issue time", line_index)?,
-            source_last_updated_at_ms: parse_optional_i64(
-                fields[15],
-                "source lastUpdated time",
-                line_index,
-            )?,
-            ingested_at_ms: fields[16].parse::<i64>().map_err(|error| {
-                format!(
-                    "visible events.tsv line {}: invalid ingestion time: {error}",
-                    line_index + 1
-                )
-            })?,
-            source_sequence,
-            issuer_authenticated: parse_bool(fields[18], "issuer_authenticated")?,
-            application_authorized: parse_bool(fields[19], "application_authorized")?,
-            lineage_complete: parse_bool(fields[20], "lineage_complete")?,
-            expired: parse_bool(fields[21], "expired")?,
-        };
-        if event.assertion_key.is_some() != event.normalized_assertion_value.is_some()
-            || event.event_id.is_empty()
-            || event.patient_binding.is_empty()
-            || event.source_principal.is_empty()
-            || event.resource_version.is_empty()
-            || event.resource_type.is_empty()
-            || event.resource_id.is_empty()
-            || event.payload_digest.len() != 64
-            || !event
-                .payload_digest
-                .bytes()
-                .all(|byte| byte.is_ascii_hexdigit())
-        {
-            return Err(format!(
-                "visible events.tsv line {}: invalid event identity or payload digest",
-                line_index + 1
-            ));
-        }
-        events.entry(fields[0].to_owned()).or_default().push(event);
-    }
-    Ok(events)
 }
 
 fn parse_events(input: &str) -> Result<BTreeMap<String, Vec<EvidenceEvent>>, String> {
@@ -596,30 +334,6 @@ pub fn load_fixture() -> Result<Vec<Task>, String> {
     if !events_by_task.is_empty() {
         return Err(format!(
             "events reference unknown tasks: {:?}",
-            events_by_task.keys().collect::<Vec<_>>()
-        ));
-    }
-    Ok(tasks)
-}
-
-/// Load the agent-visible v1 corpus without exposing evaluator answer-key fields.
-pub fn load_visible_fixture() -> Result<Vec<VisibleTaskInput>, String> {
-    let task_manifest =
-        parse_visible_task_manifest(include_str!("../fixtures/v1-task-inputs.tsv"))?;
-    let mut events_by_task = parse_visible_events(include_str!("../fixtures/v1-events.tsv"))?;
-    let mut tasks = Vec::with_capacity(task_manifest.len());
-
-    for (task_id, (target_patient_binding, request)) in task_manifest {
-        tasks.push(VisibleTaskInput {
-            events: events_by_task.remove(&task_id).unwrap_or_default(),
-            task_id,
-            target_patient_binding,
-            request,
-        });
-    }
-    if !events_by_task.is_empty() {
-        return Err(format!(
-            "visible events reference unknown tasks: {:?}",
             events_by_task.keys().collect::<Vec<_>>()
         ));
     }
