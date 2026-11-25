@@ -129,6 +129,7 @@ pub trait EvidenceReceiptVerifierV1 {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum BridgeErrorV1 {
     EmptyField(&'static str),
+    InvalidNonce,
     InvalidDigest(&'static str),
     InvalidReceiptWindow,
     ReceiptExpired,
@@ -151,6 +152,7 @@ pub enum BridgeErrorV1 {
     EmptyDecisionSet,
     DuplicateDecision(String),
     DuplicateProbe(String),
+    DuplicateProbeResourceType(String),
     InvalidProbeCost,
     EmptyProbeResourceScope,
     CandidateRequestedUnpermittedProbe(String),
@@ -303,6 +305,9 @@ pub fn verify_evidence_release_v1<V: EvidenceReceiptVerifierV1>(
     now_ms: i64,
     verifier: &V,
 ) -> Result<VerifiedEvidenceSignalV1, BridgeErrorV1> {
+    if receipt.nonce.len() < 16 {
+        return Err(BridgeErrorV1::InvalidNonce);
+    }
     for (value, field) in [
         (receipt.receipt_id.as_str(), "receipt_id"),
         (receipt.nonce.as_str(), "nonce"),
@@ -363,6 +368,9 @@ pub fn verify_probe_offer_v1<V: EvidenceReceiptVerifierV1>(
     now_ms: i64,
     verifier: &V,
 ) -> Result<VerifiedProbeOfferV1, BridgeErrorV1> {
+    if receipt.nonce.len() < 16 {
+        return Err(BridgeErrorV1::InvalidNonce);
+    }
     for (value, field) in [
         (receipt.receipt_id.as_str(), "probe_receipt_id"),
         (receipt.nonce.as_str(), "probe_nonce"),
@@ -386,6 +394,14 @@ pub fn verify_probe_offer_v1<V: EvidenceReceiptVerifierV1>(
         || receipt.allowed_resource_types.iter().any(|item| item.trim().is_empty())
     {
         return Err(BridgeErrorV1::EmptyProbeResourceScope);
+    }
+    let mut resource_types = BTreeSet::new();
+    for resource_type in &receipt.allowed_resource_types {
+        if !resource_types.insert(resource_type.as_str()) {
+            return Err(BridgeErrorV1::DuplicateProbeResourceType(
+                resource_type.clone(),
+            ));
+        }
     }
     validate_receipt_window(receipt.issued_at_ms, receipt.expires_at_ms, now_ms)?;
     verifier
@@ -466,8 +482,9 @@ pub fn project_episode_v1(
         if receipt.recipient_id != context.recipient_id {
             return Err(BridgeErrorV1::RecipientMismatch);
         }
-        if receipt.expires_at_ms <= now_ms {
-            return Err(BridgeErrorV1::ReceiptExpired);
+        validate_receipt_window(receipt.issued_at_ms, receipt.expires_at_ms, now_ms)?;
+        if receipt.issued_at_ms > context.as_of_time_ms {
+            return Err(BridgeErrorV1::ReceiptNotYetValid);
         }
         let reference = EvidenceReferenceV1 {
             receipt_id: receipt.receipt_id.clone(),
@@ -525,9 +542,7 @@ pub fn project_episode_v1(
         if receipt.recipient_id != context.recipient_id {
             return Err(BridgeErrorV1::RecipientMismatch);
         }
-        if receipt.expires_at_ms <= now_ms {
-            return Err(BridgeErrorV1::ReceiptExpired);
-        }
+        validate_receipt_window(receipt.issued_at_ms, receipt.expires_at_ms, now_ms)?;
         if !seen_probes.insert(receipt.probe_id.as_str()) {
             return Err(BridgeErrorV1::DuplicateProbe(receipt.probe_id.clone()));
         }
@@ -916,6 +931,23 @@ mod tests {
                 .map(|item| item.receipt_id.as_str())
                 .collect::<Vec<_>>(),
             vec!["release-1", "release-2"]
+        );
+    }
+
+    #[test]
+    fn reused_receipt_id_with_different_source_identity_is_rejected() {
+        let first = verify_evidence_release_v1(evidence_receipt(), 2_000, &AcceptingVerifier)
+            .expect("first release");
+        let mut changed = evidence_receipt();
+        changed.event_id = "different-event".into();
+        changed.resource_id = "different-resource".into();
+        changed.nonce = "nonce-changed-2".into();
+        let second = verify_evidence_release_v1(changed, 2_000, &AcceptingVerifier)
+            .expect("second release");
+
+        assert_eq!(
+            project_episode_v1(context(), &[first, second], &[], 2_000),
+            Err(BridgeErrorV1::ReceiptIdentityCollision)
         );
     }
 
