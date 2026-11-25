@@ -89,6 +89,7 @@ export interface GatewayReceiptVerifierV1 {
 
 export type GatewayAuthorizationFailureV1 =
   | 'invalid_context'
+  | 'invalid_grant'
   | 'invalid_receipt_digest'
   | 'context_not_yet_valid'
   | 'context_expired'
@@ -157,6 +158,25 @@ function fail(reason: GatewayAuthorizationFailureV1): GatewayAuthorizationResult
   return { authorized: false, reason };
 }
 
+function validGrant(grant: GatewayAuthorityGrantV1): boolean {
+  return nonEmpty(grant.grantId)
+    && validPrincipal(grant.principal)
+    && nonEmpty(grant.tenantId)
+    && nonEmpty(grant.patientBinding)
+    && nonEmpty(grant.sourceConnectionId)
+    && nonEmpty(grant.purpose)
+    && nonEmpty(grant.recipientId)
+    && Array.isArray(grant.allowedActions)
+    && grant.allowedActions.every((action) => GATEWAY_ACTIONS_V1.includes(action))
+    && Array.isArray(grant.allowedResourceTypes)
+    && grant.allowedResourceTypes.every(nonEmpty)
+    && isFiniteTime(grant.notBeforeMs)
+    && isFiniteTime(grant.expiresAtMs)
+    && grant.expiresAtMs > grant.notBeforeMs
+    && (grant.revokedAtMs === null || isFiniteTime(grant.revokedAtMs));
+}
+
+
 /**
  * Evaluate a short-lived gateway request against an independently verified
  * principal and a current, patient-scoped authority grant.
@@ -207,7 +227,13 @@ export async function authorizeGatewayRequestV1(
     return fail('context_ttl_exceeded');
   }
 
-  if (!verifier || !grant) {
+  if (!grant) {
+    return fail('verification_unavailable');
+  }
+  if (!validGrant(grant)) {
+    return fail('invalid_grant');
+  }
+  if (!verifier) {
     return fail('verification_unavailable');
   }
 
