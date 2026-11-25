@@ -72,6 +72,9 @@ describe('EHR Gateway Server', () => {
           patientBinding: 'opaque-test-patient',
           action: intent.action,
           expiresAtMs: Date.now() + 60_000,
+          ...(intent.requireScopedResourceList
+            ? { authorizedResourceIds: [] }
+            : {}),
         })),
       },
     };
