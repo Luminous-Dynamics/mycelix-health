@@ -56,13 +56,15 @@
       "type": "array",
       "items": {
         "$ref": "#/$defs/observedSignal"
-      }
+      },
+      "uniqueItems": true
     },
     "permitted_probes": {
       "type": "array",
       "items": {
         "$ref": "#/$defs/probeOption"
-      }
+      },
+      "uniqueItems": true
     }
   },
   "$defs": {
