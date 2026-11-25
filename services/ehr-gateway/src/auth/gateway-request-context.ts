@@ -19,6 +19,10 @@ export const GATEWAY_ACTIONS_V1 = [
   'sync_push',
   'sync_status',
   'sync_job_list',
+  'sync_job_delete',
+  'sync_bidirectional',
+  'sync_conflicts_read',
+  'sync_conflict_resolve',
 ] as const;
 
 export type GatewayActionV1 = (typeof GATEWAY_ACTIONS_V1)[number];
