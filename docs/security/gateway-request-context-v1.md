@@ -27,7 +27,7 @@ Authorization requires exact agreement on:
 5. action and every requested resource type;
 6. grant validity and revocation status.
 
-The request context cannot outlive its authority grant and is limited to five minutes. Clock skew is bounded. Missing context, malformed grant, absent verifier, unavailable issuer/JWKS/consent registry, failed receipt verification, expiry, revocation, or any scope mismatch denies the request.
+The request context cannot outlive its authority grant and is limited to five minutes. Clock skew is bounded. Missing context, malformed grant, absent verifier, unavailable signed-context/replay store, issuer/JWKS, or consent registry, failed receipt verification, replayed request ID, expiry, revocation, or any scope mismatch denies the request. The gateway-context verifier must cryptographically bind every context field to the gateway-signed receipt and atomically consume the request ID; a UUID or digest alone is not a replay defense.
 
 A digest is a binding value, not proof. The injected verifier must authenticate the original signed identity/consent evidence against separately configured trust roots and current authority state. Do not implement these callbacks as 'return true', caller-provided flags, or request headers.
 
@@ -64,7 +64,8 @@ Tests use fake verifier callbacks to exercise the pure policy function. They do 
 - Wrong tenant, patient binding, source connection, purpose or recipient -> deny.
 - Action or resource type outside pre-authorized grant -> deny.
 - Expired, future-issued, overlong, revoked, or not-yet-valid context/grant -> deny.
-- Missing or malformed authentication/consent receipt digest -> deny.
+- Missing or malformed gateway-context, authentication or consent receipt digest -> deny.
+- Invalid gateway signature or repeated request ID -> deny before caller/consent checks.
 - Authentication/consent verifier false, absent, throws, or is unavailable -> deny.
 - Valid, exact, current, patient-scoped request -> allow with a grant-bound short expiry.
 
