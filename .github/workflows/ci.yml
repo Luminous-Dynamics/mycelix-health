@@ -250,16 +250,34 @@ jobs:
           sha256sum prototypes/temporal-evidence-integrity-bench/fixtures/v1-events.tsv
           sha256sum prototypes/temporal-evidence-integrity-bench/fixtures/v1-cases.tsv
           sha256sum prototypes/temporal-evidence-integrity-bench/fixtures/v1-answer-key-events.tsv
-      - name: Check formatting
+      - name: Check candidate contract formatting
+        run: cargo fmt --manifest-path prototypes/temporal-evidence-agent-contract/Cargo.toml -- --check
+      - name: Check evaluator formatting
         run: cargo fmt --manifest-path prototypes/temporal-evidence-integrity-bench/Cargo.toml -- --check
-      - name: Run Clippy
+      - name: Qualify isolated candidate contract
         run: |
           HOST="$(rustc -vV | sed -n 's/^host: //p')"
-          cargo clippy --locked --manifest-path prototypes/temporal-evidence-integrity-bench/Cargo.toml --target "$HOST" --all-targets -- -D warnings
-      - name: Run tests
+          CONTRACT="prototypes/temporal-evidence-agent-contract/Cargo.toml"
+          cargo clippy --locked --manifest-path "$CONTRACT" --target "$HOST" --all-targets -- -D warnings
+          cargo test --locked --manifest-path "$CONTRACT" --target "$HOST"
+      - name: Prove candidate contract does not depend on evaluator
         run: |
           HOST="$(rustc -vV | sed -n 's/^host: //p')"
-          cargo test --locked --manifest-path prototypes/temporal-evidence-integrity-bench/Cargo.toml --target "$HOST"
+          CONTRACT="prototypes/temporal-evidence-agent-contract/Cargo.toml"
+          TREE="$(cargo tree --locked --manifest-path "$CONTRACT" --target "$HOST")"
+          printf '%s\\n' "$TREE"
+          if printf '%s\\n' "$TREE" | grep -Fq 'mycelix-temporal-evidence-integrity-bench'; then
+            echo "Candidate contract unexpectedly depends on evaluator package" >&2
+            exit 1
+          fi
+      - name: Validate candidate submission schema
+        run: jq -e . prototypes/temporal-evidence-agent-contract/schema/submission-v1.schema.json > /dev/null
+      - name: Run evaluator Clippy and tests
+        run: |
+          HOST="$(rustc -vV | sed -n 's/^host: //p')"
+          EVALUATOR="prototypes/temporal-evidence-integrity-bench/Cargo.toml"
+          cargo clippy --locked --manifest-path "$EVALUATOR" --target "$HOST" --all-targets -- -D warnings
+          cargo test --locked --manifest-path "$EVALUATOR" --target "$HOST"
 
       - name: Execute deterministic negative-control baseline
         run: |
