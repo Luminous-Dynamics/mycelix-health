@@ -210,12 +210,12 @@ export function createSyncRoutes(ctx: AppContext): Hono {
     // Sort by start time (newest first)
     jobs.sort((a, b) => b.startedAt.getTime() - a.startedAt.getTime());
 
-    // Apply limit
+    // Count only authorized jobs before pagination; never leak global totals.
+    const authorizedTotal = jobs.length;
     jobs = jobs.slice(0, limit);
 
     return c.json({
-      // Count only server-authorized jobs; never leak tenant-wide totals.
-      total: jobs.length,
+      total: authorizedTotal,
       returned: jobs.length,
       jobs: jobs.map(job => ({
         id: job.id,
