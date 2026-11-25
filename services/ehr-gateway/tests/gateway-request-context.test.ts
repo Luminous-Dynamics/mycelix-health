@@ -100,6 +100,20 @@ describe('authorizeGatewayRequestV1', () => {
       .toEqual({ authorized: false, reason: 'consent_unverified' });
   });
 
+  it('rejects truthy but non-boolean verifier results', async () => {
+    const truthyPrincipal = verifier({
+      verifyPrincipal: vi.fn().mockResolvedValue('verified' as unknown as boolean),
+    });
+    expect(await authorizeGatewayRequestV1(context, grant, NOW, truthyPrincipal))
+      .toEqual({ authorized: false, reason: 'principal_unverified' });
+
+    const truthyConsent = verifier({
+      verifyConsent: vi.fn().mockResolvedValue({ allowed: true } as unknown as boolean),
+    });
+    expect(await authorizeGatewayRequestV1(context, grant, NOW, truthyConsent))
+      .toEqual({ authorized: false, reason: 'consent_unverified' });
+  });
+
   it('fails closed when either independent verifier throws', async () => {
     const principalVerifier = verifier({
       verifyPrincipal: vi.fn().mockRejectedValue(new Error('issuer/JWKS unavailable')),
