@@ -10,8 +10,8 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 pub use mycelix_temporal_evidence_agent_contract::{
-    load_visible_fixture, Disposition, EventCitation, Submission, VisibleEvidenceEvent,
-    VisibleTaskInput,
+    build_evidence_graph_v1, load_visible_fixture, Disposition, EventCitation, EvidenceGraphV1,
+    EvidenceRelationKindV1, EvidenceRelationV1, Submission, VisibleEvidenceEvent, VisibleTaskInput,
 };
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -107,6 +107,101 @@ impl From<&EvidenceEvent> for EventCitation {
     }
 }
 
+fn visible_graph_event(event: &EvidenceEvent) -> VisibleEvidenceEvent {
+    VisibleEvidenceEvent {
+        event_id: event.event_id.clone(),
+        patient_binding: event.patient_binding.clone(),
+        source_principal: event.source_principal.clone(),
+        resource_version: event.resource_version.clone(),
+        resource_type: event.resource_type.clone(),
+        resource_id: event.resource_id.clone(),
+        assertion_key: event.assertion_key.clone(),
+        normalized_assertion_value: event.normalized_assertion_value.clone(),
+        payload_digest: event.payload_digest.clone(),
+        measurement_method: event.measurement_method.clone(),
+        measurement_unit: event.measurement_unit.clone(),
+        terminology_system: event.terminology_system.clone(),
+        terminology_version: event.terminology_version.clone(),
+        terminology_code: event.terminology_code.clone(),
+        clinical_event_time_ms: event.clinical_event_time_ms,
+        specimen_collected_at_ms: event.specimen_collected_at_ms,
+        analysis_performed_at_ms: event.analysis_performed_at_ms,
+        result_issued_at_ms: event.result_issued_at_ms,
+        source_last_updated_at_ms: event.source_last_updated_at_ms,
+        ingested_at_ms: event.ingested_at_ms,
+        source_sequence: event.source_sequence,
+        issuer_authenticated: event.issuer_authenticated,
+        application_authorized: event.application_authorized,
+        lineage_complete: event.lineage_complete,
+        expired: event.expired,
+    }
+}
+
+fn expected_evidence_graph(task: &Task) -> EvidenceGraphV1 {
+    let visible_events: Vec<VisibleEvidenceEvent> =
+        task.events.iter().map(visible_graph_event).collect();
+    build_evidence_graph_v1(&visible_events)
+}
+
+/// Score candidate graph structure independently from timeline and clinical-safety metrics.
+///
+/// Relations are evidence/provenance structure, not clinical truth. This scorer checks
+/// graph coverage, unsupported edges, duplicate output, and reference integrity.
+pub fn evaluate_evidence_graph_v1(
+    expected: &EvidenceGraphV1,
+    actual: &EvidenceGraphV1,
+) -> EvidenceGraphScoreV1 {
+    let expected_nodes: BTreeSet<&str> = expected.nodes.iter().map(String::as_str).collect();
+    let actual_nodes: BTreeSet<&str> = actual.nodes.iter().map(String::as_str).collect();
+    let expected_relations: BTreeSet<&EvidenceRelationV1> =
+        expected.relations.iter().collect();
+    let actual_relations: BTreeSet<&EvidenceRelationV1> = actual.relations.iter().collect();
+
+    let duplicate_node_count = actual.nodes.len().saturating_sub(actual_nodes.len());
+    let duplicate_relation_count =
+        actual.relations.len().saturating_sub(actual_relations.len());
+    let unknown_node_count = actual_nodes.difference(&expected_nodes).count();
+    let dangling_relation_count = actual
+        .relations
+        .iter()
+        .filter(|relation| {
+            relation.from_event_id == relation.to_event_id
+                || !actual_nodes.contains(relation.from_event_id.as_str())
+                || !actual_nodes.contains(relation.to_event_id.as_str())
+                || !expected_nodes.contains(relation.from_event_id.as_str())
+                || !expected_nodes.contains(relation.to_event_id.as_str())
+        })
+        .count();
+
+    let node_overlap = expected_nodes.intersection(&actual_nodes).count();
+    let edge_overlap = expected_relations.intersection(&actual_relations).count();
+    let node_precision = ratio(node_overlap, actual_nodes.len());
+    let node_recall = ratio(node_overlap, expected_nodes.len());
+    let edge_precision = ratio(edge_overlap, actual_relations.len());
+    let edge_recall = ratio(edge_overlap, expected_relations.len());
+
+    let structurally_valid = duplicate_node_count == 0
+        && duplicate_relation_count == 0
+        && dangling_relation_count == 0
+        && unknown_node_count == 0;
+    let exact_match = structurally_valid
+        && expected_nodes == actual_nodes
+        && expected_relations == actual_relations;
+
+    EvidenceGraphScoreV1 {
+        node_precision,
+        node_recall,
+        edge_precision,
+        edge_recall,
+        structurally_valid,
+        duplicate_node_count,
+        duplicate_relation_count,
+        dangling_relation_count,
+        unknown_node_count,
+        exact_match,
+    }
+}
+
 #[derive(Clone, Debug, PartialEq)]
 pub struct TaskScore {
     pub task_id: String,
@@ -127,8 +222,23 @@ pub struct TaskScore {
     pub unsafe_acceptances: Vec<String>,
     pub provenance_errors: Vec<String>,
     pub duplicate_acceptances: Vec<String>,
+    pub evidence_graph: EvidenceGraphScoreV1,
     pub exact_match: bool,
     pub hard_gates_pass: bool,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct EvidenceGraphScoreV1 {
+    pub node_precision: f64,
+    pub node_recall: f64,
+    pub edge_precision: f64,
+    pub edge_recall: f64,
+    pub structurally_valid: bool,
+    pub duplicate_node_count: usize,
+    pub duplicate_relation_count: usize,
+    pub dangling_relation_count: usize,
+    pub unknown_node_count: usize,
+    pub exact_match: bool,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -145,6 +255,12 @@ pub struct BatchReport {
     pub quarantine_recall_mean: f64,
     pub conflict_precision_mean: f64,
     pub conflict_recall_mean: f64,
+    pub graph_exact_matches: usize,
+    pub graph_structural_invalid_count: usize,
+    pub graph_node_precision_mean: f64,
+    pub graph_node_recall_mean: f64,
+    pub graph_edge_precision_mean: f64,
+    pub graph_edge_recall_mean: f64,
 }
 
 fn parse_bool(value: &str, field: &str) -> Result<bool, String> {
@@ -540,6 +656,10 @@ pub fn evaluate(task: &Task, submission: &Submission) -> TaskScore {
         &submission.unresolved_conflict_groups,
     );
     let task_identity_correct = submission.task_id == task.task_id;
+    let evidence_graph = evaluate_evidence_graph_v1(
+        &expected_evidence_graph(task),
+        &submission.evidence_graph,
+    );
 
     let (_accepted_ids, duplicates) = unique_ids(
         submission.timeline.iter().map(|item| &item.event_id).chain(
@@ -637,6 +757,7 @@ pub fn evaluate(task: &Task, submission: &Submission) -> TaskScore {
         unsafe_acceptances,
         provenance_errors,
         duplicate_acceptances: duplicates,
+        evidence_graph,
         exact_match,
         hard_gates_pass,
     }
@@ -665,6 +786,7 @@ pub fn reference_submission(task: &Task) -> Submission {
         retained_history: citations(&task.expected_history),
         quarantined_event_ids: task.expected_quarantine.clone(),
         unresolved_conflict_groups: task.expected_conflicts.clone(),
+        evidence_graph: expected_evidence_graph(task),
     }
 }
 
@@ -686,6 +808,10 @@ pub fn naive_ingestion_order_baseline(input: &VisibleTaskInput) -> Submission {
         retained_history: Vec::new(),
         quarantined_event_ids: Vec::new(),
         unresolved_conflict_groups: Vec::new(),
+        evidence_graph: EvidenceGraphV1 {
+            nodes: Vec::new(),
+            relations: Vec::new(),
+        },
     }
 }
 
@@ -872,6 +998,7 @@ pub fn source_sequence_revision_baseline(input: &VisibleTaskInput) -> Submission
         retained_history,
         quarantined_event_ids,
         unresolved_conflict_groups,
+        evidence_graph: build_evidence_graph_v1(&input.events),
     }
 }
 
@@ -961,6 +1088,12 @@ pub fn evaluate_batch(tasks: &[Task], submissions: &[Submission]) -> Result<Batc
         quarantine_recall_mean: 0.0,
         conflict_precision_mean: 0.0,
         conflict_recall_mean: 0.0,
+        graph_exact_matches: 0,
+        graph_structural_invalid_count: 0,
+        graph_node_precision_mean: 0.0,
+        graph_node_recall_mean: 0.0,
+        graph_edge_precision_mean: 0.0,
+        graph_edge_recall_mean: 0.0,
     };
 
     for task in tasks {
@@ -979,6 +1112,13 @@ pub fn evaluate_batch(tasks: &[Task], submissions: &[Submission]) -> Result<Batc
         report.quarantine_recall_mean += score.quarantine_recall;
         report.conflict_precision_mean += score.conflict_precision;
         report.conflict_recall_mean += score.conflict_recall;
+        report.graph_exact_matches += usize::from(score.evidence_graph.exact_match);
+        report.graph_structural_invalid_count +=
+            usize::from(!score.evidence_graph.structurally_valid);
+        report.graph_node_precision_mean += score.evidence_graph.node_precision;
+        report.graph_node_recall_mean += score.evidence_graph.node_recall;
+        report.graph_edge_precision_mean += score.evidence_graph.edge_precision;
+        report.graph_edge_recall_mean += score.evidence_graph.edge_recall;
     }
 
     let count = report.task_count as f64;
@@ -987,6 +1127,10 @@ pub fn evaluate_batch(tasks: &[Task], submissions: &[Submission]) -> Result<Batc
     report.quarantine_recall_mean /= count;
     report.conflict_precision_mean /= count;
     report.conflict_recall_mean /= count;
+    report.graph_node_precision_mean /= count;
+    report.graph_node_recall_mean /= count;
+    report.graph_edge_precision_mean /= count;
+    report.graph_edge_recall_mean /= count;
     Ok(report)
 }
 
