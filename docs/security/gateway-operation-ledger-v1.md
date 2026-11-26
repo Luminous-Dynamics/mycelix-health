@@ -98,4 +98,4 @@ These are state-machine/reference tests, not production durability tests. The fa
 - Bind each FHIR bundle resource to patient identity, source version and resource digest; a Bundle-level allow is not blanket permission for all entries.
 - Emit separate receipts for request acceptance, EHR operation, Holochain ingestion, audit persistence and reconciliation.
 
-No claim of exactly-once execution across a remote EHR and Holochain DHT follows from these interfaces or tests. Where atomic cross-system commit is unavailable, the honest guarantee is at-most-one gateway attempt per durable key plus explicit unknown-outcome reconciliation.
+No claim of exactly-once execution across a remote EHR and Holochain DHT follows from these interfaces or tests. Where atomic cross-system commit is unavailable, the honest guarantee is at most one unresolved attempt per durable key, with retries allowed only after proven no-effect or under the same remote idempotency key, plus explicit unknown-outcome reconciliation.
