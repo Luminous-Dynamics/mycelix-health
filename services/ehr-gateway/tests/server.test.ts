@@ -376,6 +376,34 @@ describe('EHR Gateway Server', () => {
       expect(mockGateway.pullPatientData).not.toHaveBeenCalled();
     });
 
+    it('POST /sync/bidirectional uses resolved patient/hash/credential and never auto-resolves conflicts', async () => {
+      mockGateway.isConnected.mockReturnValueOnce(true);
+      mockGateway.syncPatient.mockResolvedValueOnce({
+        pullResults: [],
+        pushResults: [],
+        conflicts: [{ id: 'conflict-visible' }] as never,
+      });
+
+      const patientHash = 'uhCEkINI4cBkNicMiyEvxrUXKy71OIGWXqXJagdCunS2SlmaipQ1j';
+      const res = await app.request(
+        '/sync/bidirectional/123?connection=test-connection&tokenKey=attacker-token&patientHash=' + patientHash,
+        { method: 'POST' },
+      );
+
+      expect(res.status).toBe(200);
+      expect(mockGateway.syncPatient).toHaveBeenCalledWith(
+        'test-connection',
+        '123',
+        expect.any(Uint8Array),
+        'test-credential-handle',
+        expect.objectContaining({
+          pull: expect.objectContaining({ sourceSystem: 'epic' }),
+          push: expect.objectContaining({ resourceTypes: expect.any(Array) }),
+          autoResolveConflicts: false,
+        }),
+      );
+    });
+
     it('POST /sync/patient/:id denies async execution until worker-time authorization exists', async () => {
       mockGateway.isConnected.mockReturnValueOnce(true);
 
