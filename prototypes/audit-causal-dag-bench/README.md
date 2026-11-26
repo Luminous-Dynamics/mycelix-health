@@ -54,7 +54,7 @@ The 21-row TSV catalogue is executable: each row maps to a concrete synthetic gr
 
 The suite also checks:
 
-- A deterministic 128-agent / 256-event run retains exactly 128 per-agent edges and 32,512 incomparable cross-agent event pairs, rather than inferring a total order from timestamps or stream identifiers.
+- An executable 128-agent / 256-event regression asserts exactly 128 per-agent edges and 32,512 incomparable cross-agent event pairs, rather than inferring a total order from timestamps or stream identifiers. The assertion is authored; it remains pending exact-head CI execution.
 - identical replicated observations coalesce without duplicating events;
 - conflicting observations for one ActionHash are rejected;
 - deterministic display output is invariant to input publication order;
