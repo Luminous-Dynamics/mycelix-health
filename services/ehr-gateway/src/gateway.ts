@@ -302,7 +302,12 @@ export class EhrGateway {
     patientId: string,
     patientHash: Uint8Array,
     tokenKey: string,
-    options: { pull?: PullOptions; push?: PushOptions } = {}
+    options: {
+      pull?: PullOptions;
+      push?: PushOptions;
+      /** Conflict mutation is a separately authorized operation; default stays legacy-compatible. */
+      autoResolveConflicts?: boolean;
+    } = {}
   ): Promise<{
     pullResults: SyncResult[];
     pushResults: SyncResult[];
@@ -335,8 +340,11 @@ export class EhrGateway {
       }
     }
 
-    // Auto-resolve non-critical conflicts
-    await this.conflictResolver.autoResolveConflicts('sync-service');
+    // Conflict resolution has its own authorization action. Guarded bidirectional
+    // routes can surface conflicts without mutating them under sync_bidirectional.
+    if (options.autoResolveConflicts ?? true) {
+      await this.conflictResolver.autoResolveConflicts('sync-service');
+    }
 
     // Push local changes (excluding conflicted resources)
     const conflictedIds = new Set(conflicts.map(c => c.resourceId));
