@@ -568,7 +568,7 @@ pub mod access_control {
             data_category: category.clone(),
             permission: permission.clone(),
             is_emergency,
-            clinical_event_time: clinical_event_time.clone(),
+            clinical_event_time,
             encounter_hash: encounter_hash.clone(),
         };
 
@@ -632,7 +632,7 @@ pub mod access_control {
                     data_category: category.clone(),
                     permission: permission.clone(),
                     is_emergency: false,
-                    clinical_event_time: clinical_event_time.clone(),
+                    clinical_event_time,
                     encounter_hash: encounter_hash.clone(),
                 },
             )?;
