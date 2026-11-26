@@ -210,48 +210,89 @@ pub fn ingest_bundle(input: IngestBundleInput) -> ExternResult<IngestReport> {
         }
     };
 
-    // First pass: find and process Patient resources to establish patient hash
+    // Preflight Patient identity before performing any writes. A
+    // patient-scoped Bundle must never silently choose the first of multiple
+    // Patient resources and attach all other entries to it.
+    let patient_entries: Vec<&JsonValue> = entries
+        .iter()
+        .filter(|entry| {
+            entry
+                .get("resource")
+                .and_then(get_resource_type)
+                .as_deref()
+                == Some("Patient")
+        })
+        .collect();
+
+    if patient_entries.len() > 1 {
+        report.parse_errors.push(
+            "Patient-scoped Bundle contains multiple Patient resources; no resources were ingested"
+                .to_string(),
+        );
+        create_entry(&EntryTypes::IngestReport(report.clone()))?;
+        return Ok(report);
+    }
+
     let mut patient_hash: Option<ActionHash> = None;
     let mut patient_fhir_id: Option<String> = None;
 
-    for entry in &entries {
-        let resource = match entry.get("resource") {
-            Some(r) => r,
-            None => continue,
-        };
+    if let Some(entry) = patient_entries.first() {
+        let resource = entry.get("resource").expect("Patient entry has resource");
+        patient_fhir_id = get_resource_id(resource);
+        if patient_fhir_id.is_none() {
+            report.parse_errors.push(
+                "Patient resource has no ID; no resources were ingested".to_string(),
+            );
+            create_entry(&EntryTypes::IngestReport(report.clone()))?;
+            return Ok(report);
+        }
 
-        if get_resource_type(resource) == Some("Patient".to_string()) {
-            match process_patient(resource, &input.source_system) {
-                Ok((hash, created)) => {
-                    patient_hash = Some(hash);
-                    patient_fhir_id = get_resource_id(resource);
-                    report.total_processed += 1;
-                    if created {
-                        report.patients_created += 1;
-                    } else {
-                        report.patients_updated += 1;
-                    }
-                }
-                Err(e) => {
-                    report.parse_errors.push(format!("Patient: {}", e));
+        match process_patient(resource, &input.source_system) {
+            Ok((hash, created)) => {
+                patient_hash = Some(hash);
+                report.total_processed += 1;
+                if created {
+                    report.patients_created += 1;
+                } else {
+                    report.patients_updated += 1;
                 }
             }
-            break; // Only expect one Patient per bundle
+            Err(e) => report.parse_errors.push(format!("Patient: {}", e)),
         }
     }
 
-    // If no patient found, try to find patient reference from other resources
+    // If the Bundle has no Patient resource, resolve all references on a
+    // resource to the same existing Patient anchor before selecting that hash.
     if patient_hash.is_none() {
-        for entry in &entries {
+        'resource_lookup: for entry in &entries {
             if let Some(resource) = entry.get("resource") {
-                if let Some(patient_ref) = get_patient_reference(resource) {
-                    // Try to look up existing patient by reference
-                    if let Some(hash) =
-                        lookup_patient_by_fhir_reference(&patient_ref, &input.source_system)?
-                    {
-                        patient_hash = Some(hash);
-                        break;
+                let references = get_patient_references(resource);
+                if references.is_empty() || has_identifier_only_patient_reference(resource) {
+                    continue;
+                }
+
+                let resolved_ids: Vec<Option<String>> = references
+                    .iter()
+                    .map(|reference| resolve_fhir_patient_reference(reference, &entries))
+                    .collect();
+                let resolved_id = match resolved_ids.first().and_then(|id| id.clone()) {
+                    Some(id) if resolved_ids.iter().all(|candidate| candidate.as_deref() == Some(id.as_str())) => id,
+                    _ => {
+                        report.parse_errors.push(
+                            "Resource has missing, conflicting or unresolved Patient references"
+                                .to_string(),
+                        );
+                        continue;
                     }
+                };
+
+                let normalized_reference = format!("Patient/{}", resolved_id);
+                if let Some(hash) =
+                    lookup_patient_by_fhir_reference(&normalized_reference, &input.source_system)?
+                {
+                    patient_hash = Some(hash);
+                    patient_fhir_id = Some(resolved_id);
+                    break 'resource_lookup;
                 }
             }
         }
@@ -291,29 +332,22 @@ pub fn ingest_bundle(input: IngestBundleInput) -> ExternResult<IngestReport> {
             continue;
         }
 
-        // A bundle may only contribute resources for the patient it establishes.
-        // `patient_fhir_id` was captured in the first pass for exactly this check,
-        // which was never written -- so every non-Patient resource was attached to
-        // `patient_hash` regardless of whom its subject/patient reference named.
-        //
-        // Only an UNAMBIGUOUS mismatch rejects: a relative "Patient/<id>" reference
-        // whose id differs from the bundle's Patient. Absolute URLs, urn:uuid
-        // references, and resources carrying no reference are passed through, since
-        // those cannot be compared reliably and silently dropping data would be the
-        // worse failure. A rejected resource is reported, not swallowed.
-        if let (Some(bundle_id), Some(reference)) =
-            (patient_fhir_id.as_ref(), get_patient_reference(resource))
-        {
-            if let Some(ref_id) = reference.strip_prefix("Patient/") {
-                if ref_id != bundle_id {
-                    report.parse_errors.push(format!(
-                        "{resource_type}: subject references Patient/{ref_id} but this bundle \
-                         establishes Patient/{bundle_id}; skipped rather than attributing data \
-                         to the wrong patient"
-                    ));
-                    continue;
-                }
-            }
+        // Every patient-bearing reference must resolve to the one Patient
+        // established for this ingest. Relative, absolute and urn:uuid Bundle
+        // references share the same resolver; identifier-only and conflicting
+        // references fail closed instead of inheriting another patient's hash.
+        let patient_references = get_patient_references(resource);
+        let invalid_identifier = has_identifier_only_patient_reference(resource);
+        let mismatched_reference = patient_references.iter().any(|reference| {
+            resolve_fhir_patient_reference(reference, &entries).as_deref()
+                != patient_fhir_id.as_deref()
+        });
+        if invalid_identifier || mismatched_reference {
+            report.parse_errors.push(format!(
+                "{}: Patient reference is unresolved, ambiguous or differs from the Bundle patient; skipped",
+                resource_type
+            ));
+            continue;
         }
 
         report.total_processed += 1;
