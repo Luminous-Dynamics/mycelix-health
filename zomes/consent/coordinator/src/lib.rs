@@ -180,6 +180,14 @@ pub fn check_authorization(input: AuthorizationCheckInput) -> ExternResult<Autho
             };
 
             if grantee_matches {
+                if let Err(scope_reason) = consent_scope_context_result(
+                    &consent.scope,
+                    input.clinical_event_time.as_ref(),
+                    input.encounter_hash.as_ref(),
+                ) {
+                    continue;
+                }
+
                 let category_covered = consent
                     .scope
                     .data_categories
@@ -258,6 +266,44 @@ pub fn check_authorization(input: AuthorizationCheckInput) -> ExternResult<Autho
     })
 }
 
+
+/// Evaluate only the temporal and encounter parts of a consent scope.
+///
+/// Missing context is not treated as unrestricted: if a consent narrows either
+/// dimension, the corresponding request context must be present and in scope.
+fn consent_scope_context_result(
+    scope: &ConsentScope,
+    clinical_event_time: Option<&Timestamp>,
+    encounter_hash: Option<&ActionHash>,
+) -> Result<(), &'static str> {
+    if let Some(date_range) = &scope.date_range {
+        let Some(event_time) = clinical_event_time else {
+            return Err("Clinical event time is required by this consent's date scope");
+        };
+
+        let event_micros = event_time.as_micros();
+        if event_micros < date_range.start.as_micros() {
+            return Err("Clinical event time is before the consent date scope");
+        }
+        if let Some(end) = &date_range.end {
+            if event_micros > end.as_micros() {
+                return Err("Clinical event time is after the consent date scope");
+            }
+        }
+    }
+
+    if let Some(encounters) = &scope.encounter_hashes {
+        let Some(request_encounter) = encounter_hash else {
+            return Err("Encounter context is required by this consent's encounter scope");
+        };
+        if !encounters.contains(request_encounter) {
+            return Err("Requested encounter is outside the consent scope");
+        }
+    }
+
+    Ok(())
+}
+
 /// Input for authorization check - compatible with shared crate's AuthorizationInput
 #[derive(Serialize, Deserialize, Debug)]
 pub struct AuthorizationCheckInput {
@@ -266,6 +312,13 @@ pub struct AuthorizationCheckInput {
     pub data_category: DataCategory,
     pub permission: DataPermission,
     pub is_emergency: bool,
+    /// Clinical event time for the resource being accessed. This is not
+    /// ingestion time or access time.
+    #[serde(default)]
+    pub clinical_event_time: Option<Timestamp>,
+    /// Exact encounter containing the resource, when applicable.
+    #[serde(default)]
+    pub encounter_hash: Option<ActionHash>,
 }
 
 /// Authorization result - compatible with shared crate's AuthorizationResult
@@ -3062,6 +3115,76 @@ mod tests {
         AgentPubKey::from_raw_36(vec![0u8; 36])
     }
 
+    #[test]
+    fn temporal_scope_requires_clinical_event_time_and_uses_inclusive_bounds() {
+        let scope = ConsentScope {
+            data_categories: vec![DataCategory::LabResults],
+            date_range: Some(DateRange {
+                start: Timestamp::from_micros(100),
+                end: Some(Timestamp::from_micros(200)),
+            }),
+            encounter_hashes: None,
+            exclusions: vec![],
+        };
+
+        assert_eq!(
+            consent_scope_context_result(&scope, None, None),
+            Err("Clinical event time is required by this consent's date scope")
+        );
+        assert_eq!(
+            consent_scope_context_result(&scope, Some(&Timestamp::from_micros(99)), None),
+            Err("Clinical event time is before the consent date scope")
+        );
+        assert_eq!(
+            consent_scope_context_result(&scope, Some(&Timestamp::from_micros(201)), None),
+            Err("Clinical event time is after the consent date scope")
+        );
+        assert_eq!(
+            consent_scope_context_result(&scope, Some(&Timestamp::from_micros(100)), None),
+            Ok(())
+        );
+        assert_eq!(
+            consent_scope_context_result(&scope, Some(&Timestamp::from_micros(200)), None),
+            Ok(())
+        );
+    }
+
+    #[test]
+    fn encounter_scope_requires_exact_encounter_membership() {
+        let allowed = dummy_hash();
+        let other = ActionHash::from_raw_36(vec![1u8; 36]);
+        let scope = ConsentScope {
+            data_categories: vec![DataCategory::LabResults],
+            date_range: None,
+            encounter_hashes: Some(vec![allowed.clone()]),
+            exclusions: vec![],
+        };
+
+        assert_eq!(
+            consent_scope_context_result(&scope, None, None),
+            Err("Encounter context is required by this consent's encounter scope")
+        );
+        assert_eq!(
+            consent_scope_context_result(&scope, None, Some(&other)),
+            Err("Requested encounter is outside the consent scope")
+        );
+        assert_eq!(
+            consent_scope_context_result(&scope, None, Some(&allowed)),
+            Ok(())
+        );
+    }
+
+    #[test]
+    fn unrestricted_scope_does_not_require_temporal_or_encounter_context() {
+        let scope = ConsentScope {
+            data_categories: vec![DataCategory::All],
+            date_range: None,
+            encounter_hashes: None,
+            exclusions: vec![],
+        };
+        assert_eq!(consent_scope_context_result(&scope, None, None), Ok(()));
+    }
+
     // ==================== Serde roundtrip tests ====================
 
     #[test]
@@ -3083,6 +3206,8 @@ mod tests {
             data_category: DataCategory::Demographics,
             permission: DataPermission::Read,
             is_emergency: false,
+            clinical_event_time: None,
+            encounter_hash: None,
         };
         let json = serde_json::to_string(&input).expect("serialize");
         let decoded: AuthorizationCheckInput = serde_json::from_str(&json).expect("deserialize");
