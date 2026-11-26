@@ -419,6 +419,83 @@
         "synthetic-evidence:defer_source_registry_unavailable"
       ],
       "policy_version": "public-oracle-fixture-v1"
+    },
+    {
+      "case_id": "deny_provenance_target_version_mismatch",
+      "decision": "deny",
+      "reason_codes": [
+        "provenance_target_mismatch"
+      ],
+      "evidence_refs": [
+        "synthetic-evidence:deny_provenance_target_version_mismatch"
+      ],
+      "policy_version": "public-oracle-fixture-v1"
+    },
+    {
+      "case_id": "deny_provenance_agent_signer_mismatch",
+      "decision": "deny",
+      "reason_codes": [
+        "provenance_agent_mismatch"
+      ],
+      "evidence_refs": [
+        "synthetic-evidence:deny_provenance_agent_signer_mismatch"
+      ],
+      "policy_version": "public-oracle-fixture-v1"
+    },
+    {
+      "case_id": "deny_provenance_signature_wrong_purpose",
+      "decision": "deny",
+      "reason_codes": [
+        "provenance_signature_purpose_mismatch"
+      ],
+      "evidence_refs": [
+        "synthetic-evidence:deny_provenance_signature_wrong_purpose"
+      ],
+      "policy_version": "public-oracle-fixture-v1"
+    },
+    {
+      "case_id": "deny_provenance_signed_digest_mismatch",
+      "decision": "deny",
+      "reason_codes": [
+        "payload_digest_mismatch"
+      ],
+      "evidence_refs": [
+        "synthetic-evidence:deny_provenance_signed_digest_mismatch"
+      ],
+      "policy_version": "public-oracle-fixture-v1"
+    },
+    {
+      "case_id": "deny_revoked_source_signing_key",
+      "decision": "deny",
+      "reason_codes": [
+        "source_untrusted"
+      ],
+      "evidence_refs": [
+        "synthetic-evidence:deny_revoked_source_signing_key"
+      ],
+      "policy_version": "public-oracle-fixture-v1"
+    },
+    {
+      "case_id": "defer_provenance_verifier_unavailable",
+      "decision": "defer",
+      "reason_codes": [
+        "verifier_unavailable"
+      ],
+      "evidence_refs": [
+        "synthetic-evidence:defer_provenance_verifier_unavailable"
+      ],
+      "policy_version": "public-oracle-fixture-v1"
+    },
+    {
+      "case_id": "defer_source_signing_key_state_stale",
+      "decision": "defer",
+      "reason_codes": [
+        "authority_state_stale"
+      ],
+      "evidence_refs": [
+        "synthetic-evidence:defer_source_signing_key_state_stale"
+      ],
+      "policy_version": "public-oracle-fixture-v1"
     }
   ]
 }
