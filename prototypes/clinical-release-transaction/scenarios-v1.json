@@ -115,6 +115,24 @@
       "additional_side_effects": 1,
       "attempt_count": 32,
       "description": "32 concurrent attempts with one key produce one committed side effect"
+    },
+    {
+      "id": "revocation_epoch_changed",
+      "expected": "deny",
+      "additional_side_effects": 0,
+      "description": "revocation epoch increments after receipt issuance even if the latest status is not yet confirmed revoked"
+    },
+    {
+      "id": "idempotency_key_collision",
+      "expected": "deny",
+      "additional_side_effects": 0,
+      "description": "a completed idempotency key cannot be rebound to another receipt or request"
+    },
+    {
+      "id": "completed_replay_after_receipt_expiry",
+      "expected": "already_released",
+      "additional_side_effects": 0,
+      "description": "expiry blocks new releases but does not erase a prior committed receipt"
     }
   ]
 }
