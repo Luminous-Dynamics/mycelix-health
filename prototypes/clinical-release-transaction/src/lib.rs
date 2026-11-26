@@ -294,6 +294,16 @@ pub struct AuditRecord {
     pub event: &'static str,
     pub receipt_id: String,
     pub idempotency_key: String,
+    pub patient_id: String,
+    pub tenant_id: String,
+    pub actor_id: String,
+    pub recipient_id: String,
+    pub purpose: String,
+    pub action: String,
+    pub consent_id: String,
+    pub consent_version: u64,
+    pub clinical_event_time_ms: i64,
+    pub encounter_id: Option<String>,
     pub resource_id: String,
     pub resource_version: String,
     pub resource_digest: String,
@@ -421,6 +431,16 @@ impl TransactionalReleaseBackend for InMemoryAtomicBackend {
             idempotency_key: intent.idempotency_key.clone(),
             resource_id: intent.binding.resource_id.clone(),
             resource_version: intent.binding.resource_version.clone(),
+            patient_id: intent.binding.patient_id.clone(),
+            tenant_id: intent.binding.tenant_id.clone(),
+            actor_id: intent.binding.actor_id.clone(),
+            recipient_id: intent.binding.recipient_id.clone(),
+            purpose: intent.binding.purpose.clone(),
+            action: intent.binding.action.clone(),
+            consent_id: intent.consent_id.clone(),
+            consent_version: intent.expected_consent_version,
+            clinical_event_time_ms: intent.binding.clinical_event_time_ms,
+            encounter_id: intent.binding.encounter_id.clone(),
             resource_digest: intent.binding.resource_digest.clone(),
         });
 
@@ -433,6 +453,16 @@ impl TransactionalReleaseBackend for InMemoryAtomicBackend {
             idempotency_key: intent.idempotency_key.clone(),
             resource_id: intent.binding.resource_id.clone(),
             resource_version: intent.binding.resource_version.clone(),
+            patient_id: intent.binding.patient_id.clone(),
+            tenant_id: intent.binding.tenant_id.clone(),
+            actor_id: intent.binding.actor_id.clone(),
+            recipient_id: intent.binding.recipient_id.clone(),
+            purpose: intent.binding.purpose.clone(),
+            action: intent.binding.action.clone(),
+            consent_id: intent.consent_id.clone(),
+            consent_version: intent.expected_consent_version,
+            clinical_event_time_ms: intent.binding.clinical_event_time_ms,
+            encounter_id: intent.binding.encounter_id.clone(),
             resource_digest: intent.binding.resource_digest.clone(),
         });
         if let Some(record) = state.idempotency.get_mut(&intent.idempotency_key) {
@@ -552,6 +582,15 @@ mod tests {
         assert_eq!(audit[0].event, "release_intent");
         assert_eq!(audit[1].event, "release_completed");
         assert_eq!(audit[0].resource_digest, "sha256:resource-v7");
+        assert_eq!(audit[0].patient_id, "patient-1");
+        assert_eq!(audit[0].tenant_id, "tenant-1");
+        assert_eq!(audit[0].actor_id, "provider-1");
+        assert_eq!(audit[0].recipient_id, "clinic-1");
+        assert_eq!(audit[0].purpose, "treatment");
+        assert_eq!(audit[0].action, "read");
+        assert_eq!(audit[0].consent_version, 4);
+        assert_eq!(audit[0].clinical_event_time_ms, 1_795_000_000_000);
+        assert_eq!(audit[0].encounter_id.as_deref(), Some("encounter-1"));
     }
 
     #[test]
