@@ -1,0 +1,821 @@
+{
+  "schema_version": 1,
+  "benchmark_id": "mycelix-clinical-evidence-integrity.official-fhir-r4-core-validator.v1",
+  "release_status": "frozen-synthetic-validator-corpus",
+  "data_classification": "fully_synthetic_no_phi",
+  "validator_release": "7.0.6",
+  "fhir_version": "4.0.1",
+  "cases": [
+    {
+      "id": "valid_restful_collection",
+      "expected": "valid",
+      "purpose": "FHIR-valid collection with absolute RESTful fullUrl",
+      "bundle": {
+        "resourceType": "Bundle",
+        "type": "collection",
+        "entry": [
+          {
+            "fullUrl": "https://ehr.example/fhir/Patient/patient-1",
+            "resource": {
+              "resourceType": "Patient",
+              "id": "patient-1"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "valid_uuid_collection",
+      "expected": "valid",
+      "purpose": "FHIR-valid opaque UUID fullUrl",
+      "bundle": {
+        "resourceType": "Bundle",
+        "type": "collection",
+        "entry": [
+          {
+            "fullUrl": "urn:uuid:00000000-0000-4000-8000-000000000001",
+            "resource": {
+              "resourceType": "Patient",
+              "id": "patient-1"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "valid_transaction_post_without_fullurl_or_resource_id",
+      "expected": "valid",
+      "purpose": "R4 transaction POST exception: resource has no persistent identity",
+      "bundle": {
+        "resourceType": "Bundle",
+        "type": "transaction",
+        "entry": [
+          {
+            "resource": {
+              "resourceType": "Patient"
+            },
+            "request": {
+              "method": "POST",
+              "url": "Patient"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "valid_collection_without_entry_element",
+      "expected": "valid",
+      "purpose": "R4 Collection permits zero entries; the zero-value array property is omitted in FHIR JSON",
+      "bundle": {
+        "resourceType": "Bundle",
+        "type": "collection"
+      }
+    },
+    {
+      "id": "invalid_collection_with_empty_entry_array",
+      "expected": "invalid",
+      "purpose": "FHIR JSON does not serialize an empty array; the property should be absent when it has no values",
+      "bundle": {
+        "resourceType": "Bundle",
+        "type": "collection",
+        "entry": []
+      }
+    },
+    {
+      "id": "valid_same_fullurl_distinct_versions",
+      "expected": "valid",
+      "purpose": "R4 permits repeated fullUrl where resource meta.versionId values are distinct",
+      "bundle": {
+        "resourceType": "Bundle",
+        "type": "collection",
+        "entry": [
+          {
+            "fullUrl": "https://ehr.example/fhir/Patient/patient-1",
+            "resource": {
+              "resourceType": "Patient",
+              "id": "patient-1",
+              "meta": {
+                "versionId": "1"
+              }
+            }
+          },
+          {
+            "fullUrl": "https://ehr.example/fhir/Patient/patient-1",
+            "resource": {
+              "resourceType": "Patient",
+              "id": "patient-1",
+              "meta": {
+                "versionId": "2"
+              }
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "valid_64_character_resource_id",
+      "expected": "valid",
+      "purpose": "FHIR id maximum length boundary",
+      "bundle": {
+        "resourceType": "Bundle",
+        "type": "collection",
+        "entry": [
+          {
+            "fullUrl": "urn:uuid:00000000-0000-4000-8000-000000000006",
+            "resource": {
+              "resourceType": "Patient",
+              "id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "invalid_collection_missing_fullurl",
+      "expected": "invalid",
+      "purpose": "R4 Bundle identity rule requires fullUrl except transaction/batch POST without persistent identity",
+      "bundle": {
+        "resourceType": "Bundle",
+        "type": "collection",
+        "entry": [
+          {
+            "resource": {
+              "resourceType": "Patient",
+              "id": "patient-1"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "invalid_version_specific_fullurl",
+      "expected": "invalid",
+      "purpose": "R4 bdl-8 prohibits a version-specific fullUrl",
+      "bundle": {
+        "resourceType": "Bundle",
+        "type": "collection",
+        "entry": [
+          {
+            "fullUrl": "https://ehr.example/fhir/Patient/patient-1/_history/2",
+            "resource": {
+              "resourceType": "Patient",
+              "id": "patient-1"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "invalid_same_fullurl_same_version",
+      "expected": "invalid",
+      "purpose": "R4 bdl-7 requires distinct fullUrl/meta.versionId pairs",
+      "bundle": {
+        "resourceType": "Bundle",
+        "type": "collection",
+        "entry": [
+          {
+            "fullUrl": "https://ehr.example/fhir/Patient/patient-1",
+            "resource": {
+              "resourceType": "Patient",
+              "id": "patient-1",
+              "meta": {
+                "versionId": "2"
+              }
+            }
+          },
+          {
+            "fullUrl": "https://ehr.example/fhir/Patient/patient-1",
+            "resource": {
+              "resourceType": "Patient",
+              "id": "patient-1",
+              "meta": {
+                "versionId": "2"
+              }
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "invalid_collection_request_metadata",
+      "expected": "invalid",
+      "purpose": "R4 bdl-3 prohibits entry.request outside batch/transaction/history",
+      "bundle": {
+        "resourceType": "Bundle",
+        "type": "collection",
+        "entry": [
+          {
+            "fullUrl": "https://ehr.example/fhir/Patient/patient-1",
+            "resource": {
+              "resourceType": "Patient",
+              "id": "patient-1"
+            },
+            "request": {
+              "method": "GET",
+              "url": "Patient"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "invalid_collection_response_metadata",
+      "expected": "invalid",
+      "purpose": "R4 bdl-4 prohibits entry.response outside batch-response/transaction-response/history",
+      "bundle": {
+        "resourceType": "Bundle",
+        "type": "collection",
+        "entry": [
+          {
+            "fullUrl": "https://ehr.example/fhir/Patient/patient-1",
+            "resource": {
+              "resourceType": "Patient",
+              "id": "patient-1"
+            },
+            "response": {
+              "status": "200"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "invalid_collection_search_metadata",
+      "expected": "invalid",
+      "purpose": "R4 bdl-2 permits entry.search only for searchset Bundles",
+      "bundle": {
+        "resourceType": "Bundle",
+        "type": "collection",
+        "entry": [
+          {
+            "fullUrl": "https://ehr.example/fhir/Patient/patient-1",
+            "resource": {
+              "resourceType": "Patient",
+              "id": "patient-1"
+            },
+            "search": {
+              "mode": "match"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "invalid_fhir_id_contains_space",
+      "expected": "invalid",
+      "purpose": "FHIR id primitive permits only ASCII letters, digits, hyphen and period",
+      "bundle": {
+        "resourceType": "Bundle",
+        "type": "collection",
+        "entry": [
+          {
+            "fullUrl": "urn:uuid:00000000-0000-4000-8000-000000000012",
+            "resource": {
+              "resourceType": "Patient",
+              "id": "patient one"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "invalid_fhir_id_over_64_characters",
+      "expected": "invalid",
+      "purpose": "FHIR id primitive maximum length is 64 characters",
+      "bundle": {
+        "resourceType": "Bundle",
+        "type": "collection",
+        "entry": [
+          {
+            "fullUrl": "urn:uuid:00000000-0000-4000-8000-000000000013",
+            "resource": {
+              "resourceType": "Patient",
+              "id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "invalid_resource_type_token",
+      "expected": "invalid",
+      "purpose": "FHIR resourceType is case-sensitive and must resolve to a defined resource type",
+      "bundle": {
+        "resourceType": "Bundle",
+        "type": "collection",
+        "entry": [
+          {
+            "fullUrl": "urn:uuid:00000000-0000-4000-8000-000000000014",
+            "resource": {
+              "resourceType": "patient",
+              "id": "patient-1"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "valid_provenance_version_specific_source_entity",
+      "expected": "valid",
+      "purpose": "FHIR R4 Provenance records one activity, a version-specific target, an agent, and a source entity.",
+      "bundle": {
+        "id": "case-provenance-version-specific",
+        "resourceType": "Bundle",
+        "type": "collection",
+        "entry": [
+          {
+            "fullUrl": "urn:uuid:10000000-0000-4000-8000-000000000101",
+            "resource": {
+              "resourceType": "Provenance",
+              "id": "provenance-lab-7",
+              "target": [
+                {
+                  "reference": "Observation/lab-potassium/_history/7"
+                }
+              ],
+              "occurredDateTime": "2026-11-20T10:15:00Z",
+              "recorded": "2026-11-20T10:16:00Z",
+              "policy": [
+                "https://policy.example.test/health/treatment-v1"
+              ],
+              "activity": {
+                "text": "Transform and ingest source laboratory observation"
+              },
+              "agent": [
+                {
+                  "who": {
+                    "reference": "Organization/lab-example"
+                  },
+                  "type": {
+                    "text": "source custodian"
+                  }
+                }
+              ],
+              "entity": [
+                {
+                  "role": "source",
+                  "what": {
+                    "reference": "DocumentReference/lab-report/_history/2"
+                  }
+                }
+              ]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "invalid_provenance_missing_target",
+      "expected": "invalid",
+      "purpose": "FHIR R4 Provenance requires at least one target reference.",
+      "bundle": {
+        "id": "case-provenance-no-target",
+        "resourceType": "Bundle",
+        "type": "collection",
+        "entry": [
+          {
+            "fullUrl": "urn:uuid:10000000-0000-4000-8000-000000000102",
+            "resource": {
+              "resourceType": "Provenance",
+              "id": "provenance-no-target",
+              "recorded": "2026-11-20T10:16:00Z",
+              "agent": [
+                {
+                  "who": {
+                    "reference": "Organization/lab-example"
+                  }
+                }
+              ]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "valid_audit_event_with_agent_and_source",
+      "expected": "valid",
+      "purpose": "FHIR R4 AuditEvent includes required type, recorded instant, agent requestor, and source observer.",
+      "bundle": {
+        "id": "case-audit-event-valid",
+        "resourceType": "Bundle",
+        "type": "collection",
+        "entry": [
+          {
+            "fullUrl": "urn:uuid:10000000-0000-4000-8000-000000000103",
+            "resource": {
+              "resourceType": "AuditEvent",
+              "id": "audit-fhir-export-1",
+              "type": {
+                "system": "http://dicom.nema.org/resources/ontology/DCM",
+                "code": "110100",
+                "display": "Application Activity"
+              },
+              "subtype": [
+                {
+                  "system": "http://dicom.nema.org/resources/ontology/DCM",
+                  "code": "110110",
+                  "display": "Patient Record"
+                }
+              ],
+              "action": "R",
+              "recorded": "2026-11-20T10:18:00Z",
+              "outcome": "0",
+              "purposeOfEvent": [
+                {
+                  "text": "treatment"
+                }
+              ],
+              "agent": [
+                {
+                  "who": {
+                    "reference": "Device/mycelix-gateway"
+                  },
+                  "requestor": true,
+                  "network": {
+                    "address": "gateway.example.test",
+                    "type": "1"
+                  }
+                }
+              ],
+              "source": {
+                "site": "Mycelix Health",
+                "observer": {
+                  "reference": "Device/mycelix-gateway"
+                }
+              },
+              "entity": [
+                {
+                  "what": {
+                    "reference": "Observation/lab-potassium/_history/7"
+                  },
+                  "type": {
+                    "system": "http://terminology.hl7.org/CodeSystem/audit-entity-type",
+                    "code": "2",
+                    "display": "System Object"
+                  },
+                  "role": {
+                    "system": "http://terminology.hl7.org/CodeSystem/object-role",
+                    "code": "4",
+                    "display": "Domain Resource"
+                  },
+                  "lifecycle": {
+                    "system": "http://terminology.hl7.org/CodeSystem/dicom-audit-lifecycle",
+                    "code": "6",
+                    "display": "Access / Use"
+                  }
+                }
+              ]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "invalid_audit_event_missing_source",
+      "expected": "invalid",
+      "purpose": "FHIR R4 AuditEvent requires a source reporter with an observer.",
+      "bundle": {
+        "id": "case-audit-event-no-source",
+        "resourceType": "Bundle",
+        "type": "collection",
+        "entry": [
+          {
+            "fullUrl": "urn:uuid:10000000-0000-4000-8000-000000000104",
+            "resource": {
+              "resourceType": "AuditEvent",
+              "id": "audit-no-source",
+              "type": {
+                "system": "http://dicom.nema.org/resources/ontology/DCM",
+                "code": "110100",
+                "display": "Application Activity"
+              },
+              "recorded": "2026-11-20T10:18:00Z",
+              "agent": [
+                {
+                  "who": {
+                    "reference": "Device/mycelix-gateway"
+                  },
+                  "requestor": true
+                }
+              ]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "valid_active_privacy_consent_with_patient",
+      "expected": "valid",
+      "purpose": "FHIR R4 privacy Consent with active status, patient, scope, category, policy rule, and bounded recipient provision.",
+      "bundle": {
+        "id": "case-consent-active",
+        "resourceType": "Bundle",
+        "type": "collection",
+        "entry": [
+          {
+            "fullUrl": "urn:uuid:10000000-0000-4000-8000-000000000105",
+            "resource": {
+              "resourceType": "Consent",
+              "id": "consent-active-1",
+              "status": "active",
+              "scope": {
+                "coding": [
+                  {
+                    "system": "http://terminology.hl7.org/CodeSystem/consentscope",
+                    "code": "patient-privacy"
+                  }
+                ]
+              },
+              "category": [
+                {
+                  "coding": [
+                    {
+                      "system": "http://loinc.org",
+                      "code": "59284-0",
+                      "display": "Patient Consent"
+                    }
+                  ]
+                }
+              ],
+              "patient": {
+                "reference": "Patient/synthetic-subject-1"
+              },
+              "dateTime": "2026-11-20T10:00:00Z",
+              "organization": [
+                {
+                  "reference": "Organization/provider-example"
+                }
+              ],
+              "policyRule": {
+                "coding": [
+                  {
+                    "system": "http://terminology.hl7.org/CodeSystem/v3-ActCode",
+                    "code": "OPTIN"
+                  }
+                ]
+              },
+              "provision": {
+                "type": "permit",
+                "period": {
+                  "start": "2026-11-20T00:00:00Z",
+                  "end": "2027-11-20T00:00:00Z"
+                },
+                "actor": [
+                  {
+                    "role": {
+                      "text": "recipient"
+                    },
+                    "reference": {
+                      "reference": "Organization/mycelix-health"
+                    }
+                  }
+                ],
+                "action": [
+                  {
+                    "text": "access and disclose for treatment"
+                  }
+                ]
+              }
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "valid_inactive_privacy_consent_not_an_authority_grant",
+      "expected": "valid",
+      "purpose": "FHIR-valid inactive Consent is a negative authorization control; FHIR core validity does not make it current permission.",
+      "bundle": {
+        "id": "case-consent-inactive",
+        "resourceType": "Bundle",
+        "type": "collection",
+        "entry": [
+          {
+            "fullUrl": "urn:uuid:10000000-0000-4000-8000-000000000106",
+            "resource": {
+              "resourceType": "Consent",
+              "id": "consent-inactive-1",
+              "status": "inactive",
+              "scope": {
+                "coding": [
+                  {
+                    "system": "http://terminology.hl7.org/CodeSystem/consentscope",
+                    "code": "patient-privacy"
+                  }
+                ]
+              },
+              "category": [
+                {
+                  "coding": [
+                    {
+                      "system": "http://loinc.org",
+                      "code": "59284-0",
+                      "display": "Patient Consent"
+                    }
+                  ]
+                }
+              ],
+              "patient": {
+                "reference": "Patient/synthetic-subject-1"
+              },
+              "dateTime": "2026-11-20T10:00:00Z",
+              "organization": [
+                {
+                  "reference": "Organization/provider-example"
+                }
+              ],
+              "policyRule": {
+                "coding": [
+                  {
+                    "system": "http://terminology.hl7.org/CodeSystem/v3-ActCode",
+                    "code": "OPTIN"
+                  }
+                ]
+              },
+              "provision": {
+                "type": "permit",
+                "period": {
+                  "start": "2026-11-20T00:00:00Z",
+                  "end": "2027-11-20T00:00:00Z"
+                },
+                "actor": [
+                  {
+                    "role": {
+                      "text": "recipient"
+                    },
+                    "reference": {
+                      "reference": "Organization/mycelix-health"
+                    }
+                  }
+                ],
+                "action": [
+                  {
+                    "text": "access and disclose for treatment"
+                  }
+                ]
+              }
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "invalid_privacy_consent_missing_patient",
+      "expected": "warnings_only",
+      "purpose": "The canonical patient-privacy scope is present but the pinned validator CLI returns warnings only; R4 snapshot ppc-2 uses a non-matching literal system='something'. Do not count this fixture as a validated privacy Consent.",
+      "bundle": {
+        "id": "case-consent-no-patient",
+        "resourceType": "Bundle",
+        "type": "collection",
+        "entry": [
+          {
+            "fullUrl": "urn:uuid:10000000-0000-4000-8000-000000000107",
+            "resource": {
+              "resourceType": "Consent",
+              "id": "consent-missing-patient",
+              "status": "active",
+              "scope": {
+                "coding": [
+                  {
+                    "system": "http://terminology.hl7.org/CodeSystem/consentscope",
+                    "code": "patient-privacy"
+                  }
+                ]
+              },
+              "category": [
+                {
+                  "coding": [
+                    {
+                      "system": "http://loinc.org",
+                      "code": "59284-0",
+                      "display": "Patient Consent"
+                    }
+                  ]
+                }
+              ],
+              "dateTime": "2026-11-20T10:00:00Z",
+              "organization": [
+                {
+                  "reference": "Organization/provider-example"
+                }
+              ],
+              "policyRule": {
+                "coding": [
+                  {
+                    "system": "http://terminology.hl7.org/CodeSystem/v3-ActCode",
+                    "code": "OPTIN"
+                  }
+                ]
+              },
+              "provision": {
+                "type": "permit",
+                "period": {
+                  "start": "2026-11-20T00:00:00Z",
+                  "end": "2027-11-20T00:00:00Z"
+                },
+                "actor": [
+                  {
+                    "role": {
+                      "text": "recipient"
+                    },
+                    "reference": {
+                      "reference": "Organization/mycelix-health"
+                    }
+                  }
+                ],
+                "action": [
+                  {
+                    "text": "access and disclose for treatment"
+                  }
+                ]
+              }
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "invalid_privacy_consent_missing_status",
+      "expected": "invalid",
+      "purpose": "Consent.status is mandatory (1..1); this fixture omits it while keeping a Patient subject so the required-element failure is isolated.",
+      "bundle": {
+        "id": "case-consent-no-status",
+        "resourceType": "Bundle",
+        "type": "collection",
+        "entry": [
+          {
+            "fullUrl": "urn:uuid:10000000-0000-4000-8000-000000000107",
+            "resource": {
+              "resourceType": "Consent",
+              "id": "consent-missing-status",
+              "scope": {
+                "coding": [
+                  {
+                    "system": "http://terminology.hl7.org/CodeSystem/consentscope",
+                    "code": "patient-privacy"
+                  }
+                ]
+              },
+              "category": [
+                {
+                  "coding": [
+                    {
+                      "system": "http://loinc.org",
+                      "code": "59284-0",
+                      "display": "Patient Consent"
+                    }
+                  ]
+                }
+              ],
+              "dateTime": "2026-11-20T10:00:00Z",
+              "organization": [
+                {
+                  "reference": "Organization/provider-example"
+                }
+              ],
+              "policyRule": {
+                "coding": [
+                  {
+                    "system": "http://terminology.hl7.org/CodeSystem/v3-ActCode",
+                    "code": "OPTIN"
+                  }
+                ]
+              },
+              "provision": {
+                "type": "permit",
+                "period": {
+                  "start": "2026-11-20T00:00:00Z",
+                  "end": "2027-11-20T00:00:00Z"
+                },
+                "actor": [
+                  {
+                    "role": {
+                      "text": "recipient"
+                    },
+                    "reference": {
+                      "reference": "Organization/mycelix-health"
+                    }
+                  }
+                ],
+                "action": [
+                  {
+                    "text": "access and disclose for treatment"
+                  }
+                ]
+              },
+              "patient": {
+                "reference": "Patient/synthetic-subject-1"
+              }
+            }
+          }
+        ]
+      }
+    }
+  ],
+  "corpus_revision": "provenance-audit-consent-qualification-v2",
+  "notes": [
+    "This corpus validates FHIR R4 core syntax and invariants only. Provenance expresses generation/derivation context; AuditEvent records security-relevant usage; Consent is a policy representation, not an enforcement engine.",
+    "The valid inactive Consent case is intentionally syntactically valid but must not be interpreted as an active authorization grant. Mycelix must independently resolve current authority, consent status, signature/legal-policy requirements, purpose, recipient, action, time, and revocation.",
+    "The pinned CLI 7.0.6 run returned no error for invalid_privacy_consent_missing_patient. The R4 Consent StructureDefinition snapshot publishes ppc-2 with the literal predicate system='something', which does not match the canonical patient-privacy coding system. This fixture is explicitly classified warnings_only; it is not counted as a successful privacy-patient invariant validation. invalid_privacy_consent_missing_status supplies an independent mandatory-element negative control."
+  ]
+}
