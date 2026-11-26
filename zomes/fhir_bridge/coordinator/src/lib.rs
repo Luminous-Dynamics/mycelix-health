@@ -1489,3 +1489,53 @@ fn validate_medication_resource(resource: &JsonValue) -> bool {
     resource.get("medicationCodeableConcept").is_some()
         || resource.get("medicationReference").is_some()
 }
+
+
+#[cfg(test)]
+mod fhir_bridge_export_authorization_tests {
+    use super::*;
+
+    #[test]
+    fn patient_only_export_is_demographics_only() {
+        assert_eq!(
+            fhir_bridge_export_categories(&["Patient".to_string()]).unwrap(),
+            vec![DataCategory::Demographics],
+        );
+    }
+
+    #[test]
+    fn selected_sections_map_to_the_same_categories_as_fhir_mapping() {
+        assert_eq!(
+            fhir_bridge_export_categories(&[
+                "Patient".to_string(),
+                "Observation".to_string(),
+                "Condition".to_string(),
+                "MedicationRequest".to_string(),
+            ]).unwrap(),
+            vec![
+                DataCategory::Demographics,
+                DataCategory::LabResults,
+                DataCategory::Diagnoses,
+                DataCategory::Medications,
+            ],
+        );
+    }
+
+    #[test]
+    fn empty_or_missing_patient_sections_are_rejected() {
+        assert!(fhir_bridge_export_categories(&[]).is_err());
+        assert!(fhir_bridge_export_categories(&["Observation".to_string()]).is_err());
+    }
+
+    #[test]
+    fn unsupported_sections_never_expand_to_all_categories() {
+        assert!(fhir_bridge_export_categories(&[
+            "Patient".to_string(),
+            "AllergyIntolerance".to_string(),
+        ]).is_err());
+        assert!(fhir_bridge_export_categories(&[
+            "Patient".to_string(),
+            "Unknown".to_string(),
+        ]).is_err());
+    }
+}
