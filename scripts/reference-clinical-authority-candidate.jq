@@ -30,16 +30,16 @@ def decide($case):
     elif (($consent.encounter_ids | index($request.encounter_id)) == null) then
       (if ($request.encounter_id == null or $request.encounter_id == "")
        then deny("encounter_context_missing") else deny("encounter_mismatch") end)
+    elif (($consent.permitted_purposes | index($request.purpose)) == null) then deny("purpose_mismatch")
+    elif (($consent.permitted_recipients | index($request.recipient_id)) == null) then deny("recipient_mismatch")
+    elif (($consent.permitted_actions | index($request.action)) == null) then deny("action_not_permitted")
+    elif (($consent.included_categories | index($request.category)) == null) then deny("category_not_permitted")
     elif ($consent.grantee_kind == "provider" and $registry.provider_registered != true) then deny("principal_unregistered")
     elif ($consent.grantee_kind == "provider" and
           ($registry.provider_organization_id != $request.recipient_id or $consent.grantee_id != $request.principal_id)) then deny("grantee_unresolved")
     elif ($consent.grantee_kind == "organization" and
           ($registry.organization_registered != true or $consent.grantee_id != $request.recipient_id)) then deny("grantee_unresolved")
     elif ($consent.grantee_kind != "provider" and $consent.grantee_kind != "organization") then deny("grantee_unresolved")
-    elif (($consent.permitted_purposes | index($request.purpose)) == null) then deny("purpose_mismatch")
-    elif (($consent.permitted_recipients | index($request.recipient_id)) == null) then deny("recipient_mismatch")
-    elif (($consent.permitted_actions | index($request.action)) == null) then deny("action_not_permitted")
-    elif (($consent.included_categories | index($request.category)) == null) then deny("category_not_permitted")
     elif ($request.replayed == true) then deny("request_replayed")
     elif ($registry.revocation_state_fresh != true) then defer("authority_state_stale")
     elif ($registry.verifier_available != true) then defer("verifier_unavailable")
