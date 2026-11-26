@@ -621,7 +621,7 @@ describe('EHR Gateway Server', () => {
 
     it('GET /fhir/Bundle denies unsupported sections before calling the zome', async () => {
       mockHolochainClient.callZome.mockClear();
-      const res = await app.request('/fhir/Bundle/${resolvedPatientHash}?sections=allergies');
+      const res = await app.request(`/fhir/Bundle/${resolvedPatientHash}?sections=allergies`);
       expect(res.status).toBe(403);
       expect(mockHolochainClient.callZome).not.toHaveBeenCalled();
     });
