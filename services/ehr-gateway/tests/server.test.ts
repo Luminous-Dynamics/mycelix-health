@@ -564,7 +564,7 @@ describe('EHR Gateway Server', () => {
       expect(res.status).toBe(200);
       expect(mockHolochainClient.callZome).toHaveBeenCalledWith(expect.objectContaining({
         fn_name: 'export_patient_fhir',
-        payload: { patient_hash: resolvedHash, include_sections: ['Condition'] },
+        payload: { patient_hash: resolvedHash, include_sections: ['Patient', 'Condition'] },
       }));
     });
 
@@ -730,7 +730,8 @@ describe('EHR Gateway Server', () => {
         { method: 'POST' },
       );
 
-      expect(res.status).toBe(200);
+      const responseBody = await res.json();
+      expect(res.status, JSON.stringify(responseBody)).toBe(200);
       expect(mockGateway.syncPatient).toHaveBeenCalledWith(
         'test-connection',
         '123',
