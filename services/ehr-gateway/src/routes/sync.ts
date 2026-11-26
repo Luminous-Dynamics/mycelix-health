@@ -36,54 +36,46 @@ export function createSyncRoutes(ctx: AppContext): Hono {
    * Returns: SyncResult or job ID (if async)
    */
   app.post('/patient/:patientId', async (c) => {
+    const resourceTypesParam = c.req.query('resourceTypes');
+    const requestedResourceTypes = resourceTypesParam
+      ? resourceTypesParam.split(',').map((value) => value.trim()).filter(Boolean)
+      : [
+        'Patient', 'Observation', 'Condition', 'MedicationRequest',
+        'AllergyIntolerance', 'Immunization', 'Procedure',
+      ];
     const authorization = await requireGatewayRouteAuthorizationV1(
       ctx.gatewayRouteAuthorizer,
       c.req.raw,
-      { action: 'sync_pull', resourceTypes: ['Patient'] },
+      { action: 'sync_pull', resourceTypes: requestedResourceTypes },
     );
     if (!authorization.authorized) return authorization.response;
 
     if (!ctx.gateway) {
-      return c.json({
-        error: 'Gateway not initialized',
-      }, 503);
+      return c.json({ error: 'Gateway not initialized' }, 503);
     }
 
-    const patientId = c.req.param('patientId');
-    const connectionId = c.req.query('connection');
-    const tokenKey = c.req.query('tokenKey');
-    const resourceTypesParam = c.req.query('resourceTypes');
-    const sourceSystem = c.req.query('sourceSystem');
+    const requestedPatientId = c.req.param('patientId');
+    const requestedConnectionId = c.req.query('connection');
+    const connectionId = authorization.authorization.sourceConnectionId;
+    const patientId = authorization.authorization.resolvedSourcePatientId!;
+    const credentialHandle = authorization.authorization.credentialHandle!;
+    const sourceSystem = ctx.gateway.getConnectionInfo(connectionId).system;
+    const resourceTypes = authorization.authorization.requestedResourceTypes;
     const isAsync = c.req.query('async') === 'true';
 
-    // Validate required params
-    if (!connectionId) {
-      return c.json({
-        error: 'Missing connection parameter',
-      }, 400);
+    // Legacy selectors are lookup hints only. The downstream adapter always
+    // receives the canonical patient, connection, credential and source returned
+    // by the trusted authorization provider.
+    if (requestedPatientId !== patientId
+      || (requestedConnectionId && requestedConnectionId !== connectionId)) {
+      return c.json({ error: 'Requested patient or connection does not match resolved authorization' }, 403);
     }
-
-    if (!tokenKey) {
-      return c.json({
-        error: 'Missing tokenKey parameter',
-      }, 400);
-    }
-
-    // Check connection exists
     if (!ctx.gateway.isConnected(connectionId)) {
-      return c.json({
-        error: 'Connection not found',
-        connection_id: connectionId,
-      }, 404);
+      return c.json({ error: 'Authorized source connection is unavailable' }, 503);
     }
 
-    // Parse resource types
-    const resourceTypes = resourceTypesParam
-      ? resourceTypesParam.split(',')
-      : undefined;
-
-    // Background execution is disabled until the worker can consume a fresh,
-    // one-time authorization receipt and re-check revocation at execution time.
+    // Background execution remains disabled until the worker has its own fresh,
+    // consume-once authorization receipt and durable operation reconciliation.
     if (isAsync) {
       return c.json({
         error: 'Background sync unavailable',
@@ -91,22 +83,22 @@ export function createSyncRoutes(ctx: AppContext): Hono {
       }, 503);
     }
 
-    // Synchronous sync
     try {
       const result = await ctx.gateway.pullPatientData(
         connectionId,
         patientId,
-        tokenKey,
+        credentialHandle,
         {
           resourceTypes,
           sourceSystem,
-        }
+        },
       );
 
       return c.json({
         status: 'success',
         patient_id: patientId,
         connection_id: connectionId,
+        source_system: sourceSystem,
         results: result,
         timestamp: new Date().toISOString(),
       });
@@ -136,7 +128,11 @@ export function createSyncRoutes(ctx: AppContext): Hono {
     );
     if (!authorization.authorized) return authorization.response;
 
-    const jobId = c.req.param('jobId');
+    const requestedJobId = c.req.param('jobId');
+    const jobId = authorization.authorization.resolvedJobId!;
+    if (requestedJobId !== jobId) {
+      return c.json({ error: 'Job selector does not match authorized job' }, 403);
+    }
     const job = ctx.syncJobs.get(jobId);
 
     if (!job) {
@@ -228,7 +224,11 @@ export function createSyncRoutes(ctx: AppContext): Hono {
     );
     if (!authorization.authorized) return authorization.response;
 
-    const jobId = c.req.param('jobId');
+    const requestedJobId = c.req.param('jobId');
+    const jobId = authorization.authorization.resolvedJobId!;
+    if (requestedJobId !== jobId) {
+      return c.json({ error: 'Job selector does not match authorized job' }, 403);
+    }
     const job = ctx.syncJobs.get(jobId);
 
     if (!job) {
@@ -274,7 +274,13 @@ export function createSyncRoutes(ctx: AppContext): Hono {
     const authorization = await requireGatewayRouteAuthorizationV1(
       ctx.gatewayRouteAuthorizer,
       c.req.raw,
-      { action: 'sync_bidirectional', resourceTypes: ['Patient'] },
+      {
+        action: 'sync_bidirectional',
+        resourceTypes: [
+          'Patient', 'Observation', 'Condition', 'MedicationRequest',
+          'AllergyIntolerance', 'Immunization', 'Procedure',
+        ],
+      },
     );
     if (!authorization.authorized) return authorization.response;
 
@@ -284,42 +290,48 @@ export function createSyncRoutes(ctx: AppContext): Hono {
       }, 503);
     }
 
-    const patientId = c.req.param('patientId');
-    const connectionId = c.req.query('connection');
-    const tokenKey = c.req.query('tokenKey');
-    const patientHash = c.req.query('patientHash');
+    const requestedPatientId = c.req.param('patientId');
+    const requestedConnectionId = c.req.query('connection');
+    const requestedPatientHash = c.req.query('patientHash');
+    const connectionId = authorization.authorization.sourceConnectionId;
+    const patientId = authorization.authorization.resolvedSourcePatientId!;
+    const patientHash = authorization.authorization.resolvedMycelixPatientHash!;
+    const credentialHandle = authorization.authorization.credentialHandle!;
+    const sourceSystem = ctx.gateway.getConnectionInfo(connectionId).system;
+    const resourceTypes = authorization.authorization.requestedResourceTypes;
 
-    if (!connectionId || !tokenKey || !patientHash) {
-      return c.json({
-        error: 'Missing required parameters',
-        required: ['connection', 'tokenKey', 'patientHash'],
-      }, 400);
+    if (
+      requestedPatientId !== patientId
+      || requestedPatientHash !== patientHash
+      || (requestedConnectionId && requestedConnectionId !== connectionId)
+    ) {
+      return c.json({ error: 'Requested patient or connection does not match resolved authorization' }, 403);
     }
-
     if (!ctx.gateway.isConnected(connectionId)) {
-      return c.json({
-        error: 'Connection not found',
-        connection_id: connectionId,
-      }, 404);
+      return c.json({ error: 'Authorized source connection is unavailable' }, 503);
     }
 
     try {
-      // Convert patientHash string to Uint8Array
-      const hashBytes = new Uint8Array(
-        Buffer.from(patientHash, 'base64')
-      );
+      const hashBytes = new Uint8Array(Buffer.from(patientHash, 'base64'));
+      if (hashBytes.length !== 39) {
+        return c.json({ error: 'Resolved patient hash is malformed' }, 403);
+      }
 
       const result = await ctx.gateway.syncPatient(
         connectionId,
         patientId,
         hashBytes,
-        tokenKey
+        credentialHandle,
+        {
+          pull: { resourceTypes, sourceSystem },
+        },
       );
 
       return c.json({
         status: 'success',
         patient_id: patientId,
         connection_id: connectionId,
+        source_system: sourceSystem,
         pull_results: result.pullResults,
         push_results: result.pushResults,
         conflicts: result.conflicts,
@@ -395,15 +407,20 @@ export function createSyncRoutes(ctx: AppContext): Hono {
       }, 503);
     }
 
-    const conflictId = c.req.param('conflictId');
+    const requestedConflictId = c.req.param('conflictId');
+    const conflictId = authorization.authorization.resolvedConflictId!;
+    if (requestedConflictId !== conflictId) {
+      return c.json({ error: 'Conflict selector does not match authorized conflict' }, 403);
+    }
     const body = await c.req.json();
 
-    const { strategy, resolved_by, manual_data } = body;
+    const { strategy, manual_data } = body;
+    const resolvedBy = authorization.authorization.principal.subject;
 
-    if (!strategy || !resolved_by) {
+    if (!strategy) {
       return c.json({
         error: 'Missing required fields',
-        required: ['strategy', 'resolved_by'],
+        required: ['strategy'],
       }, 400);
     }
 
@@ -422,13 +439,13 @@ export function createSyncRoutes(ctx: AppContext): Hono {
     }
 
     try {
-      await ctx.gateway.resolveConflict(conflictId, strategy, resolved_by, manual_data);
+      await ctx.gateway.resolveConflict(conflictId, strategy, resolvedBy, manual_data);
 
       return c.json({
         status: 'success',
         conflict_id: conflictId,
         strategy,
-        resolved_by,
+        resolved_by: resolvedBy,
       });
     } catch (error) {
       console.error('Conflict resolution failed:', error);
