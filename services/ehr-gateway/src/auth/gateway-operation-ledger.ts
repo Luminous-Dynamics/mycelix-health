@@ -8,6 +8,7 @@ import type { GatewayActionV1 } from './gateway-request-context.js';
 export interface GatewayOperationKeyInputV1 {
   tenantId: string;
   principalBinding: string;
+  patientBinding: string;
   connectionId: string;
   action: GatewayActionV1;
   clientIdempotencyKey: string;
@@ -18,6 +19,7 @@ export function deriveGatewayOperationKeyV1(input: GatewayOperationKeyInputV1): 
   const values = [
     input.tenantId,
     input.principalBinding,
+    input.patientBinding,
     input.connectionId,
     input.action,
     input.clientIdempotencyKey,
@@ -97,7 +99,8 @@ export type GatewayOperationWriteResultV1 =
  * Production stores must implement claimOrRead and every state transition
  * durably and atomically. An executing operation is never reclaimed merely
  * because its lease expired. Same key with a different requestDigest conflicts.
- * A failed_known_no_effect row is retryable only after a new atomic claim.
+ * A failed_known_no_effect row may only be returned as claimed after an atomic
+ * retry claim; the new caller must pass fresh authorization before side effect.
  * executing/outcome_unknown must be reconciled, never blindly re-executed.
  */
 export interface GatewayOperationStoreV1 {
@@ -398,7 +401,8 @@ export class GatewayOperationCoordinatorV1 {
           initialAuthorizationReceiptDigest: operation.initialAuthorizationReceiptDigest,
         };
         const freshAuthorization = await this.reauthorizer.reauthorize(retryIntent);
-        if (!freshAuthorization.authorized
+        if ('unavailable' in freshAuthorization
+          || !freshAuthorization.authorized
           || !digest(freshAuthorization.authorizationReceiptDigest)
           || !Number.isSafeInteger(freshAuthorization.expiresAtMs)
           || freshAuthorization.expiresAtMs <= this.clock()) {
@@ -439,7 +443,8 @@ export class GatewayOperationCoordinatorV1 {
 
     if (result.kind === 'outcome_unknown') {
       await this.markUnknown(operation, result.reason);
-      return { kind: 'outcome_unknown', operation, reason: result.reason };
+      const updated = await this.markUnknown(operation, result.reason);
+      return { kind: 'outcome_unknown', operation: updated ?? operation, reason: result.reason };
     }
     if (result.kind === 'not_applied_proven') {
       const write = await this.safeMarkFailed(
@@ -492,17 +497,19 @@ export class GatewayOperationCoordinatorV1 {
   private async markUnknown(
     operation: GatewayOperationReceiptV1,
     reason: string,
-  ): Promise<void> {
+  ): Promise<GatewayOperationReceiptV1 | null> {
     try {
-      await this.store.markOutcomeUnknown(
+      const result = await this.store.markOutcomeUnknown(
         operation.operationId,
         operation.version,
         reason,
         this.clock(),
       );
+      return result.kind === 'updated' ? result.operation : null;
     } catch {
       // The durable row remains executing; future callers still cannot reclaim
       // it. A reconciliation worker/operator must inspect it.
+      return null;
     }
   }
 }
