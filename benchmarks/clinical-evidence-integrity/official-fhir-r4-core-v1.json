@@ -661,8 +661,8 @@
     },
     {
       "id": "invalid_privacy_consent_missing_patient",
-      "expected": "invalid",
-      "purpose": "FHIR R4 privacy Consent requires a patient subject.",
+      "expected": "warnings_only",
+      "purpose": "The canonical patient-privacy scope is present but the pinned validator CLI returns warnings only; R4 snapshot ppc-2 uses a non-matching literal system='something'. Do not count this fixture as a validated privacy Consent.",
       "bundle": {
         "id": "case-consent-no-patient",
         "resourceType": "Bundle",
@@ -733,11 +733,89 @@
           }
         ]
       }
+    },
+    {
+      "id": "invalid_privacy_consent_missing_status",
+      "expected": "invalid",
+      "purpose": "Consent.status is mandatory (1..1); this fixture omits it while keeping a Patient subject so the required-element failure is isolated.",
+      "bundle": {
+        "id": "case-consent-no-status",
+        "resourceType": "Bundle",
+        "type": "collection",
+        "entry": [
+          {
+            "fullUrl": "urn:uuid:10000000-0000-4000-8000-000000000107",
+            "resource": {
+              "resourceType": "Consent",
+              "id": "consent-missing-status",
+              "scope": {
+                "coding": [
+                  {
+                    "system": "http://terminology.hl7.org/CodeSystem/consentscope",
+                    "code": "patient-privacy"
+                  }
+                ]
+              },
+              "category": [
+                {
+                  "coding": [
+                    {
+                      "system": "http://loinc.org",
+                      "code": "59284-0",
+                      "display": "Patient Consent"
+                    }
+                  ]
+                }
+              ],
+              "dateTime": "2026-11-20T10:00:00Z",
+              "organization": [
+                {
+                  "reference": "Organization/provider-example"
+                }
+              ],
+              "policyRule": {
+                "coding": [
+                  {
+                    "system": "http://terminology.hl7.org/CodeSystem/v3-ActCode",
+                    "code": "OPTIN"
+                  }
+                ]
+              },
+              "provision": {
+                "type": "permit",
+                "period": {
+                  "start": "2026-11-20T00:00:00Z",
+                  "end": "2027-11-20T00:00:00Z"
+                },
+                "actor": [
+                  {
+                    "role": {
+                      "text": "recipient"
+                    },
+                    "reference": {
+                      "reference": "Organization/mycelix-health"
+                    }
+                  }
+                ],
+                "action": [
+                  {
+                    "text": "access and disclose for treatment"
+                  }
+                ]
+              },
+              "patient": {
+                "reference": "Patient/synthetic-subject-1"
+              }
+            }
+          }
+        ]
+      }
     }
   ],
-  "corpus_revision": "provenance-audit-consent-qualification-v1",
+  "corpus_revision": "provenance-audit-consent-qualification-v2",
   "notes": [
     "This corpus validates FHIR R4 core syntax and invariants only. Provenance expresses generation/derivation context; AuditEvent records security-relevant usage; Consent is a policy representation, not an enforcement engine.",
-    "The valid inactive Consent case is intentionally syntactically valid but must not be interpreted as an active authorization grant. Mycelix must independently resolve current authority, consent status, signature/legal-policy requirements, purpose, recipient, action, time, and revocation."
+    "The valid inactive Consent case is intentionally syntactically valid but must not be interpreted as an active authorization grant. Mycelix must independently resolve current authority, consent status, signature/legal-policy requirements, purpose, recipient, action, time, and revocation.",
+    "The pinned CLI 7.0.6 run returned no error for invalid_privacy_consent_missing_patient. The R4 Consent StructureDefinition snapshot publishes ppc-2 with the literal predicate system='something', which does not match the canonical patient-privacy coding system. This fixture is explicitly classified warnings_only; it is not counted as a successful privacy-patient invariant validation. invalid_privacy_consent_missing_status supplies an independent mandatory-element negative control."
   ]
 }
