@@ -200,6 +200,22 @@ jobs:
       - name: Test
         run: npm test
 
+  clinical-release-transaction:
+    name: Clinical Release Transaction Benchmark
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install pinned Rust
+        uses: dtolnay/rust-toolchain@1.96.0
+        with:
+          components: rustfmt, clippy
+      - name: Check standalone formatting
+        run: cargo fmt --manifest-path prototypes/clinical-release-transaction/Cargo.toml -- --check
+      - name: Run transactional release adversarial tests
+        run: cargo test --manifest-path prototypes/clinical-release-transaction/Cargo.toml --locked
+      - name: Run Clippy
+        run: cargo clippy --manifest-path prototypes/clinical-release-transaction/Cargo.toml --locked -- -D warnings
+
   # Integration tests (requires Holochain conductor)
   integration:
     name: Integration Tests
