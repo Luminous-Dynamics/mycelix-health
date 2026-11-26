@@ -60,7 +60,8 @@ export function createFhirRoutes(ctx: AppContext): Hono {
     if (!ctx.gateway.isConnected(sourceConnectionId)) {
       return c.json({ error: 'Authorized source connection is unavailable' }, 503);
     }
-    const sourceSystem = ctx.gateway.getConnectionInfo(sourceConnectionId).system;
+    const sourceConnection = ctx.gateway.getConnectionInfo(sourceConnectionId);
+    const sourceSystem = sourceConnection.system;
     const authorizedResourceTypes = new Set(authorization.authorization.requestedResourceTypes);
 
     // Parse and validate bundle
@@ -83,33 +84,74 @@ export function createFhirRoutes(ctx: AppContext): Hono {
       // every declared Patient reference. Do not let a broad Bundle selector
       // become permission for arbitrary patient resources.
       const entries = Array.isArray(bundle.entry) ? bundle.entry : [];
+      const sourceOrigin = new URL(sourceConnection.baseUrl).origin;
+      const sourcePatientId = authorization.authorization.resolvedSourcePatientId!;
+      const patientFullUrlIds = new Map<string, string>();
+      const patientEntries = entries.filter((entry) => {
+        const resource = entry?.resource as { resourceType?: unknown } | undefined;
+        return resource?.resourceType === 'Patient';
+      });
+      if (patientEntries.length > 1) {
+        return c.json({ error: 'A patient-scoped Bundle cannot contain multiple Patient resources' }, 403);
+      }
+      for (const entry of patientEntries) {
+        const resource = entry.resource as { id?: unknown };
+        if (typeof resource.id !== 'string' || resource.id !== sourcePatientId) {
+          return c.json({ error: 'Bundle Patient does not match the authorized source patient' }, 403);
+        }
+        if (typeof entry.fullUrl === 'string') {
+          patientFullUrlIds.set(entry.fullUrl, resource.id);
+        }
+      }
+
+      const resolvePatientReference = (reference: string): string | null => {
+        if (reference.startsWith('urn:uuid:')) {
+          return patientFullUrlIds.get(reference) ?? null;
+        }
+        try {
+          const resolved = new URL(reference, sourceConnection.baseUrl);
+          if (resolved.origin !== sourceOrigin) return null;
+          const segments = resolved.pathname.split('/').filter(Boolean);
+          const patientIndex = segments.lastIndexOf('Patient');
+          if (patientIndex < 0 || !segments[patientIndex + 1]) return null;
+          return decodeURIComponent(segments[patientIndex + 1]!);
+        } catch {
+          return null;
+        }
+      };
+
       for (const entry of entries) {
         const resource = entry?.resource as {
           resourceType?: unknown;
-          id?: unknown;
-          subject?: { reference?: unknown };
-          patient?: { reference?: unknown };
-          context?: { reference?: unknown };
+          subject?: { reference?: unknown; identifier?: unknown };
+          patient?: { reference?: unknown; identifier?: unknown };
+          context?: { reference?: unknown; identifier?: unknown };
         } | undefined;
         if (!resource || typeof resource.resourceType !== 'string'
           || !authorizedResourceTypes.has(resource.resourceType)) {
           return c.json({ error: 'Bundle contains an unauthorized resource type' }, 403);
         }
-        if (resource.resourceType === 'Patient'
-          && typeof resource.id === 'string'
-          && resource.id !== authorization.authorization.resolvedSourcePatientId) {
-          return c.json({ error: 'Bundle Patient does not match the authorized source patient' }, 403);
-        }
-        const patientReferences = [
-          resource.subject?.reference,
-          resource.patient?.reference,
-          resource.context?.reference,
-        ].filter((value): value is string => typeof value === 'string');
-        if (patientReferences.some((reference) => {
-          const match = /^Patient\/([^/]+)(?:\/|$)/.exec(reference);
-          return match !== null && match[1] !== authorization.authorization.resolvedSourcePatientId;
-        })) {
-          return c.json({ error: 'Bundle contains a resource for a different patient' }, 403);
+
+        const patientReferenceFields = [
+          resource.subject,
+          resource.patient,
+          resource.context,
+        ].filter((value): value is { reference?: unknown; identifier?: unknown } =>
+          value !== undefined && value !== null
+        );
+        for (const field of patientReferenceFields) {
+          if (typeof field.reference === 'string') {
+            const referencedPatientId = resolvePatientReference(field.reference);
+            if (referencedPatientId !== sourcePatientId) {
+              return c.json({
+                error: 'Bundle contains an unresolved, external-origin or mismatched Patient reference',
+              }, 403);
+            }
+          } else if (field.identifier !== undefined) {
+            // Identifier-only Patient references cannot be bound to the signed
+            // source patient without a trusted identifier registry lookup.
+            return c.json({ error: 'Identifier-only Patient references are not supported' }, 403);
+          }
         }
       }
     } catch (error) {
