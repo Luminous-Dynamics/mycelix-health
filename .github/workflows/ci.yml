@@ -138,9 +138,16 @@ jobs:
           cp -r /tmp/mycelix-parent/mycelix-core/. ../mycelix-workspace/mycelix-core/
           rm -rf /tmp/mycelix-parent
 
-      - uses: EmbarkStudios/cargo-deny-action@v2
-        with:
-          command: check
+      # Run on the host so cargo-deny can resolve the sibling path dependencies
+      # checked out above; the Docker action cannot see paths outside its mount.
+      - name: Install Rust for host-native dependency audit
+        uses: dtolnay/rust-toolchain@1.96.0
+
+      - name: Install pinned cargo-deny
+        run: cargo install cargo-deny --version 0.22.0 --locked
+
+      - name: Check dependency policy
+        run: cargo deny check
 
   # TypeScript SDK
   sdk:
@@ -187,6 +194,10 @@ jobs:
           node-version: '20'
           cache: 'npm'
           cache-dependency-path: services/ehr-gateway/package-lock.json
+
+      - name: Validate gateway authority schemas
+        run: |
+          node -e "for (const f of ['schemas/gateway-request-context-v1.schema.json', 'schemas/gateway-authority-grant-v1.schema.json']) JSON.parse(require('node:fs').readFileSync(f, 'utf8'))"
 
       - name: Install dependencies
         run: npm ci

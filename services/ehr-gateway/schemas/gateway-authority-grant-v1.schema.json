@@ -1,0 +1,55 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://luminousdynamics.io/schemas/gateway-authority-grant-v1.schema.json",
+  "title": "Mycelix Gateway Authority Grant v1",
+  "description": "Registry-backed authority decision. A caller must never author this object as proof of its own authority.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "grantId",
+    "principal",
+    "tenantId",
+    "patientBinding",
+    "sourceConnectionId",
+    "purpose",
+    "recipientId",
+    "allowedActions",
+    "allowedResourceTypes",
+    "notBeforeMs",
+    "expiresAtMs",
+    "revokedAtMs"
+  ],
+  "properties": {
+    "grantId": { "type": "string", "minLength": 1, "maxLength": 256 },
+    "principal": { "$ref": "gateway-request-context-v1.schema.json#/$defs/principal" },
+    "tenantId": { "type": "string", "minLength": 1, "maxLength": 256 },
+    "patientBinding": { "type": "string", "minLength": 1, "maxLength": 512 },
+    "sourceConnectionId": { "type": "string", "minLength": 1, "maxLength": 256 },
+    "purpose": { "type": "string", "minLength": 1, "maxLength": 128 },
+    "recipientId": { "type": "string", "minLength": 1, "maxLength": 256 },
+    "allowedActions": {
+      "type": "array",
+      "uniqueItems": true,
+      "minItems": 1,
+      "items": {
+        "type": "string",
+        "enum": [
+          "fhir_ingest",
+          "fhir_export",
+          "sync_pull",
+          "sync_push",
+          "sync_status",
+          "sync_job_list"
+        ]
+      }
+    },
+    "allowedResourceTypes": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": { "type": "string", "minLength": 1, "maxLength": 128 }
+    },
+    "notBeforeMs": { "type": "integer" },
+    "expiresAtMs": { "type": "integer" },
+    "revokedAtMs": { "type": ["integer", "null"] }
+  }
+}

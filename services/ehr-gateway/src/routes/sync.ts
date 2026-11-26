@@ -9,10 +9,8 @@
  */
 
 import { Hono } from 'hono';
-import { randomUUID } from 'crypto';
 import type { AppContext } from '../server.js';
-import type { SyncJob, IngestReport } from '../types.js';
-import { PullService } from '../sync/pull-service.js';
+import { requireGatewayRouteAuthorizationV1 } from '../auth/gateway-route-guard.js';
 
 /**
  * Create sync routes
@@ -38,6 +36,13 @@ export function createSyncRoutes(ctx: AppContext): Hono {
    * Returns: SyncResult or job ID (if async)
    */
   app.post('/patient/:patientId', async (c) => {
+    const authorization = await requireGatewayRouteAuthorizationV1(
+      ctx.gatewayRouteAuthorizer,
+      c.req.raw,
+      { action: 'sync_pull', resourceTypes: ['Patient'] },
+    );
+    if (!authorization.authorized) return authorization.response;
+
     if (!ctx.gateway) {
       return c.json({
         error: 'Gateway not initialized',
@@ -77,27 +82,13 @@ export function createSyncRoutes(ctx: AppContext): Hono {
       ? resourceTypesParam.split(',')
       : undefined;
 
-    // For async operations, create a job and return immediately
+    // Background execution is disabled until the worker can consume a fresh,
+    // one-time authorization receipt and re-check revocation at execution time.
     if (isAsync) {
-      const jobId = randomUUID();
-      const job: SyncJob = {
-        id: jobId,
-        connectionId,
-        patientId,
-        status: 'pending',
-        startedAt: new Date(),
-      };
-      ctx.syncJobs.set(jobId, job);
-
-      // Start sync in background
-      runSyncInBackground(ctx, job, tokenKey, resourceTypes, sourceSystem);
-
       return c.json({
-        status: 'accepted',
-        job_id: jobId,
-        message: 'Sync started in background',
-        status_url: `/sync/status/${jobId}`,
-      }, 202);
+        error: 'Background sync unavailable',
+        message: 'Async execution is disabled until worker-time authorization and replay protection are configured.',
+      }, 503);
     }
 
     // Synchronous sync
@@ -137,7 +128,14 @@ export function createSyncRoutes(ctx: AppContext): Hono {
    *
    * Returns: SyncJob status
    */
-  app.get('/status/:jobId', (c) => {
+  app.get('/status/:jobId', async (c) => {
+    const authorization = await requireGatewayRouteAuthorizationV1(
+      ctx.gatewayRouteAuthorizer,
+      c.req.raw,
+      { action: 'sync_status', resourceTypes: [] },
+    );
+    if (!authorization.authorized) return authorization.response;
+
     const jobId = c.req.param('jobId');
     const job = ctx.syncJobs.get(jobId);
 
@@ -172,11 +170,20 @@ export function createSyncRoutes(ctx: AppContext): Hono {
    *
    * Returns: Array of SyncJob summaries
    */
-  app.get('/jobs', (c) => {
+  app.get('/jobs', async (c) => {
+    const authorization = await requireGatewayRouteAuthorizationV1(
+      ctx.gatewayRouteAuthorizer,
+      c.req.raw,
+      { action: 'sync_job_list', resourceTypes: [], requireScopedResourceList: true },
+    );
+    if (!authorization.authorized) return authorization.response;
+
     const statusFilter = c.req.query('status');
     const limit = parseInt(c.req.query('limit') || '100', 10);
 
-    let jobs = Array.from(ctx.syncJobs.values());
+    const visibleJobIds = new Set(authorization.authorizedResourceIds ?? []);
+    let jobs = Array.from(ctx.syncJobs.values())
+      .filter((job) => visibleJobIds.has(job.id));
 
     // Filter by status
     if (statusFilter) {
@@ -186,11 +193,12 @@ export function createSyncRoutes(ctx: AppContext): Hono {
     // Sort by start time (newest first)
     jobs.sort((a, b) => b.startedAt.getTime() - a.startedAt.getTime());
 
-    // Apply limit
+    // Count only authorized jobs before pagination; never leak global totals.
+    const authorizedTotal = jobs.length;
     jobs = jobs.slice(0, limit);
 
     return c.json({
-      total: ctx.syncJobs.size,
+      total: authorizedTotal,
       returned: jobs.length,
       jobs: jobs.map(job => ({
         id: job.id,
@@ -212,7 +220,14 @@ export function createSyncRoutes(ctx: AppContext): Hono {
    *
    * Returns: Success message
    */
-  app.delete('/jobs/:jobId', (c) => {
+  app.delete('/jobs/:jobId', async (c) => {
+    const authorization = await requireGatewayRouteAuthorizationV1(
+      ctx.gatewayRouteAuthorizer,
+      c.req.raw,
+      { action: 'sync_job_delete', resourceTypes: [] },
+    );
+    if (!authorization.authorized) return authorization.response;
+
     const jobId = c.req.param('jobId');
     const job = ctx.syncJobs.get(jobId);
 
@@ -256,6 +271,13 @@ export function createSyncRoutes(ctx: AppContext): Hono {
    * Returns: Combined sync results
    */
   app.post('/bidirectional/:patientId', async (c) => {
+    const authorization = await requireGatewayRouteAuthorizationV1(
+      ctx.gatewayRouteAuthorizer,
+      c.req.raw,
+      { action: 'sync_bidirectional', resourceTypes: ['Patient'] },
+    );
+    if (!authorization.authorized) return authorization.response;
+
     if (!ctx.gateway) {
       return c.json({
         error: 'Gateway not initialized',
@@ -319,20 +341,29 @@ export function createSyncRoutes(ctx: AppContext): Hono {
    *
    * Returns: Array of ConflictInfo
    */
-  app.get('/conflicts', (c) => {
+  app.get('/conflicts', async (c) => {
+    const authorization = await requireGatewayRouteAuthorizationV1(
+      ctx.gatewayRouteAuthorizer,
+      c.req.raw,
+      { action: 'sync_conflicts_read', resourceTypes: [], requireScopedResourceList: true },
+    );
+    if (!authorization.authorized) return authorization.response;
+
     if (!ctx.gateway) {
       return c.json({
         error: 'Gateway not initialized',
       }, 503);
     }
 
-    const conflicts = ctx.gateway.getPendingConflicts();
-    const stats = ctx.gateway.getConflictStats();
+    const visibleConflictKeys = new Set(authorization.authorizedResourceIds ?? []);
+    const conflicts = ctx.gateway.getPendingConflicts().filter((conflict) =>
+      visibleConflictKeys.has(JSON.stringify([conflict.resourceType, conflict.resourceId]))
+    );
 
     return c.json({
+      // Do not return unfiltered global conflict counts or statistics.
       pending_count: conflicts.length,
       conflicts,
-      statistics: stats,
     });
   });
 
@@ -351,6 +382,13 @@ export function createSyncRoutes(ctx: AppContext): Hono {
    * Returns: Resolution result
    */
   app.post('/conflicts/:conflictId/resolve', async (c) => {
+    const authorization = await requireGatewayRouteAuthorizationV1(
+      ctx.gatewayRouteAuthorizer,
+      c.req.raw,
+      { action: 'sync_conflict_resolve', resourceTypes: [] },
+    );
+    if (!authorization.authorized) return authorization.response;
+
     if (!ctx.gateway) {
       return c.json({
         error: 'Gateway not initialized',
@@ -402,43 +440,4 @@ export function createSyncRoutes(ctx: AppContext): Hono {
   });
 
   return app;
-}
-
-/**
- * Run sync operation in background and update job status
- */
-async function runSyncInBackground(
-  ctx: AppContext,
-  job: SyncJob,
-  tokenKey: string,
-  resourceTypes?: string[],
-  sourceSystem?: string
-): Promise<void> {
-  // Update job status
-  job.status = 'running';
-  ctx.syncJobs.set(job.id, job);
-
-  try {
-    const result = await ctx.gateway!.pullPatientData(
-      job.connectionId,
-      job.patientId,
-      tokenKey,
-      {
-        resourceTypes,
-        sourceSystem,
-      }
-    );
-
-    // Update job with results
-    job.status = 'completed';
-    job.completedAt = new Date();
-    job.results = result;
-    ctx.syncJobs.set(job.id, job);
-  } catch (error) {
-    // Update job with error
-    job.status = 'failed';
-    job.completedAt = new Date();
-    job.error = (error as Error).message;
-    ctx.syncJobs.set(job.id, job);
-  }
 }
