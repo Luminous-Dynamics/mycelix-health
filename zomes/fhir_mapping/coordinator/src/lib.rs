@@ -147,19 +147,16 @@ pub fn get_patient_fhir_mappings(input: GetPatientFhirMappingsInput) -> ExternRe
         }
     }
 
-    // Record each category against the consent decision that authorized it.
-    // This preserves the distinction between demographics, labs, diagnoses and
-    // medications in the independent audit record.
-    for (category, auth) in authorization_results {
-        log_data_access(
-            input.patient_hash.clone(),
-            vec![category],
-            Permission::Export,
-            auth.consent_hash,
-            auth.emergency_override,
-            input.emergency_reason.clone(),
-        )?;
-    }
+    // This endpoint intentionally returns every FHIR mapping category, so
+    // its all-category read authorization and audit scope must remain explicit.
+    log_data_access(
+        input.patient_hash,
+        vec![DataCategory::All],
+        Permission::Read,
+        auth.consent_hash,
+        auth.emergency_override,
+        input.emergency_reason,
+    )?;
 
     Ok(mappings)
 }
