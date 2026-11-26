@@ -10,11 +10,21 @@
 import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest';
 
 // Mock @holochain/client before importing server
-vi.mock('@holochain/client', () => ({
-  AppWebsocket: {
-    connect: vi.fn(),
-  },
-}));
+vi.mock('@holochain/client', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@holochain/client')>();
+  return {
+    ...actual,
+    AppWebsocket: {
+      connect: vi.fn(),
+    },
+  };
+});
+
+import { encodeHashToBase64, hashFrom32AndType } from '@holochain/client';
+
+const resolvedPatientHash = encodeHashToBase64(
+  hashFrom32AndType(new Uint8Array(32).fill(42), 'Action'),
+);
 
 import { createApp, type AppContext } from '../src/server.js';
 import { getTestConfig } from '../src/config.js';
@@ -77,7 +87,7 @@ describe('EHR Gateway Server', () => {
           action: intent.action,
           expiresAtMs: Date.now() + 60_000,
           resolvedSourcePatientId: '123',
-          resolvedMycelixPatientHash: 'uhCEkINI4cBkNicMiyEvxrUXKy71OIGWXqXJagdCunS2SlmaipQ1j',
+          resolvedMycelixPatientHash: resolvedPatientHash,
           credentialHandle: 'test-credential-handle',
           resolvedJobId: 'unguessable-job-id',
           resolvedConflictId: 'test-conflict-id',
@@ -553,7 +563,7 @@ describe('EHR Gateway Server', () => {
     });
 
     it('GET /fhir/Bundle exports only the resolved patient and authorized sections', async () => {
-      const resolvedHash = 'uhCEkINI4cBkNicMiyEvxrUXKy71OIGWXqXJagdCunS2SlmaipQ1j';
+      const resolvedHash = resolvedPatientHash;
       mockHolochainClient.callZome.mockResolvedValueOnce({
         bundle: JSON.stringify({ resourceType: 'Bundle', type: 'collection', entry: [] }),
         resource_count: 0,
@@ -569,7 +579,7 @@ describe('EHR Gateway Server', () => {
     });
 
     it('GET /fhir/Bundle allows Patient-only authority without widening to other sections', async () => {
-      const patientOnlyHash = 'uhCEkINI4cBkNicMiyEvxrUXKy71OIGWXqXJagdCunS2SlmaipQ1j';
+      const patientOnlyHash = resolvedPatientHash;
       const patientOnlyApp = createApp({
         ...ctx,
         gatewayRouteAuthorizer: {
@@ -611,7 +621,7 @@ describe('EHR Gateway Server', () => {
 
     it('GET /fhir/Bundle denies unsupported sections before calling the zome', async () => {
       mockHolochainClient.callZome.mockClear();
-      const res = await app.request('/fhir/Bundle/uhCEkINI4cBkNicMiyEvxrUXKy71OIGWXqXJagdCunS2SlmaipQ1j?sections=allergies');
+      const res = await app.request('/fhir/Bundle/${resolvedPatientHash}?sections=allergies');
       expect(res.status).toBe(403);
       expect(mockHolochainClient.callZome).not.toHaveBeenCalled();
     });
@@ -724,7 +734,7 @@ describe('EHR Gateway Server', () => {
         conflicts: [{ id: 'conflict-visible' }] as never,
       });
 
-      const patientHash = 'uhCEkINI4cBkNicMiyEvxrUXKy71OIGWXqXJagdCunS2SlmaipQ1j';
+      const patientHash = resolvedPatientHash;
       const res = await app.request(
         '/sync/bidirectional/123?connection=test-connection&tokenKey=attacker-token&patientHash=' + patientHash,
         { method: 'POST' },
