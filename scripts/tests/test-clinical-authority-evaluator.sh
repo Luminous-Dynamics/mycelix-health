@@ -20,13 +20,13 @@ mutated="$tmpdir/mutated-results.json"
 bash "$REFERENCE" "$MANIFEST" "$baseline"
 bash "$EVALUATOR" "$MANIFEST" "$baseline" "$score" >/dev/null
 jq -e '
-  .case_count == 45
+  .case_count == 46
   and .exact_decision_accuracy == 1
   and .unauthorized_allow_count == 0
   and .false_denial_count == 0
   and .unexpected_defer_on_allow_count == 0
   and .required_restricted_reason_coverage == 1
-  and .metamorphic_pair_count == 42
+  and .metamorphic_pair_count == 43
   and .metamorphic_pair_failures == 0
   and .authority_gate_pass == true
   and .metamorphic_gate_pass == true
@@ -71,6 +71,7 @@ for case_id in \
   deny_provenance_agent_signer_mismatch \
   deny_provenance_signature_wrong_purpose \
   deny_provenance_signed_digest_mismatch \
+  deny_provenance_canonicalization_mismatch \
   deny_revoked_source_signing_key \
   deny_unresolved_source_conflict \
   deny_invalid_audit_chain \
