@@ -42,11 +42,15 @@ jobs:
           npm install --package-lock-only --ignore-scripts --no-audit --no-fund
           node --input-type=commonjs -e '
             const lock = require("./package-lock.json");
-            const resolved = lock.packages["node_modules/libsodium-wrappers"]?.version;
-            if (resolved !== "0.7.13") {
-              throw new Error("expected libsodium-wrappers 0.7.13, resolved " + resolved);
+            const entries = Object.entries(lock.packages || {})
+              .filter(([name]) => name.endsWith("node_modules/libsodium-wrappers"));
+            if (entries.length === 0) throw new Error("libsodium-wrappers missing from SDK lockfile");
+            for (const [name, pkg] of entries) {
+              if (pkg.version !== "0.7.13") {
+                throw new Error(name + " resolved " + pkg.version + "; expected exact 0.7.13");
+              }
+              console.log(name + "=" + pkg.version);
             }
-            console.log("locked libsodium-wrappers=" + resolved);
           '
 
       - name: Verify the lockfile can be installed without lifecycle scripts
