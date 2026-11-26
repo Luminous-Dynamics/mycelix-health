@@ -236,8 +236,13 @@ pub fn has_identifier_only_patient_reference(resource: &JsonValue) -> bool {
     ["patient", "subject", "context"].iter().any(|field| {
         resource
             .get(*field)
-            .map(|value| value.get("identifier").is_some()
-                && value.get("reference").and_then(|reference| reference.as_str()).is_none())
+            .map(|value| {
+                value.get("identifier").is_some()
+                    && value
+                        .get("reference")
+                        .and_then(|reference| reference.as_str())
+                        .is_none()
+            })
             .unwrap_or(false)
     })
 }
@@ -251,9 +256,10 @@ pub fn resolve_fhir_patient_reference(
     reference: &str,
     bundle_entries: &[JsonValue],
 ) -> Option<String> {
-    if let Some(entry) = bundle_entries.iter().find(|entry| {
-        entry.get("fullUrl").and_then(|value| value.as_str()) == Some(reference)
-    }) {
+    if let Some(entry) = bundle_entries
+        .iter()
+        .find(|entry| entry.get("fullUrl").and_then(|value| value.as_str()) == Some(reference))
+    {
         let resource = entry.get("resource")?;
         if get_resource_type(resource).as_deref() != Some("Patient") {
             return None;
@@ -266,7 +272,10 @@ pub fn resolve_fhir_patient_reference(
     }
 
     let path = reference.split(['?', '#']).next()?;
-    let segments: Vec<&str> = path.split('/').filter(|segment| !segment.is_empty()).collect();
+    let segments: Vec<&str> = path
+        .split('/')
+        .filter(|segment| !segment.is_empty())
+        .collect();
     segments
         .windows(2)
         .rev()
