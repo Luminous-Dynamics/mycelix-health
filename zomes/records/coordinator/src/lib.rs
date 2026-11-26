@@ -695,6 +695,11 @@ pub struct CreateProcedureInput {
 #[hdk_extern]
 pub fn create_procedure(input: CreateProcedureInput) -> ExternResult<Record> {
     require_encrypted_phi("create_procedure")?;
+    if input.patient_hash != input.procedure.patient_hash {
+        return Err(wasm_error!(WasmErrorInner::Guest(
+            "Procedure patient hash does not match the authorization subject".to_string()
+        )));
+    }
     // Require Write authorization for Procedures category
     let auth = require_authorization_for_resource(
         input.patient_hash.clone(),
