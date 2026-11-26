@@ -38,7 +38,13 @@ export function createFhirRoutes(ctx: AppContext): Hono {
     const authorization = await requireGatewayRouteAuthorizationV1(
       ctx.gatewayRouteAuthorizer,
       c.req.raw,
-      { action: 'fhir_ingest', resourceTypes: ['Bundle'] },
+      {
+        action: 'fhir_ingest',
+        resourceTypes: [
+          'Patient', 'Observation', 'Condition', 'MedicationRequest', 'MedicationStatement',
+          'AllergyIntolerance', 'Immunization', 'Procedure', 'DiagnosticReport', 'CarePlan',
+        ],
+      },
     );
     if (!authorization.authorized) return authorization.response;
 
