@@ -212,9 +212,9 @@ jobs:
       - name: Check standalone formatting
         run: cargo fmt --manifest-path prototypes/clinical-release-transaction/Cargo.toml -- --check
       - name: Run transactional release adversarial tests
-        run: cargo test --manifest-path prototypes/clinical-release-transaction/Cargo.toml --locked
+        run: cargo test --manifest-path prototypes/clinical-release-transaction/Cargo.toml --locked --target x86_64-unknown-linux-gnu
       - name: Run Clippy
-        run: cargo clippy --manifest-path prototypes/clinical-release-transaction/Cargo.toml --locked -- -D warnings
+        run: cargo clippy --manifest-path prototypes/clinical-release-transaction/Cargo.toml --locked --target x86_64-unknown-linux-gnu -- -D warnings
 
   # Integration tests (requires Holochain conductor)
   integration:
