@@ -57,6 +57,8 @@ if ! jq -e --arg id "$BENCHMARK_ID" '
          else (.reason_codes | length > 0) end)
   )
   and (([.results[].case_id] | length) == ([.results[].case_id] | unique | length))
+  and all(.results[]; .reason_codes as $codes | all($codes[]; . as $code | ($root.reason_codes | index($code)) != null))
+  and all(.results[]; (.evidence_refs | length) == (.evidence_refs | unique | length))
 ' "$CANDIDATE" >/dev/null; then echo "Candidate result file failed schema/invariant preflight" >&2; exit 1; fi
 
 EXPECTED_IDS="$(jq -c '[.cases[].id] | sort' "$MANIFEST")"
