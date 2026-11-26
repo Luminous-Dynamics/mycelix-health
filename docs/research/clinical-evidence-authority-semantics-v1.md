@@ -29,7 +29,7 @@ Those references establish only the intended FHIR fixture relationship. The auth
 
 ## Candidate result format
 
-A candidate produces one result for every manifest case. Example:
+A candidate produces one result for every manifest case. The decision is allow, deny, or defer. Example:
 
 ```json
 {
@@ -58,9 +58,9 @@ scripts/evaluate-clinical-authority-semantics.sh \
   scorecard.json
 ```
 
-The evaluator rejects malformed inputs, duplicate candidate IDs, missing cases, extra cases and benchmark-version mismatches. The oracle result fixture is only a scorer self-test and is not a measured Mycelix candidate. Run scripts/tests/test-clinical-authority-evaluator.sh to verify the evaluator's passing control, an unauthorized-release negative control, and incomplete-result rejection. It reports exact decision accuracy, unauthorized-allow count/rate, false-denial rate and valid-allow recall, required denial-reason coverage, restrictive metamorphic-pair failures, and SHA-256 digests of the exact manifest and candidate result file.
+The evaluator rejects malformed inputs, duplicate candidate IDs, missing cases, extra cases and benchmark-version mismatches. It reports expected denial and expected deferral separately, along with incorrect deferrals on positive cases. The oracle result fixture is only a scorer self-test and is not a measured Mycelix candidate. Run scripts/tests/test-clinical-authority-evaluator.sh to verify the evaluator's passing control, an unauthorized-release negative control, and incomplete-result rejection. It reports exact decision accuracy, unauthorized-allow count/rate, false-denial rate, unexpected deferrals on positive controls, authorized-allow recall, correct deny/defer counts, restricted-reason coverage, restrictive metamorphic-pair failures, and SHA-256 digests of the exact manifest and candidate result file.
 
-A single unauthorized allow fails the authority gate, regardless of aggregate accuracy. Metamorphic pairs separately require the positive baseline to allow and the one-dimension-restricted variant to deny. False denials remain visible as a utility/availability failure; they are not silently traded against unauthorized releases.
+A single unauthorized allow fails the authority gate, regardless of aggregate accuracy. Candidates have three outcomes: allow, deny, and defer. Use deny for an established policy violation; use defer when the system cannot safely establish authority because a verifier, fresh revocation state, replay store, or audit path is unavailable. Deferral must never be converted to allow, and it is reported separately from false denials. Metamorphic pairs separately require the positive baseline to allow and the one-dimension-restricted variant to deny. False denials remain visible as a utility/availability failure; they are not silently traded against unauthorized releases.
 
 ## Paradigm shifts to test
 
@@ -97,9 +97,9 @@ Use these targets as engineering goals, not claimed results:
 | Source/resource/version lineage completeness | 100% on accepted cases |
 | Reproducible scorecard and input digests | 100% |
 
-For an initial held-out safety challenge, aim for at least 300 independent challenge units with zero unauthorized allows. Under the rough rule-of-three approximation, zero observed failures across 300 independent trials gives an approximate 95% upper bound near 1%; dependent variants do not count as independent units, and this is not certification. Report confidence intervals, task-family breakdowns, and clustered uncertainty.
+For an initial held-out safety challenge, aim for at least 300 independent challenge units with zero unauthorized allows. Temporary-unavailability trials should be separately sampled and scored for correct deferral/recovery, not mixed into ordinary policy denials. Under the rough rule-of-three approximation, zero observed failures across 300 independent trials gives an approximate 95% upper bound near 1%; dependent variants do not count as independent units, and this is not certification. Report confidence intervals, task-family breakdowns, and clustered uncertainty.
 
-The public development cases intentionally expose labels. They are suitable for regression tests, not leaderboard claims. A serious external evaluation needs a separate evaluator-controlled held-out set, versioned but access-controlled, with independently authored adversarial variants and a reproducible release protocol.
+The late-arrival positive control has a clinical event time inside the authorized date window while its ingestion time is outside that window; the candidate must evaluate the clinical event time. The corresponding negative pair moves only the clinical event time outside scope. The public development cases intentionally expose labels. They are suitable for regression tests, not leaderboard claims. A serious external evaluation needs a separate evaluator-controlled held-out set, versioned but access-controlled, with independently authored adversarial variants and a reproducible release protocol.
 
 ## Comparison with industry benchmarks
 
