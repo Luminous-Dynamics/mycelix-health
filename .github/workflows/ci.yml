@@ -200,6 +200,21 @@ jobs:
       - name: Test
         run: npm test
 
+  # Standalone structural evaluator: no conductor, model or external service required.
+  audit-causal-dag:
+    name: Audit Causal DAG Reference
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install pinned Rust toolchain
+        uses: dtolnay/rust-toolchain@1.96.0
+        with:
+          components: rustfmt, clippy
+
+      - name: Run stream and causal-DAG conformance corpus
+        run: bash ./scripts/run-audit-causal-dag-benchmark.sh
+
   # Integration tests (requires Holochain conductor)
   integration:
     name: Integration Tests
