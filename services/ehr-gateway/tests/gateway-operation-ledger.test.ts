@@ -20,7 +20,7 @@ const DIGEST_C = 'c'.repeat(64);
 
 function intent(overrides: Partial<GatewayOperationIntentV1> = {}): GatewayOperationIntentV1 {
   return {
-    operationKey: deriveGatewayOperationKeyV1({ tenantId: 'tenant-1', principalBinding: 'principal-1', connectionId: 'ehr-connection-1', action: 'sync_pull', clientIdempotencyKey: 'client-key-1' }),
+    operationKey: deriveGatewayOperationKeyV1({ tenantId: 'tenant-1', principalBinding: 'principal-1', patientBinding: 'opaque-patient-1', connectionId: 'ehr-connection-1', action: 'sync_pull', clientIdempotencyKey: 'client-key-1' }),
     requestDigest: DIGEST_A,
     tenantId: 'tenant-1',
     principalBinding: 'principal-1',
@@ -406,6 +406,7 @@ describe('GatewayOperationCoordinatorV1', () => {
     const base = {
       tenantId: 'tenant-1',
       principalBinding: 'principal-1',
+      patientBinding: 'opaque-patient-1',
       connectionId: 'ehr-connection-1',
       action: 'sync_pull' as const,
       clientIdempotencyKey: 'same-client-key',
@@ -414,6 +415,7 @@ describe('GatewayOperationCoordinatorV1', () => {
     expect(key).toMatch(/^[a-f0-9]{64}$/);
     expect(deriveGatewayOperationKeyV1({ ...base, tenantId: 'tenant-2' })).not.toBe(key);
     expect(deriveGatewayOperationKeyV1({ ...base, principalBinding: 'principal-2' })).not.toBe(key);
+    expect(deriveGatewayOperationKeyV1({ ...base, patientBinding: 'opaque-patient-2' })).not.toBe(key);
     expect(deriveGatewayOperationKeyV1({ ...base, connectionId: 'ehr-connection-2' })).not.toBe(key);
     expect(deriveGatewayOperationKeyV1({ ...base, action: 'sync_bidirectional' })).not.toBe(key);
   });
