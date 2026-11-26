@@ -20,13 +20,13 @@ mutated="$tmpdir/mutated-results.json"
 bash "$REFERENCE" "$MANIFEST" "$baseline"
 bash "$EVALUATOR" "$MANIFEST" "$baseline" "$score" >/dev/null
 jq -e '
-  .case_count == 32
+  .case_count == 38
   and .exact_decision_accuracy == 1
   and .unauthorized_allow_count == 0
   and .false_denial_count == 0
   and .unexpected_defer_on_allow_count == 0
   and .required_restricted_reason_coverage == 1
-  and .metamorphic_pair_count == 29
+  and .metamorphic_pair_count == 35
   and .metamorphic_pair_failures == 0
   and .authority_gate_pass == true
   and .metamorphic_gate_pass == true
