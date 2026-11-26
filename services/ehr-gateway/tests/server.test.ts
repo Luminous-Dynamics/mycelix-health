@@ -429,6 +429,7 @@ describe('EHR Gateway Server', () => {
               resourceType: 'Observation',
               id: 'obs-null-subject',
               subject: null,
+              patient: { reference: 'Patient/123' },
             },
           },
         ],
