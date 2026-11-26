@@ -221,6 +221,29 @@ describe('EHR Gateway Server', () => {
       expect(body.report).toBeDefined();
     });
 
+    it('POST /fhir/Bundle rejects a Patient that differs from the resolved source patient', async () => {
+      mockGateway.isConnected.mockReturnValueOnce(true);
+      mockHolochainClient.callZome.mockClear();
+      const bundle: FhirBundle = {
+        resourceType: 'Bundle',
+        type: 'collection',
+        entry: [{
+          fullUrl: 'Patient/attacker-patient',
+          resource: {
+            resourceType: 'Patient',
+            id: 'attacker-patient',
+          },
+        }],
+      };
+      const res = await app.request('/fhir/Bundle', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-Source-System': 'spoofed' },
+        body: JSON.stringify(bundle),
+      });
+      expect(res.status).toBe(403);
+      expect(mockHolochainClient.callZome).not.toHaveBeenCalled();
+    });
+
     it('POST /fhir/Bundle rejects invalid bundle', async () => {
       mockGateway.isConnected.mockReturnValueOnce(true);
       const res = await app.request('/fhir/Bundle', {
@@ -254,6 +277,7 @@ describe('EHR Gateway Server', () => {
     });
 
     it('GET /fhir/Bundle rejects a path hash that differs from the verified patient binding', async () => {
+      mockHolochainClient.callZome.mockClear();
       const res = await app.request('/fhir/Bundle/attacker-selected-patient');
       expect(res.status).toBe(403);
       expect(mockHolochainClient.callZome).not.toHaveBeenCalled();
@@ -316,7 +340,7 @@ describe('EHR Gateway Server', () => {
       mockGateway.isConnected.mockReturnValueOnce(true);
       mockGateway.pullPatientData.mockResolvedValueOnce([]);
 
-      const res = await app.request('/sync/patient/123', { method: 'POST' });
+      const res = await app.request('/sync/patient/123?tokenKey=attacker-token&sourceSystem=attacker-source', { method: 'POST' });
       const body = await res.json();
 
       expect(res.status).toBe(200);
@@ -331,6 +355,7 @@ describe('EHR Gateway Server', () => {
     });
 
     it('POST /sync/patient/:id rejects a caller connection selector that differs from the verified binding', async () => {
+      mockGateway.pullPatientData.mockClear();
       const res = await app.request(
         '/sync/patient/123?connection=unknown&tokenKey=attacker-token',
         { method: 'POST' }
@@ -343,6 +368,7 @@ describe('EHR Gateway Server', () => {
     });
 
     it('POST /sync/patient/:id rejects a patient selector that differs from the verified binding', async () => {
+      mockGateway.pullPatientData.mockClear();
       const res = await app.request('/sync/patient/other-patient?connection=test-connection', {
         method: 'POST',
       });
