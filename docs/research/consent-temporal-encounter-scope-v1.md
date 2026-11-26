@@ -37,11 +37,14 @@ The coordinator preserves a temporal/encounter denial reason when no other eligi
 
 - Existing `require_authorization(...)` remains available and sends `None` for both optional context fields. It can still satisfy unrestricted consents, but it cannot satisfy a restricted date or encounter scope without context.
 - New `require_authorization_for_resource(...)` accepts clinical event time and encounter.
-- `create_procedure` now supplies `ProcedurePerformed.performed_at` and its required `encounter_hash`.
-- `create_lab_result` now supplies `LabResult.collection_time` and its optional encounter.
-- `acknowledge_critical_result` supplies the same source clinical event/encounter context for the amended result.
+- `create_procedure`: `ProcedurePerformed.performed_at` + required encounter.
+- `create_lab_result`, `create_encrypted_lab_result`, `update_lab_result`, and `acknowledge_critical_result`: `LabResult.collection_time` + optional encounter.
+- `create_imaging_study`: `ImagingStudy.study_date` + optional encounter.
+- `record_vital_signs`: `VitalSigns.recorded_at` + optional encounter.
+- `get_encounter`: the encounter's `start_time` + exact encounter hash.
+- `create_diagnosis`: exact encounter when supplied. Diagnosis currently has no typed clinical-event timestamp, so a date-restricted grant still denies until one is defined; the outer and embedded patient hashes must match before authorization.
 
-This is intentionally a bounded initial migration. Existing generic resource/list/export functions still call the legacy API. They will fail closed for date- or encounter-restricted grants until they are converted to evaluate each returned resource against its own event time and encounter. We do not treat a single patient-level authorization as proof that every resource in a list is in scope.
+This is intentionally a bounded initial migration: nine operation paths now use the resource-scoped API. Existing generic resource/list/export functions still call the legacy API. They will fail closed for date- or encounter-restricted grants until they are converted to evaluate each returned resource against its own event time and encounter. We do not treat a single patient-level authorization as proof that every resource in a list is in scope.
 
 ## Tests added
 
