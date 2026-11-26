@@ -3,7 +3,7 @@
 // Commercial licensing: see COMMERCIAL_LICENSE.md at repository root
 
 import { createHash } from 'node:crypto';
-import type { GatewayActionV1 } from './gateway-request-context.js';
+import { GATEWAY_ACTIONS_V1, type GatewayActionV1 } from './gateway-request-context.js';
 
 export interface GatewayOperationKeyInputV1 {
   tenantId: string;
@@ -40,6 +40,8 @@ export function deriveGatewayOperationKeyV1(input: GatewayOperationKeyInputV1): 
 export interface GatewayOperationIntentV1 {
   /** Namespaced by authenticated tenant/principal and action; not a raw header. */
   operationKey: string;
+  /** Client value is stored only as part of the durable scoped ledger row. */
+  clientIdempotencyKey: string;
   /** SHA-256 over canonical immutable operation input. */
   requestDigest: string;
   tenantId: string;
@@ -192,28 +194,35 @@ function digest(value: unknown): value is string {
 }
 
 function validIntent(intent: GatewayOperationIntentV1): boolean {
-  return Boolean(
-    intent
-      && nonEmpty(intent.clientIdempotencyKey)
-      && intent.clientIdempotencyKey.length <= 256
-      && digest(intent.operationKey)
-      && intent.operationKey === deriveGatewayOperationKeyV1({
-        tenantId: intent.tenantId,
-        principalBinding: intent.principalBinding,
-        patientBinding: intent.patientBinding,
-        connectionId: intent.connectionId,
-        action: intent.action,
-        clientIdempotencyKey: intent.clientIdempotencyKey,
-      })
-      && digest(intent.requestDigest)
-      && nonEmpty(intent.tenantId)
-      && nonEmpty(intent.principalBinding)
-      && nonEmpty(intent.patientBinding)
-      && nonEmpty(intent.connectionId)
-      && nonEmpty(intent.action)
-      && digest(intent.resourceSetDigest)
-      && digest(intent.initialAuthorizationReceiptDigest),
-  );
+  if (
+    !intent
+    || !nonEmpty(intent.clientIdempotencyKey)
+    || intent.clientIdempotencyKey.length > 256
+    || !digest(intent.operationKey)
+    || !digest(intent.requestDigest)
+    || !nonEmpty(intent.tenantId)
+    || !nonEmpty(intent.principalBinding)
+    || !nonEmpty(intent.patientBinding)
+    || !nonEmpty(intent.connectionId)
+    || !GATEWAY_ACTIONS_V1.includes(intent.action)
+    || !digest(intent.resourceSetDigest)
+    || !digest(intent.initialAuthorizationReceiptDigest)
+  ) {
+    return false;
+  }
+
+  try {
+    return intent.operationKey === deriveGatewayOperationKeyV1({
+      tenantId: intent.tenantId,
+      principalBinding: intent.principalBinding,
+      patientBinding: intent.patientBinding,
+      connectionId: intent.connectionId,
+      action: intent.action,
+      clientIdempotencyKey: intent.clientIdempotencyKey,
+    });
+  } catch {
+    return false;
+  }
 }
 
 function toPublicResult(operation: GatewayOperationReceiptV1): GatewayOperationResultV1 {
@@ -402,6 +411,7 @@ export class GatewayOperationCoordinatorV1 {
         // reached the remote API. Re-authorize before resubmitting it.
         const retryIntent: GatewayOperationIntentV1 = {
           operationKey: operation.operationKey,
+          clientIdempotencyKey: operation.clientIdempotencyKey,
           requestDigest: operation.requestDigest,
           tenantId: operation.tenantId,
           principalBinding: operation.principalBinding,
