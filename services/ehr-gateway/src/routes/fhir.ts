@@ -106,7 +106,7 @@ export function createFhirRoutes(ctx: AppContext): Hono {
           resource.context?.reference,
         ].filter((value): value is string => typeof value === 'string');
         if (patientReferences.some((reference) => {
-          const match = /^Patient\\/(.+)$/.exec(reference);
+          const match = /^Patient\/([^/]+)(?:\/|$)/.exec(reference);
           return match !== null && match[1] !== authorization.authorization.resolvedSourcePatientId;
         })) {
           return c.json({ error: 'Bundle contains a resource for a different patient' }, 403);
