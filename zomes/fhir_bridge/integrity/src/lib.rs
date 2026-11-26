@@ -212,7 +212,7 @@ pub fn get_resource_id(resource: &JsonValue) -> Option<String> {
 /// Returning all references lets the coordinator reject conflicting subject,
 /// patient and context references instead of silently trusting only the first.
 pub fn get_patient_references(resource: &JsonValue) -> Vec<String> {
-    ["patient", "subject", "context"]
+    ["patient", "subject"]
         .iter()
         .filter_map(|field| {
             resource
@@ -304,14 +304,13 @@ mod tests {
             "resourceType": "Procedure",
             "patient": { "reference": "Patient/123" },
             "subject": { "reference": "https://ehr.example.test/fhir/Patient/123" },
-            "context": { "reference": "Patient/123/_history/4" }
+            "context": { "reference": "Encounter/encounter-1" }
         });
         assert_eq!(
             get_patient_references(&resource),
             vec![
                 "Patient/123".to_string(),
                 "https://ehr.example.test/fhir/Patient/123".to_string(),
-                "Patient/123/_history/4".to_string(),
             ],
         );
     }
