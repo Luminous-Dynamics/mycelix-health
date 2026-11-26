@@ -57,7 +57,13 @@
     "replay_store_unavailable",
     "resource_version_missing",
     "clinical_event_time_missing",
-    "subject_missing"
+    "subject_missing",
+    "provenance_missing",
+    "provenance_signature_invalid",
+    "conflict_unresolved",
+    "audit_chain_invalid",
+    "audit_actor_unbound",
+    "source_registry_unavailable"
   ],
   "cases": [
     {
@@ -129,7 +135,19 @@
           "revocation_state_fresh": true,
           "verifier_available": true,
           "audit_store_available": true,
-          "replay_store_available": true
+          "replay_store_available": true,
+          "source_registry_available": true
+        },
+        "lineage": {
+          "provenance_bound": true,
+          "provenance_signature_valid": true
+        },
+        "conflict": {
+          "reconciled": true
+        },
+        "audit": {
+          "chain_valid": true,
+          "actor_authenticated": true
         }
       }
     },
@@ -202,7 +220,19 @@
           "revocation_state_fresh": true,
           "verifier_available": true,
           "audit_store_available": true,
-          "replay_store_available": true
+          "replay_store_available": true,
+          "source_registry_available": true
+        },
+        "lineage": {
+          "provenance_bound": true,
+          "provenance_signature_valid": true
+        },
+        "conflict": {
+          "reconciled": true
+        },
+        "audit": {
+          "chain_valid": true,
+          "actor_authenticated": true
         }
       }
     },
@@ -275,7 +305,19 @@
           "revocation_state_fresh": true,
           "verifier_available": true,
           "audit_store_available": true,
-          "replay_store_available": true
+          "replay_store_available": true,
+          "source_registry_available": true
+        },
+        "lineage": {
+          "provenance_bound": true,
+          "provenance_signature_valid": true
+        },
+        "conflict": {
+          "reconciled": true
+        },
+        "audit": {
+          "chain_valid": true,
+          "actor_authenticated": true
         }
       }
     },
@@ -349,7 +391,19 @@
           "revocation_state_fresh": true,
           "verifier_available": true,
           "audit_store_available": true,
-          "replay_store_available": true
+          "replay_store_available": true,
+          "source_registry_available": true
+        },
+        "lineage": {
+          "provenance_bound": true,
+          "provenance_signature_valid": true
+        },
+        "conflict": {
+          "reconciled": true
+        },
+        "audit": {
+          "chain_valid": true,
+          "actor_authenticated": true
         }
       }
     },
@@ -423,7 +477,19 @@
           "revocation_state_fresh": true,
           "verifier_available": true,
           "audit_store_available": true,
-          "replay_store_available": true
+          "replay_store_available": true,
+          "source_registry_available": true
+        },
+        "lineage": {
+          "provenance_bound": true,
+          "provenance_signature_valid": true
+        },
+        "conflict": {
+          "reconciled": true
+        },
+        "audit": {
+          "chain_valid": true,
+          "actor_authenticated": true
         }
       }
     },
@@ -497,7 +563,19 @@
           "revocation_state_fresh": true,
           "verifier_available": true,
           "audit_store_available": true,
-          "replay_store_available": true
+          "replay_store_available": true,
+          "source_registry_available": true
+        },
+        "lineage": {
+          "provenance_bound": true,
+          "provenance_signature_valid": true
+        },
+        "conflict": {
+          "reconciled": true
+        },
+        "audit": {
+          "chain_valid": true,
+          "actor_authenticated": true
         }
       }
     },
@@ -571,7 +649,19 @@
           "revocation_state_fresh": true,
           "verifier_available": true,
           "audit_store_available": true,
-          "replay_store_available": true
+          "replay_store_available": true,
+          "source_registry_available": true
+        },
+        "lineage": {
+          "provenance_bound": true,
+          "provenance_signature_valid": true
+        },
+        "conflict": {
+          "reconciled": true
+        },
+        "audit": {
+          "chain_valid": true,
+          "actor_authenticated": true
         }
       }
     },
@@ -645,7 +735,19 @@
           "revocation_state_fresh": true,
           "verifier_available": true,
           "audit_store_available": true,
-          "replay_store_available": true
+          "replay_store_available": true,
+          "source_registry_available": true
+        },
+        "lineage": {
+          "provenance_bound": true,
+          "provenance_signature_valid": true
+        },
+        "conflict": {
+          "reconciled": true
+        },
+        "audit": {
+          "chain_valid": true,
+          "actor_authenticated": true
         }
       }
     },
@@ -719,7 +821,19 @@
           "revocation_state_fresh": true,
           "verifier_available": true,
           "audit_store_available": true,
-          "replay_store_available": true
+          "replay_store_available": true,
+          "source_registry_available": true
+        },
+        "lineage": {
+          "provenance_bound": true,
+          "provenance_signature_valid": true
+        },
+        "conflict": {
+          "reconciled": true
+        },
+        "audit": {
+          "chain_valid": true,
+          "actor_authenticated": true
         }
       }
     },
@@ -793,7 +907,19 @@
           "revocation_state_fresh": true,
           "verifier_available": true,
           "audit_store_available": true,
-          "replay_store_available": true
+          "replay_store_available": true,
+          "source_registry_available": true
+        },
+        "lineage": {
+          "provenance_bound": true,
+          "provenance_signature_valid": true
+        },
+        "conflict": {
+          "reconciled": true
+        },
+        "audit": {
+          "chain_valid": true,
+          "actor_authenticated": true
         }
       }
     },
@@ -867,7 +993,19 @@
           "revocation_state_fresh": true,
           "verifier_available": true,
           "audit_store_available": true,
-          "replay_store_available": true
+          "replay_store_available": true,
+          "source_registry_available": true
+        },
+        "lineage": {
+          "provenance_bound": true,
+          "provenance_signature_valid": true
+        },
+        "conflict": {
+          "reconciled": true
+        },
+        "audit": {
+          "chain_valid": true,
+          "actor_authenticated": true
         }
       }
     },
@@ -941,7 +1079,19 @@
           "revocation_state_fresh": true,
           "verifier_available": true,
           "audit_store_available": true,
-          "replay_store_available": true
+          "replay_store_available": true,
+          "source_registry_available": true
+        },
+        "lineage": {
+          "provenance_bound": true,
+          "provenance_signature_valid": true
+        },
+        "conflict": {
+          "reconciled": true
+        },
+        "audit": {
+          "chain_valid": true,
+          "actor_authenticated": true
         }
       }
     },
@@ -1015,7 +1165,19 @@
           "revocation_state_fresh": true,
           "verifier_available": true,
           "audit_store_available": true,
-          "replay_store_available": true
+          "replay_store_available": true,
+          "source_registry_available": true
+        },
+        "lineage": {
+          "provenance_bound": true,
+          "provenance_signature_valid": true
+        },
+        "conflict": {
+          "reconciled": true
+        },
+        "audit": {
+          "chain_valid": true,
+          "actor_authenticated": true
         }
       }
     },
@@ -1089,7 +1251,19 @@
           "revocation_state_fresh": true,
           "verifier_available": true,
           "audit_store_available": true,
-          "replay_store_available": true
+          "replay_store_available": true,
+          "source_registry_available": true
+        },
+        "lineage": {
+          "provenance_bound": true,
+          "provenance_signature_valid": true
+        },
+        "conflict": {
+          "reconciled": true
+        },
+        "audit": {
+          "chain_valid": true,
+          "actor_authenticated": true
         }
       }
     },
@@ -1163,7 +1337,19 @@
           "revocation_state_fresh": true,
           "verifier_available": true,
           "audit_store_available": true,
-          "replay_store_available": true
+          "replay_store_available": true,
+          "source_registry_available": true
+        },
+        "lineage": {
+          "provenance_bound": true,
+          "provenance_signature_valid": true
+        },
+        "conflict": {
+          "reconciled": true
+        },
+        "audit": {
+          "chain_valid": true,
+          "actor_authenticated": true
         }
       }
     },
@@ -1237,7 +1423,19 @@
           "revocation_state_fresh": true,
           "verifier_available": true,
           "audit_store_available": true,
-          "replay_store_available": true
+          "replay_store_available": true,
+          "source_registry_available": true
+        },
+        "lineage": {
+          "provenance_bound": true,
+          "provenance_signature_valid": true
+        },
+        "conflict": {
+          "reconciled": true
+        },
+        "audit": {
+          "chain_valid": true,
+          "actor_authenticated": true
         }
       }
     },
@@ -1311,7 +1509,19 @@
           "revocation_state_fresh": true,
           "verifier_available": true,
           "audit_store_available": true,
-          "replay_store_available": true
+          "replay_store_available": true,
+          "source_registry_available": true
+        },
+        "lineage": {
+          "provenance_bound": true,
+          "provenance_signature_valid": true
+        },
+        "conflict": {
+          "reconciled": true
+        },
+        "audit": {
+          "chain_valid": true,
+          "actor_authenticated": true
         }
       }
     },
@@ -1385,7 +1595,19 @@
           "revocation_state_fresh": true,
           "verifier_available": true,
           "audit_store_available": true,
-          "replay_store_available": true
+          "replay_store_available": true,
+          "source_registry_available": true
+        },
+        "lineage": {
+          "provenance_bound": true,
+          "provenance_signature_valid": true
+        },
+        "conflict": {
+          "reconciled": true
+        },
+        "audit": {
+          "chain_valid": true,
+          "actor_authenticated": true
         }
       }
     },
@@ -1459,7 +1681,19 @@
           "revocation_state_fresh": true,
           "verifier_available": true,
           "audit_store_available": true,
-          "replay_store_available": true
+          "replay_store_available": true,
+          "source_registry_available": true
+        },
+        "lineage": {
+          "provenance_bound": true,
+          "provenance_signature_valid": true
+        },
+        "conflict": {
+          "reconciled": true
+        },
+        "audit": {
+          "chain_valid": true,
+          "actor_authenticated": true
         }
       }
     },
@@ -1533,7 +1767,19 @@
           "revocation_state_fresh": true,
           "verifier_available": true,
           "audit_store_available": true,
-          "replay_store_available": true
+          "replay_store_available": true,
+          "source_registry_available": true
+        },
+        "lineage": {
+          "provenance_bound": true,
+          "provenance_signature_valid": true
+        },
+        "conflict": {
+          "reconciled": true
+        },
+        "audit": {
+          "chain_valid": true,
+          "actor_authenticated": true
         }
       }
     },
@@ -1607,7 +1853,19 @@
           "revocation_state_fresh": true,
           "verifier_available": true,
           "audit_store_available": true,
-          "replay_store_available": true
+          "replay_store_available": true,
+          "source_registry_available": true
+        },
+        "lineage": {
+          "provenance_bound": true,
+          "provenance_signature_valid": true
+        },
+        "conflict": {
+          "reconciled": true
+        },
+        "audit": {
+          "chain_valid": true,
+          "actor_authenticated": true
         }
       }
     },
@@ -1681,7 +1939,19 @@
           "revocation_state_fresh": true,
           "verifier_available": true,
           "audit_store_available": true,
-          "replay_store_available": true
+          "replay_store_available": true,
+          "source_registry_available": true
+        },
+        "lineage": {
+          "provenance_bound": true,
+          "provenance_signature_valid": true
+        },
+        "conflict": {
+          "reconciled": true
+        },
+        "audit": {
+          "chain_valid": true,
+          "actor_authenticated": true
         }
       }
     },
@@ -1755,7 +2025,19 @@
           "revocation_state_fresh": true,
           "verifier_available": true,
           "audit_store_available": true,
-          "replay_store_available": true
+          "replay_store_available": true,
+          "source_registry_available": true
+        },
+        "lineage": {
+          "provenance_bound": true,
+          "provenance_signature_valid": true
+        },
+        "conflict": {
+          "reconciled": true
+        },
+        "audit": {
+          "chain_valid": true,
+          "actor_authenticated": true
         }
       }
     },
@@ -1829,7 +2111,19 @@
           "revocation_state_fresh": true,
           "verifier_available": true,
           "audit_store_available": true,
-          "replay_store_available": true
+          "replay_store_available": true,
+          "source_registry_available": true
+        },
+        "lineage": {
+          "provenance_bound": true,
+          "provenance_signature_valid": true
+        },
+        "conflict": {
+          "reconciled": true
+        },
+        "audit": {
+          "chain_valid": true,
+          "actor_authenticated": true
         }
       }
     },
@@ -1903,7 +2197,19 @@
           "revocation_state_fresh": true,
           "verifier_available": true,
           "audit_store_available": true,
-          "replay_store_available": true
+          "replay_store_available": true,
+          "source_registry_available": true
+        },
+        "lineage": {
+          "provenance_bound": true,
+          "provenance_signature_valid": true
+        },
+        "conflict": {
+          "reconciled": true
+        },
+        "audit": {
+          "chain_valid": true,
+          "actor_authenticated": true
         }
       }
     },
@@ -1977,7 +2283,19 @@
           "revocation_state_fresh": false,
           "verifier_available": true,
           "audit_store_available": true,
-          "replay_store_available": true
+          "replay_store_available": true,
+          "source_registry_available": true
+        },
+        "lineage": {
+          "provenance_bound": true,
+          "provenance_signature_valid": true
+        },
+        "conflict": {
+          "reconciled": true
+        },
+        "audit": {
+          "chain_valid": true,
+          "actor_authenticated": true
         }
       }
     },
@@ -2051,7 +2369,19 @@
           "revocation_state_fresh": true,
           "verifier_available": true,
           "audit_store_available": true,
-          "replay_store_available": true
+          "replay_store_available": true,
+          "source_registry_available": true
+        },
+        "lineage": {
+          "provenance_bound": true,
+          "provenance_signature_valid": true
+        },
+        "conflict": {
+          "reconciled": true
+        },
+        "audit": {
+          "chain_valid": true,
+          "actor_authenticated": true
         }
       }
     },
@@ -2125,7 +2455,19 @@
           "revocation_state_fresh": true,
           "verifier_available": false,
           "audit_store_available": true,
-          "replay_store_available": true
+          "replay_store_available": true,
+          "source_registry_available": true
+        },
+        "lineage": {
+          "provenance_bound": true,
+          "provenance_signature_valid": true
+        },
+        "conflict": {
+          "reconciled": true
+        },
+        "audit": {
+          "chain_valid": true,
+          "actor_authenticated": true
         }
       }
     },
@@ -2199,7 +2541,19 @@
           "revocation_state_fresh": true,
           "verifier_available": true,
           "audit_store_available": false,
-          "replay_store_available": true
+          "replay_store_available": true,
+          "source_registry_available": true
+        },
+        "lineage": {
+          "provenance_bound": true,
+          "provenance_signature_valid": true
+        },
+        "conflict": {
+          "reconciled": true
+        },
+        "audit": {
+          "chain_valid": true,
+          "actor_authenticated": true
         }
       }
     },
@@ -2273,7 +2627,19 @@
           "revocation_state_fresh": true,
           "verifier_available": true,
           "audit_store_available": true,
-          "replay_store_available": false
+          "replay_store_available": false,
+          "source_registry_available": true
+        },
+        "lineage": {
+          "provenance_bound": true,
+          "provenance_signature_valid": true
+        },
+        "conflict": {
+          "reconciled": true
+        },
+        "audit": {
+          "chain_valid": true,
+          "actor_authenticated": true
         }
       }
     },
@@ -2347,7 +2713,19 @@
           "revocation_state_fresh": true,
           "verifier_available": true,
           "audit_store_available": true,
-          "replay_store_available": true
+          "replay_store_available": true,
+          "source_registry_available": true
+        },
+        "lineage": {
+          "provenance_bound": true,
+          "provenance_signature_valid": true
+        },
+        "conflict": {
+          "reconciled": true
+        },
+        "audit": {
+          "chain_valid": true,
+          "actor_authenticated": true
         }
       }
     },
@@ -2420,11 +2798,539 @@
           "revocation_state_fresh": true,
           "verifier_available": true,
           "audit_store_available": true,
-          "replay_store_available": true
+          "replay_store_available": true,
+          "source_registry_available": true
+        },
+        "lineage": {
+          "provenance_bound": true,
+          "provenance_signature_valid": true
+        },
+        "conflict": {
+          "reconciled": true
+        },
+        "audit": {
+          "chain_valid": true,
+          "actor_authenticated": true
         }
       },
       "expected_reason_code": "subject_missing",
       "fhir_core_observation": "warnings_only"
+    },
+    {
+      "id": "deny_missing_provenance_binding",
+      "case_kind": "single_mutation_adversarial",
+      "expected_decision": "deny",
+      "fhir_core_case_ref": "valid_active_privacy_consent_with_patient",
+      "mutation_baseline_case_id": "allow_provider_treatment",
+      "context": {
+        "source": {
+          "issuer_id": "org-lab-1",
+          "registered": true,
+          "signature_valid": true,
+          "payload_digest_matches": true,
+          "target_version_matches": true
+        },
+        "patient": {
+          "requested_patient_id": "patient-1",
+          "consent_patient_id": "patient-1",
+          "request_tenant_id": "tenant-1",
+          "resource_tenant_id": "tenant-1"
+        },
+        "consent": {
+          "status": "active",
+          "effective_from": "2026-01-01T00:00:00Z",
+          "effective_to": "2027-01-01T00:00:00Z",
+          "revoked": false,
+          "superseded": false,
+          "grantee_kind": "provider",
+          "grantee_id": "provider-9",
+          "included_categories": [
+            "laboratory"
+          ],
+          "permitted_actions": [
+            "read"
+          ],
+          "permitted_purposes": [
+            "treatment"
+          ],
+          "permitted_recipients": [
+            "org-clinic-1"
+          ],
+          "event_time_from": "2026-01-01T00:00:00Z",
+          "event_time_to": "2026-12-31T23:59:59Z",
+          "encounter_ids": [
+            "encounter-1"
+          ]
+        },
+        "request": {
+          "principal_id": "provider-9",
+          "recipient_id": "org-clinic-1",
+          "purpose": "treatment",
+          "action": "read",
+          "resource_type": "Observation",
+          "resource_id": "observation-1",
+          "resource_version": "7",
+          "category": "laboratory",
+          "clinical_event_time": "2026-11-20T10:00:00Z",
+          "ingestion_time": "2026-11-21T10:00:00Z",
+          "encounter_id": "encounter-1",
+          "request_id": "request-allow-provider-001",
+          "replayed": false,
+          "as_of_time": "2026-11-26T00:00:00Z"
+        },
+        "registry": {
+          "provider_registered": true,
+          "provider_organization_id": "org-clinic-1",
+          "organization_registered": true,
+          "revocation_state_fresh": true,
+          "verifier_available": true,
+          "audit_store_available": true,
+          "replay_store_available": true,
+          "source_registry_available": true
+        },
+        "lineage": {
+          "provenance_bound": false,
+          "provenance_signature_valid": true
+        },
+        "conflict": {
+          "reconciled": true
+        },
+        "audit": {
+          "chain_valid": true,
+          "actor_authenticated": true
+        }
+      },
+      "expected_reason_code": "provenance_missing"
+    },
+    {
+      "id": "deny_invalid_provenance_signature",
+      "case_kind": "single_mutation_adversarial",
+      "expected_decision": "deny",
+      "fhir_core_case_ref": "valid_active_privacy_consent_with_patient",
+      "mutation_baseline_case_id": "allow_provider_treatment",
+      "context": {
+        "source": {
+          "issuer_id": "org-lab-1",
+          "registered": true,
+          "signature_valid": true,
+          "payload_digest_matches": true,
+          "target_version_matches": true
+        },
+        "patient": {
+          "requested_patient_id": "patient-1",
+          "consent_patient_id": "patient-1",
+          "request_tenant_id": "tenant-1",
+          "resource_tenant_id": "tenant-1"
+        },
+        "consent": {
+          "status": "active",
+          "effective_from": "2026-01-01T00:00:00Z",
+          "effective_to": "2027-01-01T00:00:00Z",
+          "revoked": false,
+          "superseded": false,
+          "grantee_kind": "provider",
+          "grantee_id": "provider-9",
+          "included_categories": [
+            "laboratory"
+          ],
+          "permitted_actions": [
+            "read"
+          ],
+          "permitted_purposes": [
+            "treatment"
+          ],
+          "permitted_recipients": [
+            "org-clinic-1"
+          ],
+          "event_time_from": "2026-01-01T00:00:00Z",
+          "event_time_to": "2026-12-31T23:59:59Z",
+          "encounter_ids": [
+            "encounter-1"
+          ]
+        },
+        "request": {
+          "principal_id": "provider-9",
+          "recipient_id": "org-clinic-1",
+          "purpose": "treatment",
+          "action": "read",
+          "resource_type": "Observation",
+          "resource_id": "observation-1",
+          "resource_version": "7",
+          "category": "laboratory",
+          "clinical_event_time": "2026-11-20T10:00:00Z",
+          "ingestion_time": "2026-11-21T10:00:00Z",
+          "encounter_id": "encounter-1",
+          "request_id": "request-allow-provider-001",
+          "replayed": false,
+          "as_of_time": "2026-11-26T00:00:00Z"
+        },
+        "registry": {
+          "provider_registered": true,
+          "provider_organization_id": "org-clinic-1",
+          "organization_registered": true,
+          "revocation_state_fresh": true,
+          "verifier_available": true,
+          "audit_store_available": true,
+          "replay_store_available": true,
+          "source_registry_available": true
+        },
+        "lineage": {
+          "provenance_bound": true,
+          "provenance_signature_valid": false
+        },
+        "conflict": {
+          "reconciled": true
+        },
+        "audit": {
+          "chain_valid": true,
+          "actor_authenticated": true
+        }
+      },
+      "expected_reason_code": "provenance_signature_invalid"
+    },
+    {
+      "id": "deny_unresolved_source_conflict",
+      "case_kind": "single_mutation_adversarial",
+      "expected_decision": "deny",
+      "fhir_core_case_ref": "valid_active_privacy_consent_with_patient",
+      "mutation_baseline_case_id": "allow_provider_treatment",
+      "context": {
+        "source": {
+          "issuer_id": "org-lab-1",
+          "registered": true,
+          "signature_valid": true,
+          "payload_digest_matches": true,
+          "target_version_matches": true
+        },
+        "patient": {
+          "requested_patient_id": "patient-1",
+          "consent_patient_id": "patient-1",
+          "request_tenant_id": "tenant-1",
+          "resource_tenant_id": "tenant-1"
+        },
+        "consent": {
+          "status": "active",
+          "effective_from": "2026-01-01T00:00:00Z",
+          "effective_to": "2027-01-01T00:00:00Z",
+          "revoked": false,
+          "superseded": false,
+          "grantee_kind": "provider",
+          "grantee_id": "provider-9",
+          "included_categories": [
+            "laboratory"
+          ],
+          "permitted_actions": [
+            "read"
+          ],
+          "permitted_purposes": [
+            "treatment"
+          ],
+          "permitted_recipients": [
+            "org-clinic-1"
+          ],
+          "event_time_from": "2026-01-01T00:00:00Z",
+          "event_time_to": "2026-12-31T23:59:59Z",
+          "encounter_ids": [
+            "encounter-1"
+          ]
+        },
+        "request": {
+          "principal_id": "provider-9",
+          "recipient_id": "org-clinic-1",
+          "purpose": "treatment",
+          "action": "read",
+          "resource_type": "Observation",
+          "resource_id": "observation-1",
+          "resource_version": "7",
+          "category": "laboratory",
+          "clinical_event_time": "2026-11-20T10:00:00Z",
+          "ingestion_time": "2026-11-21T10:00:00Z",
+          "encounter_id": "encounter-1",
+          "request_id": "request-allow-provider-001",
+          "replayed": false,
+          "as_of_time": "2026-11-26T00:00:00Z"
+        },
+        "registry": {
+          "provider_registered": true,
+          "provider_organization_id": "org-clinic-1",
+          "organization_registered": true,
+          "revocation_state_fresh": true,
+          "verifier_available": true,
+          "audit_store_available": true,
+          "replay_store_available": true,
+          "source_registry_available": true
+        },
+        "lineage": {
+          "provenance_bound": true,
+          "provenance_signature_valid": true
+        },
+        "conflict": {
+          "reconciled": false
+        },
+        "audit": {
+          "chain_valid": true,
+          "actor_authenticated": true
+        }
+      },
+      "expected_reason_code": "conflict_unresolved"
+    },
+    {
+      "id": "deny_invalid_audit_chain",
+      "case_kind": "single_mutation_adversarial",
+      "expected_decision": "deny",
+      "fhir_core_case_ref": "valid_active_privacy_consent_with_patient",
+      "mutation_baseline_case_id": "allow_provider_treatment",
+      "context": {
+        "source": {
+          "issuer_id": "org-lab-1",
+          "registered": true,
+          "signature_valid": true,
+          "payload_digest_matches": true,
+          "target_version_matches": true
+        },
+        "patient": {
+          "requested_patient_id": "patient-1",
+          "consent_patient_id": "patient-1",
+          "request_tenant_id": "tenant-1",
+          "resource_tenant_id": "tenant-1"
+        },
+        "consent": {
+          "status": "active",
+          "effective_from": "2026-01-01T00:00:00Z",
+          "effective_to": "2027-01-01T00:00:00Z",
+          "revoked": false,
+          "superseded": false,
+          "grantee_kind": "provider",
+          "grantee_id": "provider-9",
+          "included_categories": [
+            "laboratory"
+          ],
+          "permitted_actions": [
+            "read"
+          ],
+          "permitted_purposes": [
+            "treatment"
+          ],
+          "permitted_recipients": [
+            "org-clinic-1"
+          ],
+          "event_time_from": "2026-01-01T00:00:00Z",
+          "event_time_to": "2026-12-31T23:59:59Z",
+          "encounter_ids": [
+            "encounter-1"
+          ]
+        },
+        "request": {
+          "principal_id": "provider-9",
+          "recipient_id": "org-clinic-1",
+          "purpose": "treatment",
+          "action": "read",
+          "resource_type": "Observation",
+          "resource_id": "observation-1",
+          "resource_version": "7",
+          "category": "laboratory",
+          "clinical_event_time": "2026-11-20T10:00:00Z",
+          "ingestion_time": "2026-11-21T10:00:00Z",
+          "encounter_id": "encounter-1",
+          "request_id": "request-allow-provider-001",
+          "replayed": false,
+          "as_of_time": "2026-11-26T00:00:00Z"
+        },
+        "registry": {
+          "provider_registered": true,
+          "provider_organization_id": "org-clinic-1",
+          "organization_registered": true,
+          "revocation_state_fresh": true,
+          "verifier_available": true,
+          "audit_store_available": true,
+          "replay_store_available": true,
+          "source_registry_available": true
+        },
+        "lineage": {
+          "provenance_bound": true,
+          "provenance_signature_valid": true
+        },
+        "conflict": {
+          "reconciled": true
+        },
+        "audit": {
+          "chain_valid": false,
+          "actor_authenticated": true
+        }
+      },
+      "expected_reason_code": "audit_chain_invalid"
+    },
+    {
+      "id": "deny_unauthenticated_audit_actor",
+      "case_kind": "single_mutation_adversarial",
+      "expected_decision": "deny",
+      "fhir_core_case_ref": "valid_active_privacy_consent_with_patient",
+      "mutation_baseline_case_id": "allow_provider_treatment",
+      "context": {
+        "source": {
+          "issuer_id": "org-lab-1",
+          "registered": true,
+          "signature_valid": true,
+          "payload_digest_matches": true,
+          "target_version_matches": true
+        },
+        "patient": {
+          "requested_patient_id": "patient-1",
+          "consent_patient_id": "patient-1",
+          "request_tenant_id": "tenant-1",
+          "resource_tenant_id": "tenant-1"
+        },
+        "consent": {
+          "status": "active",
+          "effective_from": "2026-01-01T00:00:00Z",
+          "effective_to": "2027-01-01T00:00:00Z",
+          "revoked": false,
+          "superseded": false,
+          "grantee_kind": "provider",
+          "grantee_id": "provider-9",
+          "included_categories": [
+            "laboratory"
+          ],
+          "permitted_actions": [
+            "read"
+          ],
+          "permitted_purposes": [
+            "treatment"
+          ],
+          "permitted_recipients": [
+            "org-clinic-1"
+          ],
+          "event_time_from": "2026-01-01T00:00:00Z",
+          "event_time_to": "2026-12-31T23:59:59Z",
+          "encounter_ids": [
+            "encounter-1"
+          ]
+        },
+        "request": {
+          "principal_id": "provider-9",
+          "recipient_id": "org-clinic-1",
+          "purpose": "treatment",
+          "action": "read",
+          "resource_type": "Observation",
+          "resource_id": "observation-1",
+          "resource_version": "7",
+          "category": "laboratory",
+          "clinical_event_time": "2026-11-20T10:00:00Z",
+          "ingestion_time": "2026-11-21T10:00:00Z",
+          "encounter_id": "encounter-1",
+          "request_id": "request-allow-provider-001",
+          "replayed": false,
+          "as_of_time": "2026-11-26T00:00:00Z"
+        },
+        "registry": {
+          "provider_registered": true,
+          "provider_organization_id": "org-clinic-1",
+          "organization_registered": true,
+          "revocation_state_fresh": true,
+          "verifier_available": true,
+          "audit_store_available": true,
+          "replay_store_available": true,
+          "source_registry_available": true
+        },
+        "lineage": {
+          "provenance_bound": true,
+          "provenance_signature_valid": true
+        },
+        "conflict": {
+          "reconciled": true
+        },
+        "audit": {
+          "chain_valid": true,
+          "actor_authenticated": false
+        }
+      },
+      "expected_reason_code": "audit_actor_unbound"
+    },
+    {
+      "id": "defer_source_registry_unavailable",
+      "case_kind": "single_mutation_adversarial",
+      "expected_decision": "defer",
+      "fhir_core_case_ref": "valid_active_privacy_consent_with_patient",
+      "mutation_baseline_case_id": "allow_provider_treatment",
+      "context": {
+        "source": {
+          "issuer_id": "org-lab-1",
+          "registered": true,
+          "signature_valid": true,
+          "payload_digest_matches": true,
+          "target_version_matches": true
+        },
+        "patient": {
+          "requested_patient_id": "patient-1",
+          "consent_patient_id": "patient-1",
+          "request_tenant_id": "tenant-1",
+          "resource_tenant_id": "tenant-1"
+        },
+        "consent": {
+          "status": "active",
+          "effective_from": "2026-01-01T00:00:00Z",
+          "effective_to": "2027-01-01T00:00:00Z",
+          "revoked": false,
+          "superseded": false,
+          "grantee_kind": "provider",
+          "grantee_id": "provider-9",
+          "included_categories": [
+            "laboratory"
+          ],
+          "permitted_actions": [
+            "read"
+          ],
+          "permitted_purposes": [
+            "treatment"
+          ],
+          "permitted_recipients": [
+            "org-clinic-1"
+          ],
+          "event_time_from": "2026-01-01T00:00:00Z",
+          "event_time_to": "2026-12-31T23:59:59Z",
+          "encounter_ids": [
+            "encounter-1"
+          ]
+        },
+        "request": {
+          "principal_id": "provider-9",
+          "recipient_id": "org-clinic-1",
+          "purpose": "treatment",
+          "action": "read",
+          "resource_type": "Observation",
+          "resource_id": "observation-1",
+          "resource_version": "7",
+          "category": "laboratory",
+          "clinical_event_time": "2026-11-20T10:00:00Z",
+          "ingestion_time": "2026-11-21T10:00:00Z",
+          "encounter_id": "encounter-1",
+          "request_id": "request-allow-provider-001",
+          "replayed": false,
+          "as_of_time": "2026-11-26T00:00:00Z"
+        },
+        "registry": {
+          "provider_registered": true,
+          "provider_organization_id": "org-clinic-1",
+          "organization_registered": true,
+          "revocation_state_fresh": true,
+          "verifier_available": true,
+          "audit_store_available": true,
+          "replay_store_available": true,
+          "source_registry_available": false
+        },
+        "lineage": {
+          "provenance_bound": true,
+          "provenance_signature_valid": true
+        },
+        "conflict": {
+          "reconciled": true
+        },
+        "audit": {
+          "chain_valid": true,
+          "actor_authenticated": true
+        }
+      },
+      "expected_reason_code": "source_registry_unavailable"
     }
   ],
   "metamorphic_pairs": [
@@ -2630,6 +3536,48 @@
       "expected_baseline_decision": "allow",
       "expected_restricted_decision": "deny",
       "changed_dimension": "subject_missing"
+    },
+    {
+      "baseline_case_id": "allow_provider_treatment",
+      "restricted_case_id": "deny_missing_provenance_binding",
+      "expected_baseline_decision": "allow",
+      "expected_restricted_decision": "deny",
+      "changed_dimension": "provenance_missing"
+    },
+    {
+      "baseline_case_id": "allow_provider_treatment",
+      "restricted_case_id": "deny_invalid_provenance_signature",
+      "expected_baseline_decision": "allow",
+      "expected_restricted_decision": "deny",
+      "changed_dimension": "provenance_signature_invalid"
+    },
+    {
+      "baseline_case_id": "allow_provider_treatment",
+      "restricted_case_id": "deny_unresolved_source_conflict",
+      "expected_baseline_decision": "allow",
+      "expected_restricted_decision": "deny",
+      "changed_dimension": "conflict_unresolved"
+    },
+    {
+      "baseline_case_id": "allow_provider_treatment",
+      "restricted_case_id": "deny_invalid_audit_chain",
+      "expected_baseline_decision": "allow",
+      "expected_restricted_decision": "deny",
+      "changed_dimension": "audit_chain_invalid"
+    },
+    {
+      "baseline_case_id": "allow_provider_treatment",
+      "restricted_case_id": "deny_unauthenticated_audit_actor",
+      "expected_baseline_decision": "allow",
+      "expected_restricted_decision": "deny",
+      "changed_dimension": "audit_actor_unbound"
+    },
+    {
+      "baseline_case_id": "allow_provider_treatment",
+      "restricted_case_id": "defer_source_registry_unavailable",
+      "expected_baseline_decision": "allow",
+      "expected_restricted_decision": "defer",
+      "changed_dimension": "source_registry_unavailable"
     }
   ]
 }
