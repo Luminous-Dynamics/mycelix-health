@@ -168,13 +168,13 @@
       "policy_version": "public-oracle-fixture-v1"
     },
     {
-      "case_id": "deny_event_time_not_ingestion_time",
+      "case_id": "deny_missing_clinical_event_time",
       "decision": "deny",
       "reason_codes": [
-        "event_time_out_of_scope"
+        "clinical_event_time_missing"
       ],
       "evidence_refs": [
-        "synthetic-evidence:deny_event_time_not_ingestion_time"
+        "synthetic-evidence:deny_missing_clinical_event_time"
       ],
       "policy_version": "public-oracle-fixture-v1"
     },
