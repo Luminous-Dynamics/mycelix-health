@@ -21,7 +21,10 @@ if ! jq -e '
     and (.context.consent | type == "object")
     and (.context.request | type == "object")
     and (.context.request.as_of_time | type == "string" and length > 0)
-    and (.context.request.clinical_event_time | type == "string" and length > 0)
+    and (if (.expected_reason_code == "clinical_event_time_missing")
+         then (.context.request.clinical_event_time == null)
+         else (.context.request.clinical_event_time | type == "string" and length > 0)
+         end)
     and (.context.registry | type == "object")
     and (if .expected_decision != "allow"
          then (.expected_reason_code as $reason
