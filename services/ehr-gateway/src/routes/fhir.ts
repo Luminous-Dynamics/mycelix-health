@@ -123,8 +123,8 @@ export function createFhirRoutes(ctx: AppContext): Hono {
       for (const entry of entries) {
         const resource = entry?.resource as {
           resourceType?: unknown;
-          subject?: { reference?: unknown; identifier?: unknown };
-          patient?: { reference?: unknown; identifier?: unknown };
+          subject?: unknown;
+          patient?: unknown;
 
         } | undefined;
         if (!resource || typeof resource.resourceType !== 'string'
