@@ -32,8 +32,9 @@ if ! jq -e '
     and (.context.request | type == "object")
     and (.context.registry | type == "object")
     and (if .expected_decision == "deny"
-         then ((.expected_reason_code | type == "string" and length > 0)
-               and ($root.reason_codes | index(.expected_reason_code) != null))
+         then (.expected_reason_code as $reason
+               | ($reason | type == "string" and length > 0)
+               and ($root.reason_codes | index($reason) != null))
          else true end)
   )
   and ($root.metamorphic_pairs | type == "array")
