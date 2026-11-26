@@ -131,6 +131,7 @@ pub struct RevokeConsentInput {
 #[hdk_extern]
 pub fn check_authorization(input: AuthorizationCheckInput) -> ExternResult<AuthorizationResult> {
     let consents = get_active_consents(input.patient_hash.clone())?;
+    let mut temporal_scope_denial: Option<&'static str> = None;
 
     for record in consents {
         if let Some(consent) = record.entry().to_app_option::<Consent>().ok().flatten() {
@@ -185,6 +186,7 @@ pub fn check_authorization(input: AuthorizationCheckInput) -> ExternResult<Autho
                     input.clinical_event_time.as_ref(),
                     input.encounter_hash.as_ref(),
                 ) {
+                    temporal_scope_denial = Some(scope_reason);
                     continue;
                 }
 
@@ -260,7 +262,9 @@ pub fn check_authorization(input: AuthorizationCheckInput) -> ExternResult<Autho
     Ok(AuthorizationResult {
         authorized: false,
         consent_hash: None,
-        reason: "No valid consent found".to_string(),
+        reason: temporal_scope_denial
+            .unwrap_or("No valid consent found")
+            .to_string(),
         permissions: vec![],
         emergency_override: false,
     })
@@ -3196,6 +3200,28 @@ mod tests {
         let json = serde_json::to_string(&input).expect("serialize");
         let decoded: RevokeConsentInput = serde_json::from_str(&json).expect("deserialize");
         assert_eq!(decoded.reason, "Patient requested revocation");
+    }
+
+    #[test]
+    fn legacy_authorization_input_without_scope_fields_deserializes_closed() {
+        let input = AuthorizationCheckInput {
+            patient_hash: dummy_hash(),
+            requestor: dummy_agent(),
+            data_category: DataCategory::Demographics,
+            permission: DataPermission::Read,
+            is_emergency: false,
+            clinical_event_time: None,
+            encounter_hash: None,
+        };
+        let mut value = serde_json::to_value(&input).expect("serialize");
+        let object = value.as_object_mut().expect("object");
+        object.remove("clinical_event_time");
+        object.remove("encounter_hash");
+
+        let decoded: AuthorizationCheckInput =
+            serde_json::from_value(value).expect("legacy payload remains readable");
+        assert!(decoded.clinical_event_time.is_none());
+        assert!(decoded.encounter_hash.is_none());
     }
 
     #[test]
