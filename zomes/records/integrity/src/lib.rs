@@ -569,7 +569,9 @@ fn validate_encrypted_record(record: &EncryptedRecord) -> ExternResult<ValidateC
                 "Legacy v1 envelopes cannot carry unauthenticated clinical context".to_string(),
             ));
         }
-        2 if record.clinical_event_time.is_some() => {}
+        2 if record.clinical_event_time.is_some()
+            && encrypted_v2_route_is_supported(&record.entry_type, &record.data_category)
+            && (record.entry_type != "ProcedurePerformed" || record.encounter_hash.is_some()) => {}
         2 => {
             return Ok(ValidateCallbackResult::Invalid(
                 "V2 encrypted envelopes require a clinical event time".to_string(),
@@ -605,6 +607,16 @@ fn validate_encrypted_record(record: &EncryptedRecord) -> ExternResult<ValidateC
     Ok(ValidateCallbackResult::Valid)
 }
 
+fn encrypted_v2_route_is_supported(entry_type: &str, data_category: &str) -> bool {
+    matches!(
+        (entry_type, data_category),
+        ("LabResult", "LabResults")
+            | ("ProcedurePerformed", "Procedures")
+            | ("ImagingStudy", "ImagingStudies")
+            | ("VitalSigns", "VitalSigns")
+    )
+}
+
 fn encrypted_route_is_valid(entry_type: &str, data_category: &str) -> bool {
     matches!(
         (entry_type, data_category),
@@ -622,12 +634,100 @@ fn encrypted_route_is_valid(entry_type: &str, data_category: &str) -> bool {
 mod tests {
     use super::*;
 
+    fn encrypted_record_fixture(
+        envelope_version: u8,
+        clinical_event_time: Option<Timestamp>,
+        encounter_hash: Option<ActionHash>,
+        entry_type: &str,
+        data_category: &str,
+    ) -> EncryptedRecord {
+        EncryptedRecord {
+            envelope_version,
+            patient_hash: ActionHash::from_raw_36(vec![1u8; 36]),
+            key_fingerprint: [1u8; 8],
+            ciphertext: vec![2u8; 16],
+            nonce: [3u8; 24],
+            data_category: data_category.to_string(),
+            entry_type: entry_type.to_string(),
+            encrypted_at: 1_000_000,
+            clinical_event_time,
+            encounter_hash,
+        }
+    }
+
     #[test]
     fn encrypted_routes_are_exact_and_fail_closed() {
         assert!(encrypted_route_is_valid("LabResult", "LabResults"));
         assert!(encrypted_route_is_valid("SdohScreening", "Demographics"));
         assert!(!encrypted_route_is_valid("LabResult", "MentalHealth"));
         assert!(!encrypted_route_is_valid("Unknown", "All"));
+    }
+
+    #[test]
+    fn encrypted_record_v1_is_legacy_context_free_only() {
+        let legacy = encrypted_record_fixture(1, None, None, "LabResult", "LabResults");
+        assert!(matches!(
+            validate_encrypted_record(&legacy).expect("v1 validation"),
+            ValidateCallbackResult::Valid
+        ));
+
+        let injected = encrypted_record_fixture(
+            1,
+            Some(Timestamp::from_micros(900_000)),
+            None,
+            "LabResult",
+            "LabResults",
+        );
+        assert!(matches!(
+            validate_encrypted_record(&injected).expect("v1 metadata validation"),
+            ValidateCallbackResult::Invalid(_)
+        ));
+    }
+
+    #[test]
+    fn encrypted_record_v2_requires_supported_typed_context() {
+        let missing_time = encrypted_record_fixture(2, None, None, "LabResult", "LabResults");
+        assert!(matches!(
+            validate_encrypted_record(&missing_time).expect("missing-time validation"),
+            ValidateCallbackResult::Invalid(_)
+        ));
+
+        let unsupported_type = encrypted_record_fixture(
+            2,
+            Some(Timestamp::from_micros(900_000)),
+            None,
+            "Diagnosis",
+            "Diagnoses",
+        );
+        assert!(matches!(
+            validate_encrypted_record(&unsupported_type).expect("unsupported type validation"),
+            ValidateCallbackResult::Invalid(_)
+        ));
+
+        let procedure_without_encounter = encrypted_record_fixture(
+            2,
+            Some(Timestamp::from_micros(900_000)),
+            None,
+            "ProcedurePerformed",
+            "Procedures",
+        );
+        assert!(matches!(
+            validate_encrypted_record(&procedure_without_encounter)
+                .expect("procedure encounter validation"),
+            ValidateCallbackResult::Invalid(_)
+        ));
+
+        let valid_v2 = encrypted_record_fixture(
+            2,
+            Some(Timestamp::from_micros(900_000)),
+            Some(ActionHash::from_raw_36(vec![4u8; 36])),
+            "ProcedurePerformed",
+            "Procedures",
+        );
+        assert!(matches!(
+            validate_encrypted_record(&valid_v2).expect("valid v2 validation"),
+            ValidateCallbackResult::Valid
+        ));
     }
 
     #[cfg(not(feature = "dangerous-plaintext-phi"))]
