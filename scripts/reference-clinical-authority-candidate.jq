@@ -28,6 +28,17 @@ def decide($case):
     elif ($consent.effective_from > $request.as_of_time) then deny("not_yet_effective")
     elif ($consent.effective_to <= $request.as_of_time) then deny("consent_expired")
     elif ($request.resource_version == null or $request.resource_version == "") then deny("resource_version_missing")
+    elif ($ctx.lineage.provenance_target_reference !=
+          ($request.resource_type + "/" + $request.resource_id + "/_history/" + $request.resource_version)) then
+      deny("provenance_target_mismatch")
+    elif ($ctx.lineage.provenance_agent_reference != ("Organization/" + $source.issuer_id)
+          or $ctx.lineage.provenance_signature_who != $ctx.lineage.provenance_agent_reference) then
+      deny("provenance_agent_mismatch")
+    elif ($ctx.lineage.provenance_signature_type != "Source") then
+      deny("provenance_signature_purpose_mismatch")
+    elif ($source.resource_digest_sha256 == null or $source.resource_digest_sha256 == ""
+          or $ctx.lineage.provenance_signed_content_digest_sha256 != $source.resource_digest_sha256) then
+      deny("payload_digest_mismatch")
     elif ($request.clinical_event_time == null or $request.clinical_event_time == "") then deny("clinical_event_time_missing")
     elif ($request.clinical_event_time < $consent.event_time_from or $request.clinical_event_time > $consent.event_time_to) then deny("event_time_out_of_scope")
     elif (($consent.encounter_ids | index($request.encounter_id)) == null) then
@@ -47,6 +58,15 @@ def decide($case):
     elif ($ctx.audit.actor_authenticated != true) then deny("audit_actor_unbound")
     elif ($request.replayed == true) then deny("request_replayed")
     elif ($registry.source_registry_available != true) then defer("source_registry_unavailable")
+    elif ($registry.source_signing_key_state_fresh != true) then defer("authority_state_stale")
+    elif ($registry.source_signing_key_registered != true
+          or $registry.active_source_signing_key_id != $ctx.lineage.provenance_signing_key_id
+          or $registry.source_signing_key_revoked == true) then deny("source_untrusted")
+    elif ($registry.provenance_verifier_available != true) then defer("verifier_unavailable")
+    elif ($ctx.lineage.provenance_verification_status == "invalid") then
+      deny("provenance_signature_invalid")
+    elif ($ctx.lineage.provenance_verification_status != "verified") then
+      defer("verifier_unavailable")
     elif ($registry.revocation_state_fresh != true) then defer("authority_state_stale")
     elif ($registry.verifier_available != true) then defer("verifier_unavailable")
     elif ($registry.audit_store_available != true) then defer("audit_unavailable")
