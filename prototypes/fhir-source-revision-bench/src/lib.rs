@@ -331,6 +331,123 @@ mod tests {
         }
     }
 
+    fn evaluate_fixture_case(case_id: &str) -> Result<RevisionAssessment, RevisionError> {
+        match case_id {
+            "first_revision" => {
+                let incoming = revision("tenant-a", "issuer-a", Some("v1"), 1, None);
+                classify_revision(&incoming, &[], None)
+            }
+            "same_version_same_digest" => {
+                let prior = revision("tenant-a", "issuer-a", Some("v1"), 1, Some(1));
+                classify_revision(&prior, std::slice::from_ref(&prior), Some(&prior))
+            }
+            "new_version_with_order" => {
+                let current = revision("tenant-a", "issuer-a", Some("v1"), 1, Some(10));
+                let incoming = revision("tenant-a", "issuer-a", Some("v2"), 2, Some(11));
+                classify_revision(&incoming, std::slice::from_ref(&current), Some(&current))
+            }
+            "late_old_revision" => {
+                let current = revision("tenant-a", "issuer-a", Some("v2"), 2, Some(20));
+                let incoming = revision("tenant-a", "issuer-a", Some("v1"), 1, Some(10));
+                classify_revision(&incoming, std::slice::from_ref(&current), Some(&current))
+            }
+            "same_version_changed_digest" => {
+                let current = revision("tenant-a", "issuer-a", Some("v7"), 1, Some(7));
+                let incoming = revision("tenant-a", "issuer-a", Some("v7"), 2, Some(7));
+                classify_revision(&incoming, std::slice::from_ref(&current), Some(&current))
+            }
+            "canonicalization_profile_change" => {
+                let current = revision("tenant-a", "issuer-a", Some("v7"), 1, Some(7));
+                let mut incoming = current.clone();
+                incoming.canonicalization_profile = "fhir-json-c14n-v2".to_string();
+                classify_revision(&incoming, std::slice::from_ref(&current), Some(&current))
+            }
+            "missing_version_changed_payload" => {
+                let current = revision("tenant-a", "issuer-a", None, 1, None);
+                let incoming = revision("tenant-a", "issuer-a", None, 2, None);
+                classify_revision(&incoming, std::slice::from_ref(&current), Some(&current))
+            }
+            "unversioned_exact_replay" => {
+                let current = revision("tenant-a", "issuer-a", None, 1, None);
+                classify_revision(&current, std::slice::from_ref(&current), Some(&current))
+            }
+            "opaque_version_order" => {
+                let current = revision("tenant-a", "issuer-a", Some("v10"), 10, None);
+                let incoming = revision("tenant-a", "issuer-a", Some("v9"), 9, None);
+                classify_revision(&incoming, std::slice::from_ref(&current), Some(&current))
+            }
+            "timestamp_not_order" => {
+                let mut current = revision("tenant-a", "issuer-a", Some("v1"), 1, None);
+                let mut incoming = revision("tenant-a", "issuer-a", Some("v2"), 2, None);
+                current.source_last_updated_micros = Some(1_900_000_000_000_000);
+                current.received_at_micros = 1_900_000_000_000_000;
+                incoming.source_last_updated_micros = Some(1_700_000_000_000_000);
+                incoming.received_at_micros = 1_600_000_000_000_000;
+                classify_revision(&incoming, std::slice::from_ref(&current), Some(&current))
+            }
+            "different_order_profile" => {
+                let current = revision("tenant-a", "issuer-a", Some("v1"), 1, Some(1));
+                let mut incoming = revision("tenant-a", "issuer-a", Some("v2"), 2, Some(2));
+                incoming.source_order.as_mut().unwrap().profile_id = "other-ehr-profile".to_string();
+                classify_revision(&incoming, std::slice::from_ref(&current), Some(&current))
+            }
+            "source_sequence_collision" => {
+                let current = revision("tenant-a", "issuer-a", Some("v1"), 1, Some(5));
+                let incoming = revision("tenant-a", "issuer-a", Some("v2"), 2, Some(5));
+                classify_revision(&incoming, std::slice::from_ref(&current), Some(&current))
+            }
+            "tenant_partition" => {
+                let prior = revision("tenant-a", "issuer-a", Some("v1"), 1, Some(1));
+                let incoming = revision("tenant-b", "issuer-a", Some("v1"), 1, Some(1));
+                classify_revision(&incoming, std::slice::from_ref(&prior), None)
+            }
+            "invalid_version" => {
+                let incoming = revision(
+                    "tenant-a",
+                    "issuer-a",
+                    Some("version/with/slash"),
+                    1,
+                    None,
+                );
+                classify_revision(&incoming, &[], None)
+            }
+            "principal_missing" => {
+                let mut incoming = revision("tenant-a", "issuer-a", Some("v1"), 1, None);
+                incoming.logical_key.source_principal = "  ".to_string();
+                classify_revision(&incoming, &[], None)
+            }
+            "projection_behind_history" => {
+                let current = revision("tenant-a", "issuer-a", Some("v2"), 2, Some(20));
+                let incoming = revision("tenant-a", "issuer-a", Some("v25"), 25, Some(25));
+                let history = vec![
+                    revision("tenant-a", "issuer-a", Some("v1"), 1, Some(10)),
+                    revision("tenant-a", "issuer-a", Some("v3"), 3, Some(30)),
+                ];
+                classify_revision(&incoming, &history, Some(&current))
+            }
+            "contradictory_duplicate_history" => {
+                let exact = revision("tenant-a", "issuer-a", Some("v1"), 1, Some(10));
+                let equivocation = revision("tenant-a", "issuer-a", Some("v1"), 9, Some(10));
+                let current = revision("tenant-a", "issuer-a", Some("v2"), 2, Some(20));
+                let history = vec![exact.clone(), equivocation];
+                classify_revision(&exact, &history, Some(&current))
+            }
+            "malformed_matching_history" => {
+                let mut malformed = revision("tenant-a", "issuer-a", Some("v1"), 1, Some(10));
+                malformed.canonicalization_profile = "  ".to_string();
+                let current = revision("tenant-a", "issuer-a", Some("v2"), 2, Some(20));
+                let incoming = revision("tenant-a", "issuer-a", Some("v3"), 3, Some(30));
+                classify_revision(&incoming, &[malformed], Some(&current))
+            }
+            "unversioned_order_metadata_conflict" => {
+                let current = revision("tenant-a", "issuer-a", None, 1, Some(10));
+                let incoming = revision("tenant-a", "issuer-a", None, 1, Some(11));
+                classify_revision(&incoming, std::slice::from_ref(&current), Some(&current))
+            }
+            _ => panic!("fixture has no executable scenario: {case_id}"),
+        }
+    }
+
     #[test]
     fn first_revision_can_establish_the_initial_projection() {
         let first = revision("tenant-a", "issuer-a", Some("opaque-v1"), 1, None);
