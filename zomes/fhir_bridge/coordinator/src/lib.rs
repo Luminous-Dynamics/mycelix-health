@@ -216,11 +216,7 @@ pub fn ingest_bundle(input: IngestBundleInput) -> ExternResult<IngestReport> {
     let patient_entries: Vec<&JsonValue> = entries
         .iter()
         .filter(|entry| {
-            entry
-                .get("resource")
-                .and_then(get_resource_type)
-                .as_deref()
-                == Some("Patient")
+            entry.get("resource").and_then(get_resource_type).as_deref() == Some("Patient")
         })
         .collect();
 
@@ -240,9 +236,9 @@ pub fn ingest_bundle(input: IngestBundleInput) -> ExternResult<IngestReport> {
         let resource = entry.get("resource").expect("Patient entry has resource");
         patient_fhir_id = get_resource_id(resource);
         if patient_fhir_id.is_none() {
-            report.parse_errors.push(
-                "Patient resource has no ID; no resources were ingested".to_string(),
-            );
+            report
+                .parse_errors
+                .push("Patient resource has no ID; no resources were ingested".to_string());
             create_entry(&EntryTypes::IngestReport(report.clone()))?;
             return Ok(report);
         }
@@ -276,7 +272,13 @@ pub fn ingest_bundle(input: IngestBundleInput) -> ExternResult<IngestReport> {
                     .map(|reference| resolve_fhir_patient_reference(reference, &entries))
                     .collect();
                 let resolved_id = match resolved_ids.first().and_then(|id| id.clone()) {
-                    Some(id) if resolved_ids.iter().all(|candidate| candidate.as_deref() == Some(id.as_str())) => id,
+                    Some(id)
+                        if resolved_ids
+                            .iter()
+                            .all(|candidate| candidate.as_deref() == Some(id.as_str())) =>
+                    {
+                        id
+                    }
                     _ => {
                         report.parse_errors.push(
                             "Resource has missing, conflicting or unresolved Patient references"
@@ -469,7 +471,10 @@ pub fn ingest_bundle(input: IngestBundleInput) -> ExternResult<IngestReport> {
 #[hdk_extern]
 fn fhir_bridge_export_categories(sections: &[String]) -> Result<Vec<DataCategory>, String> {
     if !sections.iter().any(|section| section == "Patient") {
-        return Err("FHIR Patient section is mandatory because the bundle includes Patient data".to_string());
+        return Err(
+            "FHIR Patient section is mandatory because the bundle includes Patient data"
+                .to_string(),
+        );
     }
 
     let mut categories = vec![DataCategory::Demographics];
@@ -1524,7 +1529,6 @@ fn validate_medication_resource(resource: &JsonValue) -> bool {
         || resource.get("medicationReference").is_some()
 }
 
-
 #[cfg(test)]
 mod fhir_bridge_export_authorization_tests {
     use super::*;
@@ -1545,7 +1549,8 @@ mod fhir_bridge_export_authorization_tests {
                 "Observation".to_string(),
                 "Condition".to_string(),
                 "MedicationRequest".to_string(),
-            ]).unwrap(),
+            ])
+            .unwrap(),
             vec![
                 DataCategory::Demographics,
                 DataCategory::LabResults,
@@ -1566,10 +1571,11 @@ mod fhir_bridge_export_authorization_tests {
         assert!(fhir_bridge_export_categories(&[
             "Patient".to_string(),
             "AllergyIntolerance".to_string(),
-        ]).is_err());
-        assert!(fhir_bridge_export_categories(&[
-            "Patient".to_string(),
-            "Unknown".to_string(),
-        ]).is_err());
+        ])
+        .is_err());
+        assert!(
+            fhir_bridge_export_categories(&["Patient".to_string(), "Unknown".to_string(),])
+                .is_err()
+        );
     }
 }
