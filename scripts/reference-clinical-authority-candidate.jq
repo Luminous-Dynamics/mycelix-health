@@ -40,6 +40,10 @@ def decide($case):
     elif ($source.resource_digest_sha256 == null or $source.resource_digest_sha256 == ""
           or $ctx.lineage.provenance_signed_content_digest_sha256 != $source.resource_digest_sha256) then
       deny("payload_digest_mismatch")
+    elif ($source.resource_canonicalization_profile != "FHIR-R4-CANONICAL-XML-v1"
+          or $ctx.lineage.provenance_signed_content_canonicalization_profile
+             != $source.resource_canonicalization_profile) then
+      deny("provenance_canonicalization_mismatch")
     elif ($request.clinical_event_time == null or $request.clinical_event_time == "") then deny("clinical_event_time_missing")
     elif ($request.clinical_event_time < $consent.event_time_from or $request.clinical_event_time > $consent.event_time_to) then deny("event_time_out_of_scope")
     elif (($consent.encounter_ids | index($request.encounter_id)) == null) then
