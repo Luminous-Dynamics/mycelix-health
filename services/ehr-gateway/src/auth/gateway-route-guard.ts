@@ -128,7 +128,10 @@ export async function authorizeGatewayRouteV1(
         }
         break;
       case 'fhir_export':
-        if (typeof result.resolvedMycelixPatientHash !== 'string' || result.resolvedMycelixPatientHash.length === 0) {
+        if (
+          typeof result.resolvedMycelixPatientHash !== 'string' || result.resolvedMycelixPatientHash.length === 0
+          || !result.requestedResourceTypes.includes('Patient')
+        ) {
           return failure('invalid_context');
         }
         break;
