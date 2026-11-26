@@ -432,10 +432,12 @@ pub fn verify_audit_view(
         let mut by_sequence = BTreeMap::<u64, &AuditEvent>::new();
         let mut conflicting_sequences = BTreeSet::<u64>::new();
         for event in stream_events.iter() {
-            if by_sequence.contains_key(&event.sequence) {
-                conflicting_sequences.insert(event.sequence);
+            if let std::collections::btree_map::Entry::Vacant(slot) =
+                by_sequence.entry(event.sequence)
+            {
+                slot.insert(event);
             } else {
-                by_sequence.insert(event.sequence, event);
+                conflicting_sequences.insert(event.sequence);
             }
         }
         for sequence in &conflicting_sequences {
@@ -711,6 +713,8 @@ pub fn verify_audit_view(
 mod tests {
     use super::*;
 
+    // This test-only fixture builder accepts each independent causal dimension.
+    #[allow(clippy::too_many_arguments)]
     fn event(
         action_hash: &str,
         stream_id: &str,
