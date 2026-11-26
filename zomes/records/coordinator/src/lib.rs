@@ -696,11 +696,13 @@ pub struct CreateProcedureInput {
 pub fn create_procedure(input: CreateProcedureInput) -> ExternResult<Record> {
     require_encrypted_phi("create_procedure")?;
     // Require Write authorization for Procedures category
-    let auth = require_authorization(
+    let auth = require_authorization_for_resource(
         input.patient_hash.clone(),
         DataCategory::Procedures,
         Permission::Write,
         input.is_emergency,
+        Some(input.procedure.performed_at),
+        Some(input.procedure.encounter_hash.clone()),
     )?;
 
     let procedure_hash = create_entry(&EntryTypes::ProcedurePerformed(input.procedure.clone()))?;
@@ -751,11 +753,13 @@ pub struct CreateLabResultInput {
 pub fn create_lab_result(input: CreateLabResultInput) -> ExternResult<Record> {
     require_encrypted_phi("create_lab_result")?;
     // Require Write authorization for LabResults category
-    let auth = require_authorization(
+    let auth = require_authorization_for_resource(
         input.lab_result.patient_hash.clone(),
         DataCategory::LabResults,
         Permission::Write,
         input.is_emergency,
+        Some(input.lab_result.collection_time),
+        input.lab_result.encounter_hash.clone(),
     )?;
 
     let result_hash = create_entry(&EntryTypes::LabResult(input.lab_result.clone()))?;
@@ -1413,11 +1417,13 @@ pub fn acknowledge_critical_result(input: AcknowledgeInput) -> ExternResult<Reco
         )))?;
 
     // Require Write authorization (Amend would be more specific but Write is sufficient)
-    let auth = require_authorization(
+    let auth = require_authorization_for_resource(
         lab_result.patient_hash.clone(),
         DataCategory::LabResults,
         Permission::Write,
         input.is_emergency,
+        Some(lab_result.collection_time),
+        lab_result.encounter_hash.clone(),
     )?;
 
     lab_result.acknowledged_by = Some(agent_info()?.agent_initial_pubkey);
