@@ -21,6 +21,7 @@ const DIGEST_C = 'c'.repeat(64);
 function intent(overrides: Partial<GatewayOperationIntentV1> = {}): GatewayOperationIntentV1 {
   return {
     operationKey: deriveGatewayOperationKeyV1({ tenantId: 'tenant-1', principalBinding: 'principal-1', patientBinding: 'opaque-patient-1', connectionId: 'ehr-connection-1', action: 'sync_pull', clientIdempotencyKey: 'client-key-1' }),
+    clientIdempotencyKey: 'client-key-1',
     requestDigest: DIGEST_A,
     tenantId: 'tenant-1',
     principalBinding: 'principal-1',
@@ -77,6 +78,7 @@ class MemoryGatewayOperationStore implements GatewayOperationStoreV1 {
     const created: GatewayOperationReceiptV1 = {
       operationId: 'operation-' + this.nextId++,
       operationKey: request.operationKey,
+      clientIdempotencyKey: request.clientIdempotencyKey,
       requestDigest: request.requestDigest,
       tenantId: request.tenantId,
       principalBinding: request.principalBinding,
@@ -247,6 +249,16 @@ describe('GatewayOperationCoordinatorV1', () => {
     expect(second.kind).toBe('replayed');
     expect(adapter.executeCalls).toEqual([intent().operationKey]);
     expect(store.records.get(intent().operationKey)?.state).toBe('committed');
+  });
+
+  it('rejects an operation key that does not match its authenticated scope', async () => {
+    const store = new MemoryGatewayOperationStore();
+    const adapter = new TestAdapter();
+    const forged = intent({ tenantId: 'tenant-other' });
+    const result = await coordinator(store, adapter).executeOnce(forged);
+
+    expect(result).toEqual({ kind: 'denied', reason: 'operation_intent_invalid' });
+    expect(adapter.executeCalls).toHaveLength(0);
   });
 
   it('rejects reuse of an idempotency key with a different request digest', async () => {
