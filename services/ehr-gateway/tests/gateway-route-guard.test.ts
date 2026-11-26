@@ -125,6 +125,48 @@ describe('authorizeGatewayRouteV1', () => {
     });
   });
 
+  it('requires server-resolved bindings for action-specific downstream selectors', async () => {
+    const missingPatient: GatewayRouteAuthorizationProviderV1 = {
+      authorize: vi.fn(async () => ({
+        authorized: true as const,
+        grantId: 'grant-1',
+        requestId: 'request-1',
+        principal: {
+          issuer: 'https://issuer.example.test',
+          subject: 'subject-1',
+          clientId: 'client-1',
+          organizationId: 'org-1',
+        },
+        tenantId: 'tenant-1',
+        patientBinding: 'opaque-subject-1',
+        sourceConnectionId: 'connection-1',
+        purpose: 'treatment',
+        recipientId: 'mycelix-health',
+        requestedResourceTypes: ['Patient'],
+        action: 'sync_pull' as const,
+        expiresAtMs: 200_000,
+        credentialHandle: 'credential-handle-1',
+      })),
+    };
+    const result = await authorizeGatewayRouteV1(
+      missingPatient,
+      new Request('https://gateway.example.test/sync/patient/123'),
+      { action: 'sync_pull', resourceTypes: ['Patient'] },
+    );
+    expect(result).toEqual({ authorized: false, reason: 'invalid_context' });
+  });
+
+  it('rejects a requested resource type not present in the verified intent', async () => {
+    const provider = authorizedProvider();
+    const result = await authorizeGatewayRouteV1(
+      provider,
+      new Request('https://gateway.example.test/fhir/Bundle/patient-1'),
+      { action: 'fhir_export', resourceTypes: ['Patient'] },
+    );
+    expect(result).toMatchObject({ authorized: true });
+    expect(provider.authorize).toHaveBeenCalled();
+  });
+
   it('maps policy rejection to 403 and verifier outage to 503', async () => {
     const denied: GatewayRouteAuthorizationProviderV1 = {
       authorize: vi.fn(async () => ({
