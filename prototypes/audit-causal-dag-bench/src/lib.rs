@@ -1074,6 +1074,30 @@ mod tests {
                     ],
                 )
             }
+            "conflicting_checkpoints" => (
+                vec![p0],
+                vec![
+                    checkpoint("agent-a", "agent-a", 0, "a0"),
+                    checkpoint("agent-a", "agent-a", 0, "conflicting-head"),
+                ],
+            ),
+            "duplicate_stream_sequence" => {
+                let duplicate = event(
+                    "a0-other",
+                    "agent-a",
+                    "agent-a",
+                    0,
+                    None,
+                    "patient-1",
+                    "tenant-1",
+                    &[],
+                    Some(11),
+                );
+                (
+                    vec![p0, duplicate],
+                    vec![checkpoint("agent-a", "agent-a", 0, "a0")],
+                )
+            }
             "uncheckpointed_suffix" => (
                 vec![
                     p0,
