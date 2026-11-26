@@ -2690,6 +2690,53 @@ mod tests {
     }
 
     #[test]
+    fn encrypted_record_scope_context_is_versioned_and_fail_closed() {
+        let legacy = EncryptedRecord {
+            envelope_version: ENCRYPTED_RECORD_ENVELOPE_VERSION_V1,
+            patient_hash: dummy_hash(),
+            key_fingerprint: [1u8; 8],
+            ciphertext: vec![1u8; 16],
+            nonce: [2u8; 24],
+            data_category: "LabResults".to_string(),
+            entry_type: "LabResult".to_string(),
+            encrypted_at: 1_000_000,
+            clinical_event_time: None,
+            encounter_hash: None,
+        };
+        assert_eq!(encrypted_record_scope_context(&legacy).unwrap(), (None, None));
+
+        let scoped = EncryptedRecord {
+            envelope_version: ENCRYPTED_RECORD_ENVELOPE_VERSION_V2,
+            patient_hash: dummy_hash(),
+            key_fingerprint: [1u8; 8],
+            ciphertext: vec![1u8; 16],
+            nonce: [2u8; 24],
+            data_category: "LabResults".to_string(),
+            entry_type: "LabResult".to_string(),
+            encrypted_at: 1_000_000,
+            clinical_event_time: Some(Timestamp::from_micros(900_000)),
+            encounter_hash: Some(dummy_hash()),
+        };
+        assert_eq!(
+            encrypted_record_scope_context(&scoped).unwrap(),
+            (Some(Timestamp::from_micros(900_000)), Some(dummy_hash()))
+        );
+
+        let mut malformed_v1 = legacy.clone();
+        malformed_v1.clinical_event_time = Some(Timestamp::from_micros(900_000));
+        assert!(encrypted_record_scope_context(&malformed_v1).is_err());
+
+        let mut malformed_v2 = scoped.clone();
+        malformed_v2.clinical_event_time = None;
+        assert!(encrypted_record_scope_context(&malformed_v2).is_err());
+
+        let mut unsupported_v2 = scoped;
+        unsupported_v2.entry_type = "Diagnosis".to_string();
+        unsupported_v2.data_category = "Diagnoses".to_string();
+        assert!(encrypted_record_scope_context(&unsupported_v2).is_err());
+    }
+
+    #[test]
     fn encrypted_record_v1_aad_preserves_the_legacy_wire_shape() {
         let record = EncryptedRecord {
             envelope_version: ENCRYPTED_RECORD_ENVELOPE_VERSION_V1,
