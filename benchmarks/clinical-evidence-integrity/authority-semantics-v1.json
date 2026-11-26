@@ -18,7 +18,8 @@
   "decision_contract": {
     "decisions": [
       "allow",
-      "deny"
+      "deny",
+      "defer"
     ],
     "exactly_one_result_per_case": true,
     "allowed_requires_nonempty_evidence_refs": true,
@@ -116,7 +117,8 @@
           "ingestion_time": "2026-11-21T10:00:00Z",
           "encounter_id": "encounter-1",
           "request_id": "request-allow-provider-001",
-          "replayed": false
+          "replayed": false,
+          "as_of_time": "2026-11-26T00:00:00Z"
         },
         "registry": {
           "provider_registered": true,
@@ -188,7 +190,81 @@
           "ingestion_time": "2026-11-21T10:00:00Z",
           "encounter_id": "encounter-1",
           "request_id": "request-allow-organization-001",
-          "replayed": false
+          "replayed": false,
+          "as_of_time": "2026-11-26T00:00:00Z"
+        },
+        "registry": {
+          "provider_registered": true,
+          "provider_organization_id": "org-clinic-1",
+          "organization_registered": true,
+          "revocation_state_fresh": true,
+          "verifier_available": true,
+          "audit_store_available": true,
+          "replay_store_available": true
+        }
+      }
+    },
+    {
+      "id": "allow_clinical_event_time_not_ingestion_time",
+      "case_kind": "positive_control",
+      "expected_decision": "allow",
+      "fhir_core_case_ref": "valid_active_privacy_consent_with_patient",
+      "mutation_baseline_case_id": null,
+      "context": {
+        "source": {
+          "issuer_id": "org-lab-1",
+          "registered": true,
+          "signature_valid": true,
+          "payload_digest_matches": true,
+          "target_version_matches": true
+        },
+        "patient": {
+          "requested_patient_id": "patient-1",
+          "consent_patient_id": "patient-1",
+          "request_tenant_id": "tenant-1",
+          "resource_tenant_id": "tenant-1"
+        },
+        "consent": {
+          "status": "active",
+          "effective_from": "2026-01-01T00:00:00Z",
+          "effective_to": "2027-01-01T00:00:00Z",
+          "revoked": false,
+          "superseded": false,
+          "grantee_kind": "provider",
+          "grantee_id": "provider-9",
+          "included_categories": [
+            "laboratory"
+          ],
+          "permitted_actions": [
+            "read"
+          ],
+          "permitted_purposes": [
+            "treatment"
+          ],
+          "permitted_recipients": [
+            "org-clinic-1"
+          ],
+          "event_time_from": "2026-11-01T00:00:00Z",
+          "event_time_to": "2026-11-30T23:59:59Z",
+          "encounter_ids": [
+            "encounter-1"
+          ]
+        },
+        "request": {
+          "principal_id": "provider-9",
+          "recipient_id": "org-clinic-1",
+          "purpose": "treatment",
+          "action": "read",
+          "resource_type": "Observation",
+          "resource_id": "observation-1",
+          "resource_version": "7",
+          "category": "laboratory",
+          "clinical_event_time": "2026-11-20T10:00:00Z",
+          "ingestion_time": "2026-12-10T10:00:00Z",
+          "encounter_id": "encounter-1",
+          "request_id": "request-allow-provider-001",
+          "replayed": false,
+          "as_of_time": "2026-12-20T10:00:00Z"
         },
         "registry": {
           "provider_registered": true,
@@ -261,7 +337,8 @@
           "ingestion_time": "2026-11-21T10:00:00Z",
           "encounter_id": "encounter-1",
           "request_id": "request-allow-provider-001",
-          "replayed": false
+          "replayed": false,
+          "as_of_time": "2026-11-26T00:00:00Z"
         },
         "registry": {
           "provider_registered": true,
@@ -334,7 +411,8 @@
           "ingestion_time": "2026-11-21T10:00:00Z",
           "encounter_id": "encounter-1",
           "request_id": "request-allow-provider-001",
-          "replayed": false
+          "replayed": false,
+          "as_of_time": "2026-11-26T00:00:00Z"
         },
         "registry": {
           "provider_registered": true,
@@ -407,7 +485,8 @@
           "ingestion_time": "2026-11-21T10:00:00Z",
           "encounter_id": "encounter-1",
           "request_id": "request-allow-provider-001",
-          "replayed": false
+          "replayed": false,
+          "as_of_time": "2026-11-26T00:00:00Z"
         },
         "registry": {
           "provider_registered": true,
@@ -480,7 +559,8 @@
           "ingestion_time": "2026-11-21T10:00:00Z",
           "encounter_id": "encounter-1",
           "request_id": "request-allow-provider-001",
-          "replayed": false
+          "replayed": false,
+          "as_of_time": "2026-11-26T00:00:00Z"
         },
         "registry": {
           "provider_registered": true,
@@ -553,7 +633,8 @@
           "ingestion_time": "2026-11-21T10:00:00Z",
           "encounter_id": "encounter-1",
           "request_id": "request-allow-provider-001",
-          "replayed": false
+          "replayed": false,
+          "as_of_time": "2026-11-26T00:00:00Z"
         },
         "registry": {
           "provider_registered": true,
@@ -626,7 +707,8 @@
           "ingestion_time": "2026-11-21T10:00:00Z",
           "encounter_id": "encounter-1",
           "request_id": "request-allow-provider-001",
-          "replayed": false
+          "replayed": false,
+          "as_of_time": "2026-11-26T00:00:00Z"
         },
         "registry": {
           "provider_registered": true,
@@ -699,7 +781,8 @@
           "ingestion_time": "2026-11-21T10:00:00Z",
           "encounter_id": "encounter-1",
           "request_id": "request-allow-provider-001",
-          "replayed": false
+          "replayed": false,
+          "as_of_time": "2026-11-26T00:00:00Z"
         },
         "registry": {
           "provider_registered": true,
@@ -772,7 +855,8 @@
           "ingestion_time": "2026-11-21T10:00:00Z",
           "encounter_id": "encounter-1",
           "request_id": "request-allow-provider-001",
-          "replayed": false
+          "replayed": false,
+          "as_of_time": "2026-11-26T00:00:00Z"
         },
         "registry": {
           "provider_registered": true,
@@ -845,7 +929,8 @@
           "ingestion_time": "2026-11-21T10:00:00Z",
           "encounter_id": "encounter-1",
           "request_id": "request-allow-provider-001",
-          "replayed": false
+          "replayed": false,
+          "as_of_time": "2026-11-26T00:00:00Z"
         },
         "registry": {
           "provider_registered": true,
@@ -918,7 +1003,8 @@
           "ingestion_time": "2026-11-21T10:00:00Z",
           "encounter_id": "encounter-1",
           "request_id": "request-allow-provider-001",
-          "replayed": false
+          "replayed": false,
+          "as_of_time": "2026-11-26T00:00:00Z"
         },
         "registry": {
           "provider_registered": true,
@@ -991,7 +1077,8 @@
           "ingestion_time": "2026-11-21T10:00:00Z",
           "encounter_id": "encounter-1",
           "request_id": "request-allow-provider-001",
-          "replayed": false
+          "replayed": false,
+          "as_of_time": "2026-11-26T00:00:00Z"
         },
         "registry": {
           "provider_registered": true,
@@ -1010,7 +1097,7 @@
       "expected_decision": "deny",
       "expected_reason_code": "event_time_out_of_scope",
       "fhir_core_case_ref": "valid_active_privacy_consent_with_patient",
-      "mutation_baseline_case_id": "allow_provider_treatment",
+      "mutation_baseline_case_id": "allow_clinical_event_time_not_ingestion_time",
       "context": {
         "source": {
           "issuer_id": "org-lab-1",
@@ -1045,8 +1132,8 @@
           "permitted_recipients": [
             "org-clinic-1"
           ],
-          "event_time_from": "2026-01-01T00:00:00Z",
-          "event_time_to": "2026-11-10T23:59:59Z",
+          "event_time_from": "2026-11-01T00:00:00Z",
+          "event_time_to": "2026-11-30T23:59:59Z",
           "encounter_ids": [
             "encounter-1"
           ]
@@ -1060,11 +1147,12 @@
           "resource_id": "observation-1",
           "resource_version": "7",
           "category": "laboratory",
-          "clinical_event_time": "2026-11-20T10:00:00Z",
-          "ingestion_time": "2026-11-21T10:00:00Z",
+          "clinical_event_time": "2026-12-01T00:00:00Z",
+          "ingestion_time": "2026-12-10T10:00:00Z",
           "encounter_id": "encounter-1",
           "request_id": "request-allow-provider-001",
-          "replayed": false
+          "replayed": false,
+          "as_of_time": "2026-12-20T10:00:00Z"
         },
         "registry": {
           "provider_registered": true,
@@ -1137,7 +1225,8 @@
           "ingestion_time": "2026-11-21T10:00:00Z",
           "encounter_id": "encounter-1",
           "request_id": "request-allow-provider-001",
-          "replayed": false
+          "replayed": false,
+          "as_of_time": "2026-11-26T00:00:00Z"
         },
         "registry": {
           "provider_registered": true,
@@ -1210,7 +1299,8 @@
           "ingestion_time": "2026-11-21T10:00:00Z",
           "encounter_id": "encounter-2",
           "request_id": "request-allow-provider-001",
-          "replayed": false
+          "replayed": false,
+          "as_of_time": "2026-11-26T00:00:00Z"
         },
         "registry": {
           "provider_registered": true,
@@ -1283,7 +1373,8 @@
           "ingestion_time": "2026-11-21T10:00:00Z",
           "encounter_id": null,
           "request_id": "request-allow-provider-001",
-          "replayed": false
+          "replayed": false,
+          "as_of_time": "2026-11-26T00:00:00Z"
         },
         "registry": {
           "provider_registered": true,
@@ -1356,7 +1447,8 @@
           "ingestion_time": "2026-11-21T10:00:00Z",
           "encounter_id": "encounter-1",
           "request_id": "request-allow-provider-001",
-          "replayed": false
+          "replayed": false,
+          "as_of_time": "2026-11-26T00:00:00Z"
         },
         "registry": {
           "provider_registered": false,
@@ -1429,7 +1521,8 @@
           "ingestion_time": "2026-11-21T10:00:00Z",
           "encounter_id": "encounter-1",
           "request_id": "request-allow-provider-001",
-          "replayed": false
+          "replayed": false,
+          "as_of_time": "2026-11-26T00:00:00Z"
         },
         "registry": {
           "provider_registered": true,
@@ -1502,7 +1595,8 @@
           "ingestion_time": "2026-11-21T10:00:00Z",
           "encounter_id": "encounter-1",
           "request_id": "request-allow-organization-001",
-          "replayed": false
+          "replayed": false,
+          "as_of_time": "2026-11-26T00:00:00Z"
         },
         "registry": {
           "provider_registered": true,
@@ -1575,7 +1669,8 @@
           "ingestion_time": "2026-11-21T10:00:00Z",
           "encounter_id": "encounter-1",
           "request_id": "request-allow-provider-001",
-          "replayed": false
+          "replayed": false,
+          "as_of_time": "2026-11-26T00:00:00Z"
         },
         "registry": {
           "provider_registered": true,
@@ -1648,7 +1743,8 @@
           "ingestion_time": "2026-11-21T10:00:00Z",
           "encounter_id": "encounter-1",
           "request_id": "request-allow-provider-001",
-          "replayed": false
+          "replayed": false,
+          "as_of_time": "2026-11-26T00:00:00Z"
         },
         "registry": {
           "provider_registered": true,
@@ -1721,7 +1817,8 @@
           "ingestion_time": "2026-11-21T10:00:00Z",
           "encounter_id": "encounter-1",
           "request_id": "request-allow-provider-001",
-          "replayed": false
+          "replayed": false,
+          "as_of_time": "2026-11-26T00:00:00Z"
         },
         "registry": {
           "provider_registered": true,
@@ -1794,7 +1891,8 @@
           "ingestion_time": "2026-11-21T10:00:00Z",
           "encounter_id": "encounter-1",
           "request_id": "request-allow-provider-001",
-          "replayed": false
+          "replayed": false,
+          "as_of_time": "2026-11-26T00:00:00Z"
         },
         "registry": {
           "provider_registered": true,
@@ -1808,9 +1906,9 @@
       }
     },
     {
-      "id": "deny_stale_revocation_state",
+      "id": "defer_stale_revocation_state",
       "case_kind": "single_mutation_adversarial",
-      "expected_decision": "deny",
+      "expected_decision": "defer",
       "expected_reason_code": "authority_state_stale",
       "fhir_core_case_ref": "valid_active_privacy_consent_with_patient",
       "mutation_baseline_case_id": "allow_provider_treatment",
@@ -1867,7 +1965,8 @@
           "ingestion_time": "2026-11-21T10:00:00Z",
           "encounter_id": "encounter-1",
           "request_id": "request-allow-provider-001",
-          "replayed": false
+          "replayed": false,
+          "as_of_time": "2026-11-26T00:00:00Z"
         },
         "registry": {
           "provider_registered": true,
@@ -1940,7 +2039,8 @@
           "ingestion_time": "2026-11-21T10:00:00Z",
           "encounter_id": "encounter-1",
           "request_id": "request-allow-provider-001",
-          "replayed": true
+          "replayed": true,
+          "as_of_time": "2026-11-26T00:00:00Z"
         },
         "registry": {
           "provider_registered": true,
@@ -1954,9 +2054,9 @@
       }
     },
     {
-      "id": "deny_verifier_unavailable",
+      "id": "defer_verifier_unavailable",
       "case_kind": "single_mutation_adversarial",
-      "expected_decision": "deny",
+      "expected_decision": "defer",
       "expected_reason_code": "verifier_unavailable",
       "fhir_core_case_ref": "valid_active_privacy_consent_with_patient",
       "mutation_baseline_case_id": "allow_provider_treatment",
@@ -2013,7 +2113,8 @@
           "ingestion_time": "2026-11-21T10:00:00Z",
           "encounter_id": "encounter-1",
           "request_id": "request-allow-provider-001",
-          "replayed": false
+          "replayed": false,
+          "as_of_time": "2026-11-26T00:00:00Z"
         },
         "registry": {
           "provider_registered": true,
@@ -2027,9 +2128,9 @@
       }
     },
     {
-      "id": "deny_audit_store_unavailable",
+      "id": "defer_audit_store_unavailable",
       "case_kind": "single_mutation_adversarial",
-      "expected_decision": "deny",
+      "expected_decision": "defer",
       "expected_reason_code": "audit_unavailable",
       "fhir_core_case_ref": "valid_active_privacy_consent_with_patient",
       "mutation_baseline_case_id": "allow_provider_treatment",
@@ -2086,7 +2187,8 @@
           "ingestion_time": "2026-11-21T10:00:00Z",
           "encounter_id": "encounter-1",
           "request_id": "request-allow-provider-001",
-          "replayed": false
+          "replayed": false,
+          "as_of_time": "2026-11-26T00:00:00Z"
         },
         "registry": {
           "provider_registered": true,
@@ -2100,9 +2202,9 @@
       }
     },
     {
-      "id": "deny_replay_store_unavailable",
+      "id": "defer_replay_store_unavailable",
       "case_kind": "single_mutation_adversarial",
-      "expected_decision": "deny",
+      "expected_decision": "defer",
       "expected_reason_code": "replay_store_unavailable",
       "fhir_core_case_ref": "valid_active_privacy_consent_with_patient",
       "mutation_baseline_case_id": "allow_provider_treatment",
@@ -2159,7 +2261,8 @@
           "ingestion_time": "2026-11-21T10:00:00Z",
           "encounter_id": "encounter-1",
           "request_id": "request-allow-provider-001",
-          "replayed": false
+          "replayed": false,
+          "as_of_time": "2026-11-26T00:00:00Z"
         },
         "registry": {
           "provider_registered": true,
@@ -2232,7 +2335,8 @@
           "ingestion_time": "2026-11-21T10:00:00Z",
           "encounter_id": "encounter-1",
           "request_id": "request-allow-provider-001",
-          "replayed": false
+          "replayed": false,
+          "as_of_time": "2026-11-26T00:00:00Z"
         },
         "registry": {
           "provider_registered": true,
@@ -2325,7 +2429,7 @@
       "changed_dimension": "consent_superseded"
     },
     {
-      "baseline_case_id": "allow_provider_treatment",
+      "baseline_case_id": "allow_clinical_event_time_not_ingestion_time",
       "restricted_case_id": "deny_event_time_outside_scope",
       "expected_baseline_decision": "allow",
       "expected_restricted_decision": "deny",
@@ -2403,9 +2507,9 @@
     },
     {
       "baseline_case_id": "allow_provider_treatment",
-      "restricted_case_id": "deny_stale_revocation_state",
+      "restricted_case_id": "defer_stale_revocation_state",
       "expected_baseline_decision": "allow",
-      "expected_restricted_decision": "deny",
+      "expected_restricted_decision": "defer",
       "changed_dimension": "authority_state_stale"
     },
     {
@@ -2417,23 +2521,23 @@
     },
     {
       "baseline_case_id": "allow_provider_treatment",
-      "restricted_case_id": "deny_verifier_unavailable",
+      "restricted_case_id": "defer_verifier_unavailable",
       "expected_baseline_decision": "allow",
-      "expected_restricted_decision": "deny",
+      "expected_restricted_decision": "defer",
       "changed_dimension": "verifier_unavailable"
     },
     {
       "baseline_case_id": "allow_provider_treatment",
-      "restricted_case_id": "deny_audit_store_unavailable",
+      "restricted_case_id": "defer_audit_store_unavailable",
       "expected_baseline_decision": "allow",
-      "expected_restricted_decision": "deny",
+      "expected_restricted_decision": "defer",
       "changed_dimension": "audit_unavailable"
     },
     {
       "baseline_case_id": "allow_provider_treatment",
-      "restricted_case_id": "deny_replay_store_unavailable",
+      "restricted_case_id": "defer_replay_store_unavailable",
       "expected_baseline_decision": "allow",
-      "expected_restricted_decision": "deny",
+      "expected_restricted_decision": "defer",
       "changed_dimension": "replay_store_unavailable"
     },
     {
