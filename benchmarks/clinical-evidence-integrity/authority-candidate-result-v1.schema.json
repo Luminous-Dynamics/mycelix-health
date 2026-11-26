@@ -60,7 +60,43 @@
             "type": "string",
             "minLength": 1
           }
-        }
+        },
+        "allOf": [
+          {
+            "if": {
+              "properties": {
+                "decision": {
+                  "const": "deny"
+                }
+              }
+            },
+            "then": {
+              "properties": {
+                "reason_codes": {
+                  "minItems": 1
+                }
+              }
+            }
+          },
+          {
+            "if": {
+              "properties": {
+                "decision": {
+                  "const": "allow"
+                }
+              }
+            },
+            "then": {
+              "properties": {
+                "reason_codes": {
+                  "contains": {
+                    "const": "authorized"
+                  }
+                }
+              }
+            }
+          }
+        ]
       }
     }
   }
