@@ -1,0 +1,9 @@
+[package]
+name = "mycelix-fhir-source-revision-bench"
+version = "0.1.0"
+edition = "2021"
+license = "AGPL-3.0-or-later"
+publish = false
+description = "Dependency-free reference contract for append-only FHIR source revisions"
+
+[workspace]
