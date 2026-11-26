@@ -394,6 +394,12 @@ pub mod chained_audit {
         hasher.update(entry.sequence.to_le_bytes());
         hasher.update(entry.timestamp.to_le_bytes());
         hasher.update(entry.agent.get_raw_39());
+        // Bind the actual serialized payload directly as well as its declared
+        // digest so callers cannot obtain the same outer hash for a mismatched
+        // event / entry_hash pair.
+        let event_payload = serde_json::to_vec(&entry.event)?;
+        hasher.update((event_payload.len() as u64).to_le_bytes());
+        hasher.update(&event_payload);
         hasher.update(entry.entry_hash);
 
         match &entry.previous_hash {
@@ -526,6 +532,15 @@ pub mod chained_audit {
             assert_ne!(
                 hash_event(&original).expect("original event serializes"),
                 hash_event(&changed).expect("changed event serializes")
+            );
+
+            let entry = make_entry(0, None, original, 100, dummy_agent(7));
+            let original_outer = hash_entry(&entry).expect("original entry hashes");
+            let mut changed_entry = entry;
+            changed_entry.event = changed;
+            assert_ne!(
+                original_outer,
+                hash_entry(&changed_entry).expect("changed entry hashes")
             );
         }
 
