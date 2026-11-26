@@ -28,6 +28,18 @@ export type GatewayRouteAuthorizationResultV1 = GatewayAuthorizationResultV1 & {
    * Job lists use job IDs. Conflict lists use JSON.stringify([resourceType, resourceId]).
    */
   authorizedResourceIds?: readonly string[];
+  /** Exact server-resolved source-side patient identifier for EHR operations. */
+  resolvedSourcePatientId?: string;
+  /** Exact server-resolved Mycelix patient hash for FHIR export/bidirectional sync. */
+  resolvedMycelixPatientHash?: string;
+  /** Opaque key in the server-side token vault; never use a request tokenKey directly. */
+  credentialHandle?: string;
+  /** Server-resolved sync job ID for item status/delete actions. */
+  resolvedJobId?: string;
+  /** Server-resolved conflict ID for conflict mutation actions. */
+  resolvedConflictId?: string;
+  /** Exact resource types authorized by the verified request context. */
+  authorizedResourceTypes?: readonly string[];
 }
 
 export interface GatewayRouteAuthorizationProviderV1 {
@@ -91,8 +103,64 @@ export async function authorizeGatewayRouteV1(
     if (result.action !== intent.action) {
       return failure('action_not_permitted');
     }
-    if (!result.requestId || !result.tenantId || !result.patientBinding) {
+    if (
+      !result.requestId || !result.tenantId || !result.patientBinding
+      || !result.sourceConnectionId || !result.purpose || !result.recipientId
+      || !Array.isArray(result.requestedResourceTypes)
+      || result.requestedResourceTypes.some((value) => typeof value !== 'string' || value.trim().length === 0)
+    ) {
       return failure('invalid_context');
+    }
+    if (
+      result.requestedResourceTypes.some((value) =>
+        !(intent.resourceTypes ?? []).includes(value)
+      )
+    ) {
+      return failure('resource_type_not_permitted');
+    }
+
+    // Every downstream operation must use canonical bindings returned by the
+    // trusted provider, never the caller's raw path/query/header selectors.
+    switch (intent.action) {
+      case 'fhir_ingest':
+        break;
+      case 'fhir_export':
+        if (typeof result.resolvedMycelixPatientHash !== 'string' || result.resolvedMycelixPatientHash.length === 0) {
+          return failure('invalid_context');
+        }
+        break;
+      case 'sync_pull':
+        if (
+          typeof result.resolvedSourcePatientId !== 'string' || result.resolvedSourcePatientId.length === 0
+          || typeof result.credentialHandle !== 'string' || result.credentialHandle.length === 0
+        ) {
+          return failure('invalid_context');
+        }
+        break;
+      case 'sync_bidirectional':
+        if (
+          typeof result.resolvedSourcePatientId !== 'string' || result.resolvedSourcePatientId.length === 0
+          || typeof result.resolvedMycelixPatientHash !== 'string' || result.resolvedMycelixPatientHash.length === 0
+          || typeof result.credentialHandle !== 'string' || result.credentialHandle.length === 0
+        ) {
+          return failure('invalid_context');
+        }
+        break;
+      case 'sync_status':
+      case 'sync_job_delete':
+        if (typeof result.resolvedJobId !== 'string' || result.resolvedJobId.length === 0) {
+          return failure('invalid_context');
+        }
+        break;
+      case 'sync_conflict_resolve':
+        if (typeof result.resolvedConflictId !== 'string' || result.resolvedConflictId.length === 0) {
+          return failure('invalid_context');
+        }
+        break;
+      case 'sync_job_list':
+      case 'sync_conflicts_read':
+      case 'sync_push':
+        break;
     }
     if (
       intent.requireScopedResourceList
