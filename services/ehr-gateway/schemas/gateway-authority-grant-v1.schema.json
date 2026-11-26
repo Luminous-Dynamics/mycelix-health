@@ -20,13 +20,39 @@
     "revokedAtMs"
   ],
   "properties": {
-    "grantId": { "type": "string", "minLength": 1, "maxLength": 256 },
-    "principal": { "$ref": "gateway-request-context-v1.schema.json#/$defs/principal" },
-    "tenantId": { "type": "string", "minLength": 1, "maxLength": 256 },
-    "patientBinding": { "type": "string", "minLength": 1, "maxLength": 512 },
-    "sourceConnectionId": { "type": "string", "minLength": 1, "maxLength": 256 },
-    "purpose": { "type": "string", "minLength": 1, "maxLength": 128 },
-    "recipientId": { "type": "string", "minLength": 1, "maxLength": 256 },
+    "grantId": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 256
+    },
+    "principal": {
+      "$ref": "gateway-request-context-v1.schema.json#/$defs/principal"
+    },
+    "tenantId": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 256
+    },
+    "patientBinding": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 512
+    },
+    "sourceConnectionId": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 256
+    },
+    "purpose": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128
+    },
+    "recipientId": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 256
+    },
     "allowedActions": {
       "type": "array",
       "uniqueItems": true,
@@ -39,17 +65,34 @@
           "sync_pull",
           "sync_push",
           "sync_status",
-          "sync_job_list"
+          "sync_job_list",
+          "sync_job_delete",
+          "sync_bidirectional",
+          "sync_conflicts_read",
+          "sync_conflict_resolve"
         ]
       }
     },
     "allowedResourceTypes": {
       "type": "array",
       "uniqueItems": true,
-      "items": { "type": "string", "minLength": 1, "maxLength": 128 }
+      "items": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 128
+      }
     },
-    "notBeforeMs": { "type": "integer" },
-    "expiresAtMs": { "type": "integer" },
-    "revokedAtMs": { "type": ["integer", "null"] }
+    "notBeforeMs": {
+      "type": "integer"
+    },
+    "expiresAtMs": {
+      "type": "integer"
+    },
+    "revokedAtMs": {
+      "type": [
+        "integer",
+        "null"
+      ]
+    }
   }
 }
