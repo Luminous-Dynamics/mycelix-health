@@ -91,7 +91,7 @@ while IFS= read -r row; do
       fi
       ;;
     warnings_only)
-      if [[ "$errors" -ne 0 || "$warnings" -eq 0 ]]; then
+      if [[ "$errors" -ne 0 || "$warnings" -eq 0 || "$rc" -ne 0 ]]; then
         echo "Expected warnings-only case $case_id but validator reported $errors errors and $warnings warnings (exit $rc)" >&2
         cat "$console" >&2; jq . "$report" >&2; exit 1
       fi
