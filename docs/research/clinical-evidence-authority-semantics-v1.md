@@ -2,7 +2,7 @@
 
 **Status:** public synthetic development corpus and deterministic evaluator contract. This is not a live authorization engine, official FHIR validator, legal interpretation, clinical validation, or production safety certification.
 
-**Corpus size:** 32 public synthetic cases (3 expected allow, 25 expected deny, 4 expected defer) with 29 single-dimension metamorphic pairs. The public labels are intentionally visible for regression testing; this is not the held-out scorecard.
+**Corpus size:** 38 public synthetic cases (3 expected allow, 30 expected deny, 5 expected defer) with 35 single-dimension metamorphic pairs. The public labels are intentionally visible for regression testing; this is not the held-out scorecard.
 
 ## What this measures
 
@@ -80,13 +80,17 @@ Evaluate date restrictions against clinical event time, not ingestion time or ac
 
 Treat patient, tenant, recipient, purpose, action, category, encounter and date restrictions as intersecting constraints. Removing context or tightening any constraint must never expand access. Test this with paired counterfactuals and property-based mutation tests—not only happy-path examples.
 
-### 4. Separate evidence generation, access and authority
+### 4. Custody integrity is a first-class precondition
+
+A source payload hash is not a complete evidence chain. Accepted evidence must be bound to a version-specific Provenance record; conflicts must be resolved against declared source authority and revision semantics; and the access decision must be tied to an authenticated actor in a verifiable audit chain. Missing lineage, unresolved conflict, or a broken audit chain is a denial, not a confidence penalty. Unavailable trust-registry services produce defer, not allow.
+
+### 5. Separate evidence generation, access and authority
 
 Keep FHIR Provenance (generation/derivation), AuditEvent (usage/security activity) and Consent (policy representation) as separate semantic families. They can be correlated to a request and resource version without being conflated. A valid AuditEvent does not prove a source assertion, and a Provenance agent label does not prove identity.
 
-### 5. Fail-closed execution with explicit unavailability
+### 6. Fail-closed execution with explicit unavailability
 
-Verifier outage, stale revocation state, replay-store outage or audit-store failure must not become an allow. A system should return a typed denial/defer result and preserve enough evidence to reconcile unknown outcomes without repeating a disclosure.
+Verifier outage, stale revocation state, source-registry outage, replay-store outage or audit-store failure must not become an allow. A system should return a typed denial/defer result and preserve enough evidence to reconcile unknown outcomes without repeating a disclosure.
 
 ## Benchmark protocol and targets
 
