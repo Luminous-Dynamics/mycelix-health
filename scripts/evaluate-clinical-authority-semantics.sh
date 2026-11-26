@@ -16,25 +16,33 @@ done
 command -v jq >/dev/null 2>&1 || { echo "jq is required" >&2; exit 1; }
 command -v sha256sum >/dev/null 2>&1 || { echo "sha256sum is required" >&2; exit 1; }
 
+# Validate manifest structure, unique identities, reason vocabulary and pair refs.
 if ! jq -e '
-  (.schema_version == 1)
+  . as $root
+  | (.schema_version == 1)
   and (.benchmark_id | type == "string" and length > 0)
   and (.cases | type == "array" and length > 0)
-  and (([.cases[].id] | length) == ([.cases[].id] | unique | length))
-  and all(.cases[];
+  and (([$root.cases[].id] | length) == ([$root.cases[].id] | unique | length))
+  and all($root.cases[];
     (.id | type == "string" and length > 0)
     and (.expected_decision == "allow" or .expected_decision == "deny")
-    and (.context | type == "object")
+    and (.context.source | type == "object")
+    and (.context.patient | type == "object")
+    and (.context.consent | type == "object")
+    and (.context.request | type == "object")
+    and (.context.registry | type == "object")
     and (if .expected_decision == "deny"
-         then (.expected_reason_code | type == "string" and length > 0)
+         then ((.expected_reason_code | type == "string" and length > 0)
+               and ($root.reason_codes | index(.expected_reason_code) != null))
          else true end)
   )
-  and (.metamorphic_pairs | type == "array")
-  and all(.metamorphic_pairs[];
-    (.baseline_case_id | type == "string" and length > 0)
-    and (.restricted_case_id | type == "string" and length > 0)
-    and (.expected_baseline_decision == "allow")
-    and (.expected_restricted_decision == "deny")
+  and ($root.metamorphic_pairs | type == "array")
+  and all($root.metamorphic_pairs[];
+    . as $pair
+    | any($root.cases[]; .id == $pair.baseline_case_id and .expected_decision == "allow")
+    and any($root.cases[]; .id == $pair.restricted_case_id and .expected_decision == "deny")
+    and ($pair.expected_baseline_decision == "allow")
+    and ($pair.expected_restricted_decision == "deny")
   )
 ' "$MANIFEST" >/dev/null; then
   echo "Manifest failed schema/invariant preflight" >&2
@@ -52,6 +60,8 @@ if ! jq -e --arg id "$BENCHMARK_ID" '
     and (.reason_codes | type == "array" and all(.[]; type == "string" and length > 0))
     and (.evidence_refs | type == "array" and length > 0 and all(.[]; type == "string" and length > 0))
     and (.policy_version | type == "string" and length > 0)
+    and (if .decision == "deny" then (.reason_codes | length > 0)
+         else (.reason_codes | index("authorized") != null) end)
   )
   and (([.results[].case_id] | length) == ([.results[].case_id] | unique | length))
 ' "$CANDIDATE" >/dev/null; then
@@ -70,6 +80,14 @@ fi
 
 MANIFEST_SHA="$(sha256sum "$MANIFEST" | awk '{print $1}')"
 CANDIDATE_SHA="$(sha256sum "$CANDIDATE" | awk '{print $1}')"
+TEMP_REPORT=""
+if [[ -n "$REPORT" ]]; then
+  OUTPUT_FILE="$REPORT"
+else
+  OUTPUT_FILE="$(mktemp)"
+  TEMP_REPORT="$OUTPUT_FILE"
+fi
+trap '[[ -z "$TEMP_REPORT" ]] || rm -f "$TEMP_REPORT"' EXIT
 
 jq -n --arg manifest_sha256 "$MANIFEST_SHA" --arg candidate_sha256 "$CANDIDATE_SHA" --slurpfile manifest "$MANIFEST" --slurpfile candidate "$CANDIDATE" '
   ($manifest[0].cases) as $cases
@@ -133,13 +151,10 @@ jq -n --arg manifest_sha256 "$MANIFEST_SHA" --arg candidate_sha256 "$CANDIDATE_S
       case_results: $rows,
       metamorphic_results: $pairs
     }
-' > "${REPORT:-/dev/stdout}"
+' > "$OUTPUT_FILE"
 
-if [[ -n "$REPORT" ]]; then
-  cat "$REPORT"
-fi
-
-if jq -e '.unauthorized_allow_count > 0 or .metamorphic_pair_failures > 0' "${REPORT:-/dev/stdout}" >/dev/null; then
+cat "$OUTPUT_FILE"
+if jq -e '.unauthorized_allow_count > 0 or .metamorphic_pair_failures > 0' "$OUTPUT_FILE" >/dev/null; then
   echo "FAIL: authority or metamorphic gate failed" >&2
   exit 2
 fi
