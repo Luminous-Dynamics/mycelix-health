@@ -23,6 +23,12 @@ jq '.results |= map(if .case_id == "deny_missing_clinical_event_time" then .deci
 set +e; bash "$EVALUATOR" "$MANIFEST" "$tmp" >/dev/null 2>&1; status=$?; set -e
 [[ "$status" -eq 2 ]] || { echo "Expected missing event-time allow to fail with status 2; got $status" >&2; exit 1; }
 
+# A missing privacy Consent subject remains an authority denial even though
+# the companion FHIR validator currently reports warnings_only for its fixture.
+jq '.results |= map(if .case_id == "deny_missing_consent_subject" then .decision = "allow" | .reason_codes = ["authorized"] else . end)' "$ORACLE" > "$tmp"
+set +e; bash "$EVALUATOR" "$MANIFEST" "$tmp" >/dev/null 2>&1; status=$?; set -e
+[[ "$status" -eq 2 ]] || { echo "Expected missing-subject allow to fail with status 2; got $status" >&2; exit 1; }
+
 # An incomplete candidate must fail structural validation.
 jq '.results |= map(select(.case_id != "deny_inactive_consent"))' "$ORACLE" > "$tmp"
 set +e; bash "$EVALUATOR" "$MANIFEST" "$tmp" >/dev/null 2>&1; status=$?; set -e
