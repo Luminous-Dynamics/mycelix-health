@@ -137,7 +137,7 @@ export function createFhirRoutes(ctx: AppContext): Hono {
         // optional subjects in broader workflows; here, missing identity is
         // not permission to inherit the Bundle's Patient implicitly.
         const patientReferenceFields = [resource.subject, resource.patient]
-          .filter((value) => value !== undefined && value !== null);
+          .filter((value) => value !== undefined);
         if (resource.resourceType !== 'Patient' && patientReferenceFields.length === 0) {
           return c.json({
             error: 'Every patient-scoped Bundle resource must contain an explicit Patient reference',
@@ -145,7 +145,7 @@ export function createFhirRoutes(ctx: AppContext): Hono {
         }
 
         for (const value of patientReferenceFields) {
-          if (typeof value !== 'object' || Array.isArray(value)) {
+          if (value === null || typeof value !== 'object' || Array.isArray(value)) {
             return c.json({ error: 'Bundle contains a malformed Patient reference' }, 403);
           }
           const field = value as { reference?: unknown; identifier?: unknown };
