@@ -739,7 +739,7 @@ mod tests {
     }
 
     fn scenario(case_id: &str) -> (Vec<AuditEvent>, Vec<TrustedStreamCheckpoint>) {
-        let p0 = eventevent(
+        let p0 = event(
             "a0",
             "agent-a",
             "agent-a",
@@ -750,7 +750,7 @@ mod tests {
             &[],
             Some(100),
         );
-        let p1 = eventevent(
+        let p1 = event(
             "a1",
             "agent-a",
             "agent-a",
@@ -762,7 +762,7 @@ mod tests {
             Some(200),
         );
         let q0 = event("b0", "agent-b", "agent-b", 0, None, "patient-1", "tenant-1", &[], Some(50));
-        let q1 = eventevent(
+        let q1 = event(
             "b1",
             "agent-b",
             "agent-b",
@@ -782,7 +782,7 @@ mod tests {
                 ],
             ),
             "explicit_cross_agent_parent" => {
-                let child = eventevent(
+                let child = event(
                     "b0",
                     "agent-b",
                     "agent-b",
@@ -807,7 +807,7 @@ mod tests {
             ),
             "clock_skew_unrelated" => (
                 vec![
-                    eventevent(
+                    event(
                         "a0",
                         "agent-a",
                         "agent-a",
@@ -818,7 +818,7 @@ mod tests {
                         &[],
                         Some(9_000),
                     ),
-                    eventevent(
+                    event(
                         "b0",
                         "agent-b",
                         "agent-b",
@@ -837,7 +837,7 @@ mod tests {
             ),
             "same_timestamp_unrelated" => (
                 vec![
-                    eventevent(
+                    event(
                         "a0",
                         "agent-a",
                         "agent-a",
@@ -848,7 +848,7 @@ mod tests {
                         &[],
                         Some(10),
                     ),
-                    eventevent(
+                    event(
                         "b0",
                         "agent-b",
                         "agent-b",
@@ -867,7 +867,7 @@ mod tests {
             ),
             "missing_checkpoint" => (vec![p0], vec![]),
             "missing_stream_action" => {
-                let a2 = eventevent(
+                let a2 = event(
                     "a2",
                     "agent-a",
                     "agent-a",
@@ -884,7 +884,7 @@ mod tests {
                 )
             }
             "missing_causal_parent" => {
-                let child = eventevent(
+                let child = event(
                     "b0",
                     "agent-b",
                     "agent-b",
@@ -901,7 +901,7 @@ mod tests {
                 )
             }
             "author_mismatch" => (
-                vec![eventevent(
+                vec![event(
                     "a0",
                     "agent-a",
                     "attacker",
@@ -915,7 +915,7 @@ mod tests {
                 vec![checkpoint("agent-a", "agent-a", 0, "a0")],
             ),
             "cross_patient_parent" => {
-                let parent = eventevent(
+                let parent = event(
                     "a0",
                     "agent-a",
                     "agent-a",
@@ -926,7 +926,7 @@ mod tests {
                     &[],
                     Some(10),
                 );
-                let child = eventevent(
+                let child = event(
                     "b0",
                     "agent-b",
                     "agent-b",
@@ -946,7 +946,7 @@ mod tests {
                 )
             }
             "cross_tenant_parent" => {
-                let parent = eventevent(
+                let parent = event(
                     "a0",
                     "agent-a",
                     "agent-a",
@@ -957,7 +957,7 @@ mod tests {
                     &[],
                     Some(10),
                 );
-                let child = eventevent(
+                let child = event(
                     "b0",
                     "agent-b",
                     "agent-b",
@@ -977,7 +977,7 @@ mod tests {
                 )
             }
             "previous_action_mismatch" => {
-                let child = eventevent(
+                let child = event(
                     "a1",
                     "agent-a",
                     "agent-a",
@@ -1010,7 +1010,7 @@ mod tests {
                 vec![checkpoint("agent-a", "agent-a", 0, "not-a0")],
             ),
             "causal_cycle" => {
-                let a = eventevent(
+                let a = event(
                     "a0",
                     "agent-a",
                     "agent-a",
@@ -1021,7 +1021,7 @@ mod tests {
                     &["b0"],
                     Some(10),
                 );
-                let b = eventevent(
+                let b = event(
                     "b0",
                     "agent-b",
                     "agent-b",
@@ -1041,7 +1041,7 @@ mod tests {
                 )
             }
             "self_parent" => {
-                let a = eventevent(
+                let a = event(
                     "a0",
                     "agent-a",
                     "agent-a",
@@ -1055,7 +1055,7 @@ mod tests {
                 (vec![a], vec![checkpoint("agent-a", "agent-a", 0, "a0")])
             }
             "duplicate_causal_parent" => {
-                let child = eventevent(
+                let child = event(
                     "b0",
                     "agent-b",
                     "agent-b",
@@ -1101,7 +1101,7 @@ mod tests {
             "uncheckpointed_suffix" => (
                 vec![
                     p0,
-                    eventevent(
+                    event(
                         "a1",
                         "agent-a",
                         "agent-a",
@@ -1213,7 +1213,7 @@ mod tests {
 
     #[test]
     fn trusted_checkpoint_detects_a_truncated_stream_suffix() {
-        let head = eventevent(
+        let head = event(
             "a1",
             "agent-a",
             "agent-a",
@@ -1224,7 +1224,7 @@ mod tests {
             &[],
             Some(20),
         );
-        let genesis = eventevent(
+        let genesis = event(
             "a0",
             "agent-a",
             "agent-a",
