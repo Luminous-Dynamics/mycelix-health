@@ -34,7 +34,8 @@ def decide($case):
     elif ($ctx.lineage.provenance_agent_reference != ("Organization/" + $source.issuer_id)
           or $ctx.lineage.provenance_signature_who != $ctx.lineage.provenance_agent_reference) then
       deny("provenance_agent_mismatch")
-    elif ($ctx.lineage.provenance_signature_type != "Source") then
+    elif ($ctx.lineage.provenance_signature_type_system != "urn:iso-astm:E1762-95:2013"
+          or $ctx.lineage.provenance_signature_type_code != "1.2.840.10065.1.12.1.14") then
       deny("provenance_signature_purpose_mismatch")
     elif ($source.resource_digest_sha256 == null or $source.resource_digest_sha256 == ""
           or $ctx.lineage.provenance_signed_content_digest_sha256 != $source.resource_digest_sha256) then
