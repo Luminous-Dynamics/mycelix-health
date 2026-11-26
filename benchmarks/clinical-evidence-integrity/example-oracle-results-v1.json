@@ -25,6 +25,17 @@
       "policy_version": "public-oracle-fixture-v1"
     },
     {
+      "case_id": "allow_clinical_event_time_not_ingestion_time",
+      "decision": "allow",
+      "reason_codes": [
+        "authorized"
+      ],
+      "evidence_refs": [
+        "synthetic-evidence:allow_clinical_event_time_not_ingestion_time"
+      ],
+      "policy_version": "public-oracle-fixture-v1"
+    },
+    {
       "case_id": "deny_inactive_consent",
       "decision": "deny",
       "reason_codes": [
@@ -267,13 +278,13 @@
       "policy_version": "public-oracle-fixture-v1"
     },
     {
-      "case_id": "deny_stale_revocation_state",
-      "decision": "deny",
+      "case_id": "defer_stale_revocation_state",
+      "decision": "defer",
       "reason_codes": [
         "authority_state_stale"
       ],
       "evidence_refs": [
-        "synthetic-evidence:deny_stale_revocation_state"
+        "synthetic-evidence:defer_stale_revocation_state"
       ],
       "policy_version": "public-oracle-fixture-v1"
     },
@@ -289,35 +300,35 @@
       "policy_version": "public-oracle-fixture-v1"
     },
     {
-      "case_id": "deny_verifier_unavailable",
-      "decision": "deny",
+      "case_id": "defer_verifier_unavailable",
+      "decision": "defer",
       "reason_codes": [
         "verifier_unavailable"
       ],
       "evidence_refs": [
-        "synthetic-evidence:deny_verifier_unavailable"
+        "synthetic-evidence:defer_verifier_unavailable"
       ],
       "policy_version": "public-oracle-fixture-v1"
     },
     {
-      "case_id": "deny_audit_store_unavailable",
-      "decision": "deny",
+      "case_id": "defer_audit_store_unavailable",
+      "decision": "defer",
       "reason_codes": [
         "audit_unavailable"
       ],
       "evidence_refs": [
-        "synthetic-evidence:deny_audit_store_unavailable"
+        "synthetic-evidence:defer_audit_store_unavailable"
       ],
       "policy_version": "public-oracle-fixture-v1"
     },
     {
-      "case_id": "deny_replay_store_unavailable",
-      "decision": "deny",
+      "case_id": "defer_replay_store_unavailable",
+      "decision": "defer",
       "reason_codes": [
         "replay_store_unavailable"
       ],
       "evidence_refs": [
-        "synthetic-evidence:deny_replay_store_unavailable"
+        "synthetic-evidence:defer_replay_store_unavailable"
       ],
       "policy_version": "public-oracle-fixture-v1"
     },
