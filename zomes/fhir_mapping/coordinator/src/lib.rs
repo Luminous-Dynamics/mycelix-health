@@ -575,15 +575,18 @@ pub fn export_patient_bundle(input: ExportPatientBundleInput) -> ExternResult<Fh
         (),
     )?;
 
-    // Log access
-    log_data_access(
-        input.patient_hash,
-        vec![DataCategory::All],
-        Permission::Read,
-        auth.consent_hash,
-        auth.emergency_override,
-        input.emergency_reason,
-    )?;
+    // Record each released category against the exact authorization decision
+    // that approved it. Export must not be mislabeled as Read or widened to All.
+    for (category, auth) in authorization_results {
+        log_data_access(
+            input.patient_hash.clone(),
+            vec![category],
+            Permission::Export,
+            auth.consent_hash,
+            auth.emergency_override,
+            input.emergency_reason.clone(),
+        )?;
+    }
 
     Ok(FhirBundleOutput {
         bundle_record,
