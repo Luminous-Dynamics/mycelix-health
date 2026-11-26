@@ -264,6 +264,7 @@ pub fn verify_audit_view(
     let mut duplicate_observations = 0usize;
 
     let mut checkpoints = BTreeMap::<String, TrustedStreamCheckpoint>::new();
+    let mut conflicting_checkpoints = BTreeSet::<String>::new();
     for checkpoint in input_checkpoints {
         if !has_required_text(&checkpoint.stream_id)
             || !has_required_text(&checkpoint.authenticated_author)
@@ -278,18 +279,25 @@ pub fn verify_audit_view(
             );
             continue;
         }
-        if checkpoints
-            .insert(checkpoint.stream_id.clone(), checkpoint.clone())
-            .is_some()
-        {
-            reject(
-                &mut findings,
-                &mut rejected,
-                Finding::DuplicateCheckpoint {
-                    stream_id: checkpoint.stream_id.clone(),
-                },
-            );
+        match checkpoints.get(&checkpoint.stream_id) {
+            None => {
+                checkpoints.insert(checkpoint.stream_id.clone(), checkpoint.clone());
+            }
+            Some(existing) if existing == checkpoint => {
+                // Identical checkpoint observations from different peers coalesce.
+            }
+            Some(_) => {
+                conflicting_checkpoints.insert(checkpoint.stream_id.clone());
+            }
         }
+    }
+    for stream_id in conflicting_checkpoints {
+        checkpoints.remove(&stream_id);
+        reject(
+            &mut findings,
+            &mut rejected,
+            Finding::DuplicateCheckpoint { stream_id },
+        );
     }
 
     // Normalize parent order before deduplicating repeated DHT observations.
@@ -383,17 +391,24 @@ pub fn verify_audit_view(
     for (stream_id, stream_events) in grouped.iter_mut() {
         stream_events.sort_by_key(|event| event.sequence);
         let mut by_sequence = BTreeMap::<u64, &AuditEvent>::new();
+        let mut conflicting_sequences = BTreeSet::<u64>::new();
         for event in stream_events.iter() {
-            if by_sequence.insert(event.sequence, event).is_some() {
-                reject(
-                    &mut findings,
-                    &mut rejected,
-                    Finding::DuplicateStreamSequence {
-                        stream_id: stream_id.clone(),
-                        sequence: event.sequence,
-                    },
-                );
+            if by_sequence.contains_key(&event.sequence) {
+                conflicting_sequences.insert(event.sequence);
+            } else {
+                by_sequence.insert(event.sequence, event);
             }
+        }
+        for sequence in &conflicting_sequences {
+            by_sequence.remove(sequence);
+            reject(
+                &mut findings,
+                &mut rejected,
+                Finding::DuplicateStreamSequence {
+                    stream_id: stream_id.clone(),
+                    sequence: *sequence,
+                },
+            );
         }
 
         if !by_sequence.contains_key(&0) {
@@ -408,6 +423,9 @@ pub fn verify_audit_view(
         }
 
         for event in stream_events.iter() {
+            if conflicting_sequences.contains(&event.sequence) {
+                continue;
+            }
             if event.sequence == 0 {
                 if event.previous_action_hash.is_some() {
                     reject(
@@ -564,14 +582,15 @@ pub fn verify_audit_view(
                 );
                 continue;
             }
-            if add_edge(
+            add_edge(
                 &mut adjacency,
                 &mut indegree,
                 parent_hash,
                 &event.action_hash,
-            ) {
-                causal_edge_count += 1;
-            }
+            );
+            // Count the explicit assertion even when the same ordering is
+            // already implied by this event's per-agent predecessor link.
+            causal_edge_count += 1;
         }
     }
 
