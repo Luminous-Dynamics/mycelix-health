@@ -39,6 +39,21 @@ export {
   type GatewayRouteIntentV1,
 } from './auth/gateway-route-guard.js';
 
+// Durable operation-ledger contract. A production store and external adapter
+// are required before this coordinator can be used for protected mutations.
+export {
+  deriveGatewayOperationKeyV1,
+  GatewayOperationCoordinatorV1,
+  type GatewayOperationIntentV1,
+  type GatewayOperationKeyInputV1,
+  type GatewayOperationReceiptV1,
+  type GatewayOperationStateV1,
+  type GatewayOperationStoreV1,
+  type GatewayOperationReauthorizerV1,
+  type GatewayExternalOperationAdapterV1,
+  type GatewayOperationResultV1,
+} from './auth/gateway-operation-ledger.js';
+
 // Authentication
 export { SmartOnFhirAuth, type SmartAuthConfig } from './auth/smart-on-fhir.js';
 export { TokenManager, type TokenInfo } from './auth/token-manager.js';
