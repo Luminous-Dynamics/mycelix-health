@@ -1272,7 +1272,7 @@ pub fn store_encrypted_record(input: StoreEncryptedRecordInput) -> ExternResult<
             category.clone(),
             Permission::Write,
             input.is_emergency,
-            input.clinical_event_time,
+            input.clinical_event_time.clone(),
             input.encounter_hash.clone(),
         )?,
         _ => {
@@ -2617,9 +2617,9 @@ mod tests {
     }
 
     #[test]
-    fn encrypted_record_aad_changes_with_routing_metadata() {
-        let mut record = EncryptedRecord {
-            envelope_version: ENCRYPTED_RECORD_ENVELOPE_VERSION,
+    fn encrypted_record_v1_aad_preserves_the_legacy_wire_shape() {
+        let record = EncryptedRecord {
+            envelope_version: ENCRYPTED_RECORD_ENVELOPE_VERSION_V1,
             patient_hash: dummy_hash(),
             key_fingerprint: [1u8; 8],
             ciphertext: vec![1u8; 16],
@@ -2627,11 +2627,104 @@ mod tests {
             data_category: "LabResults".to_string(),
             entry_type: "LabResult".to_string(),
             encrypted_at: 1_000_000,
+            clinical_event_time: None,
+            encounter_hash: None,
         };
-        let original = encrypted_record_aad(&record).expect("encode aad");
+        let actual = encrypted_record_aad(&record).expect("encode v1 AAD");
+        let expected = ExternIO::encode(record.aad())
+            .expect("encode legacy AAD")
+            .as_bytes()
+            .to_vec();
+        assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn encrypted_record_v2_aad_binds_clinical_event_time_and_encounter() {
+        let mut record = EncryptedRecord {
+            envelope_version: ENCRYPTED_RECORD_ENVELOPE_VERSION_V2,
+            patient_hash: dummy_hash(),
+            key_fingerprint: [1u8; 8],
+            ciphertext: vec![1u8; 16],
+            nonce: [2u8; 24],
+            data_category: "LabResults".to_string(),
+            entry_type: "LabResult".to_string(),
+            encrypted_at: 1_000_000,
+            clinical_event_time: Some(Timestamp::from_micros(900_000)),
+            encounter_hash: Some(dummy_hash()),
+        };
+        let original = encrypted_record_aad(&record).expect("encode v2 AAD");
+
+        record.clinical_event_time = Some(Timestamp::from_micros(900_001));
+        let changed_time = encrypted_record_aad(&record).expect("encode changed event time");
+        assert_ne!(original, changed_time);
+
+        record.clinical_event_time = Some(Timestamp::from_micros(900_000));
+        record.encounter_hash = Some(ActionHash::from_raw_36(vec![1u8; 36]));
+        let changed_encounter = encrypted_record_aad(&record).expect("encode changed encounter");
+        assert_ne!(original, changed_encounter);
+
         record.data_category = "Diagnoses".to_string();
-        let changed = encrypted_record_aad(&record).expect("encode changed aad");
-        assert_ne!(original, changed);
+        let changed_category = encrypted_record_aad(&record).expect("encode changed category");
+        assert_ne!(original, changed_category);
+    }
+
+    #[test]
+    fn encrypted_v2_context_must_match_typed_lab_payload() {
+        let lab = sample_lab_result();
+        let plaintext = ExternIO::encode(&lab)
+            .expect("encode typed lab result")
+            .as_bytes()
+            .to_vec();
+        let mut record = EncryptedRecord {
+            envelope_version: ENCRYPTED_RECORD_ENVELOPE_VERSION_V2,
+            patient_hash: lab.patient_hash.clone(),
+            key_fingerprint: [1u8; 8],
+            ciphertext: vec![1u8; 16],
+            nonce: [2u8; 24],
+            data_category: "LabResults".to_string(),
+            entry_type: "LabResult".to_string(),
+            encrypted_at: 1_000_000,
+            clinical_event_time: Some(lab.collection_time),
+            encounter_hash: lab.encounter_hash.clone(),
+        };
+
+        assert!(validate_encrypted_v2_context_matches_payload(&record, &plaintext).is_ok());
+
+        record.clinical_event_time = Some(Timestamp::from_micros(
+            lab.collection_time.as_micros() + 1,
+        ));
+        assert!(validate_encrypted_v2_context_matches_payload(&record, &plaintext).is_err());
+
+        record.clinical_event_time = Some(lab.collection_time);
+        record.encounter_hash = Some(ActionHash::from_raw_36(vec![9u8; 36]));
+        assert!(validate_encrypted_v2_context_matches_payload(&record, &plaintext).is_err());
+
+        record.encounter_hash = Some(dummy_hash());
+        record.patient_hash = ActionHash::from_raw_36(vec![8u8; 36]);
+        assert!(validate_encrypted_v2_context_matches_payload(&record, &plaintext).is_err());
+    }
+
+    fn sample_lab_result() -> LabResult {
+        LabResult {
+            result_id: "result-v2".to_string(),
+            patient_hash: dummy_hash(),
+            encounter_hash: Some(dummy_hash()),
+            ordering_provider: dummy_agent(),
+            loinc_code: "2345-7".to_string(),
+            test_name: "Glucose".to_string(),
+            value: "91".to_string(),
+            unit: "mg/dL".to_string(),
+            reference_range: "70-99".to_string(),
+            interpretation: LabInterpretation::Normal,
+            specimen_type: "Blood".to_string(),
+            collection_time: Timestamp::from_micros(900_000),
+            result_time: Timestamp::from_micros(950_000),
+            performing_lab: "Synthetic Laboratory".to_string(),
+            notes: None,
+            is_critical: false,
+            acknowledged_by: None,
+            acknowledged_at: None,
+        }
     }
 
     fn dummy_hash() -> ActionHash {
