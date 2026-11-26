@@ -1,0 +1,12 @@
+[package]
+name = "clinical-release-transaction-benchmark"
+version = "0.1.0"
+edition = "2021"
+license = "AGPL-3.0-or-later"
+description = "Dependency-free reference contract for transactional clinical evidence release"
+
+[lib]
+path = "src/lib.rs"
+
+[lints.rust]
+unsafe_code = "forbid"
