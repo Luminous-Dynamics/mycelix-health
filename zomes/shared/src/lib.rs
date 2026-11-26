@@ -661,8 +661,8 @@ pub mod access_control {
 
         // P1-2: Segregated access control for sensitive categories.
         // Sensitive records require an explicit category-specific consent. A blanket
-        // `All` consent is intentionally insufficient, and every transport/decoding
-        // failure is treated as a denial.
+        // `All` consent is intentionally insufficient. Transport/decoding failures
+        // remain errors; they are never reinterpreted as a policy allow or denial.
         let sensitive_category = matches!(
             category,
             DataCategory::SubstanceAbuse | DataCategory::MentalHealth | DataCategory::SexualHealth
