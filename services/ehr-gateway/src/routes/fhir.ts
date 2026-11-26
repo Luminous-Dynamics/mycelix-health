@@ -132,24 +132,38 @@ export function createFhirRoutes(ctx: AppContext): Hono {
           return c.json({ error: 'Bundle contains an unauthorized resource type' }, 403);
         }
 
-        const patientReferenceFields = [
-          resource.subject,
-          resource.patient,
-        ].filter((value): value is { reference?: unknown; identifier?: unknown } =>
-          value !== undefined && value !== null
-        );
-        for (const field of patientReferenceFields) {
-          if (typeof field.reference === 'string') {
-            const referencedPatientId = resolvePatientReference(field.reference);
-            if (referencedPatientId !== sourcePatientId) {
-              return c.json({
-                error: 'Bundle contains an unresolved, external-origin or mismatched Patient reference',
-              }, 403);
-            }
-          } else if (field.identifier !== undefined) {
-            // Identifier-only Patient references cannot be bound to the signed
-            // source patient without a trusted identifier registry lookup.
-            return c.json({ error: 'Identifier-only Patient references are not supported' }, 403);
+        // A patient-scoped ingestion must bind every non-Patient resource to
+        // the exact authorized source patient. FHIR-valid resources can have
+        // optional subjects in broader workflows; here, missing identity is
+        // not permission to inherit the Bundle's Patient implicitly.
+        const patientReferenceFields = [resource.subject, resource.patient]
+          .filter((value) => value !== undefined && value !== null);
+        if (resource.resourceType !== 'Patient' && patientReferenceFields.length === 0) {
+          return c.json({
+            error: 'Every patient-scoped Bundle resource must contain an explicit Patient reference',
+          }, 403);
+        }
+
+        for (const value of patientReferenceFields) {
+          if (typeof value !== 'object' || Array.isArray(value)) {
+            return c.json({ error: 'Bundle contains a malformed Patient reference' }, 403);
+          }
+          const field = value as { reference?: unknown; identifier?: unknown };
+          if (typeof field.reference !== 'string' || field.reference.trim().length === 0) {
+            // Identifier-only references cannot be bound to the authenticated
+            // source patient without a trusted source identifier registry.
+            return c.json({
+              error: field.identifier !== undefined
+                ? 'Identifier-only Patient references are not supported'
+                : 'Bundle contains a missing or malformed Patient reference',
+            }, 403);
+          }
+
+          const referencedPatientId = resolvePatientReference(field.reference);
+          if (referencedPatientId !== sourcePatientId) {
+            return c.json({
+              error: 'Bundle contains an unresolved, external-origin or mismatched Patient reference',
+            }, 403);
           }
         }
       }
