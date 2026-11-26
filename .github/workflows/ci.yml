@@ -138,9 +138,20 @@ jobs:
           cp -r /tmp/mycelix-parent/mycelix-core/. ../mycelix-workspace/mycelix-core/
           rm -rf /tmp/mycelix-parent
 
-      - uses: EmbarkStudios/cargo-deny-action@v2
+      # Run on the host rather than a Docker action container. The workspace
+      # deliberately resolves sibling crates from ../crates and ../mycelix-core;
+      # a container action only mounts GITHUB_WORKSPACE, not these sibling paths.
+      - name: Install Rust for host-native dependency audit
+        uses: dtolnay/rust-toolchain@1.96.0
         with:
-          command: check
+          components: rustfmt, clippy
+          targets: wasm32-unknown-unknown
+
+      - name: Install cargo-deny (host target)
+        run: cargo install cargo-deny --version 0.20.2 --locked --target "$(rustc -vV | awk '/^host:/{print $2}')"
+
+      - name: Run cargo-deny with sibling workspace dependencies visible
+        run: cargo deny check
 
   # TypeScript SDK
   sdk:
