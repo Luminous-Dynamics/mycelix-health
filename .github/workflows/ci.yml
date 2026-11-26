@@ -232,6 +232,17 @@ jobs:
       - name: Test
         run: npm test
 
+  # Deterministic policy-semantics regression: no Holochain or model runner required.
+  clinical-authority-semantics:
+    name: Clinical Evidence Authority Semantics
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install jq
+        run: sudo apt-get update && sudo apt-get install -y jq
+      - name: Run evaluator positive and negative controls
+        run: bash ./scripts/tests/test-clinical-authority-evaluator.sh
+
   # Integration tests (requires Holochain conductor)
   integration:
     name: Integration Tests
