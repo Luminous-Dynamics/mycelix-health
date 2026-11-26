@@ -219,6 +219,9 @@ where
     /// Query the same idempotency key after an unknown/lost acknowledgement.
     /// Reconciliation never creates a new release.
     pub fn reconcile(&self, receipt: &AuthorizationReceipt) -> ReleaseOutcome {
+        if receipt.schema_version != 1 {
+            return ReleaseOutcome::Denied("receipt_version_unsupported");
+        }
         if !self.verifier.verify(receipt) {
             return ReleaseOutcome::Denied("receipt_signature_invalid");
         }
@@ -385,6 +388,17 @@ impl TransactionalReleaseBackend for InMemoryAtomicBackend {
     fn commit_once(&self, intent: &AtomicReleaseIntent) -> AtomicCommitResult {
         let mut state = self.state.lock().expect("reference backend mutex poisoned");
 
+        if intent.schema_version != 1 {
+            return AtomicCommitResult::Denied("receipt_version_unsupported");
+        }
+        if intent.receipt_id.is_empty()
+            || intent.consent_id.is_empty()
+            || intent.nonce.is_empty()
+            || intent.idempotency_key.is_empty()
+            || intent.expires_at_ms <= intent.not_before_ms
+        {
+            return AtomicCommitResult::Denied("release_intent_invalid");
+        }
         if !state.current.idempotency_store_available {
             return AtomicCommitResult::Deferred("idempotency_store_unavailable");
         }
@@ -776,6 +790,50 @@ mod tests {
         assert!(matches!(original, ReleaseOutcome::Released { .. }));
         assert!(matches!(replay, ReleaseOutcome::AlreadyReleased { .. }));
         assert_eq!(backend.side_effect_count(), 1);
+    }
+
+    #[test]
+    fn completed_release_reconciles_even_after_original_receipt_expires() {
+        let backend = Arc::new(InMemoryAtomicBackend::new(current()));
+        let svc = service(Arc::clone(&backend));
+        assert!(matches!(
+            svc.execute(&receipt(), &binding(), 1_795_000_010_000),
+            ReleaseOutcome::Released { .. }
+        ));
+        assert!(matches!(
+            svc.execute(&receipt(), &binding(), 1_795_000_060_001),
+            ReleaseOutcome::AlreadyReleased { .. }
+        ));
+        assert_eq!(backend.side_effect_count(), 1);
+    }
+
+    #[test]
+    fn idempotency_key_cannot_be_reused_for_another_receipt_or_request() {
+        let backend = Arc::new(InMemoryAtomicBackend::new(current()));
+        let svc = service(Arc::clone(&backend));
+        assert!(matches!(
+            svc.execute(&receipt(), &binding(), 1_795_000_010_000),
+            ReleaseOutcome::Released { .. }
+        ));
+        let mut altered = receipt();
+        altered.receipt_id = "receipt-other".into();
+        assert_eq!(
+            svc.execute(&altered, &binding(), 1_795_000_020_000),
+            ReleaseOutcome::Denied("idempotency_key_reused_for_different_request")
+        );
+        assert_eq!(backend.side_effect_count(), 1);
+    }
+
+    #[test]
+    fn revocation_epoch_change_blocks_a_previously_issued_receipt() {
+        let mut changed = current();
+        changed.revocation_epoch += 1;
+        let backend = Arc::new(InMemoryAtomicBackend::new(changed));
+        assert_eq!(
+            service(Arc::clone(&backend)).execute(&receipt(), &binding(), 1_795_000_010_000),
+            ReleaseOutcome::Denied("authority_version_changed_before_commit")
+        );
+        assert_eq!(backend.side_effect_count(), 0);
     }
 
     #[test]
