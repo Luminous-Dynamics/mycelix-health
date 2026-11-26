@@ -342,6 +342,17 @@
         "synthetic-evidence:deny_missing_resource_version"
       ],
       "policy_version": "public-oracle-fixture-v1"
+    },
+    {
+      "case_id": "deny_missing_consent_subject",
+      "decision": "deny",
+      "reason_codes": [
+        "subject_missing"
+      ],
+      "evidence_refs": [
+        "synthetic-evidence:deny_missing_consent_subject"
+      ],
+      "policy_version": "public-oracle-fixture-v1"
     }
   ]
 }
