@@ -496,6 +496,17 @@
         "synthetic-evidence:defer_source_signing_key_state_stale"
       ],
       "policy_version": "public-oracle-fixture-v1"
+    },
+    {
+      "case_id": "deny_provenance_canonicalization_mismatch",
+      "decision": "deny",
+      "reason_codes": [
+        "provenance_canonicalization_mismatch"
+      ],
+      "evidence_refs": [
+        "synthetic-evidence:deny_provenance_canonicalization_mismatch"
+      ],
+      "policy_version": "public-oracle-fixture-v1"
     }
   ]
 }
