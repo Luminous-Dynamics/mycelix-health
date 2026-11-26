@@ -8,6 +8,11 @@ bash "$EVALUATOR" "$MANIFEST" "$ORACLE" >/dev/null
 tmp="$(mktemp)"
 trap 'rm -f "$tmp"' EXIT
 
+# Execute a reference policy implementation that reads context, not expected labels.
+reference_candidate="$ROOT/scripts/run-clinical-authority-reference.sh"
+bash "$reference_candidate" "$MANIFEST" "$tmp"
+bash "$EVALUATOR" "$MANIFEST" "$tmp" >/dev/null
+
 # A FHIR-valid inactive Consent cannot be promoted to an allow.
 jq '.results |= map(if .case_id == "deny_inactive_consent" then .decision = "allow" | .reason_codes = ["authorized"] else . end)' "$ORACLE" > "$tmp"
 set +e; bash "$EVALUATOR" "$MANIFEST" "$tmp" >/dev/null 2>&1; status=$?; set -e
