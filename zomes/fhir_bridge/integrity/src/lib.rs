@@ -230,6 +230,18 @@ pub fn get_patient_reference(resource: &JsonValue) -> Option<String> {
     get_patient_references(resource).into_iter().next()
 }
 
+/// Identifier-only patient references cannot be tied to a Bundle's Patient
+/// resource without a trusted source identifier registry lookup.
+pub fn has_identifier_only_patient_reference(resource: &JsonValue) -> bool {
+    ["patient", "subject", "context"].iter().any(|field| {
+        resource
+            .get(*field)
+            .map(|value| value.get("identifier").is_some()
+                && value.get("reference").and_then(|reference| reference.as_str()).is_none())
+            .unwrap_or(false)
+    })
+}
+
 /// Resolve a FHIR Patient reference to the Patient resource ID in this Bundle.
 /// Supports relative/absolute Patient paths and fullUrl references (including
 /// urn:uuid). Absolute URL origin validation belongs to the trusted gateway;
@@ -318,6 +330,23 @@ mod tests {
             ),
             Some("123".to_string()),
         );
+    }
+
+    #[test]
+    fn detect_identifier_only_patient_references() {
+        let resource: JsonValue = serde_json::json!({
+            "resourceType": "Observation",
+            "subject": { "identifier": { "system": "urn:test", "value": "123" } }
+        });
+        assert!(has_identifier_only_patient_reference(&resource));
+        let with_reference: JsonValue = serde_json::json!({
+            "resourceType": "Observation",
+            "subject": {
+                "reference": "Patient/123",
+                "identifier": { "system": "urn:test", "value": "123" }
+            }
+        });
+        assert!(!has_identifier_only_patient_reference(&with_reference));
     }
 
     #[test]
