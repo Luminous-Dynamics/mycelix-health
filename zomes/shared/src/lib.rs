@@ -481,6 +481,12 @@ pub mod access_control {
         pub data_category: DataCategory,
         pub permission: Permission,
         pub is_emergency: bool,
+        /// Clinical event time (never receive/ingestion time).
+        #[serde(default)]
+        pub clinical_event_time: Option<Timestamp>,
+        /// Exact encounter containing the resource, when scoped.
+        #[serde(default)]
+        pub encounter_hash: Option<ActionHash>,
     }
 
     /// Check if the calling agent has authorization to access patient data.
@@ -503,6 +509,45 @@ pub mod access_control {
         permission: Permission,
         is_emergency: bool,
     ) -> ExternResult<AuthorizationResult> {
+        require_authorization_with_scope(
+            patient_hash,
+            category,
+            permission,
+            is_emergency,
+            None,
+            None,
+        )
+    }
+
+    /// Authorize access to a specific resource while enforcing any consent
+    /// clinical-event-time and encounter restrictions. Missing context is
+    /// denied whenever the governing consent narrows that dimension.
+    pub fn require_authorization_for_resource(
+        patient_hash: ActionHash,
+        category: DataCategory,
+        permission: Permission,
+        is_emergency: bool,
+        clinical_event_time: Option<Timestamp>,
+        encounter_hash: Option<ActionHash>,
+    ) -> ExternResult<AuthorizationResult> {
+        require_authorization_with_scope(
+            patient_hash,
+            category,
+            permission,
+            is_emergency,
+            clinical_event_time,
+            encounter_hash,
+        )
+    }
+
+    fn require_authorization_with_scope(
+        patient_hash: ActionHash,
+        category: DataCategory,
+        permission: Permission,
+        is_emergency: bool,
+        clinical_event_time: Option<Timestamp>,
+        encounter_hash: Option<ActionHash>,
+    ) -> ExternResult<AuthorizationResult> {
         let caller = agent_info()?.agent_initial_pubkey;
 
         // First check if caller is the patient themselves (always authorized for own data)
@@ -523,6 +568,8 @@ pub mod access_control {
             data_category: category.clone(),
             permission: permission.clone(),
             is_emergency,
+            clinical_event_time: clinical_event_time.clone(),
+            encounter_hash: encounter_hash.clone(),
         };
 
         let response = call(
@@ -585,6 +632,8 @@ pub mod access_control {
                     data_category: category.clone(),
                     permission: permission.clone(),
                     is_emergency: false,
+                    clinical_event_time: clinical_event_time.clone(),
+                    encounter_hash: encounter_hash.clone(),
                 },
             )?;
 
