@@ -2,6 +2,8 @@
 
 **Status:** public synthetic development corpus and deterministic evaluator contract. This is not a live authorization engine, official FHIR validator, legal interpretation, clinical validation, or production safety certification.
 
+**Corpus size:** 32 public synthetic cases (3 expected allow, 25 expected deny, 4 expected defer) with 29 single-dimension metamorphic pairs. The public labels are intentionally visible for regression testing; this is not the held-out scorecard.
+
 ## What this measures
 
 The benchmark separates six propositions that are often collapsed into one “valid” or “verified” flag:
@@ -13,7 +15,7 @@ The benchmark separates six propositions that are often collapsed into one “va
 5. **Scope:** does the request match the clinical event-time range, encounter, category, action, purpose, recipient and grantee?
 6. **Execution integrity:** are replay protection, the verifier and the append-only audit path available at the moment of action?
 
-These are separate gates. FHIR validity does not imply source authenticity or authorization. A positive clinical prediction or expected value of information does not grant access. Missing context must never widen a restricted grant. A date-restricted grant with no resolvable clinical event time is denied; ingestion time cannot be substituted.
+These are separate gates. A missing privacy-scoped Consent subject is denied by the authority semantics layer even though the companion pinned FHIR CLI currently reports warnings only for its patient-invariant fixture. FHIR validity does not imply source authenticity or authorization. A positive clinical prediction or expected value of information does not grant access. Missing context must never widen a restricted grant. A date-restricted grant with no resolvable clinical event time is denied; ingestion time cannot be substituted.
 
 ## Files
 
