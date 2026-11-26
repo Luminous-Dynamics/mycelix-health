@@ -9,6 +9,7 @@
  */
 
 import { Hono } from 'hono';
+import { decodeHashFromBase64 } from '@holochain/client';
 import type { AppContext } from '../server.js';
 import { requireGatewayRouteAuthorizationV1 } from '../auth/gateway-route-guard.js';
 
@@ -327,7 +328,12 @@ export function createSyncRoutes(ctx: AppContext): Hono {
     const sourceSystem = ctx.gateway.getConnectionInfo(connectionId).system;
 
     try {
-      const hashBytes = new Uint8Array(Buffer.from(patientHash, 'base64'));
+      let hashBytes: Uint8Array;
+      try {
+        hashBytes = decodeHashFromBase64(patientHash);
+      } catch {
+        return c.json({ error: 'Resolved patient hash is malformed' }, 403);
+      }
       if (hashBytes.length !== 39) {
         return c.json({ error: 'Resolved patient hash is malformed' }, 403);
       }
