@@ -598,13 +598,7 @@ pub mod chained_audit {
         fn previous_hash_binds_the_prior_event_and_metadata() {
             let genesis = make_entry(0, None, sample_event(2), 100, dummy_agent(7));
             let genesis_hash = hash_entry(&genesis).expect("genesis hashes");
-            let second = make_entry(
-                1,
-                Some(genesis_hash),
-                sample_event(3),
-                200,
-                dummy_agent(8),
-            );
+            let second = make_entry(1, Some(genesis_hash), sample_event(3), 200, dummy_agent(8));
 
             let mut tampered_genesis = genesis;
             tampered_genesis.timestamp += 1;
