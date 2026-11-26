@@ -664,6 +664,33 @@ mod tests {
     }
 
     #[test]
+    fn legacy_encrypted_record_deserializes_without_v2_context_fields() {
+        let mut value = serde_json::to_value(EncryptedRecord {
+            envelope_version: 1,
+            patient_hash: ActionHash::from_raw_36(vec![1u8; 36]),
+            key_fingerprint: [2u8; 8],
+            ciphertext: vec![3u8; 16],
+            nonce: [4u8; 24],
+            data_category: "LabResults".to_string(),
+            entry_type: "LabResult".to_string(),
+            encrypted_at: 1_000_000,
+            clinical_event_time: None,
+            encounter_hash: None,
+        })
+        .expect("serialize v1 fixture");
+
+        let object = value.as_object_mut().expect("encrypted record JSON object");
+        object.remove("clinical_event_time");
+        object.remove("encounter_hash");
+
+        let decoded: EncryptedRecord =
+            serde_json::from_value(value).expect("deserialize historical v1 envelope");
+        assert_eq!(decoded.envelope_version, 1);
+        assert!(decoded.clinical_event_time.is_none());
+        assert!(decoded.encounter_hash.is_none());
+    }
+
+    #[test]
     fn encrypted_record_v1_is_legacy_context_free_only() {
         let legacy = encrypted_record_fixture(1, None, None, "LabResult", "LabResults");
         assert!(matches!(
