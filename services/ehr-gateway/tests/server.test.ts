@@ -70,8 +70,17 @@ describe('EHR Gateway Server', () => {
           },
           tenantId: 'test-tenant',
           patientBinding: 'opaque-test-patient',
+          sourceConnectionId: 'test-connection',
+          purpose: 'treatment',
+          recipientId: 'mycelix-test',
+          requestedResourceTypes: [...(intent.resourceTypes ?? [])],
           action: intent.action,
           expiresAtMs: Date.now() + 60_000,
+          resolvedSourcePatientId: 'patient-123',
+          resolvedMycelixPatientHash: 'patient-123',
+          credentialHandle: 'test-credential-handle',
+          resolvedJobId: 'unguessable-job-id',
+          resolvedConflictId: 'test-conflict-id',
           ...(intent.requireScopedResourceList
             ? { authorizedResourceIds: [] }
             : {}),
