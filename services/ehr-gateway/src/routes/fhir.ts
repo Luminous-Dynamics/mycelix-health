@@ -190,28 +190,27 @@ export function createFhirRoutes(ctx: AppContext): Hono {
       return c.json({ error: 'Requested patient does not match the authorized patient binding' }, 403);
     }
 
+    // The fhir_bridge zome accepts FHIR resource type names, not gateway
+    // section aliases. Restrict to the three sections the zome actually exports;
+    // unknown aliases must not result in its fallback DataCategory::All behavior.
     const sectionToResourceType: Record<string, string> = {
       conditions: 'Condition',
       medications: 'MedicationRequest',
-      allergies: 'AllergyIntolerance',
       observations: 'Observation',
-      procedures: 'Procedure',
-      immunizations: 'Immunization',
-      careplans: 'CarePlan',
     };
     const authorizedTypes = new Set(authorization.authorization.requestedResourceTypes);
     const sectionsParam = c.req.query('sections');
-    const requestedSections = sectionsParam
+    const requestedSectionAliases = sectionsParam
       ? sectionsParam.split(',').map((section) => section.trim()).filter(Boolean)
       : Object.entries(sectionToResourceType)
         .filter(([, resourceType]) => authorizedTypes.has(resourceType))
         .map(([section]) => section);
-    if (requestedSections.some((section) =>
+    if (requestedSectionAliases.some((section) =>
       !sectionToResourceType[section] || !authorizedTypes.has(sectionToResourceType[section]!)
     )) {
-      return c.json({ error: 'Requested FHIR section is outside the authorized resource set' }, 403);
+      return c.json({ error: 'Requested FHIR section is unsupported or outside the authorized resource set' }, 403);
     }
-    const includeSections = requestedSections;
+    const includeSections = requestedSectionAliases.map((section) => sectionToResourceType[section]!);
 
     try {
       const result = await ctx.holochainClient.callZome({
