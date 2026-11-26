@@ -208,21 +208,58 @@ pub fn get_resource_id(resource: &JsonValue) -> Option<String> {
     get_fhir_string(resource, "id")
 }
 
-/// Helper to extract patient reference from a FHIR resource
+/// Extract every patient-bearing reference field present on a FHIR resource.
+/// Returning all references lets the coordinator reject conflicting subject,
+/// patient and context references instead of silently trusting only the first.
+pub fn get_patient_references(resource: &JsonValue) -> Vec<String> {
+    ["patient", "subject", "context"]
+        .iter()
+        .filter_map(|field| {
+            resource
+                .get(*field)
+                .and_then(|value| value.get("reference"))
+                .and_then(|reference| reference.as_str())
+                .map(str::to_string)
+        })
+        .collect()
+}
+
+/// Backwards-compatible convenience accessor. Security-sensitive ingestion
+/// should use get_patient_references and validate every returned reference.
 pub fn get_patient_reference(resource: &JsonValue) -> Option<String> {
-    // Try direct "patient" field
-    if let Some(patient) = resource.get("patient") {
-        if let Some(reference) = patient.get("reference").and_then(|r| r.as_str()) {
-            return Some(reference.to_string());
+    get_patient_references(resource).into_iter().next()
+}
+
+/// Resolve a FHIR Patient reference to the Patient resource ID in this Bundle.
+/// Supports relative/absolute Patient paths and fullUrl references (including
+/// urn:uuid). Absolute URL origin validation belongs to the trusted gateway;
+/// this zome independently verifies the Patient identity embedded in the path
+/// or referenced Bundle entry.
+pub fn resolve_fhir_patient_reference(
+    reference: &str,
+    bundle_entries: &[JsonValue],
+) -> Option<String> {
+    if let Some(entry) = bundle_entries.iter().find(|entry| {
+        entry.get("fullUrl").and_then(|value| value.as_str()) == Some(reference)
+    }) {
+        let resource = entry.get("resource")?;
+        if get_resource_type(resource).as_deref() != Some("Patient") {
+            return None;
         }
+        return get_resource_id(resource);
     }
-    // Try "subject" field (used in Observation, Condition, etc.)
-    if let Some(subject) = resource.get("subject") {
-        if let Some(reference) = subject.get("reference").and_then(|r| r.as_str()) {
-            return Some(reference.to_string());
-        }
+
+    if reference.starts_with("urn:") {
+        return None;
     }
-    None
+
+    let path = reference.split(['?', '#']).next()?;
+    let segments: Vec<&str> = path.split('/').filter(|segment| !segment.is_empty()).collect();
+    segments
+        .windows(2)
+        .rev()
+        .find(|pair| pair[0] == "Patient" && !pair[1].is_empty())
+        .map(|pair| pair[1].to_string())
 }
 
 #[cfg(test)]
@@ -247,5 +284,74 @@ mod tests {
             }
         });
         assert_eq!(get_patient_reference(&obs), Some("Patient/123".to_string()));
+    }
+
+    #[test]
+    fn all_patient_reference_fields_are_returned() {
+        let resource: JsonValue = serde_json::json!({
+            "resourceType": "Procedure",
+            "patient": { "reference": "Patient/123" },
+            "subject": { "reference": "https://ehr.example.test/fhir/Patient/123" },
+            "context": { "reference": "Patient/123/_history/4" }
+        });
+        assert_eq!(
+            get_patient_references(&resource),
+            vec![
+                "Patient/123".to_string(),
+                "https://ehr.example.test/fhir/Patient/123".to_string(),
+                "Patient/123/_history/4".to_string(),
+            ],
+        );
+    }
+
+    #[test]
+    fn resolve_relative_absolute_and_history_patient_references() {
+        let entries: Vec<JsonValue> = vec![];
+        assert_eq!(
+            resolve_fhir_patient_reference("Patient/123", &entries),
+            Some("123".to_string()),
+        );
+        assert_eq!(
+            resolve_fhir_patient_reference(
+                "https://ehr.example.test/fhir/Patient/123/_history/4",
+                &entries,
+            ),
+            Some("123".to_string()),
+        );
+    }
+
+    #[test]
+    fn resolve_urn_uuid_only_through_a_patient_bundle_entry() {
+        let entries: Vec<JsonValue> = vec![
+            serde_json::json!({
+                "fullUrl": "urn:uuid:patient-123",
+                "resource": { "resourceType": "Patient", "id": "123" }
+            }),
+            serde_json::json!({
+                "fullUrl": "urn:uuid:observation-1",
+                "resource": { "resourceType": "Observation", "id": "observation-1" }
+            }),
+        ];
+        assert_eq!(
+            resolve_fhir_patient_reference("urn:uuid:patient-123", &entries),
+            Some("123".to_string()),
+        );
+        assert_eq!(
+            resolve_fhir_patient_reference("urn:uuid:observation-1", &entries),
+            None,
+        );
+        assert_eq!(
+            resolve_fhir_patient_reference("urn:uuid:unknown", &entries),
+            None,
+        );
+    }
+
+    #[test]
+    fn reject_unknown_resource_reference() {
+        let entries: Vec<JsonValue> = vec![];
+        assert_eq!(
+            resolve_fhir_patient_reference("Device/device-1", &entries),
+            None,
+        );
     }
 }
