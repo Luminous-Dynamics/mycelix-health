@@ -170,9 +170,17 @@ jobs:
           cp -r /tmp/mycelix-parent/mycelix-core/. ../mycelix-workspace/mycelix-core/
           rm -rf /tmp/mycelix-parent
 
-      - uses: EmbarkStudios/cargo-deny-action@v2
-        with:
-          command: check
+      # Run on the host: cargo-deny's Docker action cannot see the sibling
+      # ../crates and ../mycelix-core path dependencies provisioned above.
+      # Keep the full dependency audit enabled and pinned; do not skip checks.
+      - name: Install Rust for host-native dependency audit
+        uses: dtolnay/rust-toolchain@1.96.0
+
+      - name: Install pinned cargo-deny
+        run: cargo install cargo-deny --version 0.22.0 --locked
+
+      - name: Check dependency policy
+        run: cargo deny check
 
   # TypeScript SDK
   sdk:
