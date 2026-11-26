@@ -19,12 +19,8 @@ if [[ "$(java -version 2>&1 | head -n 1)" != *"$JAVA_MAJOR"* ]]; then
   echo "Expected Java major $JAVA_MAJOR; observed: $(java -version 2>&1 | head -n 1)" >&2
   exit 2
 fi
-
 mkdir -p "$JAR_CACHE"
-if [[ ! -s "$JAR" ]]; then
-  curl --fail --location --retry 4 --retry-delay 2 "$URL" --output "$JAR"
-fi
-
+if [[ ! -s "$JAR" ]]; then curl --fail --location --retry 4 --retry-delay 2 "$URL" --output "$JAR"; fi
 echo "$EXPECTED_SHA  $JAR" | sha256sum --check
 ACTUAL_SHA="$(sha256sum "$CORPUS" | cut -d ' ' -f 1)"
 echo "FHIR Validator CLI: $VERSION"
@@ -35,25 +31,17 @@ echo "Corpus SHA-256: $ACTUAL_SHA"
 echo "Output directory: $OUT_DIR"
 
 case_count="$(jq -r '.cases | length' "$CORPUS")"
-if [[ "$case_count" -lt 1 ]]; then
-  echo "Official FHIR validator corpus is empty" >&2
-  exit 1
-fi
-
-# The corpus is a versioned benchmark input. Reject malformed, duplicate, or
-# unclassified cases before invoking the official validator.
+[[ "$case_count" -ge 1 ]] || { echo "Official FHIR validator corpus is empty" >&2; exit 1; }
 unique_case_count="$(jq '[.cases[].id] | unique | length' "$CORPUS")"
-if [[ "$unique_case_count" -ne "$case_count" ]]; then
-  echo "FHIR validator corpus contains duplicate case IDs" >&2
-  exit 1
-fi
+[[ "$unique_case_count" -eq "$case_count" ]] || { echo "FHIR validator corpus contains duplicate case IDs" >&2; exit 1; }
+
 if ! jq -e '
   (.schema_version == 1)
   and (.fhir_version == "4.0.1")
   and (.cases | all(
     (.id | type == "string" and length > 0)
     and (.purpose | type == "string" and length > 0)
-    and (.expected == "valid" or .expected == "invalid")
+    and (.expected == "valid" or .expected == "invalid" or .expected == "warnings_only")
     and (.bundle.resourceType == "Bundle")
   ))
 ' "$CORPUS" >/dev/null; then
@@ -62,16 +50,11 @@ if ! jq -e '
 fi
 
 summary="$OUT_DIR/summary.tsv"
-printf 'case_id\texpected\tactual_errors\tstatus\n' > "$summary"
+printf 'case_id\texpected\tactual_errors\tactual_warnings\tstatus\n' > "$summary"
 processed=0
-
 while IFS= read -r row; do
   case_id="$(jq -r '.id' <<< "$row")"
   expected="$(jq -r '.expected' <<< "$row")"
-  if [[ "$expected" != "valid" && "$expected" != "invalid" ]]; then
-    echo "Unknown expected validation state '$expected' for $case_id" >&2
-    exit 1
-  fi
   input="$OUT_DIR/$case_id.json"
   report="$OUT_DIR/$case_id-operation-outcome.json"
   console="$OUT_DIR/$case_id-console.txt"
@@ -81,7 +64,6 @@ while IFS= read -r row; do
   java -Dfile.encoding=UTF-8 -jar "$JAR" "$input" -version "$FHIR_VERSION" -tx n/a -output "$report" > "$console" 2>&1
   rc=$?
   set -e
-
   if [[ ! -s "$report" ]]; then
     echo "Validator produced no OperationOutcome for $case_id (exit $rc)" >&2
     cat "$console" >&2
@@ -94,31 +76,36 @@ while IFS= read -r row; do
   fi
 
   errors="$(jq '[.issue[] | select(.severity == "error" or .severity == "fatal")] | length' "$report")"
-  if [[ "$expected" == "valid" ]]; then
-    if [[ "$errors" -ne 0 || "$rc" -ne 0 ]]; then
-      echo "Expected FHIR-valid case $case_id but validator reported $errors errors (exit $rc)" >&2
-      cat "$console" >&2
-      jq . "$report" >&2
+  warnings="$(jq '[.issue[] | select(.severity == "warning")] | length' "$report")"
+  case "$expected" in
+    valid)
+      if [[ "$errors" -ne 0 || "$rc" -ne 0 ]]; then
+        echo "Expected FHIR-valid case $case_id but validator reported $errors errors (exit $rc)" >&2
+        cat "$console" >&2; jq . "$report" >&2; exit 1
+      fi
+      ;;
+    invalid)
+      if [[ "$errors" -eq 0 ]]; then
+        echo "Expected FHIR-invalid case $case_id but validator reported no errors (exit $rc)" >&2
+        cat "$console" >&2; jq . "$report" >&2; exit 1
+      fi
+      ;;
+    warnings_only)
+      if [[ "$errors" -ne 0 || "$warnings" -eq 0 ]]; then
+        echo "Expected warnings-only case $case_id but validator reported $errors errors and $warnings warnings (exit $rc)" >&2
+        cat "$console" >&2; jq . "$report" >&2; exit 1
+      fi
+      ;;
+    *)
+      echo "Unknown expected validation state '$expected' for $case_id" >&2
       exit 1
-    fi
-    status="pass"
-  else
-    if [[ "$errors" -eq 0 ]]; then
-      echo "Expected FHIR-invalid case $case_id but validator reported no errors (exit $rc)" >&2
-      cat "$console" >&2
-      jq . "$report" >&2
-      exit 1
-    fi
-    status="pass"
-  fi
+      ;;
+  esac
 
-  printf '%s\t%s\t%s\t%s\n' "$case_id" "$expected" "$errors" "$status" | tee -a "$summary"
+  status="pass"
+  [[ "$expected" == "warnings_only" ]] && status="warnings_only_observed"
+  printf '%s\t%s\t%s\t%s\t%s\n' "$case_id" "$expected" "$errors" "$warnings" "$status" | tee -a "$summary"
   processed=$((processed + 1))
 done < <(jq -c '.cases[]' "$CORPUS")
-
-if [[ "$processed" -ne "$case_count" ]]; then
-  echo "Processed $processed of $case_count official-validator cases" >&2
-  exit 1
-fi
-
-echo "Official FHIR R4 core validation passed for $processed cases."
+[[ "$processed" -eq "$case_count" ]] || { echo "Processed $processed of $case_count official-validator cases" >&2; exit 1; }
+echo "Official FHIR R4 validator classified all $processed cases as expected (including separately reported warnings-only cases)."
