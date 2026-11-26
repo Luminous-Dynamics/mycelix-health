@@ -149,13 +149,17 @@ export function createFhirRoutes(ctx: AppContext): Hono {
             return c.json({ error: 'Bundle contains a malformed Patient reference' }, 403);
           }
           const field = value as { reference?: unknown; identifier?: unknown };
-          if (typeof field.reference !== 'string' || field.reference.trim().length === 0) {
-            // Identifier-only references cannot be bound to the authenticated
-            // source patient without a trusted source identifier registry.
+          if (field.identifier !== undefined) {
+            // Without a trusted source-identifier resolver we cannot prove that
+            // an identifier agrees with the canonical reference. Reject both
+            // identifier-only and mixed forms rather than ignoring ambiguity.
             return c.json({
-              error: field.identifier !== undefined
-                ? 'Identifier-only Patient references are not supported'
-                : 'Bundle contains a missing or malformed Patient reference',
+              error: 'Patient reference identifiers require a trusted source identifier resolver',
+            }, 403);
+          }
+          if (typeof field.reference !== 'string' || field.reference.trim().length === 0) {
+            return c.json({
+              error: 'Bundle contains a missing or malformed Patient reference',
             }, 403);
           }
 
