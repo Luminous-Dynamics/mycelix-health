@@ -55,7 +55,8 @@
     "verifier_unavailable",
     "audit_unavailable",
     "replay_store_unavailable",
-    "resource_version_missing"
+    "resource_version_missing",
+    "clinical_event_time_missing"
   ],
   "cases": [
     {
@@ -1166,10 +1167,10 @@
       }
     },
     {
-      "id": "deny_event_time_not_ingestion_time",
+      "id": "deny_missing_clinical_event_time",
       "case_kind": "single_mutation_adversarial",
       "expected_decision": "deny",
-      "expected_reason_code": "event_time_out_of_scope",
+      "expected_reason_code": "clinical_event_time_missing",
       "fhir_core_case_ref": "valid_active_privacy_consent_with_patient",
       "mutation_baseline_case_id": "allow_provider_treatment",
       "context": {
@@ -1221,7 +1222,7 @@
           "resource_id": "observation-1",
           "resource_version": "7",
           "category": "laboratory",
-          "clinical_event_time": "2026-11-20T10:00:00Z",
+          "clinical_event_time": null,
           "ingestion_time": "2026-11-21T10:00:00Z",
           "encounter_id": "encounter-1",
           "request_id": "request-allow-provider-001",
@@ -2437,7 +2438,7 @@
     },
     {
       "baseline_case_id": "allow_provider_treatment",
-      "restricted_case_id": "deny_event_time_not_ingestion_time",
+      "restricted_case_id": "deny_missing_clinical_event_time",
       "expected_baseline_decision": "allow",
       "expected_restricted_decision": "deny",
       "changed_dimension": "event_time_out_of_scope"
