@@ -1,0 +1,22 @@
+# v1 public synthetic fixtures: id|expected_status|primary_finding_or_none|description
+valid_two_agent_unrelated|Verified|none|Independent source chains remain unordered across agents.
+explicit_cross_agent_parent|Verified|none|An explicit cross-agent parent contributes one causal edge.
+out_of_order_publication|Verified|none|Input publication order does not override source-chain sequence.
+clock_skew_unrelated|Verified|none|Extreme clock skew does not infer a cross-agent causal edge.
+same_timestamp_unrelated|Verified|none|Equal timestamps do not infer a causal relationship.
+missing_checkpoint|Incomplete|missing_checkpoint|A stream without independent checkpoint evidence is incomplete.
+missing_stream_action|Incomplete|missing_stream_action|A missing source-chain action prevents complete stream verification.
+missing_causal_parent|Incomplete|missing_causal_parent|A parent not yet visible from another agent remains unresolved.
+author_mismatch|Rejected|author_mismatch|An event author claim must match the authenticated stream author.
+cross_patient_parent|Rejected|cross_patient_parent|Causal links cannot cross patient scope.
+cross_tenant_parent|Rejected|cross_tenant_parent|Causal links cannot cross tenant scope.
+previous_action_mismatch|Rejected|previous_action_mismatch|A source-chain predecessor must match the preceding sequence action.
+conflicting_duplicate_action|Rejected|conflicting_duplicate_action|The same ActionHash cannot identify contradictory event payloads.
+identical_duplicate_action|Verified|none|Repeated identical DHT observations coalesce idempotently.
+checkpoint_head_mismatch|Rejected|checkpoint_head_mismatch|The terminal source action must match the independent checkpoint.
+causal_cycle|Rejected|causal_cycle|Explicit causal edges cannot create a cycle.
+self_parent|Rejected|self_parent|An event cannot declare itself as a causal parent.
+duplicate_causal_parent|Rejected|duplicate_causal_parent|An event cannot repeat the same causal parent.
+conflicting_checkpoints|Rejected|duplicate_checkpoint|Conflicting checkpoint observations for one stream cannot select an arbitrary head.
+duplicate_stream_sequence|Rejected|duplicate_stream_sequence|Duplicate actions at one per-agent sequence are rejected rather than first-wins.
+uncheckpointed_suffix|Rejected|uncheckpointed_suffix|An action beyond the independently acknowledged checkpoint is not accepted.
