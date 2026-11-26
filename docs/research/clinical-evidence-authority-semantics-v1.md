@@ -111,6 +111,13 @@ The late-arrival positive control has a clinical event time inside the authorize
 
 ## Comparison with industry benchmarks
 
+### Standards baseline: SMART App Launch
+
+Use SMART App Launch 2.2 as the interoperability baseline, not as a competitor to replace. SMART defines OAuth 2.0 authorization patterns for user-facing apps and backend services, resource scopes such as `patient/*.rs` / `user/*.cruds`, token introspection, and launch-context scopes including `launch/patient` and `launch/encounter`. See the [SMART App Launch 2.2 overview](https://hl7.org/fhir/smart-app-launch/STU2.2/) and [scopes and launch context](https://hl7.org/fhir/smart-app-launch/STU2.2/scopes-and-launch-context.html).
+
+The matched baseline should therefore be a SMART/OAuth-backed FHIR resource server with its existing patient/user scope enforcement and a conventional policy service. Mycelix should preserve those OAuth and FHIR boundaries, while adding a testable evidence-custody contract across source and resource versions, Provenance binding, clinical event-time and encounter scope, current revocation state, replay-safe execution, and independently verifiable audit evidence. The benchmark should not penalize SMART for not being a distributed provenance or audit-chain system; it should compare equivalent authorization and workflow paths and report the additional guarantees separately.
+
+
 This suite complements rather than replaces clinical-agent and EHR-workflow benchmarks. HealthAgentBench v2 evaluates realistic tasks across nine environments and reports a 57.3% best success rate on 75 tasks. HealthFlow reports EHRFlowBench 4.01 versus 3.76 for its strongest baseline and MedAgentBoard 63.05% versus 50.10%. Those scores concern different task distributions and cannot be compared numerically to this authority suite.
 
 For a fair system comparison:
