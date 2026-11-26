@@ -1,0 +1,336 @@
+{
+  "schema_version": 1,
+  "benchmark_id": "mycelix-clinical-evidence-integrity.authority-semantics.v1",
+  "results": [
+    {
+      "case_id": "allow_provider_treatment",
+      "decision": "allow",
+      "reason_codes": [
+        "authorized"
+      ],
+      "evidence_refs": [
+        "synthetic-evidence:allow_provider_treatment"
+      ],
+      "policy_version": "public-oracle-fixture-v1"
+    },
+    {
+      "case_id": "allow_organization_treatment",
+      "decision": "allow",
+      "reason_codes": [
+        "authorized"
+      ],
+      "evidence_refs": [
+        "synthetic-evidence:allow_organization_treatment"
+      ],
+      "policy_version": "public-oracle-fixture-v1"
+    },
+    {
+      "case_id": "deny_inactive_consent",
+      "decision": "deny",
+      "reason_codes": [
+        "consent_inactive"
+      ],
+      "evidence_refs": [
+        "synthetic-evidence:deny_inactive_consent"
+      ],
+      "policy_version": "public-oracle-fixture-v1"
+    },
+    {
+      "case_id": "deny_unregistered_source",
+      "decision": "deny",
+      "reason_codes": [
+        "source_untrusted"
+      ],
+      "evidence_refs": [
+        "synthetic-evidence:deny_unregistered_source"
+      ],
+      "policy_version": "public-oracle-fixture-v1"
+    },
+    {
+      "case_id": "deny_invalid_directive_signature",
+      "decision": "deny",
+      "reason_codes": [
+        "signature_invalid"
+      ],
+      "evidence_refs": [
+        "synthetic-evidence:deny_invalid_directive_signature"
+      ],
+      "policy_version": "public-oracle-fixture-v1"
+    },
+    {
+      "case_id": "deny_payload_digest_mismatch",
+      "decision": "deny",
+      "reason_codes": [
+        "payload_digest_mismatch"
+      ],
+      "evidence_refs": [
+        "synthetic-evidence:deny_payload_digest_mismatch"
+      ],
+      "policy_version": "public-oracle-fixture-v1"
+    },
+    {
+      "case_id": "deny_target_version_mismatch",
+      "decision": "deny",
+      "reason_codes": [
+        "version_mismatch"
+      ],
+      "evidence_refs": [
+        "synthetic-evidence:deny_target_version_mismatch"
+      ],
+      "policy_version": "public-oracle-fixture-v1"
+    },
+    {
+      "case_id": "deny_wrong_patient",
+      "decision": "deny",
+      "reason_codes": [
+        "subject_mismatch"
+      ],
+      "evidence_refs": [
+        "synthetic-evidence:deny_wrong_patient"
+      ],
+      "policy_version": "public-oracle-fixture-v1"
+    },
+    {
+      "case_id": "deny_wrong_tenant",
+      "decision": "deny",
+      "reason_codes": [
+        "tenant_mismatch"
+      ],
+      "evidence_refs": [
+        "synthetic-evidence:deny_wrong_tenant"
+      ],
+      "policy_version": "public-oracle-fixture-v1"
+    },
+    {
+      "case_id": "deny_future_directive",
+      "decision": "deny",
+      "reason_codes": [
+        "not_yet_effective"
+      ],
+      "evidence_refs": [
+        "synthetic-evidence:deny_future_directive"
+      ],
+      "policy_version": "public-oracle-fixture-v1"
+    },
+    {
+      "case_id": "deny_expired_directive",
+      "decision": "deny",
+      "reason_codes": [
+        "consent_expired"
+      ],
+      "evidence_refs": [
+        "synthetic-evidence:deny_expired_directive"
+      ],
+      "policy_version": "public-oracle-fixture-v1"
+    },
+    {
+      "case_id": "deny_revoked_directive",
+      "decision": "deny",
+      "reason_codes": [
+        "consent_revoked"
+      ],
+      "evidence_refs": [
+        "synthetic-evidence:deny_revoked_directive"
+      ],
+      "policy_version": "public-oracle-fixture-v1"
+    },
+    {
+      "case_id": "deny_superseded_directive",
+      "decision": "deny",
+      "reason_codes": [
+        "consent_superseded"
+      ],
+      "evidence_refs": [
+        "synthetic-evidence:deny_superseded_directive"
+      ],
+      "policy_version": "public-oracle-fixture-v1"
+    },
+    {
+      "case_id": "deny_event_time_outside_scope",
+      "decision": "deny",
+      "reason_codes": [
+        "event_time_out_of_scope"
+      ],
+      "evidence_refs": [
+        "synthetic-evidence:deny_event_time_outside_scope"
+      ],
+      "policy_version": "public-oracle-fixture-v1"
+    },
+    {
+      "case_id": "deny_event_time_not_ingestion_time",
+      "decision": "deny",
+      "reason_codes": [
+        "event_time_out_of_scope"
+      ],
+      "evidence_refs": [
+        "synthetic-evidence:deny_event_time_not_ingestion_time"
+      ],
+      "policy_version": "public-oracle-fixture-v1"
+    },
+    {
+      "case_id": "deny_wrong_encounter",
+      "decision": "deny",
+      "reason_codes": [
+        "encounter_mismatch"
+      ],
+      "evidence_refs": [
+        "synthetic-evidence:deny_wrong_encounter"
+      ],
+      "policy_version": "public-oracle-fixture-v1"
+    },
+    {
+      "case_id": "deny_missing_scoped_encounter",
+      "decision": "deny",
+      "reason_codes": [
+        "encounter_context_missing"
+      ],
+      "evidence_refs": [
+        "synthetic-evidence:deny_missing_scoped_encounter"
+      ],
+      "policy_version": "public-oracle-fixture-v1"
+    },
+    {
+      "case_id": "deny_unregistered_provider",
+      "decision": "deny",
+      "reason_codes": [
+        "principal_unregistered"
+      ],
+      "evidence_refs": [
+        "synthetic-evidence:deny_unregistered_provider"
+      ],
+      "policy_version": "public-oracle-fixture-v1"
+    },
+    {
+      "case_id": "deny_provider_wrong_organization",
+      "decision": "deny",
+      "reason_codes": [
+        "grantee_unresolved"
+      ],
+      "evidence_refs": [
+        "synthetic-evidence:deny_provider_wrong_organization"
+      ],
+      "policy_version": "public-oracle-fixture-v1"
+    },
+    {
+      "case_id": "deny_unregistered_organization_grantee",
+      "decision": "deny",
+      "reason_codes": [
+        "grantee_unresolved"
+      ],
+      "evidence_refs": [
+        "synthetic-evidence:deny_unregistered_organization_grantee"
+      ],
+      "policy_version": "public-oracle-fixture-v1"
+    },
+    {
+      "case_id": "deny_wrong_purpose",
+      "decision": "deny",
+      "reason_codes": [
+        "purpose_mismatch"
+      ],
+      "evidence_refs": [
+        "synthetic-evidence:deny_wrong_purpose"
+      ],
+      "policy_version": "public-oracle-fixture-v1"
+    },
+    {
+      "case_id": "deny_wrong_recipient",
+      "decision": "deny",
+      "reason_codes": [
+        "recipient_mismatch"
+      ],
+      "evidence_refs": [
+        "synthetic-evidence:deny_wrong_recipient"
+      ],
+      "policy_version": "public-oracle-fixture-v1"
+    },
+    {
+      "case_id": "deny_action_not_permitted",
+      "decision": "deny",
+      "reason_codes": [
+        "action_not_permitted"
+      ],
+      "evidence_refs": [
+        "synthetic-evidence:deny_action_not_permitted"
+      ],
+      "policy_version": "public-oracle-fixture-v1"
+    },
+    {
+      "case_id": "deny_category_not_permitted",
+      "decision": "deny",
+      "reason_codes": [
+        "category_not_permitted"
+      ],
+      "evidence_refs": [
+        "synthetic-evidence:deny_category_not_permitted"
+      ],
+      "policy_version": "public-oracle-fixture-v1"
+    },
+    {
+      "case_id": "deny_stale_revocation_state",
+      "decision": "deny",
+      "reason_codes": [
+        "authority_state_stale"
+      ],
+      "evidence_refs": [
+        "synthetic-evidence:deny_stale_revocation_state"
+      ],
+      "policy_version": "public-oracle-fixture-v1"
+    },
+    {
+      "case_id": "deny_replayed_request",
+      "decision": "deny",
+      "reason_codes": [
+        "request_replayed"
+      ],
+      "evidence_refs": [
+        "synthetic-evidence:deny_replayed_request"
+      ],
+      "policy_version": "public-oracle-fixture-v1"
+    },
+    {
+      "case_id": "deny_verifier_unavailable",
+      "decision": "deny",
+      "reason_codes": [
+        "verifier_unavailable"
+      ],
+      "evidence_refs": [
+        "synthetic-evidence:deny_verifier_unavailable"
+      ],
+      "policy_version": "public-oracle-fixture-v1"
+    },
+    {
+      "case_id": "deny_audit_store_unavailable",
+      "decision": "deny",
+      "reason_codes": [
+        "audit_unavailable"
+      ],
+      "evidence_refs": [
+        "synthetic-evidence:deny_audit_store_unavailable"
+      ],
+      "policy_version": "public-oracle-fixture-v1"
+    },
+    {
+      "case_id": "deny_replay_store_unavailable",
+      "decision": "deny",
+      "reason_codes": [
+        "replay_store_unavailable"
+      ],
+      "evidence_refs": [
+        "synthetic-evidence:deny_replay_store_unavailable"
+      ],
+      "policy_version": "public-oracle-fixture-v1"
+    },
+    {
+      "case_id": "deny_missing_resource_version",
+      "decision": "deny",
+      "reason_codes": [
+        "resource_version_missing"
+      ],
+      "evidence_refs": [
+        "synthetic-evidence:deny_missing_resource_version"
+      ],
+      "policy_version": "public-oracle-fixture-v1"
+    }
+  ]
+}
