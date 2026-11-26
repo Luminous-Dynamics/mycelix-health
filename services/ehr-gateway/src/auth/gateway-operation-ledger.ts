@@ -442,7 +442,6 @@ export class GatewayOperationCoordinatorV1 {
     }
 
     if (result.kind === 'outcome_unknown') {
-      await this.markUnknown(operation, result.reason);
       const updated = await this.markUnknown(operation, result.reason);
       return { kind: 'outcome_unknown', operation: updated ?? operation, reason: result.reason };
     }
