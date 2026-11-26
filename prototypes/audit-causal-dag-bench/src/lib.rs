@@ -1280,6 +1280,57 @@ mod tests {
     }
 
     #[test]
+    fn one_hundred_twenty_eight_agent_streams_preserve_partial_order() {
+        let mut events = Vec::new();
+        let mut checkpoints = Vec::new();
+        const AGENTS: usize = 128;
+
+        for index in 0..AGENTS {
+            let stream_id = format!("agent-{index}");
+            let author = format!("author-{index}");
+            let first_hash = format!("action-{index}-0");
+            let second_hash = format!("action-{index}-1");
+
+            events.push(event(
+                &first_hash,
+                &stream_id,
+                &author,
+                0,
+                None,
+                "patient-1",
+                "tenant-1",
+                &[],
+                Some(index as i64),
+            ));
+            events.push(event(
+                &second_hash,
+                &stream_id,
+                &author,
+                1,
+                Some(&first_hash),
+                "patient-1",
+                "tenant-1",
+                &[],
+                Some(index as i64 + 1),
+            ));
+            checkpoints.push(checkpoint(
+                &stream_id,
+                &author,
+                1,
+                &second_hash,
+            ));
+        }
+
+        let report = verify_audit_view(&events, &checkpoints);
+        assert_eq!(report.status, ViewStatus::Verified);
+        assert_eq!(report.stream_count, AGENTS);
+        assert_eq!(report.event_count, AGENTS * 2);
+        assert_eq!(report.stream_edge_count, AGENTS);
+        assert_eq!(report.causal_edge_count, 0);
+        assert_eq!(report.incomparable_pairs, 4 * (AGENTS * (AGENTS - 1) / 2));
+    }
+
+    #[test]
     fn deterministic_display_linearization_never_claims_total_causality() {
         let (events, checkpoints) = scenario("valid_two_agent_unrelated");
         let report = verify_audit_view(&events, &checkpoints);
