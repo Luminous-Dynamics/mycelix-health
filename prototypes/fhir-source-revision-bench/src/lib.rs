@@ -619,7 +619,7 @@ mod tests {
             );
             rows += 1;
         }
-        assert_eq!(rows, 15, "v1 fixture catalogue size changed");
+        assert_eq!(rows, 18, "v1 fixture catalogue size changed");
     }
 
     #[test]
