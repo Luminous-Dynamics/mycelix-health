@@ -326,6 +326,66 @@ describe('GatewayOperationCoordinatorV1', () => {
     expect(adapter.executeCalls[0]).toBe(adapter.executeCalls[1]);
   });
 
+  it('retries a proven no-effect operation only after a new authority check', async () => {
+    const store = new MemoryGatewayOperationStore();
+    const adapter = new TestAdapter();
+    adapter.nextExecute = {
+      kind: 'failed_known_no_effect',
+      failureCode: 'remote_validation_rejected_before_write',
+    };
+    const reauthorizer = authorizedReauthorizer();
+    const service = coordinator(store, adapter, reauthorizer);
+
+    const first = await service.executeOnce(intent());
+    expect(first).toEqual({
+      kind: 'deferred',
+      reason: 'known_no_effect_retry_requires_fresh_authorization',
+    });
+    expect(store.records.get(intent().operationKey)?.state).toBe('failed_known_no_effect');
+
+    adapter.nextExecute = {
+      kind: 'committed',
+      receipt: { externalReceiptId: 'ehr-receipt-retry', resultDigest: DIGEST_C },
+    };
+    const second = await service.executeOnce(intent());
+
+    expect(second.kind).toBe('committed');
+    expect(adapter.executeCalls).toHaveLength(2);
+    expect(reauthorizer.reauthorize).toHaveBeenCalledTimes(2);
+    expect(store.records.get(intent().operationKey)?.attemptCount).toBe(2);
+  });
+
+  it('persists the fresh authorization receipt digest used for same-key replay', async () => {
+    const store = new MemoryGatewayOperationStore();
+    const adapter = new TestAdapter();
+    adapter.supportsOutcomeReconciliation = false;
+    adapter.nextExecute = { kind: 'outcome_unknown', reason: 'ack_lost' };
+    const reauthorizer: GatewayOperationReauthorizerV1 = {
+      reauthorize: vi.fn()
+        .mockResolvedValueOnce({
+          authorized: true as const,
+          authorizationReceiptDigest: DIGEST_A,
+          expiresAtMs: 10_000,
+        })
+        .mockResolvedValueOnce({
+          authorized: true as const,
+          authorizationReceiptDigest: DIGEST_B,
+          expiresAtMs: 20_000,
+        }),
+    };
+    const service = coordinator(store, adapter, reauthorizer);
+    await service.executeOnce(intent());
+
+    adapter.nextExecute = {
+      kind: 'committed',
+      receipt: { externalReceiptId: 'ehr-receipt-replayed', resultDigest: DIGEST_C },
+    };
+    const reconciled = await service.reconcile(intent().operationKey);
+
+    expect(reconciled.kind).toBe('replayed');
+    expect(store.records.get(intent().operationKey)?.latestAuthorizationReceiptDigest).toBe(DIGEST_B);
+  });
+
   it('never retries unknown work when the remote adapter has no safe reconciliation capability', async () => {
     const store = new MemoryGatewayOperationStore();
     const adapter = new TestAdapter();
