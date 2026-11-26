@@ -244,6 +244,123 @@ describe('EHR Gateway Server', () => {
       expect(mockHolochainClient.callZome).not.toHaveBeenCalled();
     });
 
+    it('POST /fhir/Bundle rejects absolute Patient references from another EHR origin', async () => {
+      mockGateway.isConnected.mockReturnValueOnce(true);
+      mockHolochainClient.callZome.mockClear();
+      const bundle = {
+        resourceType: 'Bundle',
+        type: 'collection',
+        entry: [
+          {
+            fullUrl: 'Patient/123',
+            resource: { resourceType: 'Patient', id: '123' },
+          },
+          {
+            fullUrl: 'Observation/obs-1',
+            resource: {
+              resourceType: 'Observation',
+              id: 'obs-1',
+              subject: { reference: 'https://attacker.example/Patient/123' },
+            },
+          },
+        ],
+      };
+      const res = await app.request('/fhir/Bundle', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(bundle),
+      });
+      expect(res.status).toBe(403);
+      expect(mockHolochainClient.callZome).not.toHaveBeenCalled();
+    });
+
+    it('POST /fhir/Bundle resolves matching urn:uuid Patient references through Bundle.fullUrl', async () => {
+      mockGateway.isConnected.mockReturnValueOnce(true);
+      mockHolochainClient.callZome.mockResolvedValueOnce({
+        source_system: 'epic',
+        total_processed: 2,
+        patients_created: 1,
+        patients_updated: 0,
+        conditions_created: 0,
+        conditions_skipped: 0,
+        medications_created: 0,
+        medications_skipped: 0,
+        allergies_created: 0,
+        allergies_skipped: 0,
+        immunizations_created: 0,
+        immunizations_skipped: 0,
+        observations_created: 1,
+        observations_skipped: 0,
+        procedures_created: 0,
+        procedures_skipped: 0,
+        diagnostic_reports_created: 0,
+        diagnostic_reports_skipped: 0,
+        care_plans_created: 0,
+        care_plans_skipped: 0,
+        unknown_types: [],
+        parse_errors: [],
+      });
+      const bundle = {
+        resourceType: 'Bundle',
+        type: 'collection',
+        entry: [
+          {
+            fullUrl: 'urn:uuid:patient-123',
+            resource: { resourceType: 'Patient', id: '123' },
+          },
+          {
+            fullUrl: 'urn:uuid:observation-1',
+            resource: {
+              resourceType: 'Observation',
+              id: 'observation-1',
+              subject: { reference: 'urn:uuid:patient-123' },
+            },
+          },
+        ],
+      };
+      const res = await app.request('/fhir/Bundle', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(bundle),
+      });
+      expect(res.status).toBe(200);
+      expect(mockHolochainClient.callZome).toHaveBeenCalledTimes(1);
+    });
+
+    it('POST /fhir/Bundle rejects urn:uuid references to a different Patient', async () => {
+      mockGateway.isConnected.mockReturnValueOnce(true);
+      mockHolochainClient.callZome.mockClear();
+      const bundle = {
+        resourceType: 'Bundle',
+        type: 'collection',
+        entry: [
+          {
+            fullUrl: 'Patient/123',
+            resource: { resourceType: 'Patient', id: '123' },
+          },
+          {
+            fullUrl: 'urn:uuid:patient-other',
+            resource: { resourceType: 'Patient', id: 'other-patient' },
+          },
+          {
+            fullUrl: 'urn:uuid:observation-1',
+            resource: {
+              resourceType: 'Observation',
+              id: 'observation-1',
+              subject: { reference: 'urn:uuid:patient-other' },
+            },
+          },
+        ],
+      };
+      const res = await app.request('/fhir/Bundle', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(bundle),
+      });
+      expect(res.status).toBe(403);
+      expect(mockHolochainClient.callZome).not.toHaveBeenCalled();
+    });
+
     it('POST /fhir/Bundle rejects invalid bundle', async () => {
       mockGateway.isConnected.mockReturnValueOnce(true);
       const res = await app.request('/fhir/Bundle', {
