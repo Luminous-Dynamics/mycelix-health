@@ -60,26 +60,72 @@ pub struct TrustedStreamCheckpoint {
 
 #[derive(Clone, Debug, Eq, PartialEq, Ord, PartialOrd)]
 pub enum Finding {
-    EmptyEventField { action_hash: String, field: &'static str },
-    InvalidResourceReference { action_hash: String },
-    InvalidCheckpoint { stream_id: String },
-    DuplicateCheckpoint { stream_id: String },
-    MissingCheckpoint { stream_id: String },
-    AuthorMismatch { action_hash: String },
-    UncheckpointedSuffix { action_hash: String },
-    DuplicateStreamSequence { stream_id: String, sequence: u64 },
-    MissingStreamAction { stream_id: String, sequence: u64 },
-    InvalidStreamGenesis { action_hash: String },
-    MissingPreviousAction { action_hash: String },
-    PreviousActionMismatch { action_hash: String },
-    CheckpointHeadMismatch { stream_id: String },
-    ConflictingDuplicateAction { action_hash: String },
-    DuplicateCausalParent { action_hash: String },
-    EmptyCausalParent { action_hash: String },
-    SelfCausalParent { action_hash: String },
-    MissingCausalParent { action_hash: String, parent_hash: String },
-    CrossPatientParent { action_hash: String, parent_hash: String },
-    CrossTenantParent { action_hash: String, parent_hash: String },
+    EmptyEventField {
+        action_hash: String,
+        field: &'static str,
+    },
+    InvalidResourceReference {
+        action_hash: String,
+    },
+    InvalidCheckpoint {
+        stream_id: String,
+    },
+    DuplicateCheckpoint {
+        stream_id: String,
+    },
+    MissingCheckpoint {
+        stream_id: String,
+    },
+    AuthorMismatch {
+        action_hash: String,
+    },
+    UncheckpointedSuffix {
+        action_hash: String,
+    },
+    DuplicateStreamSequence {
+        stream_id: String,
+        sequence: u64,
+    },
+    MissingStreamAction {
+        stream_id: String,
+        sequence: u64,
+    },
+    InvalidStreamGenesis {
+        action_hash: String,
+    },
+    MissingPreviousAction {
+        action_hash: String,
+    },
+    PreviousActionMismatch {
+        action_hash: String,
+    },
+    CheckpointHeadMismatch {
+        stream_id: String,
+    },
+    ConflictingDuplicateAction {
+        action_hash: String,
+    },
+    DuplicateCausalParent {
+        action_hash: String,
+    },
+    EmptyCausalParent {
+        action_hash: String,
+    },
+    SelfCausalParent {
+        action_hash: String,
+    },
+    MissingCausalParent {
+        action_hash: String,
+        parent_hash: String,
+    },
+    CrossPatientParent {
+        action_hash: String,
+        parent_hash: String,
+    },
+    CrossTenantParent {
+        action_hash: String,
+        parent_hash: String,
+    },
     CausalCycle,
 }
 
@@ -133,20 +179,12 @@ pub struct VerificationReport {
     pub deterministic_display_order: Vec<String>,
 }
 
-fn reject(
-    findings: &mut BTreeSet<Finding>,
-    rejected: &mut bool,
-    finding: Finding,
-) {
+fn reject(findings: &mut BTreeSet<Finding>, rejected: &mut bool, finding: Finding) {
     *rejected = true;
     findings.insert(finding);
 }
 
-fn defer(
-    findings: &mut BTreeSet<Finding>,
-    incomplete: &mut bool,
-    finding: Finding,
-) {
+fn defer(findings: &mut BTreeSet<Finding>, incomplete: &mut bool, finding: Finding) {
     *incomplete = true;
     findings.insert(finding);
 }
@@ -169,10 +207,7 @@ fn add_edge(
     inserted
 }
 
-fn reachable_from(
-    start: &str,
-    adjacency: &BTreeMap<String, BTreeSet<String>>,
-) -> BTreeSet<String> {
+fn reachable_from(start: &str, adjacency: &BTreeMap<String, BTreeSet<String>>) -> BTreeSet<String> {
     let mut seen = BTreeSet::new();
     let mut pending = vec![start.to_string()];
     while let Some(node) = pending.pop() {
@@ -456,8 +491,7 @@ pub fn verify_audit_view(
 
             match by_sequence.get(&(event.sequence - 1)) {
                 Some(previous) => {
-                    if event.previous_action_hash.as_deref()
-                        != Some(previous.action_hash.as_str())
+                    if event.previous_action_hash.as_deref() != Some(previous.action_hash.as_str())
                     {
                         reject(
                             &mut findings,
@@ -626,11 +660,7 @@ pub fn verify_audit_view(
         }
     }
     if display_order.len() != events_by_hash.len() {
-        reject(
-            &mut findings,
-            &mut rejected,
-            Finding::CausalCycle,
-        );
+        reject(&mut findings, &mut rejected, Finding::CausalCycle);
         display_order.clear();
     }
 
@@ -716,7 +746,10 @@ mod tests {
             outcome: "committed".to_string(),
             event_time_ms,
             observed_at_ms: None,
-            causal_parents: causal_parents.iter().map(|value| value.to_string()).collect(),
+            causal_parents: causal_parents
+                .iter()
+                .map(|value| value.to_string())
+                .collect(),
         }
     }
 
@@ -905,10 +938,7 @@ mod tests {
                     &["not-yet-visible"],
                     Some(10),
                 );
-                (
-                    vec![child],
-                    vec![checkpoint("agent-b", "agent-b", 0, "b0")],
-                )
+                (vec![child], vec![checkpoint("agent-b", "agent-b", 0, "b0")])
             }
             "author_mismatch" => (
                 vec![event(
@@ -1144,9 +1174,18 @@ mod tests {
 
             let (events, checkpoints) = scenario(fields[0]);
             let report = verify_audit_view(&events, &checkpoints);
-            assert_eq!(format!("{:?}", report.status), fields[1], "status for {}", fields[0]);
+            assert_eq!(
+                format!("{:?}", report.status),
+                fields[1],
+                "status for {}",
+                fields[0]
+            );
             if fields[2] == "none" {
-                assert!(report.findings.is_empty(), "unexpected findings for {}", fields[0]);
+                assert!(
+                    report.findings.is_empty(),
+                    "unexpected findings for {}",
+                    fields[0]
+                );
             } else {
                 assert!(
                     code_present(&report, fields[2]),
@@ -1155,7 +1194,10 @@ mod tests {
                     fields[0]
                 );
             }
-            assert!(!fields[3].trim().is_empty(), "fixture description cannot be empty");
+            assert!(
+                !fields[3].trim().is_empty(),
+                "fixture description cannot be empty"
+            );
             rows += 1;
         }
         assert_eq!(rows, 21, "frozen v1 fixture count changed");
@@ -1313,12 +1355,7 @@ mod tests {
                 &[],
                 Some(index as i64 + 1),
             ));
-            checkpoints.push(checkpoint(
-                &stream_id,
-                &author,
-                1,
-                &second_hash,
-            ));
+            checkpoints.push(checkpoint(&stream_id, &author, 1, &second_hash));
         }
 
         let report = verify_audit_view(&events, &checkpoints);
