@@ -205,10 +205,15 @@ export function createFhirRoutes(ctx: AppContext): Hono {
       : Object.entries(sectionToResourceType)
         .filter(([, resourceType]) => authorizedTypes.has(resourceType))
         .map(([section]) => section);
-    if (requestedSectionAliases.some((section) =>
-      !sectionToResourceType[section] || !authorizedTypes.has(sectionToResourceType[section]!)
-    )) {
-      return c.json({ error: 'Requested FHIR section is unsupported or outside the authorized resource set' }, 403);
+    if (
+      requestedSectionAliases.length === 0
+      || requestedSectionAliases.some((section) =>
+        !sectionToResourceType[section] || !authorizedTypes.has(sectionToResourceType[section]!)
+      )
+    ) {
+      // The current FHIR zome treats an empty include_sections list as DataCategory::All.
+      // Never allow an empty query/default grant to fall through to a blanket export.
+      return c.json({ error: 'At least one explicitly authorized FHIR section is required' }, 403);
     }
     const includeSections = requestedSectionAliases.map((section) => sectionToResourceType[section]!);
 
