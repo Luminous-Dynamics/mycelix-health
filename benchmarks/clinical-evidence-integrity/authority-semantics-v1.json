@@ -56,7 +56,8 @@
     "audit_unavailable",
     "replay_store_unavailable",
     "resource_version_missing",
-    "clinical_event_time_missing"
+    "clinical_event_time_missing",
+    "subject_missing"
   ],
   "cases": [
     {
@@ -2349,6 +2350,81 @@
           "replay_store_available": true
         }
       }
+    },
+    {
+      "id": "deny_missing_consent_subject",
+      "case_kind": "single_mutation_adversarial",
+      "expected_decision": "deny",
+      "fhir_core_case_ref": "invalid_privacy_consent_missing_patient",
+      "mutation_baseline_case_id": "allow_provider_treatment",
+      "context": {
+        "source": {
+          "issuer_id": "org-lab-1",
+          "registered": true,
+          "signature_valid": true,
+          "payload_digest_matches": true,
+          "target_version_matches": true
+        },
+        "patient": {
+          "requested_patient_id": "patient-1",
+          "consent_patient_id": null,
+          "request_tenant_id": "tenant-1",
+          "resource_tenant_id": "tenant-1"
+        },
+        "consent": {
+          "status": "active",
+          "effective_from": "2026-01-01T00:00:00Z",
+          "effective_to": "2027-01-01T00:00:00Z",
+          "revoked": false,
+          "superseded": false,
+          "grantee_kind": "provider",
+          "grantee_id": "provider-9",
+          "included_categories": [
+            "laboratory"
+          ],
+          "permitted_actions": [
+            "read"
+          ],
+          "permitted_purposes": [
+            "treatment"
+          ],
+          "permitted_recipients": [
+            "org-clinic-1"
+          ],
+          "event_time_from": "2026-01-01T00:00:00Z",
+          "event_time_to": "2026-12-31T23:59:59Z",
+          "encounter_ids": [
+            "encounter-1"
+          ]
+        },
+        "request": {
+          "principal_id": "provider-9",
+          "recipient_id": "org-clinic-1",
+          "purpose": "treatment",
+          "action": "read",
+          "resource_type": "Observation",
+          "resource_id": "observation-1",
+          "resource_version": "7",
+          "category": "laboratory",
+          "clinical_event_time": "2026-11-20T10:00:00Z",
+          "ingestion_time": "2026-11-21T10:00:00Z",
+          "encounter_id": "encounter-1",
+          "request_id": "request-allow-provider-001",
+          "replayed": false,
+          "as_of_time": "2026-11-26T00:00:00Z"
+        },
+        "registry": {
+          "provider_registered": true,
+          "provider_organization_id": "org-clinic-1",
+          "organization_registered": true,
+          "revocation_state_fresh": true,
+          "verifier_available": true,
+          "audit_store_available": true,
+          "replay_store_available": true
+        }
+      },
+      "expected_reason_code": "subject_missing",
+      "fhir_core_observation": "warnings_only"
     }
   ],
   "metamorphic_pairs": [
@@ -2547,6 +2623,13 @@
       "expected_baseline_decision": "allow",
       "expected_restricted_decision": "deny",
       "changed_dimension": "resource_version_missing"
+    },
+    {
+      "baseline_case_id": "allow_provider_treatment",
+      "restricted_case_id": "deny_missing_consent_subject",
+      "expected_baseline_decision": "allow",
+      "expected_restricted_decision": "deny",
+      "changed_dimension": "subject_missing"
     }
   ]
 }
