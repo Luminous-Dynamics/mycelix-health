@@ -18,6 +18,11 @@ jq '.results |= map(if .case_id == "defer_verifier_unavailable" then .decision =
 set +e; "$EVALUATOR" "$MANIFEST" "$tmp" >/dev/null 2>&1; status=$?; set -e
 [[ "$status" -eq 2 ]] || { echo "Expected verifier-outage allow to fail with status 2; got $status" >&2; exit 1; }
 
+# Missing clinical event time under date scope must not be replaced by ingestion time.
+jq '.results |= map(if .case_id == "deny_missing_clinical_event_time" then .decision = "allow" | .reason_codes = ["authorized"] else . end)' "$ORACLE" > "$tmp"
+set +e; "$EVALUATOR" "$MANIFEST" "$tmp" >/dev/null 2>&1; status=$?; set -e
+[[ "$status" -eq 2 ]] || { echo "Expected missing event-time allow to fail with status 2; got $status" >&2; exit 1; }
+
 # An incomplete candidate must fail structural validation.
 jq '.results |= map(select(.case_id != "deny_inactive_consent"))' "$ORACLE" > "$tmp"
 set +e; "$EVALUATOR" "$MANIFEST" "$tmp" >/dev/null 2>&1; status=$?; set -e
