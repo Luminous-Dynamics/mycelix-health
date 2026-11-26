@@ -77,7 +77,7 @@ describe('EHR Gateway Server', () => {
           action: intent.action,
           expiresAtMs: Date.now() + 60_000,
           resolvedSourcePatientId: '123',
-          resolvedMycelixPatientHash: 'patient-123',
+          resolvedMycelixPatientHash: 'uhCEkINI4cBkNicMiyEvxrUXKy71OIGWXqXJagdCunS2SlmaipQ1j',
           credentialHandle: 'test-credential-handle',
           resolvedJobId: 'unguessable-job-id',
           resolvedConflictId: 'test-conflict-id',
@@ -235,6 +235,28 @@ describe('EHR Gateway Server', () => {
 
       expect(res.status).toBe(400);
       expect(body.error).toBe('Invalid resource type');
+    });
+
+    it('GET /fhir/Bundle exports only the resolved patient and authorized sections', async () => {
+      const resolvedHash = 'uhCEkINI4cBkNicMiyEvxrUXKy71OIGWXqXJagdCunS2SlmaipQ1j';
+      mockHolochainClient.callZome.mockResolvedValueOnce({
+        bundle: JSON.stringify({ resourceType: 'Bundle', type: 'collection', entry: [] }),
+        resource_count: 0,
+        export_timestamp: Date.now(),
+      });
+
+      const res = await app.request('/fhir/Bundle/' + resolvedHash + '?sections=conditions');
+      expect(res.status).toBe(200);
+      expect(mockHolochainClient.callZome).toHaveBeenCalledWith(expect.objectContaining({
+        fn_name: 'export_patient_fhir',
+        payload: { patient_hash: resolvedHash, include_sections: ['conditions'] },
+      }));
+    });
+
+    it('GET /fhir/Bundle rejects a path hash that differs from the verified patient binding', async () => {
+      const res = await app.request('/fhir/Bundle/attacker-selected-patient');
+      expect(res.status).toBe(403);
+      expect(mockHolochainClient.callZome).not.toHaveBeenCalled();
     });
 
     it('GET /fhir/metadata returns capability statement', async () => {
