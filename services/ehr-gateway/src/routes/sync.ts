@@ -345,6 +345,8 @@ export function createSyncRoutes(ctx: AppContext): Hono {
         credentialHandle,
         {
           pull: { resourceTypes, sourceSystem },
+          push: { resourceTypes },
+          autoResolveConflicts: false,
         },
       );
 
