@@ -2676,6 +2676,64 @@ mod tests {
     }
 
     #[test]
+    fn encrypted_v2_aead_rejects_event_time_and_encounter_tampering() {
+        use mycelix_health_shared::patient_encryption;
+
+        let mut record = EncryptedRecord {
+            envelope_version: ENCRYPTED_RECORD_ENVELOPE_VERSION_V2,
+            patient_hash: dummy_hash(),
+            key_fingerprint: [1u8; 8],
+            ciphertext: vec![],
+            nonce: [0u8; 24],
+            data_category: "LabResults".to_string(),
+            entry_type: "LabResult".to_string(),
+            encrypted_at: 1_000_000,
+            clinical_event_time: Some(Timestamp::from_micros(900_000)),
+            encounter_hash: Some(dummy_hash()),
+        };
+        let key = [9u8; 32];
+        let original_aad = encrypted_record_aad(&record).expect("encode v2 AAD");
+        let (ciphertext, nonce) =
+            patient_encryption::encrypt_with_aad(b"synthetic clinical payload", &original_aad, &key)
+                .expect("encrypt synthetic payload");
+        record.ciphertext = ciphertext;
+        record.nonce = nonce;
+
+        assert_eq!(
+            patient_encryption::decrypt_with_aad(
+                &record.ciphertext,
+                &record.nonce,
+                &original_aad,
+                &key,
+            )
+            .expect("decrypt with original AAD"),
+            b"synthetic clinical payload"
+        );
+
+        record.clinical_event_time = Some(Timestamp::from_micros(900_001));
+        let changed_time_aad = encrypted_record_aad(&record).expect("encode changed event time");
+        assert!(patient_encryption::decrypt_with_aad(
+            &record.ciphertext,
+            &record.nonce,
+            &changed_time_aad,
+            &key,
+        )
+        .is_err());
+
+        record.clinical_event_time = Some(Timestamp::from_micros(900_000));
+        record.encounter_hash = Some(ActionHash::from_raw_36(vec![7u8; 36]));
+        let changed_encounter_aad =
+            encrypted_record_aad(&record).expect("encode changed encounter");
+        assert!(patient_encryption::decrypt_with_aad(
+            &record.ciphertext,
+            &record.nonce,
+            &changed_encounter_aad,
+            &key,
+        )
+        .is_err());
+    }
+
+    #[test]
     fn encrypted_v2_context_must_match_typed_lab_payload() {
         let lab = sample_lab_result();
         let plaintext = ExternIO::encode(&lab)
