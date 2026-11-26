@@ -192,7 +192,11 @@ fn has_required_text(value: &str) -> bool {
     !value.trim().is_empty()
 }
 
-fn valid_event_shape(event: &AuditEvent, findings: &mut BTreeSet<Finding>, rejected: &mut bool) -> bool {
+fn valid_event_shape(
+    event: &AuditEvent,
+    findings: &mut BTreeSet<Finding>,
+    rejected: &mut bool,
+) -> bool {
     let required = [
         ("action_hash", event.action_hash.as_str()),
         ("stream_id", event.stream_id.as_str()),
@@ -452,7 +456,9 @@ pub fn verify_audit_view(
 
             match by_sequence.get(&(event.sequence - 1)) {
                 Some(previous) => {
-                    if event.previous_action_hash.as_deref() != Some(previous.action_hash.as_str()) {
+                    if event.previous_action_hash.as_deref()
+                        != Some(previous.action_hash.as_str())
+                    {
                         reject(
                             &mut findings,
                             &mut rejected,
@@ -733,10 +739,40 @@ mod tests {
     }
 
     fn scenario(case_id: &str) -> (Vec<AuditEvent>, Vec<TrustedStreamCheckpoint>) {
-        let p0 = event("a0", "agent-a", "agent-a", 0, None, "patient-1", "tenant-1", &[], Some(100));
-        let p1 = event("a1", "agent-a", "agent-a", 1, Some("a0"), "patient-1", "tenant-1", &[], Some(200));
+        let p0 = eventevent(
+            "a0",
+            "agent-a",
+            "agent-a",
+            0,
+            None,
+            "patient-1",
+            "tenant-1",
+            &[],
+            Some(100),
+        );
+        let p1 = eventevent(
+            "a1",
+            "agent-a",
+            "agent-a",
+            1,
+            Some("a0"),
+            "patient-1",
+            "tenant-1",
+            &[],
+            Some(200),
+        );
         let q0 = event("b0", "agent-b", "agent-b", 0, None, "patient-1", "tenant-1", &[], Some(50));
-        let q1 = event("b1", "agent-b", "agent-b", 1, Some("b0"), "patient-1", "tenant-1", &[], Some(300));
+        let q1 = eventevent(
+            "b1",
+            "agent-b",
+            "agent-b",
+            1,
+            Some("b0"),
+            "patient-1",
+            "tenant-1",
+            &[],
+            Some(300),
+        );
         match case_id {
             "valid_two_agent_unrelated" => (
                 vec![p0, p1, q0, q1],
@@ -746,7 +782,17 @@ mod tests {
                 ],
             ),
             "explicit_cross_agent_parent" => {
-                let child = event("b0", "agent-b", "agent-b", 0, None, "patient-1", "tenant-1", &["a0"], Some(10));
+                let child = eventevent(
+                    "b0",
+                    "agent-b",
+                    "agent-b",
+                    0,
+                    None,
+                    "patient-1",
+                    "tenant-1",
+                    &["a0"],
+                    Some(10),
+                );
                 (
                     vec![p0, child],
                     vec![
@@ -761,8 +807,28 @@ mod tests {
             ),
             "clock_skew_unrelated" => (
                 vec![
-                    event("a0", "agent-a", "agent-a", 0, None, "patient-1", "tenant-1", &[], Some(9_000)),
-                    event("b0", "agent-b", "agent-b", 0, None, "patient-1", "tenant-1", &[], Some(-9_000)),
+                    eventevent(
+                        "a0",
+                        "agent-a",
+                        "agent-a",
+                        0,
+                        None,
+                        "patient-1",
+                        "tenant-1",
+                        &[],
+                        Some(9_000),
+                    ),
+                    eventevent(
+                        "b0",
+                        "agent-b",
+                        "agent-b",
+                        0,
+                        None,
+                        "patient-1",
+                        "tenant-1",
+                        &[],
+                        Some(-9_000),
+                    ),
                 ],
                 vec![
                     checkpoint("agent-a", "agent-a", 0, "a0"),
@@ -771,8 +837,28 @@ mod tests {
             ),
             "same_timestamp_unrelated" => (
                 vec![
-                    event("a0", "agent-a", "agent-a", 0, None, "patient-1", "tenant-1", &[], Some(10)),
-                    event("b0", "agent-b", "agent-b", 0, None, "patient-1", "tenant-1", &[], Some(10)),
+                    eventevent(
+                        "a0",
+                        "agent-a",
+                        "agent-a",
+                        0,
+                        None,
+                        "patient-1",
+                        "tenant-1",
+                        &[],
+                        Some(10),
+                    ),
+                    eventevent(
+                        "b0",
+                        "agent-b",
+                        "agent-b",
+                        0,
+                        None,
+                        "patient-1",
+                        "tenant-1",
+                        &[],
+                        Some(10),
+                    ),
                 ],
                 vec![
                     checkpoint("agent-a", "agent-a", 0, "a0"),
@@ -781,26 +867,76 @@ mod tests {
             ),
             "missing_checkpoint" => (vec![p0], vec![]),
             "missing_stream_action" => {
-                let a2 = event("a2", "agent-a", "agent-a", 2, Some("a1"), "patient-1", "tenant-1", &[], Some(300));
+                let a2 = eventevent(
+                    "a2",
+                    "agent-a",
+                    "agent-a",
+                    2,
+                    Some("a1"),
+                    "patient-1",
+                    "tenant-1",
+                    &[],
+                    Some(300),
+                );
                 (
                     vec![p0, a2],
                     vec![checkpoint("agent-a", "agent-a", 2, "a2")],
                 )
             }
             "missing_causal_parent" => {
-                let child = event("b0", "agent-b", "agent-b", 0, None, "patient-1", "tenant-1", &["not-yet-visible"], Some(10));
+                let child = eventevent(
+                    "b0",
+                    "agent-b",
+                    "agent-b",
+                    0,
+                    None,
+                    "patient-1",
+                    "tenant-1",
+                    &["not-yet-visible"],
+                    Some(10),
+                );
                 (
                     vec![child],
                     vec![checkpoint("agent-b", "agent-b", 0, "b0")],
                 )
             }
             "author_mismatch" => (
-                vec![event("a0", "agent-a", "attacker", 0, None, "patient-1", "tenant-1", &[], Some(10))],
+                vec![eventevent(
+                    "a0",
+                    "agent-a",
+                    "attacker",
+                    0,
+                    None,
+                    "patient-1",
+                    "tenant-1",
+                    &[],
+                    Some(10),
+                )],
                 vec![checkpoint("agent-a", "agent-a", 0, "a0")],
             ),
             "cross_patient_parent" => {
-                let parent = event("a0", "agent-a", "agent-a", 0, None, "patient-1", "tenant-1", &[], Some(10));
-                let child = event("b0", "agent-b", "agent-b", 0, None, "patient-2", "tenant-1", &["a0"], Some(20));
+                let parent = eventevent(
+                    "a0",
+                    "agent-a",
+                    "agent-a",
+                    0,
+                    None,
+                    "patient-1",
+                    "tenant-1",
+                    &[],
+                    Some(10),
+                );
+                let child = eventevent(
+                    "b0",
+                    "agent-b",
+                    "agent-b",
+                    0,
+                    None,
+                    "patient-2",
+                    "tenant-1",
+                    &["a0"],
+                    Some(20),
+                );
                 (
                     vec![parent, child],
                     vec![
@@ -810,8 +946,28 @@ mod tests {
                 )
             }
             "cross_tenant_parent" => {
-                let parent = event("a0", "agent-a", "agent-a", 0, None, "patient-1", "tenant-1", &[], Some(10));
-                let child = event("b0", "agent-b", "agent-b", 0, None, "patient-1", "tenant-2", &["a0"], Some(20));
+                let parent = eventevent(
+                    "a0",
+                    "agent-a",
+                    "agent-a",
+                    0,
+                    None,
+                    "patient-1",
+                    "tenant-1",
+                    &[],
+                    Some(10),
+                );
+                let child = eventevent(
+                    "b0",
+                    "agent-b",
+                    "agent-b",
+                    0,
+                    None,
+                    "patient-1",
+                    "tenant-2",
+                    &["a0"],
+                    Some(20),
+                );
                 (
                     vec![parent, child],
                     vec![
@@ -821,7 +977,17 @@ mod tests {
                 )
             }
             "previous_action_mismatch" => {
-                let child = event("a1", "agent-a", "agent-a", 1, Some("wrong-parent"), "patient-1", "tenant-1", &[], Some(20));
+                let child = eventevent(
+                    "a1",
+                    "agent-a",
+                    "agent-a",
+                    1,
+                    Some("wrong-parent"),
+                    "patient-1",
+                    "tenant-1",
+                    &[],
+                    Some(20),
+                );
                 (
                     vec![p0, child],
                     vec![checkpoint("agent-a", "agent-a", 1, "a1")],
@@ -844,8 +1010,28 @@ mod tests {
                 vec![checkpoint("agent-a", "agent-a", 0, "not-a0")],
             ),
             "causal_cycle" => {
-                let a = event("a0", "agent-a", "agent-a", 0, None, "patient-1", "tenant-1", &["b0"], Some(10));
-                let b = event("b0", "agent-b", "agent-b", 0, None, "patient-1", "tenant-1", &["a0"], Some(20));
+                let a = eventevent(
+                    "a0",
+                    "agent-a",
+                    "agent-a",
+                    0,
+                    None,
+                    "patient-1",
+                    "tenant-1",
+                    &["b0"],
+                    Some(10),
+                );
+                let b = eventevent(
+                    "b0",
+                    "agent-b",
+                    "agent-b",
+                    0,
+                    None,
+                    "patient-1",
+                    "tenant-1",
+                    &["a0"],
+                    Some(20),
+                );
                 (
                     vec![a, b],
                     vec![
@@ -855,11 +1041,31 @@ mod tests {
                 )
             }
             "self_parent" => {
-                let a = event("a0", "agent-a", "agent-a", 0, None, "patient-1", "tenant-1", &["a0"], Some(10));
+                let a = eventevent(
+                    "a0",
+                    "agent-a",
+                    "agent-a",
+                    0,
+                    None,
+                    "patient-1",
+                    "tenant-1",
+                    &["a0"],
+                    Some(10),
+                );
                 (vec![a], vec![checkpoint("agent-a", "agent-a", 0, "a0")])
             }
             "duplicate_causal_parent" => {
-                let child = event("b0", "agent-b", "agent-b", 0, None, "patient-1", "tenant-1", &["a0", "a0"], Some(20));
+                let child = eventevent(
+                    "b0",
+                    "agent-b",
+                    "agent-b",
+                    0,
+                    None,
+                    "patient-1",
+                    "tenant-1",
+                    &["a0", "a0"],
+                    Some(20),
+                );
                 (
                     vec![p0, child],
                     vec![
@@ -871,7 +1077,17 @@ mod tests {
             "uncheckpointed_suffix" => (
                 vec![
                     p0,
-                    event("a1", "agent-a", "agent-a", 1, Some("a0"), "patient-1", "tenant-1", &[], Some(20)),
+                    eventevent(
+                        "a1",
+                        "agent-a",
+                        "agent-a",
+                        1,
+                        Some("a0"),
+                        "patient-1",
+                        "tenant-1",
+                        &[],
+                        Some(20),
+                    ),
                 ],
                 vec![checkpoint("agent-a", "agent-a", 0, "a0")],
             ),
@@ -898,7 +1114,12 @@ mod tests {
             if fields[2] == "none" {
                 assert!(report.findings.is_empty(), "unexpected findings for {}", fields[0]);
             } else {
-                assert!(code_present(&report, fields[2]), "missing {} for {}", fields[2], fields[0]);
+                assert!(
+                    code_present(&report, fields[2]),
+                    "missing {} for {}",
+                    fields[2],
+                    fields[0]
+                );
             }
             assert!(!fields[3].trim().is_empty(), "fixture description cannot be empty");
             rows += 1;
@@ -968,8 +1189,28 @@ mod tests {
 
     #[test]
     fn trusted_checkpoint_detects_a_truncated_stream_suffix() {
-        let head = event("a1", "agent-a", "agent-a", 1, Some("a0"), "patient-1", "tenant-1", &[], Some(20));
-        let genesis = event("a0", "agent-a", "agent-a", 0, None, "patient-1", "tenant-1", &[], Some(10));
+        let head = eventevent(
+            "a1",
+            "agent-a",
+            "agent-a",
+            1,
+            Some("a0"),
+            "patient-1",
+            "tenant-1",
+            &[],
+            Some(20),
+        );
+        let genesis = eventevent(
+            "a0",
+            "agent-a",
+            "agent-a",
+            0,
+            None,
+            "patient-1",
+            "tenant-1",
+            &[],
+            Some(10),
+        );
         let report = verify_audit_view(
             &[genesis],
             &[checkpoint("agent-a", "agent-a", 1, &head.action_hash)],
