@@ -20,13 +20,13 @@ mutated="$tmpdir/mutated-results.json"
 bash "$REFERENCE" "$MANIFEST" "$baseline"
 bash "$EVALUATOR" "$MANIFEST" "$baseline" "$score" >/dev/null
 jq -e '
-  .case_count == 38
+  .case_count == 45
   and .exact_decision_accuracy == 1
   and .unauthorized_allow_count == 0
   and .false_denial_count == 0
   and .unexpected_defer_on_allow_count == 0
   and .required_restricted_reason_coverage == 1
-  and .metamorphic_pair_count == 35
+  and .metamorphic_pair_count == 42
   and .metamorphic_pair_failures == 0
   and .authority_gate_pass == true
   and .metamorphic_gate_pass == true
@@ -67,9 +67,16 @@ set +e; bash "$EVALUATOR" "$MANIFEST" "$mutated" >/dev/null 2>&1; status=$?; set
 for case_id in \
   deny_missing_provenance_binding \
   deny_invalid_provenance_signature \
+  deny_provenance_target_version_mismatch \
+  deny_provenance_agent_signer_mismatch \
+  deny_provenance_signature_wrong_purpose \
+  deny_provenance_signed_digest_mismatch \
+  deny_revoked_source_signing_key \
   deny_unresolved_source_conflict \
   deny_invalid_audit_chain \
   deny_unauthenticated_audit_actor \
+  defer_provenance_verifier_unavailable \
+  defer_source_signing_key_state_stale \
   defer_source_registry_unavailable; do
   jq --arg id "$case_id" '.results |= map(if .case_id == $id then .decision = "allow" | .reason_codes = ["authorized"] else . end)' "$baseline" > "$mutated"
   set +e; bash "$EVALUATOR" "$MANIFEST" "$mutated" >/dev/null 2>&1; status=$?; set -e
