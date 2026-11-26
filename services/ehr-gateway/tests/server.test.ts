@@ -276,11 +276,45 @@ describe('EHR Gateway Server', () => {
       }));
     });
 
-    it('GET /fhir/Bundle denies Patient-only exports rather than falling through to DataCategory::All', async () => {
-      mockHolochainClient.callZome.mockClear();
-      const res = await app.request('/fhir/Bundle/uhCEkINI4cBkNicMiyEvxrUXKy71OIGWXqXJagdCunS2SlmaipQ1j');
-      expect(res.status).toBe(403);
-      expect(mockHolochainClient.callZome).not.toHaveBeenCalled();
+    it('GET /fhir/Bundle allows Patient-only authority without widening to other sections', async () => {
+      const patientOnlyHash = 'uhCEkINI4cBkNicMiyEvxrUXKy71OIGWXqXJagdCunS2SlmaipQ1j';
+      const patientOnlyApp = createApp({
+        ...ctx,
+        gatewayRouteAuthorizer: {
+          authorize: vi.fn(async () => ({
+            authorized: true as const,
+            grantId: 'patient-only-grant',
+            requestId: 'patient-only-request',
+            principal: {
+              issuer: 'https://idp.example.test',
+              subject: 'test-subject',
+              clientId: 'test-client',
+              organizationId: 'test-org',
+            },
+            tenantId: 'test-tenant',
+            patientBinding: 'opaque-test-patient',
+            sourceConnectionId: 'test-connection',
+            purpose: 'treatment',
+            recipientId: 'mycelix-test',
+            requestedResourceTypes: ['Patient'],
+            action: 'fhir_export' as const,
+            expiresAtMs: Date.now() + 60_000,
+            resolvedMycelixPatientHash: patientOnlyHash,
+          })),
+        },
+      });
+      mockHolochainClient.callZome.mockResolvedValueOnce({
+        bundle: JSON.stringify({ resourceType: 'Bundle', type: 'collection', entry: [] }),
+        resource_count: 0,
+        export_timestamp: Date.now(),
+      });
+
+      const res = await patientOnlyApp.request('/fhir/Bundle/' + patientOnlyHash);
+      expect(res.status).toBe(200);
+      expect(mockHolochainClient.callZome).toHaveBeenCalledWith(expect.objectContaining({
+        fn_name: 'export_patient_fhir',
+        payload: { patient_hash: patientOnlyHash, include_sections: ['Patient'] },
+      }));
     });
 
     it('GET /fhir/Bundle denies unsupported sections before calling the zome', async () => {
