@@ -44,8 +44,8 @@ The runner records:
 - validator release and artifact hash;
 - Java and FHIR versions;
 - corpus SHA-256;
-- expected valid/invalid result per case;
-- error/fatal issue count from each OperationOutcome;
+- expected valid/invalid/warnings-only result per case;
+- error/fatal and warning issue counts from each OperationOutcome;
 - per-case console output and OperationOutcome JSON;
 - total cases processed.
 
