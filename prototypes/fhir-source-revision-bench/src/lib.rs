@@ -386,6 +386,72 @@ mod tests {
     }
 
     #[test]
+    fn an_intermediate_revision_cannot_advance_a_projection_past_newer_history() {
+        let historical_latest = revision("tenant-a", "issuer-a", Some("v3"), 3, Some(30));
+        let current_projection = revision("tenant-a", "issuer-a", Some("v2"), 2, Some(20));
+        let incoming = revision("tenant-a", "issuer-a", Some("v25"), 25, Some(25));
+        let history = vec![
+            revision("tenant-a", "issuer-a", Some("v1"), 1, Some(10)),
+            historical_latest,
+        ];
+
+        assert_eq!(
+            classify_revision(&incoming, &history, Some(&current_projection)).unwrap(),
+            RevisionAssessment {
+                disposition: RevisionDisposition::OlderBySourceSequence,
+                projection_effect: ProjectionEffect::PreserveHistoryOnly,
+            }
+        );
+    }
+
+    #[test]
+    fn contradictory_duplicate_version_history_is_quarantined_independent_of_order() {
+        let exact = revision("tenant-a", "issuer-a", Some("v1"), 1, Some(10));
+        let equivocation = revision("tenant-a", "issuer-a", Some("v1"), 9, Some(10));
+        let current = revision("tenant-a", "issuer-a", Some("v2"), 2, Some(20));
+
+        for history in [
+            vec![exact.clone(), equivocation.clone()],
+            vec![equivocation.clone(), exact.clone()],
+        ] {
+            assert_eq!(
+                classify_revision(&exact, &history, Some(&current)).unwrap(),
+                RevisionAssessment {
+                    disposition: RevisionDisposition::VersionEquivocation,
+                    projection_effect: ProjectionEffect::Quarantine,
+                }
+            );
+        }
+    }
+
+    #[test]
+    fn malformed_matching_history_is_rejected_before_projection_decision() {
+        let mut malformed = revision("tenant-a", "issuer-a", Some("v1"), 1, Some(10));
+        malformed.canonicalization_profile = "  ".to_string();
+        let current = revision("tenant-a", "issuer-a", Some("v2"), 2, Some(20));
+        let incoming = revision("tenant-a", "issuer-a", Some("v3"), 3, Some(30));
+
+        assert_eq!(
+            classify_revision(&incoming, &[malformed], Some(&current)),
+            Err(RevisionError::EmptyCanonicalizationProfile)
+        );
+    }
+
+    #[test]
+    fn unversioned_exact_payload_with_changed_source_order_is_not_silent_replay() {
+        let prior = revision("tenant-a", "issuer-a", None, 1, Some(10));
+        let incoming = revision("tenant-a", "issuer-a", None, 1, Some(11));
+
+        assert_eq!(
+            classify_revision(&incoming, std::slice::from_ref(&prior), Some(&prior)).unwrap(),
+            RevisionAssessment {
+                disposition: RevisionDisposition::SourceOrderMetadataConflict,
+                projection_effect: ProjectionEffect::Quarantine,
+            }
+        );
+    }
+
+    #[test]
     fn same_version_with_different_digest_is_quarantined() {
         let existing = revision("tenant-a", "issuer-a", Some("v7"), 1, Some(7));
         let incoming = revision("tenant-a", "issuer-a", Some("v7"), 2, Some(7));
