@@ -1148,7 +1148,7 @@ mod tests {
             assert!(!fields[3].trim().is_empty(), "fixture description cannot be empty");
             rows += 1;
         }
-        assert_eq!(rows, 19, "frozen v1 fixture count changed");
+        assert_eq!(rows, 21, "frozen v1 fixture count changed");
     }
 
     #[test]
@@ -1241,6 +1241,32 @@ mod tests {
         );
         assert_eq!(report.status, ViewStatus::Incomplete);
         assert!(code_present(&report, "missing_stream_action"));
+    }
+
+    #[test]
+    fn conflicting_checkpoint_observations_are_permutation_invariant() {
+        let (events, checkpoints) = scenario("conflicting_checkpoints");
+        let forward = verify_audit_view(&events, &checkpoints);
+        let mut reversed = checkpoints.clone();
+        reversed.reverse();
+        let backward = verify_audit_view(&events, &reversed);
+
+        assert_eq!(forward, backward);
+        assert_eq!(forward.status, ViewStatus::Rejected);
+        assert!(code_present(&forward, "duplicate_checkpoint"));
+    }
+
+    #[test]
+    fn duplicate_stream_sequences_are_rejected_without_first_wins() {
+        let (events, checkpoints) = scenario("duplicate_stream_sequence");
+        let forward = verify_audit_view(&events, &checkpoints);
+        let mut reversed = events.clone();
+        reversed.reverse();
+        let backward = verify_audit_view(&reversed, &checkpoints);
+
+        assert_eq!(forward, backward);
+        assert_eq!(forward.status, ViewStatus::Rejected);
+        assert!(code_present(&forward, "duplicate_stream_sequence"));
     }
 
     #[test]
