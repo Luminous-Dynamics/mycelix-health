@@ -2,7 +2,9 @@
 
 **Status:** public synthetic development corpus and deterministic evaluator contract. This is not a live authorization engine, official FHIR validator, legal interpretation, clinical validation, or production safety certification.
 
-**Corpus size:** 38 public synthetic cases (3 expected allow, 30 expected deny, 5 expected defer) with 35 single-dimension metamorphic pairs. The public labels are intentionally visible for regression testing; this is not the held-out scorecard.
+**Corpus size:** 45 public synthetic cases (3 expected allow, 35 expected deny, 7 expected defer) with 42 single-dimension metamorphic pairs. The public labels are intentionally visible for regression testing; this is not the held-out scorecard.
+
+The v1 development corpus now adds exact source-Provenance binding checks: version-specific target, agent/signer identity, signature purpose, signed-resource digest, source signing-key registration/revocation and verifier/key-state availability. The public candidate model assumes a verifier-produced status; it does not execute cryptographic signature verification.
 
 ## What this measures
 
@@ -88,7 +90,26 @@ A source payload hash is not a complete evidence chain. Accepted evidence must b
 
 Keep FHIR Provenance (generation/derivation), AuditEvent (usage/security activity) and Consent (policy representation) as separate semantic families. They can be correlated to a request and resource version without being conflated. A valid AuditEvent does not prove a source assertion, and a Provenance agent label does not prove identity.
 
-### 6. Fail-closed execution with explicit unavailability
+### 6. Source-attested Provenance binding
+
+A valid Provenance JSON object is not yet trusted source evidence. The evidence must bind one exact version of one resource to one authenticated source issuer and signing key.
+
+The synthetic contract added to `authority-semantics-v1.json` requires:
+
+1. **Version-specific target:** `Provenance.target` must resolve to the exact resource type, logical ID and opaque version requested. The canonical relative fixture form is `ResourceType/id/_history/versionId`; the version is an opaque identifier and must not be numerically or lexicographically ordered.
+2. **Agent identity:** `Provenance.agent.who` must resolve to the source issuer in the trusted source registry. A FHIR Reference or display label is only an assertion until resolved.
+3. **Signer binding:** `Provenance.signature.who` must match the declared Provenance agent and its key must resolve to the registered, current source signing key.
+4. **Signature purpose:** the FHIR Signature type must include the `Source` purpose when the signature is asserted to prove that the resource content has not changed since it was created or updated. A signature with a different purpose is not interchangeable.
+5. **Exact content:** the signed SHA-256 content digest must match the canonical bytes/digest for the exact version-specific target. A digest for the logical resource or a different version is insufficient.
+6. **Current key state:** a revoked or unregistered key denies. If the source registry, key-status snapshot or Provenance verifier is unavailable or stale, the result is `defer`, not allow.
+
+The public fixtures now include independent negative controls for a target-version mismatch, agent/signer mismatch, wrong signature purpose, altered signed digest, and revoked source key, plus deferral controls for verifier outage and stale key state. These are additional one-dimension pairs against a valid provider-treatment baseline.
+
+**Important claim ceiling:** FHIR Provenance and Signature elements are untrusted input until a production adapter verifies the signature over the correct canonical content, checks the signer certificate/key and revocation status, resolves the agent to the registered source, and confirms the version-specific target digest. The current benchmark models the verifier's decision as synthetic context fields; it does not perform a cryptographic signature verification or prove that a clinical statement is true. Successful source authentication proves who attested to which bytes/version—not clinical correctness, identity of the patient in the real world, or legal authority to access the record.
+
+Standards references: [FHIR R4 Provenance](https://hl7.org/fhir/R4/provenance.html), [FHIR R4 Signature](https://hl7.org/fhir/R4/datatypes.html#Signature).
+
+### 7. Fail-closed execution with explicit unavailability
 
 Verifier outage, stale revocation state, source-registry outage, replay-store outage or audit-store failure must not become an allow. A system should return a typed denial/defer result and preserve enough evidence to reconcile unknown outcomes without repeating a disclosure.
 
