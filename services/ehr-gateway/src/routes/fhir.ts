@@ -125,7 +125,7 @@ export function createFhirRoutes(ctx: AppContext): Hono {
           resourceType?: unknown;
           subject?: { reference?: unknown; identifier?: unknown };
           patient?: { reference?: unknown; identifier?: unknown };
-          context?: { reference?: unknown; identifier?: unknown };
+
         } | undefined;
         if (!resource || typeof resource.resourceType !== 'string'
           || !authorizedResourceTypes.has(resource.resourceType)) {
@@ -135,7 +135,6 @@ export function createFhirRoutes(ctx: AppContext): Hono {
         const patientReferenceFields = [
           resource.subject,
           resource.patient,
-          resource.context,
         ].filter((value): value is { reference?: unknown; identifier?: unknown } =>
           value !== undefined && value !== null
         );
