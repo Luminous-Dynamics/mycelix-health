@@ -85,7 +85,6 @@ export type GatewayOperationClaimV1 =
   | { kind: 'replay'; operation: GatewayOperationReceiptV1 }
   | { kind: 'in_progress'; operation: GatewayOperationReceiptV1 }
   | { kind: 'outcome_unknown'; operation: GatewayOperationReceiptV1 }
-  | { kind: 'failed_known_no_effect'; operation: GatewayOperationReceiptV1 }
   | { kind: 'key_conflict' }
   | { kind: 'unavailable' };
 
@@ -261,11 +260,6 @@ export class GatewayOperationCoordinatorV1 {
         return { kind: 'in_progress', operation: claim.operation };
       case 'outcome_unknown':
         return toPublicResult(claim.operation);
-      case 'failed_known_no_effect':
-        return {
-          kind: 'deferred',
-          reason: 'known_no_effect_retry_requires_atomic_reclaim',
-        };
       case 'claimed':
         break;
     }
@@ -385,6 +379,7 @@ export class GatewayOperationCoordinatorV1 {
     }
 
     let result: GatewayAdapterReconcileResultV1;
+    let reconciliationAuthorizationReceiptDigest = operation.latestAuthorizationReceiptDigest;
     try {
       if (this.adapter.supportsOutcomeReconciliation) {
         result = await this.adapter.reconcile(operation);
@@ -412,6 +407,7 @@ export class GatewayOperationCoordinatorV1 {
             reason: 'fresh_authority_required_before_same_key_remote_replay',
           };
         }
+        reconciliationAuthorizationReceiptDigest = freshAuthorization.authorizationReceiptDigest;
         const replay = await this.adapter.execute(
           retryIntent,
           {
@@ -464,7 +460,7 @@ export class GatewayOperationCoordinatorV1 {
       write = await this.store.markCommitted(
         operation.operationId,
         operation.version,
-        operation.latestAuthorizationReceiptDigest,
+        reconciliationAuthorizationReceiptDigest,
         result.receipt.externalReceiptId,
         result.receipt.resultDigest,
         this.clock(),
