@@ -7,3 +7,5 @@ description = "Dependency-free reference verifier for per-agent clinical audit s
 
 [lib]
 path = "src/lib.rs"
+
+[workspace]
