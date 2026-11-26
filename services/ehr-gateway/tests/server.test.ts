@@ -415,6 +415,35 @@ describe('EHR Gateway Server', () => {
       expect(mockHolochainClient.callZome).not.toHaveBeenCalled();
     });
 
+    it('POST /fhir/Bundle rejects explicitly null Patient reference fields', async () => {
+      mockGateway.isConnected.mockReturnValueOnce(true);
+      mockHolochainClient.callZome.mockClear();
+      const bundle = {
+        resourceType: 'Bundle',
+        type: 'collection',
+        entry: [
+          { fullUrl: 'Patient/123', resource: { resourceType: 'Patient', id: '123' } },
+          {
+            fullUrl: 'Observation/obs-null-subject',
+            resource: {
+              resourceType: 'Observation',
+              id: 'obs-null-subject',
+              subject: null,
+            },
+          },
+        ],
+      };
+
+      const res = await app.request('/fhir/Bundle', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(bundle),
+      });
+
+      expect(res.status).toBe(403);
+      expect(mockHolochainClient.callZome).not.toHaveBeenCalled();
+    });
+
     it('POST /fhir/Bundle rejects conflicting subject and patient references', async () => {
       mockGateway.isConnected.mockReturnValueOnce(true);
       mockHolochainClient.callZome.mockClear();
