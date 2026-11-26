@@ -966,8 +966,6 @@ pub fn update_patient_mapping_sync_status(input: UpdateSyncStatusInput) -> Exter
 
     Ok(updated_record)
 }
-
-
 #[cfg(test)]
 mod fhir_export_authorization_tests {
     use super::*;
