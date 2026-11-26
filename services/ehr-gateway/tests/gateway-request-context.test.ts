@@ -76,6 +76,10 @@ describe('authorizeGatewayRequestV1', () => {
       principal,
       tenantId: 'tenant-3',
       patientBinding: 'patient-binding-hash-9',
+      sourceConnectionId: 'ehr-connection-7',
+      purpose: 'treatment',
+      recipientId: 'mycelix-health-tenant-3',
+      requestedResourceTypes: ['Patient', 'Observation'],
       action: 'fhir_export',
       expiresAtMs: 200_000,
     });
