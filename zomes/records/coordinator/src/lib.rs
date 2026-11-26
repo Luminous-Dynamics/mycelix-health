@@ -98,6 +98,90 @@ fn encrypted_v2_route_is_supported(entry_type: &str, category: &str) -> bool {
     )
 }
 
+/// After AEAD verification, compare v2 context against the actual decrypted
+/// typed payload. AAD integrity proves the writer authenticated the metadata;
+/// this check proves the metadata agrees with the encrypted clinical object.
+fn validate_encrypted_v2_context_matches_payload(
+    record: &EncryptedRecord,
+    plaintext: &[u8],
+) -> ExternResult<()> {
+    if record.envelope_version == ENCRYPTED_RECORD_ENVELOPE_VERSION_V1 {
+        return Ok(());
+    }
+    if record.envelope_version != ENCRYPTED_RECORD_ENVELOPE_VERSION_V2 {
+        return Err(wasm_error!(WasmErrorInner::Guest(
+            "Unsupported encrypted record envelope version".to_string()
+        )));
+    }
+
+    let event_time = record.clinical_event_time.as_ref().ok_or(wasm_error!(
+        WasmErrorInner::Guest("V2 encrypted record has no clinical event time".to_string())
+    ))?;
+
+    let matches = match record.entry_type.as_str() {
+        "LabResult" => {
+            let value: LabResult = ExternIO::from(plaintext.to_vec()).decode().map_err(|error| {
+                wasm_error!(WasmErrorInner::Guest(format!(
+                    "V2 LabResult payload decoding failed: {}",
+                    error
+                )))
+            })?;
+            value.patient_hash == record.patient_hash
+                && &value.collection_time == event_time
+                && value.encounter_hash == record.encounter_hash
+        }
+        "ProcedurePerformed" => {
+            let value: ProcedurePerformed =
+                ExternIO::from(plaintext.to_vec()).decode().map_err(|error| {
+                    wasm_error!(WasmErrorInner::Guest(format!(
+                        "V2 ProcedurePerformed payload decoding failed: {}",
+                        error
+                    )))
+                })?;
+            value.patient_hash == record.patient_hash
+                && &value.performed_at == event_time
+                && Some(value.encounter_hash) == record.encounter_hash
+        }
+        "ImagingStudy" => {
+            let value: ImagingStudy =
+                ExternIO::from(plaintext.to_vec()).decode().map_err(|error| {
+                    wasm_error!(WasmErrorInner::Guest(format!(
+                        "V2 ImagingStudy payload decoding failed: {}",
+                        error
+                    )))
+                })?;
+            value.patient_hash == record.patient_hash
+                && &value.study_date == event_time
+                && value.encounter_hash == record.encounter_hash
+        }
+        "VitalSigns" => {
+            let value: VitalSigns = ExternIO::from(plaintext.to_vec()).decode().map_err(|error| {
+                wasm_error!(WasmErrorInner::Guest(format!(
+                    "V2 VitalSigns payload decoding failed: {}",
+                    error
+                )))
+            })?;
+            value.patient_hash == record.patient_hash
+                && &value.recorded_at == event_time
+                && value.encounter_hash == record.encounter_hash
+        }
+        _ => {
+            return Err(wasm_error!(WasmErrorInner::Guest(
+                "V2 encrypted payload type has no typed context verifier".to_string()
+            )));
+        }
+    };
+
+    if !matches {
+        return Err(wasm_error!(WasmErrorInner::Guest(
+            "Encrypted v2 context does not match the decrypted patient, event time or encounter"
+                .to_string()
+        )));
+    }
+
+    Ok(())
+}
+
 fn parse_encrypted_category(category: &str) -> ExternResult<DataCategory> {
     match category {
         "Demographics" => Ok(DataCategory::Demographics),
@@ -1014,15 +1098,8 @@ pub fn decrypt_lab_result(input: DecryptLabResultInput) -> ExternResult<LabResul
     require_client_side_phi("decrypt_lab_result")?;
     use mycelix_health_shared::patient_encryption;
 
-    // Step 1: Verify consent BEFORE decryption
-    let auth = require_authorization(
-        input.patient_hash.clone(),
-        DataCategory::LabResults,
-        Permission::Read,
-        input.is_emergency,
-    )?;
-
-    // Step 2: Retrieve the encrypted record
+    // Read only the envelope metadata first. Plaintext is not exposed until
+    // this exact record's patient, category, event time and encounter pass.
     let record = get(input.encrypted_record_hash, GetOptions::default())?.ok_or(wasm_error!(
         WasmErrorInner::Guest("Encrypted record not found".to_string())
     ))?;
@@ -1040,14 +1117,21 @@ pub fn decrypt_lab_result(input: DecryptLabResultInput) -> ExternResult<LabResul
             "Not an EncryptedRecord entry".to_string()
         )))?;
 
-    // Step 3: Verify this record belongs to the claimed patient
     if encrypted.patient_hash != input.patient_hash {
         return Err(wasm_error!(WasmErrorInner::Guest(
             "Patient hash mismatch — record belongs to a different patient".to_string()
         )));
     }
+    if encrypted.data_category != "LabResults" || encrypted.entry_type != "LabResult" {
+        return Err(wasm_error!(WasmErrorInner::Guest(
+            "Encrypted record is not a LabResult/LabResults envelope".to_string()
+        )));
+    }
 
-    // Step 4: Decrypt (XChaCha20-Poly1305 with Poly1305 auth tag verification)
+    // This is before decryption: v1 carries no clinical context and therefore
+    // cannot satisfy restricted grants; v2 uses authenticated AAD fields.
+    let auth = require_encrypted_record_read_authorization(&encrypted, input.is_emergency)?;
+
     let aad = encrypted_record_aad(&encrypted)?;
     let plaintext = patient_encryption::decrypt_with_aad(
         &encrypted.ciphertext,
@@ -1057,12 +1141,11 @@ pub fn decrypt_lab_result(input: DecryptLabResultInput) -> ExternResult<LabResul
     )
     .map_err(|e| {
         wasm_error!(WasmErrorInner::Guest(format!(
-            "Decryption failed (wrong key or data or metadata tampered): {}",
+            "Decryption failed (wrong key, ciphertext or authenticated metadata tampered): {}",
             e
         )))
     })?;
 
-    // Step 5: Deserialize the lab result from MessagePack (ExternIO format)
     let extern_io = ExternIO::from(plaintext);
     let lab_result: LabResult = extern_io.decode().map_err(|e| {
         wasm_error!(WasmErrorInner::Guest(format!(
@@ -1071,7 +1154,15 @@ pub fn decrypt_lab_result(input: DecryptLabResultInput) -> ExternResult<LabResul
         )))
     })?;
 
-    // Step 6: Log the decryption access
+    if encrypted.envelope_version == ENCRYPTED_RECORD_ENVELOPE_VERSION_V2
+        && (encrypted.clinical_event_time != Some(lab_result.collection_time)
+            || encrypted.encounter_hash != lab_result.encounter_hash)
+    {
+        return Err(wasm_error!(WasmErrorInner::Guest(
+            "Encrypted v2 context does not match the decrypted LabResult".to_string()
+        )));
+    }
+
     log_data_access(
         input.patient_hash,
         vec![DataCategory::LabResults],
@@ -1394,13 +1485,9 @@ pub fn decrypt_record(input: DecryptRecordInput) -> ExternResult<ExternIO> {
         )));
     }
 
-    // Verify consent BEFORE decryption
-    let auth = require_authorization(
-        input.patient_hash.clone(),
-        category.clone(),
-        Permission::Read,
-        input.is_emergency,
-    )?;
+    // Check this exact resource's authority before decryption. Legacy v1
+    // has no clinical context and fails closed under temporal/encounter scopes.
+    let auth = require_encrypted_record_read_authorization(&encrypted, input.is_emergency)?;
 
     // Decrypt and authenticate the cleartext routing metadata.
     let aad = encrypted_record_aad(&encrypted)?;
@@ -1416,6 +1503,10 @@ pub fn decrypt_record(input: DecryptRecordInput) -> ExternResult<ExternIO> {
             e
         )))
     })?;
+
+    // Do not release plaintext unless the authenticated v2 context matches
+    // the exact patient, clinical event time and encounter inside its payload.
+    validate_encrypted_v2_context_matches_payload(&encrypted, &plaintext)?;
 
     // Log access
     log_data_access(
