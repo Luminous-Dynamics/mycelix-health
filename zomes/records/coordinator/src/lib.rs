@@ -582,12 +582,19 @@ pub struct CreateDiagnosisInput {
 #[hdk_extern]
 pub fn create_diagnosis(input: CreateDiagnosisInput) -> ExternResult<Record> {
     require_encrypted_phi("create_diagnosis")?;
+    if input.patient_hash != input.diagnosis.patient_hash {
+        return Err(wasm_error!(WasmErrorInner::Guest(
+            "Diagnosis patient hash does not match the authorization subject".to_string()
+        )));
+    }
     // Require Write authorization for Diagnoses category
-    let auth = require_authorization(
+    let auth = require_authorization_for_resource(
         input.patient_hash.clone(),
         DataCategory::Diagnoses,
         Permission::Write,
         input.is_emergency,
+        None,
+        input.diagnosis.encounter_hash.clone(),
     )?;
 
     let diagnosis_hash = create_entry(&EntryTypes::Diagnosis(input.diagnosis.clone()))?;
@@ -841,11 +848,13 @@ pub fn create_encrypted_lab_result(input: CreateEncryptedLabResultInput) -> Exte
     use mycelix_health_shared::patient_encryption;
 
     // Require Write authorization (same as unencrypted path)
-    let auth = require_authorization(
+    let auth = require_authorization_for_resource(
         input.lab_result.patient_hash.clone(),
         DataCategory::LabResults,
         Permission::Write,
         input.is_emergency,
+        Some(input.lab_result.collection_time),
+        input.lab_result.encounter_hash.clone(),
     )?;
 
     // Serialize the lab result to MessagePack
@@ -1465,11 +1474,13 @@ pub struct CreateImagingStudyInput {
 pub fn create_imaging_study(input: CreateImagingStudyInput) -> ExternResult<Record> {
     require_encrypted_phi("create_imaging_study")?;
     // Require Write authorization for ImagingStudies category
-    let auth = require_authorization(
+    let auth = require_authorization_for_resource(
         input.imaging.patient_hash.clone(),
         DataCategory::ImagingStudies,
         Permission::Write,
         input.is_emergency,
+        Some(input.imaging.study_date),
+        input.imaging.encounter_hash.clone(),
     )?;
 
     let imaging_hash = create_entry(&EntryTypes::ImagingStudy(input.imaging.clone()))?;
@@ -1567,11 +1578,13 @@ pub struct RecordVitalSignsInput {
 pub fn record_vital_signs(input: RecordVitalSignsInput) -> ExternResult<Record> {
     require_encrypted_phi("record_vital_signs")?;
     // Require Write authorization for VitalSigns category
-    let auth = require_authorization(
+    let auth = require_authorization_for_resource(
         input.vitals.patient_hash.clone(),
         DataCategory::VitalSigns,
         Permission::Write,
         input.is_emergency,
+        Some(input.vitals.recorded_at),
+        input.vitals.encounter_hash.clone(),
     )?;
 
     let vitals_hash = create_entry(&EntryTypes::VitalSigns(input.vitals.clone()))?;
@@ -1793,11 +1806,13 @@ pub struct UpdateLabResultInput {
 pub fn update_lab_result(input: UpdateLabResultInput) -> ExternResult<Record> {
     require_encrypted_phi("update_lab_result")?;
     // Require Amend authorization for LabResults category
-    let auth = require_authorization(
+    let auth = require_authorization_for_resource(
         input.updated_result.patient_hash.clone(),
         DataCategory::LabResults,
         Permission::Amend,
         input.is_emergency,
+        Some(input.updated_result.collection_time),
+        input.updated_result.encounter_hash.clone(),
     )?;
 
     let updated_hash = update_entry(input.original_hash.clone(), &input.updated_result)?;
@@ -1892,11 +1907,13 @@ pub fn get_encounter_history(input: GetEncounterHistoryInput) -> ExternResult<Ve
         )))?;
 
     // Require Read authorization for Procedures category
-    let auth = require_authorization(
+    let auth = require_authorization_for_resource(
         encounter.patient_hash.clone(),
         DataCategory::Procedures,
         Permission::Read,
         input.is_emergency,
+        Some(encounter.start_time),
+        Some(input.encounter_hash.clone()),
     )?;
 
     let links = get_links(
