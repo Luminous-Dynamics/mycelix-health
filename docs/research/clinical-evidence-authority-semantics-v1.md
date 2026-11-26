@@ -21,9 +21,10 @@ These are separate gates. FHIR validity does not imply source authenticity or au
 - `benchmarks/clinical-evidence-integrity/authority-candidate-result-v1.schema.json`: machine-readable candidate output shape.
 - `scripts/evaluate-clinical-authority-semantics.sh`: deterministic scorer; requires Bash, jq and sha256sum.
 
-The corpus references two cases from the companion official R4 core validator manifest:
+The corpus references three cases from the companion official R4 core validator manifest:
 - `valid_active_privacy_consent_with_patient`
 - `valid_inactive_privacy_consent_not_an_authority_grant`
+- `invalid_privacy_consent_missing_patient` (the pinned CLI observed warnings only; the authority case `deny_missing_consent_subject` still independently denies it)
 
 Those references establish only the intended FHIR fixture relationship. The authority benchmark does not re-run the official HL7 validator and does not convert validator success into authorization.
 
@@ -60,7 +61,7 @@ scripts/evaluate-clinical-authority-semantics.sh \
 
 The evaluator rejects malformed inputs, duplicate candidate IDs, missing cases, extra cases and benchmark-version mismatches. It reports expected denial and expected deferral separately, along with incorrect deferrals on positive cases. The oracle result fixture is only a scorer self-test and is not a measured Mycelix candidate. Run scripts/tests/test-clinical-authority-evaluator.sh to verify the evaluator's passing control, an unauthorized-release negative control, and incomplete-result rejection. It reports exact decision accuracy, unauthorized-allow count/rate, false-denial rate, unexpected deferrals on positive controls, authorized-allow recall, correct deny/defer counts, restricted-reason coverage, restrictive metamorphic-pair failures, and SHA-256 digests of the exact manifest and candidate result file.
 
-A single unauthorized allow fails the authority gate, regardless of aggregate accuracy. Candidates have three outcomes: allow, deny, and defer. Use deny for an established policy violation; use defer when the system cannot safely establish authority because a verifier, fresh revocation state, replay store, or audit path is unavailable. A date-constrained request with missing clinical event time is an established scope failure and is denied, not deferred. Deferral must never be converted to allow, and it is reported separately from false denials. Metamorphic pairs separately require the positive baseline to allow and the one-dimension-restricted variant to deny. False denials remain visible as a utility/availability failure; they are not silently traded against unauthorized releases.
+A single unauthorized allow fails the authority gate, regardless of aggregate accuracy. Candidates have three outcomes: allow, deny, and defer. Use deny for an established policy violation; use defer when the system cannot safely establish authority because a verifier, fresh revocation state, replay store, or audit path is unavailable. A date-constrained request with missing clinical event time is an established scope failure and is denied, not deferred. Deferral must never be converted to allow, and it is reported separately from false denials. Metamorphic pairs separately require the positive baseline to allow and the one-dimension-restricted variant to reach its declared restricted outcome (deny for policy failure, defer for temporary unavailability). False denials remain visible as a utility/availability failure; they are not silently traded against unauthorized releases.
 
 ## Paradigm shifts to test
 
