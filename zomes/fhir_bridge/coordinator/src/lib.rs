@@ -433,25 +433,36 @@ pub fn ingest_bundle(input: IngestBundleInput) -> ExternResult<IngestReport> {
 
 /// Export a patient's data as a FHIR R4 Bundle
 #[hdk_extern]
-pub fn export_patient_fhir(input: ExportPatientInput) -> ExternResult<ExportResult> {
-    let mut required_categories = Vec::new();
-    if input.include_sections.iter().any(|s| s == "Observation") {
-        required_categories.push(DataCategory::VitalSigns);
-    }
-    if input.include_sections.iter().any(|s| s == "Condition") {
-        required_categories.push(DataCategory::Diagnoses);
-    }
-    if input
-        .include_sections
-        .iter()
-        .any(|s| s == "MedicationRequest")
-    {
-        required_categories.push(DataCategory::Medications);
+fn fhir_bridge_export_categories(sections: &[String]) -> Result<Vec<DataCategory>, String> {
+    if !sections.iter().any(|section| section == "Patient") {
+        return Err("FHIR Patient section is mandatory because the bundle includes Patient data".to_string());
     }
 
-    if required_categories.is_empty() {
-        required_categories.push(DataCategory::All);
+    let mut categories = vec![DataCategory::Demographics];
+    for section in sections {
+        let category = match section.as_str() {
+            "Patient" => None,
+            // The fhir_mapping zome stores Observation mappings under LabResults.
+            // Use the same category on both sides of this cross-zome call.
+            "Observation" => Some(DataCategory::LabResults),
+            "Condition" => Some(DataCategory::Diagnoses),
+            "MedicationRequest" => Some(DataCategory::Medications),
+            _ => return Err(format!("Unsupported FHIR export section: {}", section)),
+        };
+        if let Some(category) = category {
+            if !categories.contains(&category) {
+                categories.push(category);
+            }
+        }
     }
+    Ok(categories)
+}
+
+pub fn export_patient_fhir(input: ExportPatientInput) -> ExternResult<ExportResult> {
+    // Validate the exact resource set; an empty or unknown set must never widen
+    // to DataCategory::All. The Patient resource is included by design.
+    let required_categories = fhir_bridge_export_categories(&input.include_sections)
+        .map_err(|reason| wasm_error!(WasmErrorInner::Guest(reason)))?;
 
     for category in required_categories {
         require_authorization(
