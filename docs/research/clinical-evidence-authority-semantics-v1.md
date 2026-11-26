@@ -58,7 +58,7 @@ scripts/evaluate-clinical-authority-semantics.sh \
   scorecard.json
 ```
 
-The evaluator rejects malformed inputs, duplicate candidate IDs, missing cases, extra cases and benchmark-version mismatches. It reports exact decision accuracy, unauthorized-allow count/rate, false-denial rate and valid-allow recall, required denial-reason coverage, restrictive metamorphic-pair failures, and SHA-256 digests of the exact manifest and candidate result file.
+The evaluator rejects malformed inputs, duplicate candidate IDs, missing cases, extra cases and benchmark-version mismatches. The oracle result fixture is only a scorer self-test and is not a measured Mycelix candidate. Run scripts/tests/test-clinical-authority-evaluator.sh to verify the evaluator's passing control, an unauthorized-release negative control, and incomplete-result rejection. It reports exact decision accuracy, unauthorized-allow count/rate, false-denial rate and valid-allow recall, required denial-reason coverage, restrictive metamorphic-pair failures, and SHA-256 digests of the exact manifest and candidate result file.
 
 A single unauthorized allow fails the authority gate, regardless of aggregate accuracy. Metamorphic pairs separately require the positive baseline to allow and the one-dimension-restricted variant to deny. False denials remain visible as a utility/availability failure; they are not silently traded against unauthorized releases.
 
