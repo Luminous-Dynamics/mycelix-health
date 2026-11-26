@@ -12,6 +12,7 @@
 
 import {
   CountersigningSessionStateType,
+  encodeHashToBase64,
   type CellId,
   type CountersigningSessionState,
   type PreflightRequest,
@@ -67,6 +68,43 @@ function asRecord(value: unknown): UnknownRecord | null {
   return typeof value === "object" && value !== null && !Array.isArray(value)
     ? value as UnknownRecord
     : null;
+}
+
+function bytesEqual(left: Uint8Array, right: Uint8Array): boolean {
+  if (left.byteLength !== right.byteLength) return false;
+  let difference = 0;
+  for (let index = 0; index < left.byteLength; index += 1) {
+    difference |= left[index]! ^ right[index]!;
+  }
+  return difference === 0;
+}
+
+function assertRuntimeParticipantBinding(
+  runtime: CountersigningParticipantRuntimeV1,
+  intent: ClinicalCountersigningIntentV1,
+  expectedBinding?: string,
+): void {
+  if (!Array.isArray(runtime.cell_id) || runtime.cell_id.length !== 2
+    || !(runtime.cell_id[1] instanceof Uint8Array)) {
+    throw new Error("Participant runtime has a malformed Holochain cell identity");
+  }
+
+  const cellAgent = runtime.cell_id[1];
+  const cellBinding = encodeHashToBase64(cellAgent);
+  if (runtime.participant_binding !== cellBinding) {
+    throw new Error("Participant runtime binding does not match the authenticated cell agent key");
+  }
+  if (expectedBinding !== undefined && runtime.participant_binding !== expectedBinding) {
+    throw new Error("Participant runtime order does not match the clinical intent participant order");
+  }
+
+  const participant = intent.participants.find(
+    (candidate) => candidate.agent_binding === runtime.participant_binding,
+  );
+  if (!participant || !(participant.agent_bytes instanceof Uint8Array)
+    || !bytesEqual(cellAgent, participant.agent_bytes)) {
+    throw new Error("Participant runtime cell agent bytes do not match the exact clinical intent participant");
+  }
 }
 
 function stateVariant(state: CountersigningSessionState | null): { kind: string; value: unknown } | null {
@@ -198,13 +236,16 @@ export function recommendCountersigningRecoveryV1(
   return { action: "manual_review", reason: "Indeterminate, failed or unsupported participant resolution decision" };
 }
 
-export async function inspectCountersigningParticipantV1(
+async function inspectParticipantSnapshotV1(
   runtime: CountersigningParticipantRuntimeV1,
   intent: ClinicalCountersigningIntentV1,
   observedAtMs: bigint,
   nonce: Uint8Array,
-): Promise<CountersigningParticipantInspectionV1> {
-  const state = await runtime.client.getCountersigningSessionState();
+  state: CountersigningSessionState | null,
+): Promise<{
+  inspection: CountersigningParticipantInspectionV1;
+  preflight_fingerprint: string | null;
+}> {
   const observation = await observeCountersigningSessionStateV1(
     runtime.observer_id,
     runtime.participant_binding,
@@ -223,11 +264,34 @@ export async function inspectCountersigningParticipantV1(
   }
 
   return {
-    observer_id: runtime.observer_id,
-    participant_binding: runtime.participant_binding,
-    observation,
-    recommended_action: recommendation.action,
+    inspection: {
+      observer_id: runtime.observer_id,
+      participant_binding: runtime.participant_binding,
+      observation,
+      recommended_action: recommendation.action,
+    },
+    // This fingerprint is derived from the exact same state snapshot used to
+    // construct the signed observation; do not read the conductor a second time.
+    preflight_fingerprint: preflightFingerprint(preflightFromState(state)),
   };
+}
+
+export async function inspectCountersigningParticipantV1(
+  runtime: CountersigningParticipantRuntimeV1,
+  intent: ClinicalCountersigningIntentV1,
+  observedAtMs: bigint,
+  nonce: Uint8Array,
+): Promise<CountersigningParticipantInspectionV1> {
+  assertRuntimeParticipantBinding(runtime, intent);
+  const state = await runtime.client.getCountersigningSessionState();
+  const result = await inspectParticipantSnapshotV1(
+    runtime,
+    intent,
+    observedAtMs,
+    nonce,
+    state,
+  );
+  return result.inspection;
 }
 
 export async function reconcileCountersigningParticipantsV1(
@@ -239,35 +303,42 @@ export async function reconcileCountersigningParticipantsV1(
   if (runtimes.length !== intent.participants.length) {
     throw new Error("Runtime participant count does not match the clinical intent");
   }
-  const inspections = await Promise.all(runtimes.map(async (runtime, index) => {
+  // Bind participant order and the runtime's actual cell agent key before any
+  // conductor reads. A valid session observed through the wrong cell must not
+  // be attributed to another participant.
+  runtimes.forEach((runtime, index) => {
+    const expected = intent.participants[index];
+    if (!expected) throw new Error("Clinical intent participant is missing");
+    assertRuntimeParticipantBinding(runtime, intent, expected.agent_binding);
+  });
+
+  const snapshots = await Promise.all(runtimes.map(async (runtime, index) => {
     try {
-      return await inspectCountersigningParticipantV1(
+      const state = await runtime.client.getCountersigningSessionState();
+      return await inspectParticipantSnapshotV1(
         runtime,
         intent,
         observedAtMs,
         nonceForParticipant(index),
+        state,
       );
     } catch {
       return {
-        observer_id: runtime.observer_id,
-        participant_binding: runtime.participant_binding,
-        observation: null,
-        recommended_action: "manual_review" as const,
+        inspection: {
+          observer_id: runtime.observer_id,
+          participant_binding: runtime.participant_binding,
+          observation: null,
+          recommended_action: "manual_review" as const,
+        },
+        preflight_fingerprint: null,
       };
     }
   }));
-
+  const inspections = snapshots.map((snapshot) => snapshot.inspection);
   const hasMissingState = inspections.some((inspection) => inspection.observation === null
     || inspection.observation.state === "missing");
-  const states = await Promise.all(runtimes.map(async (runtime) => {
-    try {
-      return await runtime.client.getCountersigningSessionState();
-    } catch {
-      return null;
-    }
-  }));
-  const fingerprints = states
-    .map((state) => preflightFingerprint(preflightFromState(state)))
+  const fingerprints = snapshots
+    .map((snapshot) => snapshot.preflight_fingerprint)
     .filter((fingerprint): fingerprint is string => fingerprint !== null);
   const hasConflictingPreflight = new Set(fingerprints).size > 1
     || inspections.some((inspection) => inspection.observation?.preflight_matches_intent === false);
