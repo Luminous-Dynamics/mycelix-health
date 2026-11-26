@@ -20,7 +20,7 @@ The active root Cargo workspace currently includes 17 zome domains, each with in
 
 It also includes shared zome types and helper crates for HDC experiments, health validation, federated-learning support, cryptography, and zero-knowledge proof experiments.
 
-**Scope warning:** additional feature areas described in older sections of this README or in historical plans have been moved under \`_archive-2026-02-15/\` and are not active root workspace members. Check the current root \`Cargo.toml\` before assuming an archived zome is buildable or part of the active DNA.
+**Scope warning:** additional feature areas described in older sections of this README or in historical plans have been moved under `_archive-2026-02-15/` and are not active root workspace members. Check the current root `Cargo.toml` before assuming an archived zome is buildable or part of the active DNA.
 
 ## Architecture
 
@@ -36,7 +36,7 @@ The application is designed around explicit authorization and consent boundaries
 
 The project uses the Rust workspace and includes Nix-based development support. See [RUNNING.md](RUNNING.md) and [CONTRACT.md](CONTRACT.md) for environment setup and the standalone-checkout dependency contract.
 
-\`\`\`sh
+```sh
 # Install the WASM target if it is not provided by your environment
 rustup target add wasm32-unknown-unknown
 
@@ -46,13 +46,13 @@ cargo test --workspace
 
 # Build WASM zomes
 cargo build --workspace --target wasm32-unknown-unknown --release
-\`\`\`
+```
 
-The repository's \`tests/\` directory is excluded from the root Cargo workspace and has its own manifest. It is a separate test package; root \`cargo test --workspace\` does not automatically include it. Consult \`RUNNING.md\` for the supported invocation and conductor setup.
+The repository's `tests/` directory is excluded from the root Cargo workspace and has its own manifest. It is a separate test package; root `cargo test --workspace` does not automatically include it. Consult `RUNNING.md` for the supported invocation and conductor setup.
 
 ### Standalone checkout dependency layout
 
-Some path dependencies intentionally resolve to sibling directories from the parent \`mycelix\` repository, including shared bridge, Leptos, ZKP, and federated-learning crates. A bare clone of this repository may therefore not contain every path dependency. The CI workflow reconstructs the required sibling layout from the public parent repository; see [CONTRACT.md](CONTRACT.md) before attempting a standalone build.
+Some path dependencies intentionally resolve to sibling directories from the parent `mycelix` repository, including shared bridge, Leptos, ZKP, and federated-learning crates. A bare clone of this repository may therefore not contain every path dependency. The CI workflow reconstructs the required sibling layout from the public parent repository; see [CONTRACT.md](CONTRACT.md) before attempting a standalone build.
 
 ## Security and maturity
 
