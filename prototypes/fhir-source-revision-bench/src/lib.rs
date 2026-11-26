@@ -703,7 +703,7 @@ mod tests {
     }
 
     #[test]
-    fn fixture_catalogue_is_frozen_and_has_unique_case_ids() {
+    fn fixture_catalogue_is_frozen_unique_and_executable() {
         let mut ids = std::collections::BTreeSet::new();
         let mut rows = 0usize;
         for line in include_str!("../fixtures/v1-cases.tsv").lines() {
@@ -723,6 +723,7 @@ mod tests {
                     "NewerBySourceSequence",
                     "OlderBySourceSequence",
                     "SourceSequenceCollision",
+                    "SourceOrderMetadataConflict",
                     "OrderUnknown",
                     "InvalidInput"
                 ]
@@ -730,13 +731,37 @@ mod tests {
                 "unknown disposition in fixture {}",
                 fields[0]
             );
-            assert!(
-                !fields[3].trim().is_empty(),
-                "fixture effect must not be empty"
-            );
+            assert!(!fields[3].trim().is_empty(), "fixture effect must not be empty");
+
+            let actual = evaluate_fixture_case(fields[0]);
+            if fields[2] == "InvalidInput" {
+                assert!(
+                    actual.is_err(),
+                    "fixture {} expected invalid input, got {:?}",
+                    fields[0],
+                    actual
+                );
+                assert_eq!(fields[3], "Reject", "invalid fixture effect mismatch");
+            } else {
+                let assessment = actual.unwrap_or_else(|error| {
+                    panic!("fixture {} unexpectedly rejected: {:?}", fields[0], error)
+                });
+                assert_eq!(
+                    format!("{:?}", assessment.disposition),
+                    fields[2],
+                    "fixture {} disposition mismatch",
+                    fields[0]
+                );
+                assert_eq!(
+                    format!("{:?}", assessment.projection_effect),
+                    fields[3],
+                    "fixture {} projection effect mismatch",
+                    fields[0]
+                );
+            }
             rows += 1;
         }
-        assert_eq!(rows, 18, "v1 fixture catalogue size changed");
+        assert_eq!(rows, 19, "v1 fixture catalogue size changed");
     }
 
     #[test]
