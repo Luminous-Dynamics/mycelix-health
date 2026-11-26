@@ -23,6 +23,7 @@ import { createFhirRoutes } from './routes/fhir.js';
 import { createAuthRoutes } from './routes/auth.js';
 import { createSyncRoutes } from './routes/sync.js';
 import type { SyncJob, IngestReport } from './types.js';
+import type { GatewayRouteAuthorizationProviderV1 } from './auth/gateway-route-guard.js';
 
 // ============================================================================
 // App Context Types
@@ -33,6 +34,12 @@ export interface AppContext {
   holochainClient: AppClient | null;
   config: ServerConfig;
   syncJobs: Map<string, SyncJob>;
+  /**
+   * Optional trusted authorizer for FHIR and sync routes. When absent, all
+   * protected data routes deny by default; health/readiness and FHIR metadata
+   * remain public.
+   */
+  gatewayRouteAuthorizer?: GatewayRouteAuthorizationProviderV1 | null;
 }
 
 // ============================================================================

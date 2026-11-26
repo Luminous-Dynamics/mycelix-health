@@ -9,10 +9,19 @@
  */
 
 import { Hono } from 'hono';
-import { randomUUID } from 'crypto';
+import { decodeHashFromBase64 } from '@holochain/client';
 import type { AppContext } from '../server.js';
-import type { SyncJob, IngestReport } from '../types.js';
-import { PullService } from '../sync/pull-service.js';
+import { requireGatewayRouteAuthorizationV1 } from '../auth/gateway-route-guard.js';
+
+const SUPPORTED_SYNC_RESOURCE_TYPES = [
+  'Patient',
+  'Observation',
+  'Condition',
+  'MedicationRequest',
+  'AllergyIntolerance',
+  'Immunization',
+  'Procedure',
+] as const;
 
 /**
  * Create sync routes
@@ -29,93 +38,83 @@ export function createSyncRoutes(ctx: AppContext): Hono {
    *   patientId: Patient ID in the EHR system
    *
    * Query params:
-   *   connection: Connection ID (required)
-   *   tokenKey: Key for stored token (required)
-   *   resourceTypes: Comma-separated resource types (optional)
-   *   sourceSystem: Override source system identifier (optional)
+   *   connection: Optional legacy lookup hint; never used for execution
+   *   tokenKey: Ignored; credentials come from the resolved server-side handle
+   *   resourceTypes: Comma-separated resource types (must be in the server allowlist)
+   *   sourceSystem: Ignored; attribution comes from the registered connection
    *   async: If true, return immediately with a job ID (optional)
    *
    * Returns: SyncResult or job ID (if async)
    */
   app.post('/patient/:patientId', async (c) => {
+    const resourceTypesParam = c.req.query('resourceTypes');
+    const requestedResourceTypes = resourceTypesParam
+      ? resourceTypesParam.split(',').map((value) => value.trim()).filter(Boolean)
+      : [...SUPPORTED_SYNC_RESOURCE_TYPES];
+    if (
+      requestedResourceTypes.length === 0
+      || requestedResourceTypes.some((resourceType) =>
+        !(SUPPORTED_SYNC_RESOURCE_TYPES as readonly string[]).includes(resourceType)
+      )
+    ) {
+      return c.json({ error: 'Unsupported or empty resourceTypes selection' }, 400);
+    }
+    const authorization = await requireGatewayRouteAuthorizationV1(
+      ctx.gatewayRouteAuthorizer,
+      c.req.raw,
+      { action: 'sync_pull', resourceTypes: requestedResourceTypes },
+    );
+    if (!authorization.authorized) return authorization.response;
+
     if (!ctx.gateway) {
+      return c.json({ error: 'Gateway not initialized' }, 503);
+    }
+
+    const requestedPatientId = c.req.param('patientId');
+    const requestedConnectionId = c.req.query('connection');
+    const connectionId = authorization.authorization.sourceConnectionId;
+    const patientId = authorization.authorization.resolvedSourcePatientId!;
+    const credentialHandle = authorization.authorization.credentialHandle!;
+    const resourceTypes = authorization.authorization.requestedResourceTypes;
+    const isAsync = c.req.query('async') === 'true';
+
+    // Legacy selectors are lookup hints only. The downstream adapter always
+    // receives the canonical patient, connection, credential and source returned
+    // by the trusted authorization provider.
+    if (requestedPatientId !== patientId
+      || (requestedConnectionId && requestedConnectionId !== connectionId)) {
+      return c.json({ error: 'Requested patient or connection does not match resolved authorization' }, 403);
+    }
+    if (!ctx.gateway.isConnected(connectionId)) {
+      return c.json({ error: 'Authorized source connection is unavailable' }, 503);
+    }
+    const sourceSystem = ctx.gateway.getConnectionInfo(connectionId).system;
+
+    // Background execution remains disabled until the worker has its own fresh,
+    // consume-once authorization receipt and durable operation reconciliation.
+    if (isAsync) {
       return c.json({
-        error: 'Gateway not initialized',
+        error: 'Background sync unavailable',
+        message: 'Async execution is disabled until worker-time authorization and replay protection are configured.',
       }, 503);
     }
 
-    const patientId = c.req.param('patientId');
-    const connectionId = c.req.query('connection');
-    const tokenKey = c.req.query('tokenKey');
-    const resourceTypesParam = c.req.query('resourceTypes');
-    const sourceSystem = c.req.query('sourceSystem');
-    const isAsync = c.req.query('async') === 'true';
-
-    // Validate required params
-    if (!connectionId) {
-      return c.json({
-        error: 'Missing connection parameter',
-      }, 400);
-    }
-
-    if (!tokenKey) {
-      return c.json({
-        error: 'Missing tokenKey parameter',
-      }, 400);
-    }
-
-    // Check connection exists
-    if (!ctx.gateway.isConnected(connectionId)) {
-      return c.json({
-        error: 'Connection not found',
-        connection_id: connectionId,
-      }, 404);
-    }
-
-    // Parse resource types
-    const resourceTypes = resourceTypesParam
-      ? resourceTypesParam.split(',')
-      : undefined;
-
-    // For async operations, create a job and return immediately
-    if (isAsync) {
-      const jobId = randomUUID();
-      const job: SyncJob = {
-        id: jobId,
-        connectionId,
-        patientId,
-        status: 'pending',
-        startedAt: new Date(),
-      };
-      ctx.syncJobs.set(jobId, job);
-
-      // Start sync in background
-      runSyncInBackground(ctx, job, tokenKey, resourceTypes, sourceSystem);
-
-      return c.json({
-        status: 'accepted',
-        job_id: jobId,
-        message: 'Sync started in background',
-        status_url: `/sync/status/${jobId}`,
-      }, 202);
-    }
-
-    // Synchronous sync
     try {
       const result = await ctx.gateway.pullPatientData(
         connectionId,
         patientId,
-        tokenKey,
+        credentialHandle,
         {
           resourceTypes,
           sourceSystem,
-        }
+        },
       );
 
       return c.json({
         status: 'success',
         patient_id: patientId,
         connection_id: connectionId,
+        source_system: sourceSystem,
         results: result,
         timestamp: new Date().toISOString(),
       });
@@ -137,8 +136,19 @@ export function createSyncRoutes(ctx: AppContext): Hono {
    *
    * Returns: SyncJob status
    */
-  app.get('/status/:jobId', (c) => {
-    const jobId = c.req.param('jobId');
+  app.get('/status/:jobId', async (c) => {
+    const authorization = await requireGatewayRouteAuthorizationV1(
+      ctx.gatewayRouteAuthorizer,
+      c.req.raw,
+      { action: 'sync_status', resourceTypes: [] },
+    );
+    if (!authorization.authorized) return authorization.response;
+
+    const requestedJobId = c.req.param('jobId');
+    const jobId = authorization.authorization.resolvedJobId!;
+    if (requestedJobId !== jobId) {
+      return c.json({ error: 'Job selector does not match authorized job' }, 403);
+    }
     const job = ctx.syncJobs.get(jobId);
 
     if (!job) {
@@ -172,11 +182,20 @@ export function createSyncRoutes(ctx: AppContext): Hono {
    *
    * Returns: Array of SyncJob summaries
    */
-  app.get('/jobs', (c) => {
+  app.get('/jobs', async (c) => {
+    const authorization = await requireGatewayRouteAuthorizationV1(
+      ctx.gatewayRouteAuthorizer,
+      c.req.raw,
+      { action: 'sync_job_list', resourceTypes: [], requireScopedResourceList: true },
+    );
+    if (!authorization.authorized) return authorization.response;
+
     const statusFilter = c.req.query('status');
     const limit = parseInt(c.req.query('limit') || '100', 10);
 
-    let jobs = Array.from(ctx.syncJobs.values());
+    const visibleJobIds = new Set(authorization.authorizedResourceIds ?? []);
+    let jobs = Array.from(ctx.syncJobs.values())
+      .filter((job) => visibleJobIds.has(job.id));
 
     // Filter by status
     if (statusFilter) {
@@ -186,11 +205,12 @@ export function createSyncRoutes(ctx: AppContext): Hono {
     // Sort by start time (newest first)
     jobs.sort((a, b) => b.startedAt.getTime() - a.startedAt.getTime());
 
-    // Apply limit
+    // Count only authorized jobs before pagination; never leak global totals.
+    const authorizedTotal = jobs.length;
     jobs = jobs.slice(0, limit);
 
     return c.json({
-      total: ctx.syncJobs.size,
+      total: authorizedTotal,
       returned: jobs.length,
       jobs: jobs.map(job => ({
         id: job.id,
@@ -212,8 +232,19 @@ export function createSyncRoutes(ctx: AppContext): Hono {
    *
    * Returns: Success message
    */
-  app.delete('/jobs/:jobId', (c) => {
-    const jobId = c.req.param('jobId');
+  app.delete('/jobs/:jobId', async (c) => {
+    const authorization = await requireGatewayRouteAuthorizationV1(
+      ctx.gatewayRouteAuthorizer,
+      c.req.raw,
+      { action: 'sync_job_delete', resourceTypes: [] },
+    );
+    if (!authorization.authorized) return authorization.response;
+
+    const requestedJobId = c.req.param('jobId');
+    const jobId = authorization.authorization.resolvedJobId!;
+    if (requestedJobId !== jobId) {
+      return c.json({ error: 'Job selector does not match authorized job' }, 403);
+    }
     const job = ctx.syncJobs.get(jobId);
 
     if (!job) {
@@ -256,48 +287,74 @@ export function createSyncRoutes(ctx: AppContext): Hono {
    * Returns: Combined sync results
    */
   app.post('/bidirectional/:patientId', async (c) => {
+    const authorization = await requireGatewayRouteAuthorizationV1(
+      ctx.gatewayRouteAuthorizer,
+      c.req.raw,
+      {
+        action: 'sync_bidirectional',
+        resourceTypes: [
+          'Patient', 'Observation', 'Condition', 'MedicationRequest',
+          'AllergyIntolerance', 'Immunization', 'Procedure',
+        ],
+      },
+    );
+    if (!authorization.authorized) return authorization.response;
+
     if (!ctx.gateway) {
       return c.json({
         error: 'Gateway not initialized',
       }, 503);
     }
 
-    const patientId = c.req.param('patientId');
-    const connectionId = c.req.query('connection');
-    const tokenKey = c.req.query('tokenKey');
-    const patientHash = c.req.query('patientHash');
+    const requestedPatientId = c.req.param('patientId');
+    const requestedConnectionId = c.req.query('connection');
+    const requestedPatientHash = c.req.query('patientHash');
+    const connectionId = authorization.authorization.sourceConnectionId;
+    const patientId = authorization.authorization.resolvedSourcePatientId!;
+    const patientHash = authorization.authorization.resolvedMycelixPatientHash!;
+    const credentialHandle = authorization.authorization.credentialHandle!;
+    const resourceTypes = authorization.authorization.requestedResourceTypes;
 
-    if (!connectionId || !tokenKey || !patientHash) {
-      return c.json({
-        error: 'Missing required parameters',
-        required: ['connection', 'tokenKey', 'patientHash'],
-      }, 400);
+    if (
+      requestedPatientId !== patientId
+      || requestedPatientHash !== patientHash
+      || (requestedConnectionId && requestedConnectionId !== connectionId)
+    ) {
+      return c.json({ error: 'Requested patient or connection does not match resolved authorization' }, 403);
     }
-
     if (!ctx.gateway.isConnected(connectionId)) {
-      return c.json({
-        error: 'Connection not found',
-        connection_id: connectionId,
-      }, 404);
+      return c.json({ error: 'Authorized source connection is unavailable' }, 503);
     }
+    const sourceSystem = ctx.gateway.getConnectionInfo(connectionId).system;
 
     try {
-      // Convert patientHash string to Uint8Array
-      const hashBytes = new Uint8Array(
-        Buffer.from(patientHash, 'base64')
-      );
+      let hashBytes: Uint8Array;
+      try {
+        hashBytes = decodeHashFromBase64(patientHash);
+      } catch {
+        return c.json({ error: 'Resolved patient hash is malformed' }, 403);
+      }
+      if (hashBytes.length !== 39) {
+        return c.json({ error: 'Resolved patient hash is malformed' }, 403);
+      }
 
       const result = await ctx.gateway.syncPatient(
         connectionId,
         patientId,
         hashBytes,
-        tokenKey
+        credentialHandle,
+        {
+          pull: { resourceTypes, sourceSystem },
+          push: { resourceTypes },
+          autoResolveConflicts: false,
+        },
       );
 
       return c.json({
         status: 'success',
         patient_id: patientId,
         connection_id: connectionId,
+        source_system: sourceSystem,
         pull_results: result.pullResults,
         push_results: result.pushResults,
         conflicts: result.conflicts,
@@ -319,20 +376,29 @@ export function createSyncRoutes(ctx: AppContext): Hono {
    *
    * Returns: Array of ConflictInfo
    */
-  app.get('/conflicts', (c) => {
+  app.get('/conflicts', async (c) => {
+    const authorization = await requireGatewayRouteAuthorizationV1(
+      ctx.gatewayRouteAuthorizer,
+      c.req.raw,
+      { action: 'sync_conflicts_read', resourceTypes: [], requireScopedResourceList: true },
+    );
+    if (!authorization.authorized) return authorization.response;
+
     if (!ctx.gateway) {
       return c.json({
         error: 'Gateway not initialized',
       }, 503);
     }
 
-    const conflicts = ctx.gateway.getPendingConflicts();
-    const stats = ctx.gateway.getConflictStats();
+    const visibleConflictKeys = new Set(authorization.authorizedResourceIds ?? []);
+    const conflicts = ctx.gateway.getPendingConflicts().filter((conflict) =>
+      visibleConflictKeys.has(JSON.stringify([conflict.resourceType, conflict.resourceId]))
+    );
 
     return c.json({
+      // Do not return unfiltered global conflict counts or statistics.
       pending_count: conflicts.length,
       conflicts,
-      statistics: stats,
     });
   });
 
@@ -351,21 +417,33 @@ export function createSyncRoutes(ctx: AppContext): Hono {
    * Returns: Resolution result
    */
   app.post('/conflicts/:conflictId/resolve', async (c) => {
+    const authorization = await requireGatewayRouteAuthorizationV1(
+      ctx.gatewayRouteAuthorizer,
+      c.req.raw,
+      { action: 'sync_conflict_resolve', resourceTypes: [] },
+    );
+    if (!authorization.authorized) return authorization.response;
+
     if (!ctx.gateway) {
       return c.json({
         error: 'Gateway not initialized',
       }, 503);
     }
 
-    const conflictId = c.req.param('conflictId');
+    const requestedConflictId = c.req.param('conflictId');
+    const conflictId = authorization.authorization.resolvedConflictId!;
+    if (requestedConflictId !== conflictId) {
+      return c.json({ error: 'Conflict selector does not match authorized conflict' }, 403);
+    }
     const body = await c.req.json();
 
-    const { strategy, resolved_by, manual_data } = body;
+    const { strategy, manual_data } = body;
+    const resolvedBy = authorization.authorization.principal.subject;
 
-    if (!strategy || !resolved_by) {
+    if (!strategy) {
       return c.json({
         error: 'Missing required fields',
-        required: ['strategy', 'resolved_by'],
+        required: ['strategy'],
       }, 400);
     }
 
@@ -384,13 +462,13 @@ export function createSyncRoutes(ctx: AppContext): Hono {
     }
 
     try {
-      await ctx.gateway.resolveConflict(conflictId, strategy, resolved_by, manual_data);
+      await ctx.gateway.resolveConflict(conflictId, strategy, resolvedBy, manual_data);
 
       return c.json({
         status: 'success',
         conflict_id: conflictId,
         strategy,
-        resolved_by,
+        resolved_by: resolvedBy,
       });
     } catch (error) {
       console.error('Conflict resolution failed:', error);
@@ -402,43 +480,4 @@ export function createSyncRoutes(ctx: AppContext): Hono {
   });
 
   return app;
-}
-
-/**
- * Run sync operation in background and update job status
- */
-async function runSyncInBackground(
-  ctx: AppContext,
-  job: SyncJob,
-  tokenKey: string,
-  resourceTypes?: string[],
-  sourceSystem?: string
-): Promise<void> {
-  // Update job status
-  job.status = 'running';
-  ctx.syncJobs.set(job.id, job);
-
-  try {
-    const result = await ctx.gateway!.pullPatientData(
-      job.connectionId,
-      job.patientId,
-      tokenKey,
-      {
-        resourceTypes,
-        sourceSystem,
-      }
-    );
-
-    // Update job with results
-    job.status = 'completed';
-    job.completedAt = new Date();
-    job.results = result;
-    ctx.syncJobs.set(job.id, job);
-  } catch (error) {
-    // Update job with error
-    job.status = 'failed';
-    job.completedAt = new Date();
-    job.error = (error as Error).message;
-    ctx.syncJobs.set(job.id, job);
-  }
 }

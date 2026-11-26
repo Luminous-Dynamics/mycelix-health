@@ -147,7 +147,8 @@ pub fn get_patient_fhir_mappings(input: GetPatientFhirMappingsInput) -> ExternRe
         }
     }
 
-    // Log access
+    // This endpoint intentionally returns every FHIR mapping category, so
+    // its all-category read authorization and audit scope must remain explicit.
     log_data_access(
         input.patient_hash,
         vec![DataCategory::All],
@@ -422,16 +423,47 @@ pub struct FhirBundleOutput {
     pub medications: Vec<Record>,
 }
 
+/// Categories represented by the FHIR bundle returned by this zome.
+/// Patient mappings are always included, so Demographics is always required.
+fn fhir_export_categories(
+    include_observations: bool,
+    include_conditions: bool,
+    include_medications: bool,
+) -> Vec<DataCategory> {
+    let mut categories = vec![DataCategory::Demographics];
+    if include_observations {
+        categories.push(DataCategory::LabResults);
+    }
+    if include_conditions {
+        categories.push(DataCategory::Diagnoses);
+    }
+    if include_medications {
+        categories.push(DataCategory::Medications);
+    }
+    categories
+}
+
 /// Export a patient's data as a FHIR bundle
 #[hdk_extern]
 pub fn export_patient_bundle(input: ExportPatientBundleInput) -> ExternResult<FhirBundleOutput> {
-    // Require authorization for full patient export
-    let auth = require_authorization(
-        input.patient_hash.clone(),
-        DataCategory::All,
-        Permission::Export,
-        input.is_emergency,
-    )?;
+    // Authorize each category actually returned. Do not widen a selective
+    // request to DataCategory::All. The Patient mapping below is always emitted,
+    // so its Demographics category is always included.
+    let categories = fhir_export_categories(
+        input.include_observations,
+        input.include_conditions,
+        input.include_medications,
+    );
+    let mut authorization_results = Vec::with_capacity(categories.len());
+    for category in &categories {
+        let auth = require_authorization(
+            input.patient_hash.clone(),
+            category.clone(),
+            Permission::Export,
+            input.is_emergency,
+        )?;
+        authorization_results.push((category.clone(), auth));
+    }
 
     // Get all FHIR mappings for this patient
     let links = get_links(
@@ -540,15 +572,18 @@ pub fn export_patient_bundle(input: ExportPatientBundleInput) -> ExternResult<Fh
         (),
     )?;
 
-    // Log access
-    log_data_access(
-        input.patient_hash,
-        vec![DataCategory::All],
-        Permission::Read,
-        auth.consent_hash,
-        auth.emergency_override,
-        input.emergency_reason,
-    )?;
+    // Record each released category against the exact authorization decision
+    // that approved it. Export must not be mislabeled as Read or widened to All.
+    for (category, auth) in authorization_results {
+        log_data_access(
+            input.patient_hash.clone(),
+            vec![category],
+            Permission::Export,
+            auth.consent_hash,
+            auth.emergency_override,
+            input.emergency_reason.clone(),
+        )?;
+    }
 
     Ok(FhirBundleOutput {
         bundle_record,
@@ -930,4 +965,41 @@ pub fn update_patient_mapping_sync_status(input: UpdateSyncStatusInput) -> Exter
     )?;
 
     Ok(updated_record)
+}
+#[cfg(test)]
+mod fhir_export_authorization_tests {
+    use super::*;
+
+    #[test]
+    fn patient_mapping_always_requires_demographics() {
+        assert_eq!(
+            fhir_export_categories(false, false, false),
+            vec![DataCategory::Demographics],
+        );
+    }
+
+    #[test]
+    fn selected_observations_conditions_and_medications_have_exact_categories() {
+        assert_eq!(
+            fhir_export_categories(true, false, false),
+            vec![DataCategory::Demographics, DataCategory::LabResults],
+        );
+        assert_eq!(
+            fhir_export_categories(false, true, false),
+            vec![DataCategory::Demographics, DataCategory::Diagnoses],
+        );
+        assert_eq!(
+            fhir_export_categories(false, false, true),
+            vec![DataCategory::Demographics, DataCategory::Medications],
+        );
+        assert_eq!(
+            fhir_export_categories(true, true, true),
+            vec![
+                DataCategory::Demographics,
+                DataCategory::LabResults,
+                DataCategory::Diagnoses,
+                DataCategory::Medications,
+            ],
+        );
+    }
 }

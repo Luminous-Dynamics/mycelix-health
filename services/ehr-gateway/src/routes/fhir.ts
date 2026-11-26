@@ -13,6 +13,7 @@ import { z } from 'zod';
 import type { AppContext } from '../server.js';
 import { FhirBundleSchema, type FhirBundle, type IngestReport } from '../types.js';
 import { PullService } from '../sync/pull-service.js';
+import { requireGatewayRouteAuthorizationV1 } from '../auth/gateway-route-guard.js';
 
 /**
  * Create FHIR routes
@@ -26,7 +27,7 @@ export function createFhirRoutes(ctx: AppContext): Hono {
    * Ingest a FHIR Bundle into Holochain.
    *
    * Headers:
-   *   X-Source-System: Source system identifier (e.g., "epic-mychart")
+   *   X-Source-System: ignored for provenance; source identity is resolved from the authenticated connection.
    *   Content-Type: application/fhir+json or application/json
    *
    * Body: FHIR R4 Bundle
@@ -34,16 +35,34 @@ export function createFhirRoutes(ctx: AppContext): Hono {
    * Returns: IngestReport
    */
   app.post('/Bundle', async (c) => {
-    // Check Holochain connection
-    if (!ctx.holochainClient) {
+    const authorization = await requireGatewayRouteAuthorizationV1(
+      ctx.gatewayRouteAuthorizer,
+      c.req.raw,
+      {
+        action: 'fhir_ingest',
+        resourceTypes: [
+          'Patient', 'Observation', 'Condition', 'MedicationRequest', 'MedicationStatement',
+          'AllergyIntolerance', 'Immunization', 'Procedure', 'DiagnosticReport', 'CarePlan',
+        ],
+      },
+    );
+    if (!authorization.authorized) return authorization.response;
+
+    // Resolve the EHR source from the verified request context. Never trust
+    // X-Source-System as provenance metadata.
+    if (!ctx.holochainClient || !ctx.gateway) {
       return c.json({
-        error: 'Holochain not connected',
-        message: 'The server is not connected to Holochain. Please try again later.',
+        error: 'Gateway unavailable',
+        message: 'A registered EHR connection and Holochain are required for verified ingestion.',
       }, 503);
     }
-
-    // Get source system from header
-    const sourceSystem = c.req.header('X-Source-System') || 'unknown';
+    const sourceConnectionId = authorization.authorization.sourceConnectionId;
+    if (!ctx.gateway.isConnected(sourceConnectionId)) {
+      return c.json({ error: 'Authorized source connection is unavailable' }, 503);
+    }
+    const sourceConnection = ctx.gateway.getConnectionInfo(sourceConnectionId);
+    const sourceSystem = sourceConnection.system;
+    const authorizedResourceTypes = new Set(authorization.authorization.requestedResourceTypes);
 
     // Parse and validate bundle
     let bundle: FhirBundle;
@@ -60,6 +79,98 @@ export function createFhirRoutes(ctx: AppContext): Hono {
 
       // Parse with Zod for validation
       bundle = FhirBundleSchema.parse(body);
+
+      // A Bundle authorization must cover every contained resource type and
+      // every declared Patient reference. Do not let a broad Bundle selector
+      // become permission for arbitrary patient resources.
+      const entries = Array.isArray(bundle.entry) ? bundle.entry : [];
+      const sourceOrigin = new URL(sourceConnection.baseUrl).origin;
+      const sourcePatientId = authorization.authorization.resolvedSourcePatientId!;
+      const patientFullUrlIds = new Map<string, string>();
+      const patientEntries = entries.filter((entry) => {
+        const resource = entry?.resource as { resourceType?: unknown } | undefined;
+        return resource?.resourceType === 'Patient';
+      });
+      if (patientEntries.length > 1) {
+        return c.json({ error: 'A patient-scoped Bundle cannot contain multiple Patient resources' }, 403);
+      }
+      for (const entry of patientEntries) {
+        const resource = entry.resource as { id?: unknown };
+        if (typeof resource.id !== 'string' || resource.id !== sourcePatientId) {
+          return c.json({ error: 'Bundle Patient does not match the authorized source patient' }, 403);
+        }
+        if (typeof entry.fullUrl === 'string') {
+          patientFullUrlIds.set(entry.fullUrl, resource.id);
+        }
+      }
+
+      const resolvePatientReference = (reference: string): string | null => {
+        if (reference.startsWith('urn:uuid:')) {
+          return patientFullUrlIds.get(reference) ?? null;
+        }
+        try {
+          const resolved = new URL(reference, sourceConnection.baseUrl);
+          if (resolved.origin !== sourceOrigin) return null;
+          const segments = resolved.pathname.split('/').filter(Boolean);
+          const patientIndex = segments.lastIndexOf('Patient');
+          if (patientIndex < 0 || !segments[patientIndex + 1]) return null;
+          return decodeURIComponent(segments[patientIndex + 1]!);
+        } catch {
+          return null;
+        }
+      };
+
+      for (const entry of entries) {
+        const resource = entry?.resource as {
+          resourceType?: unknown;
+          subject?: unknown;
+          patient?: unknown;
+
+        } | undefined;
+        if (!resource || typeof resource.resourceType !== 'string'
+          || !authorizedResourceTypes.has(resource.resourceType)) {
+          return c.json({ error: 'Bundle contains an unauthorized resource type' }, 403);
+        }
+
+        // A patient-scoped ingestion must bind every non-Patient resource to
+        // the exact authorized source patient. FHIR-valid resources can have
+        // optional subjects in broader workflows; here, missing identity is
+        // not permission to inherit the Bundle's Patient implicitly.
+        const patientReferenceFields = [resource.subject, resource.patient]
+          .filter((value) => value !== undefined);
+        if (resource.resourceType !== 'Patient' && patientReferenceFields.length === 0) {
+          return c.json({
+            error: 'Every patient-scoped Bundle resource must contain an explicit Patient reference',
+          }, 403);
+        }
+
+        for (const value of patientReferenceFields) {
+          if (value === null || typeof value !== 'object' || Array.isArray(value)) {
+            return c.json({ error: 'Bundle contains a malformed Patient reference' }, 403);
+          }
+          const field = value as { reference?: unknown; identifier?: unknown };
+          if (field.identifier !== undefined) {
+            // Without a trusted source-identifier resolver we cannot prove that
+            // an identifier agrees with the canonical reference. Reject both
+            // identifier-only and mixed forms rather than ignoring ambiguity.
+            return c.json({
+              error: 'Patient reference identifiers require a trusted source identifier resolver',
+            }, 403);
+          }
+          if (typeof field.reference !== 'string' || field.reference.trim().length === 0) {
+            return c.json({
+              error: 'Bundle contains a missing or malformed Patient reference',
+            }, 403);
+          }
+
+          const referencedPatientId = resolvePatientReference(field.reference);
+          if (referencedPatientId !== sourcePatientId) {
+            return c.json({
+              error: 'Bundle contains an unresolved, external-origin or mismatched Patient reference',
+            }, 403);
+          }
+        }
+      }
     } catch (error) {
       if (error instanceof z.ZodError) {
         return c.json({
@@ -113,15 +224,58 @@ export function createFhirRoutes(ctx: AppContext): Hono {
    * Returns: FHIR R4 Bundle
    */
   app.get('/Bundle/:patientHash', async (c) => {
+    const authorization = await requireGatewayRouteAuthorizationV1(
+      ctx.gatewayRouteAuthorizer,
+      c.req.raw,
+      {
+        action: 'fhir_export',
+        resourceTypes: ['Patient', 'Observation', 'Condition', 'MedicationRequest'],
+      },
+    );
+    if (!authorization.authorized) return authorization.response;
+
     if (!ctx.holochainClient) {
       return c.json({
         error: 'Holochain not connected',
       }, 503);
     }
 
-    const patientHash = c.req.param('patientHash');
+    const requestedPatientHash = c.req.param('patientHash');
+    const patientHash = authorization.authorization.resolvedMycelixPatientHash!;
+    if (requestedPatientHash !== patientHash) {
+      return c.json({ error: 'Requested patient does not match the authorized patient binding' }, 403);
+    }
+
+    // The fhir_bridge zome accepts FHIR resource type names, not gateway
+    // section aliases. Restrict to the three sections the zome actually exports;
+    // unknown aliases must not result in its fallback DataCategory::All behavior.
+    const sectionToResourceType: Record<string, string> = {
+      conditions: 'Condition',
+      medications: 'MedicationRequest',
+      observations: 'Observation',
+    };
+    const authorizedTypes = new Set(authorization.authorization.requestedResourceTypes);
     const sectionsParam = c.req.query('sections');
-    const includeSections = sectionsParam ? sectionsParam.split(',') : [];
+    const requestedSectionAliases = sectionsParam
+      ? sectionsParam.split(',').map((section) => section.trim()).filter(Boolean)
+      : Object.entries(sectionToResourceType)
+        .filter(([, resourceType]) => authorizedTypes.has(resourceType))
+        .map(([section]) => section);
+    if (
+      requestedSectionAliases.some((section) =>
+        !sectionToResourceType[section] || !authorizedTypes.has(sectionToResourceType[section]!)
+      )
+    ) {
+      // The current FHIR zome treats an empty include_sections list as DataCategory::All.
+      // Never allow an empty query/default grant to fall through to a blanket export.
+      return c.json({ error: 'At least one explicitly authorized FHIR section is required' }, 403);
+    }
+    // Patient is part of every FHIR export. With no additional authorized
+    // section, this is a legitimate demographics-only export, not DataCategory::All.
+    const includeSections = [
+      'Patient',
+      ...requestedSectionAliases.map((section) => sectionToResourceType[section]!),
+    ];
 
     try {
       const result = await ctx.holochainClient.callZome({
