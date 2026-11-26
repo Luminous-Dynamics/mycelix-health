@@ -353,6 +353,72 @@
         "synthetic-evidence:deny_missing_consent_subject"
       ],
       "policy_version": "public-oracle-fixture-v1"
+    },
+    {
+      "case_id": "deny_missing_provenance_binding",
+      "decision": "deny",
+      "reason_codes": [
+        "provenance_missing"
+      ],
+      "evidence_refs": [
+        "synthetic-evidence:deny_missing_provenance_binding"
+      ],
+      "policy_version": "public-oracle-fixture-v1"
+    },
+    {
+      "case_id": "deny_invalid_provenance_signature",
+      "decision": "deny",
+      "reason_codes": [
+        "provenance_signature_invalid"
+      ],
+      "evidence_refs": [
+        "synthetic-evidence:deny_invalid_provenance_signature"
+      ],
+      "policy_version": "public-oracle-fixture-v1"
+    },
+    {
+      "case_id": "deny_unresolved_source_conflict",
+      "decision": "deny",
+      "reason_codes": [
+        "conflict_unresolved"
+      ],
+      "evidence_refs": [
+        "synthetic-evidence:deny_unresolved_source_conflict"
+      ],
+      "policy_version": "public-oracle-fixture-v1"
+    },
+    {
+      "case_id": "deny_invalid_audit_chain",
+      "decision": "deny",
+      "reason_codes": [
+        "audit_chain_invalid"
+      ],
+      "evidence_refs": [
+        "synthetic-evidence:deny_invalid_audit_chain"
+      ],
+      "policy_version": "public-oracle-fixture-v1"
+    },
+    {
+      "case_id": "deny_unauthenticated_audit_actor",
+      "decision": "deny",
+      "reason_codes": [
+        "audit_actor_unbound"
+      ],
+      "evidence_refs": [
+        "synthetic-evidence:deny_unauthenticated_audit_actor"
+      ],
+      "policy_version": "public-oracle-fixture-v1"
+    },
+    {
+      "case_id": "defer_source_registry_unavailable",
+      "decision": "defer",
+      "reason_codes": [
+        "source_registry_unavailable"
+      ],
+      "evidence_refs": [
+        "synthetic-evidence:defer_source_registry_unavailable"
+      ],
+      "policy_version": "public-oracle-fixture-v1"
     }
   ]
 }
