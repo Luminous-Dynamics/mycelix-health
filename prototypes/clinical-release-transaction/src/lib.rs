@@ -70,8 +70,13 @@ pub enum AtomicCommitResult {
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum StoredExecution {
-    Completed { intent: AtomicReleaseIntent, release_receipt_id: String },
-    Pending { intent: AtomicReleaseIntent },
+    Completed {
+        intent: AtomicReleaseIntent,
+        release_receipt_id: String,
+    },
+    Pending {
+        intent: AtomicReleaseIntent,
+    },
     NotFound,
     Unavailable,
 }
@@ -163,7 +168,10 @@ where
         // A completed historical request is reconciled before checking receipt
         // expiry. This path never performs another side effect.
         match self.backend.lookup(&intent.idempotency_key) {
-            StoredExecution::Completed { intent: stored, release_receipt_id } => {
+            StoredExecution::Completed {
+                intent: stored,
+                release_receipt_id,
+            } => {
                 return if same_transaction_except_clock(&stored, &intent) {
                     ReleaseOutcome::AlreadyReleased { release_receipt_id }
                 } else {
@@ -215,7 +223,10 @@ where
             return ReleaseOutcome::Denied("receipt_signature_invalid");
         }
         match self.backend.lookup(&receipt.idempotency_key) {
-            StoredExecution::Completed { intent, release_receipt_id } => {
+            StoredExecution::Completed {
+                intent,
+                release_receipt_id,
+            } => {
                 let expected = AtomicReleaseIntent {
                     schema_version: receipt.schema_version,
                     receipt_id: receipt.receipt_id.clone(),
@@ -249,10 +260,7 @@ where
     }
 }
 
-fn same_transaction_except_clock(
-    left: &AtomicReleaseIntent,
-    right: &AtomicReleaseIntent,
-) -> bool {
+fn same_transaction_except_clock(left: &AtomicReleaseIntent, right: &AtomicReleaseIntent) -> bool {
     let mut normalized_left = left.clone();
     let mut normalized_right = right.clone();
     normalized_left.now_ms = 0;
@@ -350,15 +358,26 @@ impl InMemoryAtomicBackend {
     }
 
     pub fn side_effect_count(&self) -> usize {
-        self.state.lock().expect("reference backend mutex poisoned").side_effect_count
+        self.state
+            .lock()
+            .expect("reference backend mutex poisoned")
+            .side_effect_count
     }
 
     pub fn audit_records(&self) -> Vec<AuditRecord> {
-        self.state.lock().expect("reference backend mutex poisoned").audit.clone()
+        self.state
+            .lock()
+            .expect("reference backend mutex poisoned")
+            .audit
+            .clone()
     }
 
     pub fn consumed_nonce_count(&self) -> usize {
-        self.state.lock().expect("reference backend mutex poisoned").consumed_nonces.len()
+        self.state
+            .lock()
+            .expect("reference backend mutex poisoned")
+            .consumed_nonces
+            .len()
     }
 }
 
@@ -424,7 +443,9 @@ impl TransactionalReleaseBackend for InMemoryAtomicBackend {
                 status: IdempotencyStatus::Pending,
             },
         );
-        state.consumed_nonces.insert(intent.nonce.clone(), intent.idempotency_key.clone());
+        state
+            .consumed_nonces
+            .insert(intent.nonce.clone(), intent.idempotency_key.clone());
         state.audit.push(AuditRecord {
             event: "release_intent",
             receipt_id: intent.receipt_id.clone(),
@@ -490,12 +511,10 @@ impl TransactionalReleaseBackend for InMemoryAtomicBackend {
                 IdempotencyStatus::Pending => StoredExecution::Pending {
                     intent: record.intent.clone(),
                 },
-                IdempotencyStatus::Completed { release_receipt_id } => {
-                    StoredExecution::Completed {
-                        intent: record.intent.clone(),
-                        release_receipt_id: release_receipt_id.clone(),
-                    }
-                }
+                IdempotencyStatus::Completed { release_receipt_id } => StoredExecution::Completed {
+                    intent: record.intent.clone(),
+                    release_receipt_id: release_receipt_id.clone(),
+                },
             },
         }
     }
@@ -566,14 +585,17 @@ mod tests {
         }
     }
 
-    fn service(backend: Arc<InMemoryAtomicBackend>) -> ReleaseService<InMemoryAtomicBackend, TestVerifier> {
+    fn service(
+        backend: Arc<InMemoryAtomicBackend>,
+    ) -> ReleaseService<InMemoryAtomicBackend, TestVerifier> {
         ReleaseService::new(backend, Arc::new(TestVerifier { valid: true }))
     }
 
     #[test]
     fn valid_release_commits_once_with_audit_intent_and_outcome() {
         let backend = Arc::new(InMemoryAtomicBackend::new(current()));
-        let result = service(Arc::clone(&backend)).execute(&receipt(), &binding(), 1_795_000_010_000);
+        let result =
+            service(Arc::clone(&backend)).execute(&receipt(), &binding(), 1_795_000_010_000);
         assert!(matches!(result, ReleaseOutcome::Released { .. }));
         assert_eq!(backend.side_effect_count(), 1);
         assert_eq!(backend.consumed_nonce_count(), 1);
@@ -596,7 +618,10 @@ mod tests {
     #[test]
     fn invalid_signature_never_reaches_the_backend() {
         let backend = Arc::new(InMemoryAtomicBackend::new(current()));
-        let svc = ReleaseService::new(Arc::clone(&backend), Arc::new(TestVerifier { valid: false }));
+        let svc = ReleaseService::new(
+            Arc::clone(&backend),
+            Arc::new(TestVerifier { valid: false }),
+        );
         assert_eq!(
             svc.execute(&receipt(), &binding(), 1_795_000_010_000),
             ReleaseOutcome::Denied("receipt_signature_invalid")
@@ -821,9 +846,18 @@ mod tests {
             })
             .collect();
 
-        let outcomes: Vec<_> = handles.into_iter().map(|h| h.join().expect("worker succeeds")).collect();
-        let released = outcomes.iter().filter(|o| matches!(o, ReleaseOutcome::Released { .. })).count();
-        let already = outcomes.iter().filter(|o| matches!(o, ReleaseOutcome::AlreadyReleased { .. })).count();
+        let outcomes: Vec<_> = handles
+            .into_iter()
+            .map(|h| h.join().expect("worker succeeds"))
+            .collect();
+        let released = outcomes
+            .iter()
+            .filter(|o| matches!(o, ReleaseOutcome::Released { .. }))
+            .count();
+        let already = outcomes
+            .iter()
+            .filter(|o| matches!(o, ReleaseOutcome::AlreadyReleased { .. }))
+            .count();
         assert_eq!(released, 1);
         assert_eq!(already, 31);
         assert_eq!(backend.side_effect_count(), 1);
@@ -846,6 +880,8 @@ mod tests {
         let _ = service(Arc::clone(&backend)).execute(&receipt(), &binding(), 1_795_000_010_000);
         let audit = backend.audit_records();
         assert!(audit.iter().all(|entry| entry.resource_version == "7"));
-        assert!(audit.iter().all(|entry| entry.resource_digest == "sha256:resource-v7"));
+        assert!(audit
+            .iter()
+            .all(|entry| entry.resource_digest == "sha256:resource-v7"));
     }
 }
