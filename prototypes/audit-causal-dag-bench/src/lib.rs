@@ -761,7 +761,17 @@ mod tests {
             &[],
             Some(200),
         );
-        let q0 = event("b0", "agent-b", "agent-b", 0, None, "patient-1", "tenant-1", &[], Some(50));
+        let q0 = event(
+            "b0",
+            "agent-b",
+            "agent-b",
+            0,
+            None,
+            "patient-1",
+            "tenant-1",
+            &[],
+            Some(50),
+        );
         let q1 = event(
             "b1",
             "agent-b",
