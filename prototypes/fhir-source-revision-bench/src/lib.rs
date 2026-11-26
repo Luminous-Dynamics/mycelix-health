@@ -388,7 +388,8 @@ mod tests {
             "different_order_profile" => {
                 let current = revision("tenant-a", "issuer-a", Some("v1"), 1, Some(1));
                 let mut incoming = revision("tenant-a", "issuer-a", Some("v2"), 2, Some(2));
-                incoming.source_order.as_mut().unwrap().profile_id = "other-ehr-profile".to_string();
+                incoming.source_order.as_mut().unwrap().profile_id =
+                    "other-ehr-profile".to_string();
                 classify_revision(&incoming, std::slice::from_ref(&current), Some(&current))
             }
             "source_sequence_collision" => {
@@ -402,13 +403,8 @@ mod tests {
                 classify_revision(&incoming, std::slice::from_ref(&prior), None)
             }
             "invalid_version" => {
-                let incoming = revision(
-                    "tenant-a",
-                    "issuer-a",
-                    Some("version/with/slash"),
-                    1,
-                    None,
-                );
+                let incoming =
+                    revision("tenant-a", "issuer-a", Some("version/with/slash"), 1, None);
                 classify_revision(&incoming, &[], None)
             }
             "principal_missing" => {
@@ -731,7 +727,10 @@ mod tests {
                 "unknown disposition in fixture {}",
                 fields[0]
             );
-            assert!(!fields[3].trim().is_empty(), "fixture effect must not be empty");
+            assert!(
+                !fields[3].trim().is_empty(),
+                "fixture effect must not be empty"
+            );
 
             let actual = evaluate_fixture_case(fields[0]);
             if fields[2] == "InvalidInput" {
