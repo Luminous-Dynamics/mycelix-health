@@ -129,6 +129,20 @@ For a fair system comparison:
 
 Do not claim superiority from a higher pooled score if one system makes any unauthorized disclosures. Never compare this score to HealthAgentBench or EHRFlowBench as if they were the same benchmark.
 
+### Execution and consistency baselines
+
+The adjacent benchmarks measure a different layer of capability:
+
+- **PhysicianBench** uses 100 long-horizon EHR tasks, approximately 27 tool calls per task and 670 execution/reasoning/documentation checks. Stanford's October 2026 summary reports 46% best single-attempt task completion, falling to 28% when the same agent must complete all three attempts. It also reports cases where an agent described the correct order in its note but never placed the order in the EHR. [Stanford's PhysicianBench summary](https://hai.stanford.edu/news/measuring-what-medical-ai-can-actually-do)
+- **HealthAdminBench** uses 135 simulated administrative tasks and 1,698 verifiers; its best reported end-to-end completion was 36.3% in the Stanford summary. These are workflow outcomes, not authorization-integrity measurements. [Stanford's benchmark overview](https://hai.stanford.edu/news/measuring-what-medical-ai-can-actually-do)
+- **MedHELM** evaluates 121 clinical tasks across 22 subcategories and 35 current benchmark datasets. Its public leaderboard's leading mean win rate of 0.721 is a paired comparative win rate, not a 72.1% task-success or clinical-accuracy rate. [MedHELM leaderboard](https://leaderboard.medhelm.org/)
+
+These results motivate two separate evaluation layers:
+1. **Did the agent complete the clinical workflow and leave the correct state change in the EHR?** Use PhysicianBench/HealthAdminBench-style environment execution, multi-attempt consistency, task-state verification, cost and latency.
+2. **Was each access and side effect authorized, resource-version-bound, idempotent and independently auditable?** Use this authority benchmark plus the companion [Clinical Release Transaction Benchmark PR #344](https://github.com/Luminous-Dynamics/mycelix-health/pull/344).
+
+Do not collapse them into one score. A workflow completion with an unauthorized disclosure is a safety failure; an authorized system that never performs the requested operation is an execution/utility failure. Report both.
+
 ## Current scope and next engineering steps
 
 This increment supplies the corpus, candidate-output contract and scoring executable. It does not modify the Consent zome or prove that live Mycelix decisions satisfy the cases. The next production work remains:
