@@ -47,7 +47,7 @@ The nested crate has no external dependencies and does not join the production C
 
 ## Frozen v1 coverage
 
-The test suite covers first revision, exact replay, newer and late-arriving revisions, same-version/different-digest equivocation, canonicalization profile mismatch, missing version IDs, opaque version IDs, timestamp non-ordering, mismatched ordering profiles, source-sequence collision, tenant/source isolation and invalid identity.
+The test suite covers first revision, exact replay, newer and late-arriving revisions, a stale projection that lags behind accepted history, contradictory duplicate-version history in both input orders, malformed matching history, same-version/different-digest equivocation, canonicalization profile mismatch, missing version IDs, opaque version IDs, timestamp non-ordering, mismatched ordering profiles, source-sequence collision, tenant/source isolation and invalid identity.
 
 ## Next production integration
 
