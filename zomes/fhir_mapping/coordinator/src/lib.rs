@@ -966,3 +966,42 @@ pub fn update_patient_mapping_sync_status(input: UpdateSyncStatusInput) -> Exter
 
     Ok(updated_record)
 }
+
+
+#[cfg(test)]
+mod fhir_export_authorization_tests {
+    use super::*;
+
+    #[test]
+    fn patient_mapping_always_requires_demographics() {
+        assert_eq!(
+            fhir_export_categories(false, false, false),
+            vec![DataCategory::Demographics],
+        );
+    }
+
+    #[test]
+    fn selected_observations_conditions_and_medications_have_exact_categories() {
+        assert_eq!(
+            fhir_export_categories(true, false, false),
+            vec![DataCategory::Demographics, DataCategory::LabResults],
+        );
+        assert_eq!(
+            fhir_export_categories(false, true, false),
+            vec![DataCategory::Demographics, DataCategory::Diagnoses],
+        );
+        assert_eq!(
+            fhir_export_categories(false, false, true),
+            vec![DataCategory::Demographics, DataCategory::Medications],
+        );
+        assert_eq!(
+            fhir_export_categories(true, true, true),
+            vec![
+                DataCategory::Demographics,
+                DataCategory::LabResults,
+                DataCategory::Diagnoses,
+                DataCategory::Medications,
+            ],
+        );
+    }
+}
