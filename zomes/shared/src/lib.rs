@@ -362,42 +362,248 @@ pub mod chained_audit {
         },
     }
 
-    /// Compute SHA-256 hash of audit entry content for chaining.
-    /// Uses cryptographic hash for collision resistance (P0-6).
-    pub fn hash_entry(entry: &ChainedAuditEntry) -> [u8; 32] {
+    /// Compute a domain-separated SHA-256 digest of the complete typed audit event.
+    ///
+    /// The serialized event is the source of truth. Callers must not be allowed
+    /// to substitute a separately supplied digest for the payload being stored.
+    pub fn hash_event(event: &AuditEvent) -> Result<[u8; 32], serde_json::Error> {
         use sha2::{Digest, Sha256};
+
+        let payload = serde_json::to_vec(event)?;
         let mut hasher = Sha256::new();
+        hasher.update(b"mycelix-health-audit-event-v1\0");
+        hasher.update((payload.len() as u64).to_le_bytes());
+        hasher.update(payload);
+
+        let digest = hasher.finalize();
+        let mut hash = [0u8; 32];
+        hash.copy_from_slice(&digest);
+        Ok(hash)
+    }
+
+    /// Compute a domain-separated hash for the outer chain record.
+    ///
+    /// entry_hash must equal hash_event(&entry.event). The verifier checks
+    /// this equality before trusting the outer hash. The explicit option tag
+    /// prevents None (genesis) from colliding with an all-zero predecessor.
+    pub fn hash_entry(entry: &ChainedAuditEntry) -> Result<[u8; 32], serde_json::Error> {
+        use sha2::{Digest, Sha256};
+
+        let mut hasher = Sha256::new();
+        hasher.update(b"mycelix-health-audit-entry-v1\0");
         hasher.update(entry.sequence.to_le_bytes());
         hasher.update(entry.timestamp.to_le_bytes());
         hasher.update(entry.agent.get_raw_39());
+        // Bind the actual serialized payload directly as well as its declared
+        // digest so callers cannot obtain the same outer hash for a mismatched
+        // event / entry_hash pair.
+        let event_payload = serde_json::to_vec(&entry.event)?;
+        hasher.update((event_payload.len() as u64).to_le_bytes());
+        hasher.update(&event_payload);
         hasher.update(entry.entry_hash);
-        if let Some(prev) = &entry.previous_hash {
-            hasher.update(prev);
-        }
-        let result = hasher.finalize();
-        let mut hash = [0u8; 32];
-        hash.copy_from_slice(&result);
-        hash
-    }
 
-    /// Verify that a chain of audit entries is consistent
-    /// (each entry's previous_hash matches the actual hash of the prior entry).
-    pub fn verify_chain(entries: &[ChainedAuditEntry]) -> bool {
-        for i in 1..entries.len() {
-            let expected_prev = hash_entry(&entries[i - 1]);
-            match entries[i].previous_hash {
-                Some(prev) if prev == expected_prev => continue,
-                None if i == 0 => continue,
-                _ => return false,
+        match &entry.previous_hash {
+            Some(previous) => {
+                hasher.update([1u8]);
+                hasher.update(previous);
+            }
+            None => {
+                hasher.update([0u8]);
             }
         }
-        // Check sequence monotonicity
-        for i in 1..entries.len() {
-            if entries[i].sequence != entries[i - 1].sequence + 1 {
+
+        let digest = hasher.finalize();
+        let mut hash = [0u8; 32];
+        hash.copy_from_slice(&digest);
+        Ok(hash)
+    }
+
+    /// Verify a complete audit chain beginning at genesis.
+    ///
+    /// A chain is valid only when it is non-empty, genesis has sequence zero
+    /// and no predecessor, every stored event digest matches the serialized
+    /// event, sequence numbers are contiguous, and every predecessor link
+    /// equals the recomputed hash of the immediately preceding full entry.
+    ///
+    /// This verifies integrity, not authorship. The coordinator must bind the
+    /// stored actor to Holochain's authenticated action author.
+    pub fn verify_chain(entries: &[ChainedAuditEntry]) -> bool {
+        let Some(genesis) = entries.first() else {
+            return false;
+        };
+
+        if genesis.sequence != 0 || genesis.previous_hash.is_some() {
+            return false;
+        }
+
+        for (index, entry) in entries.iter().enumerate() {
+            let Ok(expected_event_hash) = hash_event(&entry.event) else {
+                return false;
+            };
+            if entry.entry_hash != expected_event_hash {
+                return false;
+            }
+
+            if index == 0 {
+                continue;
+            }
+
+            let previous = &entries[index - 1];
+            let Some(expected_sequence) = previous.sequence.checked_add(1) else {
+                return false;
+            };
+            if entry.sequence != expected_sequence {
+                return false;
+            }
+
+            let Ok(expected_previous_hash) = hash_entry(previous) else {
+                return false;
+            };
+            if entry.previous_hash != Some(expected_previous_hash) {
                 return false;
             }
         }
+
         true
+    }
+
+    /// Verify a complete chain against a separately trusted final-head digest.
+    ///
+    /// Without this external commitment, removing a valid suffix cannot be
+    /// distinguished from a shorter valid chain. The expected head must come
+    /// from an independently trusted receipt or checkpoint, not the chain
+    /// being verified.
+    pub fn verify_chain_with_expected_head(
+        entries: &[ChainedAuditEntry],
+        expected_head: [u8; 32],
+    ) -> bool {
+        if !verify_chain(entries) {
+            return false;
+        }
+
+        let Some(last) = entries.last() else {
+            return false;
+        };
+        matches!(hash_entry(last), Ok(actual_head) if actual_head == expected_head)
+    }
+
+    #[cfg(test)]
+    mod tests {
+        use super::*;
+
+        fn dummy_hash(byte: u8) -> ActionHash {
+            ActionHash::from_raw_36(vec![byte; 36])
+        }
+
+        fn dummy_agent(byte: u8) -> AgentPubKey {
+            AgentPubKey::from_raw_36(vec![byte; 36])
+        }
+
+        fn sample_event(consent_byte: u8) -> AuditEvent {
+            AuditEvent::DataRead {
+                patient: dummy_hash(1),
+                categories: vec![access_control::DataCategory::LabResults],
+                consent_hash: Some(dummy_hash(consent_byte)),
+            }
+        }
+
+        fn make_entry(
+            sequence: u64,
+            previous_hash: Option<[u8; 32]>,
+            event: AuditEvent,
+            timestamp: i64,
+            agent: AgentPubKey,
+        ) -> ChainedAuditEntry {
+            let entry_hash = hash_event(&event).expect("event serializes");
+            ChainedAuditEntry {
+                sequence,
+                previous_hash,
+                entry_hash,
+                event,
+                timestamp,
+                agent,
+            }
+        }
+
+        #[test]
+        fn event_payload_changes_event_digest() {
+            let original = sample_event(2);
+            let changed = sample_event(3);
+            assert_ne!(
+                hash_event(&original).expect("original event serializes"),
+                hash_event(&changed).expect("changed event serializes")
+            );
+
+            let entry = make_entry(0, None, original, 100, dummy_agent(7));
+            let original_outer = hash_entry(&entry).expect("original entry hashes");
+            let mut changed_entry = entry;
+            changed_entry.event = changed;
+            assert_ne!(
+                original_outer,
+                hash_entry(&changed_entry).expect("changed entry hashes")
+            );
+        }
+
+        #[test]
+        fn verifier_rejects_mutated_event_payload() {
+            let mut entry = make_entry(0, None, sample_event(2), 100, dummy_agent(7));
+            entry.event = sample_event(3);
+            assert!(!verify_chain(&[entry]));
+        }
+
+        #[test]
+        fn verifier_rejects_invalid_genesis_and_sequence_gaps() {
+            let bad_genesis = make_entry(0, Some([9u8; 32]), sample_event(2), 100, dummy_agent(7));
+            assert!(!verify_chain(&[bad_genesis]));
+
+            let genesis = make_entry(0, None, sample_event(2), 100, dummy_agent(7));
+            let gap = make_entry(
+                2,
+                Some(hash_entry(&genesis).expect("genesis hashes")),
+                sample_event(3),
+                200,
+                dummy_agent(8),
+            );
+            assert!(!verify_chain(&[genesis, gap]));
+            assert!(!verify_chain(&[]));
+        }
+
+        #[test]
+        fn trusted_head_detects_suffix_truncation_and_tail_metadata_tampering() {
+            let genesis = make_entry(0, None, sample_event(2), 100, dummy_agent(7));
+            let genesis_hash = hash_entry(&genesis).expect("genesis hashes");
+            let second = make_entry(1, Some(genesis_hash), sample_event(3), 200, dummy_agent(8));
+            let trusted_head = hash_entry(&second).expect("tail hashes");
+
+            assert!(verify_chain(&[genesis.clone(), second.clone()]));
+            assert!(verify_chain_with_expected_head(
+                &[genesis.clone(), second.clone()],
+                trusted_head
+            ));
+            assert!(!verify_chain_with_expected_head(
+                &[genesis.clone()],
+                trusted_head
+            ));
+
+            let mut tampered_tail = second;
+            tampered_tail.timestamp += 1;
+            assert!(verify_chain(&[genesis.clone(), tampered_tail.clone()]));
+            assert!(!verify_chain_with_expected_head(
+                &[genesis, tampered_tail],
+                trusted_head
+            ));
+        }
+
+        #[test]
+        fn previous_hash_binds_the_prior_event_and_metadata() {
+            let genesis = make_entry(0, None, sample_event(2), 100, dummy_agent(7));
+            let genesis_hash = hash_entry(&genesis).expect("genesis hashes");
+            let second = make_entry(1, Some(genesis_hash), sample_event(3), 200, dummy_agent(8));
+
+            let mut tampered_genesis = genesis;
+            tampered_genesis.timestamp += 1;
+            assert!(!verify_chain(&[tampered_genesis, second]));
+        }
     }
 }
 
