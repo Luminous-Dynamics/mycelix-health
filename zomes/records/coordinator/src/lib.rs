@@ -706,7 +706,7 @@ pub fn create_procedure(input: CreateProcedureInput) -> ExternResult<Record> {
         DataCategory::Procedures,
         Permission::Write,
         input.is_emergency,
-        Some(input.procedure.performed_at.clone()),
+        Some(input.procedure.performed_at),
         Some(input.procedure.encounter_hash.clone()),
     )?;
 
@@ -763,7 +763,7 @@ pub fn create_lab_result(input: CreateLabResultInput) -> ExternResult<Record> {
         DataCategory::LabResults,
         Permission::Write,
         input.is_emergency,
-        Some(input.lab_result.collection_time.clone()),
+        Some(input.lab_result.collection_time),
         input.lab_result.encounter_hash.clone(),
     )?;
 
@@ -1427,7 +1427,7 @@ pub fn acknowledge_critical_result(input: AcknowledgeInput) -> ExternResult<Reco
         DataCategory::LabResults,
         Permission::Write,
         input.is_emergency,
-        Some(lab_result.collection_time.clone()),
+        Some(lab_result.collection_time),
         lab_result.encounter_hash.clone(),
     )?;
 
