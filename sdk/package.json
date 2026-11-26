@@ -39,7 +39,8 @@
   "author": "Luminous Dynamics",
   "license": "AGPL-3.0-or-later",
   "dependencies": {
-    "@holochain/client": "0.20.0"
+    "@holochain/client": "0.20.0",
+    "libsodium-wrappers": "0.7.13"
   },
   "devDependencies": {
     "@types/node": "^20.19.30",
@@ -58,8 +59,5 @@
     "type": "git",
     "url": "https://github.com/Luminous-Dynamics/mycelix-health.git",
     "directory": "sdk"
-  },
-  "overrides": {
-    "libsodium-wrappers": "0.7.13"
   }
 }
