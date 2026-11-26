@@ -25,6 +25,7 @@ use records_integrity::*;
 
 const ENCRYPTED_RECORD_ENVELOPE_VERSION_V1: u8 = 1;
 const ENCRYPTED_RECORD_ENVELOPE_VERSION_V2: u8 = 2;
+const ENCRYPTED_RECORD_ENVELOPE_VERSION: u8 = ENCRYPTED_RECORD_ENVELOPE_VERSION_V2;
 
 fn encrypted_record_aad(record: &EncryptedRecord) -> ExternResult<Vec<u8>> {
     let encoded = match record.envelope_version {
@@ -947,6 +948,8 @@ pub fn create_encrypted_lab_result(input: CreateEncryptedLabResultInput) -> Exte
         data_category: "LabResults".to_string(),
         entry_type: "LabResult".to_string(),
         encrypted_at: now.as_micros() as i64,
+        clinical_event_time: Some(input.lab_result.collection_time),
+        encounter_hash: input.lab_result.encounter_hash.clone(),
     };
     let aad = encrypted_record_aad(&encrypted)?;
     let (ciphertext, nonce) =
@@ -1096,6 +1099,13 @@ pub struct StoreEncryptedRecordInput {
     pub data_category: String,
     pub entry_type: String,
     pub encrypted_at: i64,
+    /// V2 event time asserted by the encrypting writer and authenticated as AAD.
+    /// It is compared against the decrypted typed payload before plaintext release.
+    #[serde(default)]
+    pub clinical_event_time: Option<Timestamp>,
+    /// V2 encounter binding, authenticated as AAD and compared to typed payload.
+    #[serde(default)]
+    pub encounter_hash: Option<ActionHash>,
     pub is_emergency: bool,
     pub emergency_reason: Option<String>,
 }
@@ -1106,10 +1116,28 @@ pub struct StoreEncryptedRecordInput {
 /// client must use `EncryptedRecordAad` as XChaCha20-Poly1305 associated data.
 #[hdk_extern]
 pub fn store_encrypted_record(input: StoreEncryptedRecordInput) -> ExternResult<Record> {
-    if input.envelope_version != ENCRYPTED_RECORD_ENVELOPE_VERSION {
-        return Err(wasm_error!(WasmErrorInner::Guest(
-            "Unsupported encrypted record envelope version".to_string()
-        )));
+    match input.envelope_version {
+        ENCRYPTED_RECORD_ENVELOPE_VERSION_V1
+            if input.clinical_event_time.is_none() && input.encounter_hash.is_none() => {}
+        ENCRYPTED_RECORD_ENVELOPE_VERSION_V2
+            if input.clinical_event_time.is_some()
+                && encrypted_v2_route_is_supported(&input.entry_type, &input.data_category)
+                && (input.entry_type != "ProcedurePerformed" || input.encounter_hash.is_some()) => {}
+        ENCRYPTED_RECORD_ENVELOPE_VERSION_V1 => {
+            return Err(wasm_error!(WasmErrorInner::Guest(
+                "V1 envelopes cannot carry unbound clinical context".to_string()
+            )));
+        }
+        ENCRYPTED_RECORD_ENVELOPE_VERSION_V2 => {
+            return Err(wasm_error!(WasmErrorInner::Guest(
+                "V2 requires an event time and a supported typed clinical route".to_string()
+            )));
+        }
+        _ => {
+            return Err(wasm_error!(WasmErrorInner::Guest(
+                "Unsupported encrypted record envelope version".to_string()
+            )));
+        }
     }
     if input.ciphertext.len() < 16 {
         return Err(wasm_error!(WasmErrorInner::Guest(
@@ -1141,12 +1169,27 @@ pub fn store_encrypted_record(input: StoreEncryptedRecordInput) -> ExternResult<
         ))));
     }
 
-    let auth = require_authorization(
-        input.patient_hash.clone(),
-        category.clone(),
-        Permission::Write,
-        input.is_emergency,
-    )?;
+    let auth = match input.envelope_version {
+        ENCRYPTED_RECORD_ENVELOPE_VERSION_V1 => require_authorization(
+            input.patient_hash.clone(),
+            category.clone(),
+            Permission::Write,
+            input.is_emergency,
+        )?,
+        ENCRYPTED_RECORD_ENVELOPE_VERSION_V2 => require_authorization_for_resource(
+            input.patient_hash.clone(),
+            category.clone(),
+            Permission::Write,
+            input.is_emergency,
+            input.clinical_event_time,
+            input.encounter_hash.clone(),
+        )?,
+        _ => {
+            return Err(wasm_error!(WasmErrorInner::Guest(
+                "Unsupported encrypted record envelope version".to_string()
+            )));
+        }
+    };
 
     let encrypted = EncryptedRecord {
         envelope_version: input.envelope_version,
@@ -1157,6 +1200,8 @@ pub fn store_encrypted_record(input: StoreEncryptedRecordInput) -> ExternResult<
         data_category: input.data_category,
         entry_type: input.entry_type,
         encrypted_at: input.encrypted_at,
+        clinical_event_time: input.clinical_event_time,
+        encounter_hash: input.encounter_hash,
     };
 
     let record_hash = create_entry(&EntryTypes::EncryptedRecord(encrypted))?;
@@ -1249,7 +1294,9 @@ pub fn create_encrypted_record(input: CreateEncryptedRecordInput) -> ExternResul
 
     let now = sys_time()?;
     let mut encrypted = EncryptedRecord {
-        envelope_version: ENCRYPTED_RECORD_ENVELOPE_VERSION,
+        // This migration-only generic plaintext path has no typed event-time
+        // extractor. Preserve it as v1 so it cannot manufacture v2 scope context.
+        envelope_version: ENCRYPTED_RECORD_ENVELOPE_VERSION_V1,
         patient_hash: input.patient_hash.clone(),
         key_fingerprint: input.key_fingerprint,
         ciphertext: Vec::new(),
@@ -1257,6 +1304,8 @@ pub fn create_encrypted_record(input: CreateEncryptedRecordInput) -> ExternResul
         data_category: input.data_category,
         entry_type: input.entry_type,
         encrypted_at: now.as_micros() as i64,
+        clinical_event_time: None,
+        encounter_hash: None,
     };
     let aad = encrypted_record_aad(&encrypted)?;
     let (ciphertext, nonce) =
