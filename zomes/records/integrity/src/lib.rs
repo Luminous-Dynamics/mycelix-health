@@ -271,8 +271,8 @@ pub enum EntryTypes {
 #[hdk_entry_helper]
 #[derive(Clone, PartialEq)]
 pub struct EncryptedRecord {
-    /// Envelope format version. Version 1 authenticates all cleartext metadata
-    /// as XChaCha20-Poly1305 associated data.
+    /// Envelope format version. Version 1 authenticates the legacy routing metadata;
+    /// version 2 also authenticates clinical event time and encounter identity.
     pub envelope_version: u8,
     /// Patient this record belongs to.
     pub patient_hash: ActionHash,
@@ -288,11 +288,18 @@ pub struct EncryptedRecord {
     pub entry_type: String,
     /// Encrypted at (microseconds since UNIX epoch).
     pub encrypted_at: i64,
+    /// Clinical event time, distinct from local ingestion/encryption time.
+    /// Absent on legacy v1 records; never inferred from encrypted_at.
+    #[serde(default)]
+    pub clinical_event_time: Option<Timestamp>,
+    /// Exact encounter containing the resource, where one exists.
+    /// Absent on legacy v1 records and records without a resolvable encounter.
+    #[serde(default)]
+    pub encounter_hash: Option<ActionHash>,
 }
 
-/// Canonical cleartext metadata authenticated by an encrypted-record envelope.
-/// Clients must serialize this value with the same Holochain serialization used
-/// by `ExternIO::encode` and pass the resulting bytes as AEAD associated data.
+/// Canonical v1 AAD. Keep this wire shape unchanged so previously stored v1
+/// ciphertext continues to authenticate with the exact bytes used originally.
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 pub struct EncryptedRecordAad {
     pub envelope_version: u8,
@@ -303,7 +310,22 @@ pub struct EncryptedRecordAad {
     pub encrypted_at: i64,
 }
 
+/// Canonical v2 AAD. Clinical event time and encounter are authenticated by
+/// XChaCha20-Poly1305 and cannot be changed without invalidating the tag.
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+pub struct EncryptedRecordAadV2 {
+    pub envelope_version: u8,
+    pub patient_hash: ActionHash,
+    pub key_fingerprint: [u8; 8],
+    pub data_category: String,
+    pub entry_type: String,
+    pub encrypted_at: i64,
+    pub clinical_event_time: Timestamp,
+    pub encounter_hash: Option<ActionHash>,
+}
+
 impl EncryptedRecord {
+    /// Legacy v1 AAD. Deliberately excludes v2 fields to preserve old ciphertext.
     pub fn aad(&self) -> EncryptedRecordAad {
         EncryptedRecordAad {
             envelope_version: self.envelope_version,
@@ -313,6 +335,19 @@ impl EncryptedRecord {
             entry_type: self.entry_type.clone(),
             encrypted_at: self.encrypted_at,
         }
+    }
+
+    pub fn aad_v2(&self) -> Option<EncryptedRecordAadV2> {
+        Some(EncryptedRecordAadV2 {
+            envelope_version: self.envelope_version,
+            patient_hash: self.patient_hash.clone(),
+            key_fingerprint: self.key_fingerprint,
+            data_category: self.data_category.clone(),
+            entry_type: self.entry_type.clone(),
+            encrypted_at: self.encrypted_at,
+            clinical_event_time: self.clinical_event_time.clone()?,
+            encounter_hash: self.encounter_hash.clone(),
+        })
     }
 }
 
@@ -527,10 +562,24 @@ fn validate_vitals(vitals: &VitalSigns) -> ExternResult<ValidateCallbackResult> 
 }
 
 fn validate_encrypted_record(record: &EncryptedRecord) -> ExternResult<ValidateCallbackResult> {
-    if record.envelope_version != 1 {
-        return Ok(ValidateCallbackResult::Invalid(
-            "Unsupported encrypted record envelope version".to_string(),
-        ));
+    match record.envelope_version {
+        1 if record.clinical_event_time.is_none() && record.encounter_hash.is_none() => {}
+        1 => {
+            return Ok(ValidateCallbackResult::Invalid(
+                "Legacy v1 envelopes cannot carry unauthenticated clinical context".to_string(),
+            ));
+        }
+        2 if record.clinical_event_time.is_some() => {}
+        2 => {
+            return Ok(ValidateCallbackResult::Invalid(
+                "V2 encrypted envelopes require a clinical event time".to_string(),
+            ));
+        }
+        _ => {
+            return Ok(ValidateCallbackResult::Invalid(
+                "Unsupported encrypted record envelope version".to_string(),
+            ));
+        }
     }
     if record.ciphertext.len() < 16 {
         return Ok(ValidateCallbackResult::Invalid(
