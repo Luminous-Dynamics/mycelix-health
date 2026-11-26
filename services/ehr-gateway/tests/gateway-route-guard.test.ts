@@ -156,7 +156,38 @@ describe('authorizeGatewayRouteV1', () => {
     expect(result).toEqual({ authorized: false, reason: 'invalid_context' });
   });
 
-  it('rejects a resource type that exceeds the route intent and a FHIR export without Patient scope', async () => {
+  it('rejects a resource type that exceeds the route intent', async () => {
+    const provider: GatewayRouteAuthorizationProviderV1 = {
+      authorize: vi.fn(async () => ({
+        authorized: true as const,
+        grantId: 'grant-1',
+        requestId: 'request-1',
+        principal: {
+          issuer: 'https://issuer.example.test',
+          subject: 'subject-1',
+          clientId: 'client-1',
+          organizationId: 'org-1',
+        },
+        tenantId: 'tenant-1',
+        patientBinding: 'opaque-subject-1',
+        sourceConnectionId: 'connection-1',
+        purpose: 'treatment',
+        recipientId: 'mycelix-health',
+        requestedResourceTypes: ['Observation'],
+        action: 'fhir_export' as const,
+        expiresAtMs: 200_000,
+        resolvedMycelixPatientHash: 'patient-1',
+      })),
+    };
+    const result = await authorizeGatewayRouteV1(
+      provider,
+      new Request('https://gateway.example.test/fhir/Bundle/patient-1'),
+      { action: 'fhir_export', resourceTypes: ['Patient'] },
+    );
+    expect(result).toEqual({ authorized: false, reason: 'resource_type_not_permitted' });
+  });
+
+  it('rejects a FHIR export grant without Patient scope', async () => {
     const provider: GatewayRouteAuthorizationProviderV1 = {
       authorize: vi.fn(async () => ({
         authorized: true as const,
