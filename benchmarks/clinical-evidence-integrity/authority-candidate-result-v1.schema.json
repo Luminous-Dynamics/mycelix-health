@@ -36,7 +36,8 @@
           "decision": {
             "enum": [
               "allow",
-              "deny"
+              "deny",
+              "defer"
             ]
           },
           "reason_codes": {
@@ -66,22 +67,6 @@
             "if": {
               "properties": {
                 "decision": {
-                  "const": "deny"
-                }
-              }
-            },
-            "then": {
-              "properties": {
-                "reason_codes": {
-                  "minItems": 1
-                }
-              }
-            }
-          },
-          {
-            "if": {
-              "properties": {
-                "decision": {
                   "const": "allow"
                 }
               }
@@ -92,6 +77,25 @@
                   "contains": {
                     "const": "authorized"
                   }
+                }
+              }
+            }
+          },
+          {
+            "if": {
+              "properties": {
+                "decision": {
+                  "enum": [
+                    "deny",
+                    "defer"
+                  ]
+                }
+              }
+            },
+            "then": {
+              "properties": {
+                "reason_codes": {
+                  "minItems": 1
                 }
               }
             }
