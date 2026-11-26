@@ -76,7 +76,7 @@ describe('EHR Gateway Server', () => {
           requestedResourceTypes: [...(intent.resourceTypes ?? [])],
           action: intent.action,
           expiresAtMs: Date.now() + 60_000,
-          resolvedSourcePatientId: 'patient-123',
+          resolvedSourcePatientId: '123',
           resolvedMycelixPatientHash: 'patient-123',
           credentialHandle: 'test-credential-handle',
           resolvedJobId: 'unguessable-job-id',
@@ -186,6 +186,7 @@ describe('EHR Gateway Server', () => {
         parse_errors: [],
       };
 
+      mockGateway.isConnected.mockReturnValueOnce(true);
       mockHolochainClient.callZome.mockResolvedValueOnce(mockReport);
 
       const bundle: FhirBundle = {
@@ -207,7 +208,7 @@ describe('EHR Gateway Server', () => {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'X-Source-System': 'test-ehr',
+          'X-Source-System': 'attacker-controlled-source',
         },
         body: JSON.stringify(bundle),
       });
@@ -216,11 +217,12 @@ describe('EHR Gateway Server', () => {
 
       expect(res.status).toBe(200);
       expect(body.status).toBe('success');
-      expect(body.source_system).toBe('test-ehr');
+      expect(body.source_system).toBe('epic');
       expect(body.report).toBeDefined();
     });
 
     it('POST /fhir/Bundle rejects invalid bundle', async () => {
+      mockGateway.isConnected.mockReturnValueOnce(true);
       const res = await app.request('/fhir/Bundle', {
         method: 'POST',
         headers: {
@@ -288,27 +290,42 @@ describe('EHR Gateway Server', () => {
   });
 
   describe('Sync Endpoints', () => {
-    it('POST /sync/patient/:id requires connection parameter', async () => {
-      const res = await app.request('/sync/patient/123', {
-        method: 'POST',
-      });
+    it('POST /sync/patient/:id uses the resolved connection without trusting a query selector', async () => {
+      mockGateway.isConnected.mockReturnValueOnce(true);
+      mockGateway.pullPatientData.mockResolvedValueOnce([]);
+
+      const res = await app.request('/sync/patient/123', { method: 'POST' });
       const body = await res.json();
 
-      expect(res.status).toBe(400);
-      expect(body.error).toBe('Missing connection parameter');
+      expect(res.status).toBe(200);
+      expect(body.patient_id).toBe('123');
+      expect(body.connection_id).toBe('test-connection');
+      expect(mockGateway.pullPatientData).toHaveBeenCalledWith(
+        'test-connection',
+        '123',
+        'test-credential-handle',
+        expect.objectContaining({ sourceSystem: 'epic' }),
+      );
     });
 
-    it('POST /sync/patient/:id returns 404 for unknown connection', async () => {
-      mockGateway.isConnected.mockReturnValueOnce(false);
-
+    it('POST /sync/patient/:id rejects a caller connection selector that differs from the verified binding', async () => {
       const res = await app.request(
-        '/sync/patient/123?connection=unknown&tokenKey=token1',
+        '/sync/patient/123?connection=unknown&tokenKey=attacker-token',
         { method: 'POST' }
       );
       const body = await res.json();
 
-      expect(res.status).toBe(404);
-      expect(body.error).toBe('Connection not found');
+      expect(res.status).toBe(403);
+      expect(body.error).toContain('does not match resolved authorization');
+      expect(mockGateway.pullPatientData).not.toHaveBeenCalled();
+    });
+
+    it('POST /sync/patient/:id rejects a patient selector that differs from the verified binding', async () => {
+      const res = await app.request('/sync/patient/other-patient?connection=test-connection', {
+        method: 'POST',
+      });
+      expect(res.status).toBe(403);
+      expect(mockGateway.pullPatientData).not.toHaveBeenCalled();
     });
 
     it('POST /sync/patient/:id denies async execution until worker-time authorization exists', async () => {
