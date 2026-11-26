@@ -123,6 +123,9 @@ export async function authorizeGatewayRouteV1(
     // trusted provider, never the caller's raw path/query/header selectors.
     switch (intent.action) {
       case 'fhir_ingest':
+        if (typeof result.resolvedSourcePatientId !== 'string' || result.resolvedSourcePatientId.length === 0) {
+          return failure('invalid_context');
+        }
         break;
       case 'fhir_export':
         if (typeof result.resolvedMycelixPatientHash !== 'string' || result.resolvedMycelixPatientHash.length === 0) {
