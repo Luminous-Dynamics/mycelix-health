@@ -153,10 +153,12 @@
           "provenance_target_reference": "Observation/observation-1/_history/7",
           "provenance_agent_reference": "Organization/org-lab-1",
           "provenance_signature_who": "Organization/org-lab-1",
-          "provenance_signature_type": "Source",
           "provenance_signed_content_digest_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
           "provenance_signing_key_id": "source-key-org-lab-1-2026-v1",
-          "provenance_verification_status": "verified"
+          "provenance_verification_status": "verified",
+          "provenance_signature_type_system": "urn:iso-astm:E1762-95:2013",
+          "provenance_signature_type_code": "1.2.840.10065.1.12.1.14",
+          "provenance_signature_type_display": "Source Signature"
         },
         "conflict": {
           "reconciled": true
@@ -251,10 +253,12 @@
           "provenance_target_reference": "Observation/observation-1/_history/7",
           "provenance_agent_reference": "Organization/org-lab-1",
           "provenance_signature_who": "Organization/org-lab-1",
-          "provenance_signature_type": "Source",
           "provenance_signed_content_digest_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
           "provenance_signing_key_id": "source-key-org-lab-1-2026-v1",
-          "provenance_verification_status": "verified"
+          "provenance_verification_status": "verified",
+          "provenance_signature_type_system": "urn:iso-astm:E1762-95:2013",
+          "provenance_signature_type_code": "1.2.840.10065.1.12.1.14",
+          "provenance_signature_type_display": "Source Signature"
         },
         "conflict": {
           "reconciled": true
@@ -349,10 +353,12 @@
           "provenance_target_reference": "Observation/observation-1/_history/7",
           "provenance_agent_reference": "Organization/org-lab-1",
           "provenance_signature_who": "Organization/org-lab-1",
-          "provenance_signature_type": "Source",
           "provenance_signed_content_digest_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
           "provenance_signing_key_id": "source-key-org-lab-1-2026-v1",
-          "provenance_verification_status": "verified"
+          "provenance_verification_status": "verified",
+          "provenance_signature_type_system": "urn:iso-astm:E1762-95:2013",
+          "provenance_signature_type_code": "1.2.840.10065.1.12.1.14",
+          "provenance_signature_type_display": "Source Signature"
         },
         "conflict": {
           "reconciled": true
@@ -448,10 +454,12 @@
           "provenance_target_reference": "Observation/observation-1/_history/7",
           "provenance_agent_reference": "Organization/org-lab-1",
           "provenance_signature_who": "Organization/org-lab-1",
-          "provenance_signature_type": "Source",
           "provenance_signed_content_digest_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
           "provenance_signing_key_id": "source-key-org-lab-1-2026-v1",
-          "provenance_verification_status": "verified"
+          "provenance_verification_status": "verified",
+          "provenance_signature_type_system": "urn:iso-astm:E1762-95:2013",
+          "provenance_signature_type_code": "1.2.840.10065.1.12.1.14",
+          "provenance_signature_type_display": "Source Signature"
         },
         "conflict": {
           "reconciled": true
@@ -547,10 +555,12 @@
           "provenance_target_reference": "Observation/observation-1/_history/7",
           "provenance_agent_reference": "Organization/org-lab-1",
           "provenance_signature_who": "Organization/org-lab-1",
-          "provenance_signature_type": "Source",
           "provenance_signed_content_digest_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
           "provenance_signing_key_id": "source-key-org-lab-1-2026-v1",
-          "provenance_verification_status": "verified"
+          "provenance_verification_status": "verified",
+          "provenance_signature_type_system": "urn:iso-astm:E1762-95:2013",
+          "provenance_signature_type_code": "1.2.840.10065.1.12.1.14",
+          "provenance_signature_type_display": "Source Signature"
         },
         "conflict": {
           "reconciled": true
@@ -646,10 +656,12 @@
           "provenance_target_reference": "Observation/observation-1/_history/7",
           "provenance_agent_reference": "Organization/org-lab-1",
           "provenance_signature_who": "Organization/org-lab-1",
-          "provenance_signature_type": "Source",
           "provenance_signed_content_digest_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
           "provenance_signing_key_id": "source-key-org-lab-1-2026-v1",
-          "provenance_verification_status": "verified"
+          "provenance_verification_status": "verified",
+          "provenance_signature_type_system": "urn:iso-astm:E1762-95:2013",
+          "provenance_signature_type_code": "1.2.840.10065.1.12.1.14",
+          "provenance_signature_type_display": "Source Signature"
         },
         "conflict": {
           "reconciled": true
@@ -745,10 +757,12 @@
           "provenance_target_reference": "Observation/observation-1/_history/7",
           "provenance_agent_reference": "Organization/org-lab-1",
           "provenance_signature_who": "Organization/org-lab-1",
-          "provenance_signature_type": "Source",
           "provenance_signed_content_digest_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
           "provenance_signing_key_id": "source-key-org-lab-1-2026-v1",
-          "provenance_verification_status": "verified"
+          "provenance_verification_status": "verified",
+          "provenance_signature_type_system": "urn:iso-astm:E1762-95:2013",
+          "provenance_signature_type_code": "1.2.840.10065.1.12.1.14",
+          "provenance_signature_type_display": "Source Signature"
         },
         "conflict": {
           "reconciled": true
@@ -844,10 +858,12 @@
           "provenance_target_reference": "Observation/observation-1/_history/7",
           "provenance_agent_reference": "Organization/org-lab-1",
           "provenance_signature_who": "Organization/org-lab-1",
-          "provenance_signature_type": "Source",
           "provenance_signed_content_digest_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
           "provenance_signing_key_id": "source-key-org-lab-1-2026-v1",
-          "provenance_verification_status": "verified"
+          "provenance_verification_status": "verified",
+          "provenance_signature_type_system": "urn:iso-astm:E1762-95:2013",
+          "provenance_signature_type_code": "1.2.840.10065.1.12.1.14",
+          "provenance_signature_type_display": "Source Signature"
         },
         "conflict": {
           "reconciled": true
@@ -943,10 +959,12 @@
           "provenance_target_reference": "Observation/observation-1/_history/7",
           "provenance_agent_reference": "Organization/org-lab-1",
           "provenance_signature_who": "Organization/org-lab-1",
-          "provenance_signature_type": "Source",
           "provenance_signed_content_digest_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
           "provenance_signing_key_id": "source-key-org-lab-1-2026-v1",
-          "provenance_verification_status": "verified"
+          "provenance_verification_status": "verified",
+          "provenance_signature_type_system": "urn:iso-astm:E1762-95:2013",
+          "provenance_signature_type_code": "1.2.840.10065.1.12.1.14",
+          "provenance_signature_type_display": "Source Signature"
         },
         "conflict": {
           "reconciled": true
@@ -1042,10 +1060,12 @@
           "provenance_target_reference": "Observation/observation-1/_history/7",
           "provenance_agent_reference": "Organization/org-lab-1",
           "provenance_signature_who": "Organization/org-lab-1",
-          "provenance_signature_type": "Source",
           "provenance_signed_content_digest_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
           "provenance_signing_key_id": "source-key-org-lab-1-2026-v1",
-          "provenance_verification_status": "verified"
+          "provenance_verification_status": "verified",
+          "provenance_signature_type_system": "urn:iso-astm:E1762-95:2013",
+          "provenance_signature_type_code": "1.2.840.10065.1.12.1.14",
+          "provenance_signature_type_display": "Source Signature"
         },
         "conflict": {
           "reconciled": true
@@ -1141,10 +1161,12 @@
           "provenance_target_reference": "Observation/observation-1/_history/7",
           "provenance_agent_reference": "Organization/org-lab-1",
           "provenance_signature_who": "Organization/org-lab-1",
-          "provenance_signature_type": "Source",
           "provenance_signed_content_digest_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
           "provenance_signing_key_id": "source-key-org-lab-1-2026-v1",
-          "provenance_verification_status": "verified"
+          "provenance_verification_status": "verified",
+          "provenance_signature_type_system": "urn:iso-astm:E1762-95:2013",
+          "provenance_signature_type_code": "1.2.840.10065.1.12.1.14",
+          "provenance_signature_type_display": "Source Signature"
         },
         "conflict": {
           "reconciled": true
@@ -1240,10 +1262,12 @@
           "provenance_target_reference": "Observation/observation-1/_history/7",
           "provenance_agent_reference": "Organization/org-lab-1",
           "provenance_signature_who": "Organization/org-lab-1",
-          "provenance_signature_type": "Source",
           "provenance_signed_content_digest_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
           "provenance_signing_key_id": "source-key-org-lab-1-2026-v1",
-          "provenance_verification_status": "verified"
+          "provenance_verification_status": "verified",
+          "provenance_signature_type_system": "urn:iso-astm:E1762-95:2013",
+          "provenance_signature_type_code": "1.2.840.10065.1.12.1.14",
+          "provenance_signature_type_display": "Source Signature"
         },
         "conflict": {
           "reconciled": true
@@ -1339,10 +1363,12 @@
           "provenance_target_reference": "Observation/observation-1/_history/7",
           "provenance_agent_reference": "Organization/org-lab-1",
           "provenance_signature_who": "Organization/org-lab-1",
-          "provenance_signature_type": "Source",
           "provenance_signed_content_digest_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
           "provenance_signing_key_id": "source-key-org-lab-1-2026-v1",
-          "provenance_verification_status": "verified"
+          "provenance_verification_status": "verified",
+          "provenance_signature_type_system": "urn:iso-astm:E1762-95:2013",
+          "provenance_signature_type_code": "1.2.840.10065.1.12.1.14",
+          "provenance_signature_type_display": "Source Signature"
         },
         "conflict": {
           "reconciled": true
@@ -1438,10 +1464,12 @@
           "provenance_target_reference": "Observation/observation-1/_history/7",
           "provenance_agent_reference": "Organization/org-lab-1",
           "provenance_signature_who": "Organization/org-lab-1",
-          "provenance_signature_type": "Source",
           "provenance_signed_content_digest_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
           "provenance_signing_key_id": "source-key-org-lab-1-2026-v1",
-          "provenance_verification_status": "verified"
+          "provenance_verification_status": "verified",
+          "provenance_signature_type_system": "urn:iso-astm:E1762-95:2013",
+          "provenance_signature_type_code": "1.2.840.10065.1.12.1.14",
+          "provenance_signature_type_display": "Source Signature"
         },
         "conflict": {
           "reconciled": true
@@ -1537,10 +1565,12 @@
           "provenance_target_reference": "Observation/observation-1/_history/7",
           "provenance_agent_reference": "Organization/org-lab-1",
           "provenance_signature_who": "Organization/org-lab-1",
-          "provenance_signature_type": "Source",
           "provenance_signed_content_digest_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
           "provenance_signing_key_id": "source-key-org-lab-1-2026-v1",
-          "provenance_verification_status": "verified"
+          "provenance_verification_status": "verified",
+          "provenance_signature_type_system": "urn:iso-astm:E1762-95:2013",
+          "provenance_signature_type_code": "1.2.840.10065.1.12.1.14",
+          "provenance_signature_type_display": "Source Signature"
         },
         "conflict": {
           "reconciled": true
@@ -1636,10 +1666,12 @@
           "provenance_target_reference": "Observation/observation-1/_history/7",
           "provenance_agent_reference": "Organization/org-lab-1",
           "provenance_signature_who": "Organization/org-lab-1",
-          "provenance_signature_type": "Source",
           "provenance_signed_content_digest_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
           "provenance_signing_key_id": "source-key-org-lab-1-2026-v1",
-          "provenance_verification_status": "verified"
+          "provenance_verification_status": "verified",
+          "provenance_signature_type_system": "urn:iso-astm:E1762-95:2013",
+          "provenance_signature_type_code": "1.2.840.10065.1.12.1.14",
+          "provenance_signature_type_display": "Source Signature"
         },
         "conflict": {
           "reconciled": true
@@ -1735,10 +1767,12 @@
           "provenance_target_reference": "Observation/observation-1/_history/7",
           "provenance_agent_reference": "Organization/org-lab-1",
           "provenance_signature_who": "Organization/org-lab-1",
-          "provenance_signature_type": "Source",
           "provenance_signed_content_digest_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
           "provenance_signing_key_id": "source-key-org-lab-1-2026-v1",
-          "provenance_verification_status": "verified"
+          "provenance_verification_status": "verified",
+          "provenance_signature_type_system": "urn:iso-astm:E1762-95:2013",
+          "provenance_signature_type_code": "1.2.840.10065.1.12.1.14",
+          "provenance_signature_type_display": "Source Signature"
         },
         "conflict": {
           "reconciled": true
@@ -1834,10 +1868,12 @@
           "provenance_target_reference": "Observation/observation-1/_history/7",
           "provenance_agent_reference": "Organization/org-lab-1",
           "provenance_signature_who": "Organization/org-lab-1",
-          "provenance_signature_type": "Source",
           "provenance_signed_content_digest_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
           "provenance_signing_key_id": "source-key-org-lab-1-2026-v1",
-          "provenance_verification_status": "verified"
+          "provenance_verification_status": "verified",
+          "provenance_signature_type_system": "urn:iso-astm:E1762-95:2013",
+          "provenance_signature_type_code": "1.2.840.10065.1.12.1.14",
+          "provenance_signature_type_display": "Source Signature"
         },
         "conflict": {
           "reconciled": true
@@ -1933,10 +1969,12 @@
           "provenance_target_reference": "Observation/observation-1/_history/7",
           "provenance_agent_reference": "Organization/org-lab-1",
           "provenance_signature_who": "Organization/org-lab-1",
-          "provenance_signature_type": "Source",
           "provenance_signed_content_digest_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
           "provenance_signing_key_id": "source-key-org-lab-1-2026-v1",
-          "provenance_verification_status": "verified"
+          "provenance_verification_status": "verified",
+          "provenance_signature_type_system": "urn:iso-astm:E1762-95:2013",
+          "provenance_signature_type_code": "1.2.840.10065.1.12.1.14",
+          "provenance_signature_type_display": "Source Signature"
         },
         "conflict": {
           "reconciled": true
@@ -2032,10 +2070,12 @@
           "provenance_target_reference": "Observation/observation-1/_history/7",
           "provenance_agent_reference": "Organization/org-lab-1",
           "provenance_signature_who": "Organization/org-lab-1",
-          "provenance_signature_type": "Source",
           "provenance_signed_content_digest_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
           "provenance_signing_key_id": "source-key-org-lab-1-2026-v1",
-          "provenance_verification_status": "verified"
+          "provenance_verification_status": "verified",
+          "provenance_signature_type_system": "urn:iso-astm:E1762-95:2013",
+          "provenance_signature_type_code": "1.2.840.10065.1.12.1.14",
+          "provenance_signature_type_display": "Source Signature"
         },
         "conflict": {
           "reconciled": true
@@ -2131,10 +2171,12 @@
           "provenance_target_reference": "Observation/observation-1/_history/7",
           "provenance_agent_reference": "Organization/org-lab-1",
           "provenance_signature_who": "Organization/org-lab-1",
-          "provenance_signature_type": "Source",
           "provenance_signed_content_digest_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
           "provenance_signing_key_id": "source-key-org-lab-1-2026-v1",
-          "provenance_verification_status": "verified"
+          "provenance_verification_status": "verified",
+          "provenance_signature_type_system": "urn:iso-astm:E1762-95:2013",
+          "provenance_signature_type_code": "1.2.840.10065.1.12.1.14",
+          "provenance_signature_type_display": "Source Signature"
         },
         "conflict": {
           "reconciled": true
@@ -2230,10 +2272,12 @@
           "provenance_target_reference": "Observation/observation-1/_history/7",
           "provenance_agent_reference": "Organization/org-lab-1",
           "provenance_signature_who": "Organization/org-lab-1",
-          "provenance_signature_type": "Source",
           "provenance_signed_content_digest_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
           "provenance_signing_key_id": "source-key-org-lab-1-2026-v1",
-          "provenance_verification_status": "verified"
+          "provenance_verification_status": "verified",
+          "provenance_signature_type_system": "urn:iso-astm:E1762-95:2013",
+          "provenance_signature_type_code": "1.2.840.10065.1.12.1.14",
+          "provenance_signature_type_display": "Source Signature"
         },
         "conflict": {
           "reconciled": true
@@ -2329,10 +2373,12 @@
           "provenance_target_reference": "Observation/observation-1/_history/7",
           "provenance_agent_reference": "Organization/org-lab-1",
           "provenance_signature_who": "Organization/org-lab-1",
-          "provenance_signature_type": "Source",
           "provenance_signed_content_digest_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
           "provenance_signing_key_id": "source-key-org-lab-1-2026-v1",
-          "provenance_verification_status": "verified"
+          "provenance_verification_status": "verified",
+          "provenance_signature_type_system": "urn:iso-astm:E1762-95:2013",
+          "provenance_signature_type_code": "1.2.840.10065.1.12.1.14",
+          "provenance_signature_type_display": "Source Signature"
         },
         "conflict": {
           "reconciled": true
@@ -2428,10 +2474,12 @@
           "provenance_target_reference": "Observation/observation-1/_history/7",
           "provenance_agent_reference": "Organization/org-lab-1",
           "provenance_signature_who": "Organization/org-lab-1",
-          "provenance_signature_type": "Source",
           "provenance_signed_content_digest_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
           "provenance_signing_key_id": "source-key-org-lab-1-2026-v1",
-          "provenance_verification_status": "verified"
+          "provenance_verification_status": "verified",
+          "provenance_signature_type_system": "urn:iso-astm:E1762-95:2013",
+          "provenance_signature_type_code": "1.2.840.10065.1.12.1.14",
+          "provenance_signature_type_display": "Source Signature"
         },
         "conflict": {
           "reconciled": true
@@ -2527,10 +2575,12 @@
           "provenance_target_reference": "Observation/observation-1/_history/7",
           "provenance_agent_reference": "Organization/org-lab-1",
           "provenance_signature_who": "Organization/org-lab-1",
-          "provenance_signature_type": "Source",
           "provenance_signed_content_digest_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
           "provenance_signing_key_id": "source-key-org-lab-1-2026-v1",
-          "provenance_verification_status": "verified"
+          "provenance_verification_status": "verified",
+          "provenance_signature_type_system": "urn:iso-astm:E1762-95:2013",
+          "provenance_signature_type_code": "1.2.840.10065.1.12.1.14",
+          "provenance_signature_type_display": "Source Signature"
         },
         "conflict": {
           "reconciled": true
@@ -2626,10 +2676,12 @@
           "provenance_target_reference": "Observation/observation-1/_history/7",
           "provenance_agent_reference": "Organization/org-lab-1",
           "provenance_signature_who": "Organization/org-lab-1",
-          "provenance_signature_type": "Source",
           "provenance_signed_content_digest_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
           "provenance_signing_key_id": "source-key-org-lab-1-2026-v1",
-          "provenance_verification_status": "verified"
+          "provenance_verification_status": "verified",
+          "provenance_signature_type_system": "urn:iso-astm:E1762-95:2013",
+          "provenance_signature_type_code": "1.2.840.10065.1.12.1.14",
+          "provenance_signature_type_display": "Source Signature"
         },
         "conflict": {
           "reconciled": true
@@ -2725,10 +2777,12 @@
           "provenance_target_reference": "Observation/observation-1/_history/7",
           "provenance_agent_reference": "Organization/org-lab-1",
           "provenance_signature_who": "Organization/org-lab-1",
-          "provenance_signature_type": "Source",
           "provenance_signed_content_digest_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
           "provenance_signing_key_id": "source-key-org-lab-1-2026-v1",
-          "provenance_verification_status": "verified"
+          "provenance_verification_status": "verified",
+          "provenance_signature_type_system": "urn:iso-astm:E1762-95:2013",
+          "provenance_signature_type_code": "1.2.840.10065.1.12.1.14",
+          "provenance_signature_type_display": "Source Signature"
         },
         "conflict": {
           "reconciled": true
@@ -2824,10 +2878,12 @@
           "provenance_target_reference": "Observation/observation-1/_history/7",
           "provenance_agent_reference": "Organization/org-lab-1",
           "provenance_signature_who": "Organization/org-lab-1",
-          "provenance_signature_type": "Source",
           "provenance_signed_content_digest_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
           "provenance_signing_key_id": "source-key-org-lab-1-2026-v1",
-          "provenance_verification_status": "verified"
+          "provenance_verification_status": "verified",
+          "provenance_signature_type_system": "urn:iso-astm:E1762-95:2013",
+          "provenance_signature_type_code": "1.2.840.10065.1.12.1.14",
+          "provenance_signature_type_display": "Source Signature"
         },
         "conflict": {
           "reconciled": true
@@ -2923,10 +2979,12 @@
           "provenance_target_reference": "Observation/observation-1/_history/7",
           "provenance_agent_reference": "Organization/org-lab-1",
           "provenance_signature_who": "Organization/org-lab-1",
-          "provenance_signature_type": "Source",
           "provenance_signed_content_digest_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
           "provenance_signing_key_id": "source-key-org-lab-1-2026-v1",
-          "provenance_verification_status": "verified"
+          "provenance_verification_status": "verified",
+          "provenance_signature_type_system": "urn:iso-astm:E1762-95:2013",
+          "provenance_signature_type_code": "1.2.840.10065.1.12.1.14",
+          "provenance_signature_type_display": "Source Signature"
         },
         "conflict": {
           "reconciled": true
@@ -3022,10 +3080,12 @@
           "provenance_target_reference": "Observation/observation-1/_history/7",
           "provenance_agent_reference": "Organization/org-lab-1",
           "provenance_signature_who": "Organization/org-lab-1",
-          "provenance_signature_type": "Source",
           "provenance_signed_content_digest_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
           "provenance_signing_key_id": "source-key-org-lab-1-2026-v1",
-          "provenance_verification_status": "verified"
+          "provenance_verification_status": "verified",
+          "provenance_signature_type_system": "urn:iso-astm:E1762-95:2013",
+          "provenance_signature_type_code": "1.2.840.10065.1.12.1.14",
+          "provenance_signature_type_display": "Source Signature"
         },
         "conflict": {
           "reconciled": true
@@ -3121,10 +3181,12 @@
           "provenance_target_reference": null,
           "provenance_agent_reference": "Organization/org-lab-1",
           "provenance_signature_who": "Organization/org-lab-1",
-          "provenance_signature_type": "Source",
           "provenance_signed_content_digest_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
           "provenance_signing_key_id": "source-key-org-lab-1-2026-v1",
-          "provenance_verification_status": "verified"
+          "provenance_verification_status": "verified",
+          "provenance_signature_type_system": "urn:iso-astm:E1762-95:2013",
+          "provenance_signature_type_code": "1.2.840.10065.1.12.1.14",
+          "provenance_signature_type_display": "Source Signature"
         },
         "conflict": {
           "reconciled": true
@@ -3219,10 +3281,12 @@
           "provenance_target_reference": "Observation/observation-1/_history/7",
           "provenance_agent_reference": "Organization/org-lab-1",
           "provenance_signature_who": "Organization/org-lab-1",
-          "provenance_signature_type": "Source",
           "provenance_signed_content_digest_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
           "provenance_signing_key_id": "source-key-org-lab-1-2026-v1",
-          "provenance_verification_status": "verified"
+          "provenance_verification_status": "verified",
+          "provenance_signature_type_system": "urn:iso-astm:E1762-95:2013",
+          "provenance_signature_type_code": "1.2.840.10065.1.12.1.14",
+          "provenance_signature_type_display": "Source Signature"
         },
         "conflict": {
           "reconciled": true
@@ -3319,10 +3383,12 @@
           "provenance_target_reference": "Observation/observation-1/_history/7",
           "provenance_agent_reference": "Organization/org-lab-1",
           "provenance_signature_who": "Organization/org-lab-1",
-          "provenance_signature_type": "Source",
           "provenance_signed_content_digest_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
           "provenance_signing_key_id": "source-key-org-lab-1-2026-v1",
-          "provenance_verification_status": "verified"
+          "provenance_verification_status": "verified",
+          "provenance_signature_type_system": "urn:iso-astm:E1762-95:2013",
+          "provenance_signature_type_code": "1.2.840.10065.1.12.1.14",
+          "provenance_signature_type_display": "Source Signature"
         },
         "conflict": {
           "reconciled": true
@@ -3418,10 +3484,12 @@
           "provenance_target_reference": "Observation/observation-1/_history/7",
           "provenance_agent_reference": "Organization/org-lab-1",
           "provenance_signature_who": "Organization/org-lab-1",
-          "provenance_signature_type": "Source",
           "provenance_signed_content_digest_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
           "provenance_signing_key_id": "source-key-org-lab-1-2026-v1",
-          "provenance_verification_status": "verified"
+          "provenance_verification_status": "verified",
+          "provenance_signature_type_system": "urn:iso-astm:E1762-95:2013",
+          "provenance_signature_type_code": "1.2.840.10065.1.12.1.14",
+          "provenance_signature_type_display": "Source Signature"
         },
         "conflict": {
           "reconciled": true
@@ -3517,10 +3585,12 @@
           "provenance_target_reference": "Observation/observation-1/_history/7",
           "provenance_agent_reference": "Organization/org-lab-1",
           "provenance_signature_who": "Organization/org-lab-1",
-          "provenance_signature_type": "Source",
           "provenance_signed_content_digest_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
           "provenance_signing_key_id": "source-key-org-lab-1-2026-v1",
-          "provenance_verification_status": "verified"
+          "provenance_verification_status": "verified",
+          "provenance_signature_type_system": "urn:iso-astm:E1762-95:2013",
+          "provenance_signature_type_code": "1.2.840.10065.1.12.1.14",
+          "provenance_signature_type_display": "Source Signature"
         },
         "conflict": {
           "reconciled": false
@@ -3616,10 +3686,12 @@
           "provenance_target_reference": "Observation/observation-1/_history/7",
           "provenance_agent_reference": "Organization/org-lab-1",
           "provenance_signature_who": "Organization/org-lab-1",
-          "provenance_signature_type": "Source",
           "provenance_signed_content_digest_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
           "provenance_signing_key_id": "source-key-org-lab-1-2026-v1",
-          "provenance_verification_status": "verified"
+          "provenance_verification_status": "verified",
+          "provenance_signature_type_system": "urn:iso-astm:E1762-95:2013",
+          "provenance_signature_type_code": "1.2.840.10065.1.12.1.14",
+          "provenance_signature_type_display": "Source Signature"
         },
         "conflict": {
           "reconciled": true
@@ -3715,10 +3787,12 @@
           "provenance_target_reference": "Observation/observation-1/_history/7",
           "provenance_agent_reference": "Organization/org-lab-1",
           "provenance_signature_who": "Organization/org-lab-1",
-          "provenance_signature_type": "Source",
           "provenance_signed_content_digest_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
           "provenance_signing_key_id": "source-key-org-lab-1-2026-v1",
-          "provenance_verification_status": "verified"
+          "provenance_verification_status": "verified",
+          "provenance_signature_type_system": "urn:iso-astm:E1762-95:2013",
+          "provenance_signature_type_code": "1.2.840.10065.1.12.1.14",
+          "provenance_signature_type_display": "Source Signature"
         },
         "conflict": {
           "reconciled": true
@@ -3814,10 +3888,12 @@
           "provenance_target_reference": "Observation/observation-1/_history/7",
           "provenance_agent_reference": "Organization/org-lab-1",
           "provenance_signature_who": "Organization/org-lab-1",
-          "provenance_signature_type": "Source",
           "provenance_signed_content_digest_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
           "provenance_signing_key_id": "source-key-org-lab-1-2026-v1",
-          "provenance_verification_status": "verified"
+          "provenance_verification_status": "verified",
+          "provenance_signature_type_system": "urn:iso-astm:E1762-95:2013",
+          "provenance_signature_type_code": "1.2.840.10065.1.12.1.14",
+          "provenance_signature_type_display": "Source Signature"
         },
         "conflict": {
           "reconciled": true
@@ -3913,10 +3989,12 @@
           "provenance_target_reference": "Observation/observation-1/_history/6",
           "provenance_agent_reference": "Organization/org-lab-1",
           "provenance_signature_who": "Organization/org-lab-1",
-          "provenance_signature_type": "Source",
           "provenance_signed_content_digest_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
           "provenance_signing_key_id": "source-key-org-lab-1-2026-v1",
-          "provenance_verification_status": "verified"
+          "provenance_verification_status": "verified",
+          "provenance_signature_type_system": "urn:iso-astm:E1762-95:2013",
+          "provenance_signature_type_code": "1.2.840.10065.1.12.1.14",
+          "provenance_signature_type_display": "Source Signature"
         },
         "conflict": {
           "reconciled": true
@@ -4012,10 +4090,12 @@
           "provenance_target_reference": "Observation/observation-1/_history/7",
           "provenance_agent_reference": "Organization/org-attacker",
           "provenance_signature_who": "Organization/org-attacker",
-          "provenance_signature_type": "Source",
           "provenance_signed_content_digest_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
           "provenance_signing_key_id": "source-key-org-lab-1-2026-v1",
-          "provenance_verification_status": "verified"
+          "provenance_verification_status": "verified",
+          "provenance_signature_type_system": "urn:iso-astm:E1762-95:2013",
+          "provenance_signature_type_code": "1.2.840.10065.1.12.1.14",
+          "provenance_signature_type_display": "Source Signature"
         },
         "conflict": {
           "reconciled": true
@@ -4111,10 +4191,12 @@
           "provenance_target_reference": "Observation/observation-1/_history/7",
           "provenance_agent_reference": "Organization/org-lab-1",
           "provenance_signature_who": "Organization/org-lab-1",
-          "provenance_signature_type": "Consent",
           "provenance_signed_content_digest_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
           "provenance_signing_key_id": "source-key-org-lab-1-2026-v1",
-          "provenance_verification_status": "verified"
+          "provenance_verification_status": "verified",
+          "provenance_signature_type_system": "urn:iso-astm:E1762-95:2013",
+          "provenance_signature_type_code": "1.2.840.10065.1.12.1.7",
+          "provenance_signature_type_display": "Consent Signature"
         },
         "conflict": {
           "reconciled": true
@@ -4210,10 +4292,12 @@
           "provenance_target_reference": "Observation/observation-1/_history/7",
           "provenance_agent_reference": "Organization/org-lab-1",
           "provenance_signature_who": "Organization/org-lab-1",
-          "provenance_signature_type": "Source",
           "provenance_signed_content_digest_sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
           "provenance_signing_key_id": "source-key-org-lab-1-2026-v1",
-          "provenance_verification_status": "verified"
+          "provenance_verification_status": "verified",
+          "provenance_signature_type_system": "urn:iso-astm:E1762-95:2013",
+          "provenance_signature_type_code": "1.2.840.10065.1.12.1.14",
+          "provenance_signature_type_display": "Source Signature"
         },
         "conflict": {
           "reconciled": true
@@ -4309,10 +4393,12 @@
           "provenance_target_reference": "Observation/observation-1/_history/7",
           "provenance_agent_reference": "Organization/org-lab-1",
           "provenance_signature_who": "Organization/org-lab-1",
-          "provenance_signature_type": "Source",
           "provenance_signed_content_digest_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
           "provenance_signing_key_id": "source-key-org-lab-1-2026-v1",
-          "provenance_verification_status": "verified"
+          "provenance_verification_status": "verified",
+          "provenance_signature_type_system": "urn:iso-astm:E1762-95:2013",
+          "provenance_signature_type_code": "1.2.840.10065.1.12.1.14",
+          "provenance_signature_type_display": "Source Signature"
         },
         "conflict": {
           "reconciled": true
@@ -4408,10 +4494,12 @@
           "provenance_target_reference": "Observation/observation-1/_history/7",
           "provenance_agent_reference": "Organization/org-lab-1",
           "provenance_signature_who": "Organization/org-lab-1",
-          "provenance_signature_type": "Source",
           "provenance_signed_content_digest_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
           "provenance_signing_key_id": "source-key-org-lab-1-2026-v1",
-          "provenance_verification_status": "unavailable"
+          "provenance_verification_status": "unavailable",
+          "provenance_signature_type_system": "urn:iso-astm:E1762-95:2013",
+          "provenance_signature_type_code": "1.2.840.10065.1.12.1.14",
+          "provenance_signature_type_display": "Source Signature"
         },
         "conflict": {
           "reconciled": true
@@ -4507,10 +4595,12 @@
           "provenance_target_reference": "Observation/observation-1/_history/7",
           "provenance_agent_reference": "Organization/org-lab-1",
           "provenance_signature_who": "Organization/org-lab-1",
-          "provenance_signature_type": "Source",
           "provenance_signed_content_digest_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
           "provenance_signing_key_id": "source-key-org-lab-1-2026-v1",
-          "provenance_verification_status": "verified"
+          "provenance_verification_status": "verified",
+          "provenance_signature_type_system": "urn:iso-astm:E1762-95:2013",
+          "provenance_signature_type_code": "1.2.840.10065.1.12.1.14",
+          "provenance_signature_type_display": "Source Signature"
         },
         "conflict": {
           "reconciled": true
@@ -4829,6 +4919,13 @@
     "signed_content_digest_must_match_exact_resource_version_digest": true,
     "signing_key_must_be_registered_and_not_revoked": true,
     "key_registry_and_verifier_unavailability_decision": "defer",
-    "provenance_assertions_are_not_independent_proof_of_clinical_truth": true
+    "provenance_assertions_are_not_independent_proof_of_clinical_truth": true,
+    "signature_type": {
+      "system": "urn:iso-astm:E1762-95:2013",
+      "code": "1.2.840.10065.1.12.1.14",
+      "display": "Source Signature",
+      "code_system_binding": "http://hl7.org/fhir/ValueSet/signature-type",
+      "fhir_element": "Provenance.signature.type"
+    }
   }
 }
