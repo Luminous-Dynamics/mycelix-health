@@ -38,10 +38,10 @@ export function createSyncRoutes(ctx: AppContext): Hono {
    *   patientId: Patient ID in the EHR system
    *
    * Query params:
-   *   connection: Connection ID (required)
-   *   tokenKey: Key for stored token (required)
-   *   resourceTypes: Comma-separated resource types (optional)
-   *   sourceSystem: Override source system identifier (optional)
+   *   connection: Optional legacy lookup hint; never used for execution
+   *   tokenKey: Ignored; credentials come from the resolved server-side handle
+   *   resourceTypes: Comma-separated resource types (must be in the server allowlist)
+   *   sourceSystem: Ignored; attribution comes from the registered connection
    *   async: If true, return immediately with a job ID (optional)
    *
    * Returns: SyncResult or job ID (if async)
