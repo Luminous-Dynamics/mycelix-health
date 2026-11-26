@@ -270,7 +270,6 @@ pub fn check_authorization(input: AuthorizationCheckInput) -> ExternResult<Autho
     })
 }
 
-
 /// Evaluate only the temporal and encounter parts of a consent scope.
 ///
 /// Missing context is not treated as unrestricted: if a consent narrows either
