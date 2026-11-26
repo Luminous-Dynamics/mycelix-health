@@ -272,8 +272,22 @@ describe('EHR Gateway Server', () => {
       expect(res.status).toBe(200);
       expect(mockHolochainClient.callZome).toHaveBeenCalledWith(expect.objectContaining({
         fn_name: 'export_patient_fhir',
-        payload: { patient_hash: resolvedHash, include_sections: ['conditions'] },
+        payload: { patient_hash: resolvedHash, include_sections: ['Condition'] },
       }));
+    });
+
+    it('GET /fhir/Bundle denies Patient-only exports rather than falling through to DataCategory::All', async () => {
+      mockHolochainClient.callZome.mockClear();
+      const res = await app.request('/fhir/Bundle/uhCEkINI4cBkNicMiyEvxrUXKy71OIGWXqXJagdCunS2SlmaipQ1j');
+      expect(res.status).toBe(403);
+      expect(mockHolochainClient.callZome).not.toHaveBeenCalled();
+    });
+
+    it('GET /fhir/Bundle denies unsupported sections before calling the zome', async () => {
+      mockHolochainClient.callZome.mockClear();
+      const res = await app.request('/fhir/Bundle/uhCEkINI4cBkNicMiyEvxrUXKy71OIGWXqXJagdCunS2SlmaipQ1j?sections=allergies');
+      expect(res.status).toBe(403);
+      expect(mockHolochainClient.callZome).not.toHaveBeenCalled();
     });
 
     it('GET /fhir/Bundle rejects a path hash that differs from the verified patient binding', async () => {
