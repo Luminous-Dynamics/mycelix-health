@@ -2,7 +2,38 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Commercial licensing: see COMMERCIAL_LICENSE.md at repository root
 
+import { createHash } from 'node:crypto';
 import type { GatewayActionV1 } from './gateway-request-context.js';
+
+export interface GatewayOperationKeyInputV1 {
+  tenantId: string;
+  principalBinding: string;
+  connectionId: string;
+  action: GatewayActionV1;
+  clientIdempotencyKey: string;
+}
+
+/** Derive a non-PII key scoped to authenticated authority and operation. */
+export function deriveGatewayOperationKeyV1(input: GatewayOperationKeyInputV1): string {
+  const values = [
+    input.tenantId,
+    input.principalBinding,
+    input.connectionId,
+    input.action,
+    input.clientIdempotencyKey,
+  ];
+  if (values.some((value) => !nonEmpty(value))) {
+    throw new Error('gateway_operation_key_input_invalid');
+  }
+  const hash = createHash('sha256');
+  hash.update('mycelix-gateway-operation-key-v1\\0');
+  for (const value of values) {
+    hash.update(String(value.length));
+    hash.update(':');
+    hash.update(value);
+  }
+  return hash.digest('hex');
+}
 
 export interface GatewayOperationIntentV1 {
   /** Namespaced by authenticated tenant/principal and action; not a raw header. */
@@ -160,7 +191,7 @@ function digest(value: unknown): value is string {
 function validIntent(intent: GatewayOperationIntentV1): boolean {
   return Boolean(
     intent
-      && nonEmpty(intent.operationKey)
+      && digest(intent.operationKey)
       && digest(intent.requestDigest)
       && nonEmpty(intent.tenantId)
       && nonEmpty(intent.principalBinding)
@@ -296,7 +327,7 @@ export class GatewayOperationCoordinatorV1 {
         execution.failureCode || 'external_operation_failed_without_effect',
       );
       return write
-        ? { kind: 'denied', reason: execution.failureCode }
+        ? { kind: 'deferred', reason: 'known_no_effect_retry_requires_fresh_authorization' }
         : { kind: 'deferred', reason: 'operation_ledger_write_unavailable' };
     }
     if (execution.kind === 'outcome_unknown') {
@@ -358,23 +389,34 @@ export class GatewayOperationCoordinatorV1 {
       if (this.adapter.supportsOutcomeReconciliation) {
         result = await this.adapter.reconcile(operation);
       } else if (this.adapter.supportsRemoteIdempotencyKey) {
-        // Same key only. A conforming adapter returns the original result or
-        // safely creates the original operation once; it must deduplicate it.
+        // Same-key replay may be the first delivery if the prior request never
+        // reached the remote API. Re-authorize before resubmitting it.
+        const retryIntent: GatewayOperationIntentV1 = {
+          operationKey: operation.operationKey,
+          requestDigest: operation.requestDigest,
+          tenantId: operation.tenantId,
+          principalBinding: operation.principalBinding,
+          patientBinding: operation.patientBinding,
+          connectionId: operation.connectionId,
+          action: operation.action,
+          resourceSetDigest: operation.resourceSetDigest,
+          initialAuthorizationReceiptDigest: operation.initialAuthorizationReceiptDigest,
+        };
+        const freshAuthorization = await this.reauthorizer.reauthorize(retryIntent);
+        if (!freshAuthorization.authorized
+          || !digest(freshAuthorization.authorizationReceiptDigest)
+          || !Number.isSafeInteger(freshAuthorization.expiresAtMs)
+          || freshAuthorization.expiresAtMs <= this.clock()) {
+          return {
+            kind: 'deferred',
+            reason: 'fresh_authority_required_before_same_key_remote_replay',
+          };
+        }
         const replay = await this.adapter.execute(
+          retryIntent,
           {
             operationKey: operation.operationKey,
-            requestDigest: operation.requestDigest,
-            tenantId: operation.tenantId,
-            principalBinding: operation.principalBinding,
-            patientBinding: operation.patientBinding,
-            connectionId: operation.connectionId,
-            action: operation.action,
-            resourceSetDigest: operation.resourceSetDigest,
-            initialAuthorizationReceiptDigest: operation.initialAuthorizationReceiptDigest,
-          },
-          {
-            operationKey: operation.operationKey,
-            authorizationReceiptDigest: operation.latestAuthorizationReceiptDigest,
+            authorizationReceiptDigest: freshAuthorization.authorizationReceiptDigest,
           },
         );
         if (replay.kind === 'committed') {
