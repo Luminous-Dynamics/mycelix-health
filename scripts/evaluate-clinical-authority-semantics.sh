@@ -43,8 +43,9 @@ if ! jq -e '
 ' "$MANIFEST" >/dev/null; then echo "Manifest failed schema/invariant preflight" >&2; exit 1; fi
 
 BENCHMARK_ID="$(jq -r '.benchmark_id' "$MANIFEST")"
-if ! jq -e --arg id "$BENCHMARK_ID" '
-  . as $root
+if ! jq -e --arg id "$BENCHMARK_ID" --slurpfile manifest "$MANIFEST" '
+  . as $candidate
+  | ($manifest[0].reason_codes) as $allowed_reason_codes
   | (.schema_version == 1)
   and (.benchmark_id == $id)
   and (.results | type == "array")
@@ -58,7 +59,7 @@ if ! jq -e --arg id "$BENCHMARK_ID" '
          else (.reason_codes | length > 0) end)
   )
   and (([.results[].case_id] | length) == ([.results[].case_id] | unique | length))
-  and all(.results[]; .reason_codes as $codes | all($codes[]; . as $code | ($root.reason_codes | index($code)) != null))
+  and all(.results[]; .reason_codes as $codes | all($codes[]; . as $code | ($allowed_reason_codes | index($code)) != null))
   and all(.results[]; (.evidence_refs | length) == (.evidence_refs | unique | length))
 ' "$CANDIDATE" >/dev/null; then echo "Candidate result file failed schema/invariant preflight" >&2; exit 1; fi
 
