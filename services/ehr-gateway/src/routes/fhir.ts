@@ -170,10 +170,7 @@ export function createFhirRoutes(ctx: AppContext): Hono {
       c.req.raw,
       {
         action: 'fhir_export',
-        resourceTypes: [
-          'Patient', 'Observation', 'Condition', 'MedicationRequest',
-          'AllergyIntolerance', 'Immunization', 'Procedure',
-        ],
+        resourceTypes: ['Patient', 'Observation', 'Condition', 'MedicationRequest'],
       },
     );
     if (!authorization.authorized) return authorization.response;
@@ -206,8 +203,7 @@ export function createFhirRoutes(ctx: AppContext): Hono {
         .filter(([, resourceType]) => authorizedTypes.has(resourceType))
         .map(([section]) => section);
     if (
-      requestedSectionAliases.length === 0
-      || requestedSectionAliases.some((section) =>
+      requestedSectionAliases.some((section) =>
         !sectionToResourceType[section] || !authorizedTypes.has(sectionToResourceType[section]!)
       )
     ) {
@@ -215,7 +211,12 @@ export function createFhirRoutes(ctx: AppContext): Hono {
       // Never allow an empty query/default grant to fall through to a blanket export.
       return c.json({ error: 'At least one explicitly authorized FHIR section is required' }, 403);
     }
-    const includeSections = requestedSectionAliases.map((section) => sectionToResourceType[section]!);
+    // Patient is part of every FHIR export. With no additional authorized
+    // section, this is a legitimate demographics-only export, not DataCategory::All.
+    const includeSections = [
+      'Patient',
+      ...requestedSectionAliases.map((section) => sectionToResourceType[section]!),
+    ];
 
     try {
       const result = await ctx.holochainClient.callZome({
