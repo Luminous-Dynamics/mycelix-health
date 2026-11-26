@@ -50,7 +50,7 @@ Timestamps are deliberately excluded from the graph algorithm. Clock skew, ident
 
 ## Frozen public challenge corpus
 
-The 19-row TSV catalogue is executable: each row maps to a concrete synthetic graph and the tests assert the expected status and finding. Cases cover independent two-agent streams, explicit parent edges, out-of-order publication, clock skew, equal timestamps, missing checkpoints/actions/parents, author mismatch, cross-patient and cross-tenant links, predecessor mismatch, duplicate ActionHash observations, checkpoint mismatch, uncheckpointed suffix, duplicate parent, self-parent and cycles.
+The 21-row TSV catalogue is executable: each row maps to a concrete synthetic graph and the tests assert the expected status and finding. Cases cover independent two-agent streams, explicit parent edges, out-of-order publication, clock skew, equal timestamps, missing checkpoints/actions/parents, author mismatch, cross-patient and cross-tenant links, predecessor mismatch, duplicate ActionHash observations, conflicting checkpoints, duplicate per-agent sequence numbers, checkpoint mismatch, uncheckpointed suffix, duplicate parent, self-parent and cycles.
 
 The suite also checks:
 
