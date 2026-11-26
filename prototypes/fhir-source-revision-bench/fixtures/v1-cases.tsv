@@ -14,6 +14,7 @@ source_sequence_collision|different versions claim one source sequence|SourceSeq
 projection_behind_history|incoming revision is newer than current pointer but older than accepted history|OlderBySourceSequence|PreserveHistoryOnly
 contradictory_duplicate_history|same version ID has conflicting payloads in stored history|VersionEquivocation|Quarantine
 malformed_matching_history|stored matching revision violates the revision schema|InvalidInput|Reject
+unversioned_order_metadata_conflict|same unversioned digest with conflicting source sequence metadata|SourceOrderMetadataConflict|Quarantine
 tenant_partition|same logical ID across tenants|FirstRevision|Promote
 invalid_version|FHIR version identifier malformed|InvalidInput|Reject
 principal_missing|source principal absent|InvalidInput|Reject
