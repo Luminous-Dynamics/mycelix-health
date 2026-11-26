@@ -44,7 +44,8 @@ if ! jq -e '
 
 BENCHMARK_ID="$(jq -r '.benchmark_id' "$MANIFEST")"
 if ! jq -e --arg id "$BENCHMARK_ID" '
-  (.schema_version == 1)
+  . as $root
+  | (.schema_version == 1)
   and (.benchmark_id == $id)
   and (.results | type == "array")
   and all(.results[];
