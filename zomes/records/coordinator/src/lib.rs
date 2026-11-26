@@ -18,8 +18,9 @@
 
 use hdk::prelude::*;
 use mycelix_health_shared::{
-    batch::links_to_records, log_data_access, require_admin_authorization, require_authorization,
-    require_authorization_for_resource, DataCategory, Permission,
+    batch::links_to_records, evaluate_authorization_for_resource, log_data_access,
+    require_admin_authorization, require_authorization, require_authorization_for_resource,
+    DataCategory, Permission,
 };
 use records_integrity::*;
 
@@ -1533,13 +1534,6 @@ pub fn decrypt_record(input: DecryptRecordInput) -> ExternResult<ExternIO> {
 pub fn get_patient_encrypted_records(
     input: GetPatientLabResultsInput,
 ) -> ExternResult<Vec<Record>> {
-    let auth = require_authorization(
-        input.patient_hash.clone(),
-        DataCategory::All,
-        Permission::Read,
-        input.is_emergency,
-    )?;
-
     let links = get_links(
         LinkQuery::try_new(
             input.patient_hash.clone(),
@@ -1548,25 +1542,111 @@ pub fn get_patient_encrypted_records(
         GetStrategy::default(),
     )?;
 
-    let mut records = vec![];
+    // Build the complete authorization snapshot before producing a result.
+    // Explicit policy denials omit only that record. Any unavailable consent
+    // verifier, transport error or malformed record aborts the whole read.
+    let mut authorized_records: Vec<(Record, DataCategory, mycelix_health_shared::AuthorizationResult)> =
+        Vec::new();
+
     for link in links {
-        if let Some(hash) = link.target.into_action_hash() {
-            if let Some(record) = get(hash, GetOptions::default())? {
-                records.push(record);
+        let Some(hash) = link.target.into_action_hash() else {
+            continue;
+        };
+        let Some(record) = get(hash, GetOptions::default())? else {
+            continue;
+        };
+
+        let encrypted: EncryptedRecord = record
+            .entry()
+            .to_app_option()
+            .map_err(|error| {
+                wasm_error!(WasmErrorInner::Guest(format!(
+                    "Invalid encrypted record entry: {}",
+                    error
+                )))
+            })?
+            .ok_or(wasm_error!(WasmErrorInner::Guest(
+                "Patient encrypted-record link does not target an EncryptedRecord".to_string()
+            )))?;
+
+        if encrypted.patient_hash != input.patient_hash {
+            return Err(wasm_error!(WasmErrorInner::Guest(
+                "Encrypted record linked under a different patient".to_string()
+            )));
+        }
+        if !encrypted_route_is_valid(&encrypted.entry_type, &encrypted.data_category) {
+            return Err(wasm_error!(WasmErrorInner::Guest(
+                "Encrypted record has an invalid entry-type/category route".to_string()
+            )));
+        }
+
+        let (clinical_event_time, encounter_hash) = match encrypted.envelope_version {
+            ENCRYPTED_RECORD_ENVELOPE_VERSION_V1 => {
+                if encrypted.clinical_event_time.is_some() || encrypted.encounter_hash.is_some() {
+                    return Err(wasm_error!(WasmErrorInner::Guest(
+                        "Legacy v1 encrypted record carries unauthenticated clinical context"
+                            .to_string()
+                    )));
+                }
+                (None, None)
             }
+            ENCRYPTED_RECORD_ENVELOPE_VERSION_V2 => {
+                if !encrypted_v2_route_is_supported(
+                    &encrypted.entry_type,
+                    &encrypted.data_category,
+                ) {
+                    return Err(wasm_error!(WasmErrorInner::Guest(
+                        "Encrypted v2 record has no supported typed context verifier".to_string()
+                    )));
+                }
+                let event_time = encrypted.clinical_event_time.clone().ok_or(wasm_error!(
+                    WasmErrorInner::Guest(
+                        "Encrypted v2 record has no clinical event time".to_string()
+                    )
+                ))?;
+                if encrypted.entry_type == "ProcedurePerformed" && encrypted.encounter_hash.is_none()
+                {
+                    return Err(wasm_error!(WasmErrorInner::Guest(
+                        "Encrypted v2 procedure record requires an encounter".to_string()
+                    )));
+                }
+                (Some(event_time), encrypted.encounter_hash.clone())
+            }
+            _ => {
+                return Err(wasm_error!(WasmErrorInner::Guest(
+                    "Unsupported encrypted record envelope version".to_string()
+                )));
+            }
+        };
+
+        let category = parse_encrypted_category(&encrypted.data_category)?;
+        let decision = evaluate_authorization_for_resource(
+            input.patient_hash.clone(),
+            category.clone(),
+            Permission::Read,
+            input.is_emergency,
+            clinical_event_time,
+            encounter_hash,
+        )?;
+
+        if decision.authorized {
+            authorized_records.push((record, category, decision));
         }
     }
 
-    if !records.is_empty() {
+    let mut records = Vec::with_capacity(authorized_records.len());
+    for (record, category, auth) in authorized_records {
         log_data_access(
-            input.patient_hash,
-            vec![DataCategory::All],
+            input.patient_hash.clone(),
+            vec![category],
             Permission::Read,
             auth.consent_hash,
             auth.emergency_override,
-            input.emergency_reason,
+            input.emergency_reason.clone(),
         )?;
+        records.push(record);
     }
+
     Ok(records)
 }
 
