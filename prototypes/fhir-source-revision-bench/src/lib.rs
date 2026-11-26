@@ -186,6 +186,16 @@ pub fn classify_revision(
         }
     }
 
+    // Treat the supplied append-only history as security-relevant input too.
+    // A malformed matching record must not be silently ignored while deriving
+    // the current projection.
+    for prior in history
+        .iter()
+        .filter(|revision| same_logical_resource(revision, incoming))
+    {
+        validate_revision(prior)?;
+    }
+
     let existing: Vec<&SourceRevision> = history
         .iter()
         .chain(current)
@@ -197,30 +207,63 @@ pub fn classify_revision(
     }
 
     if let Some(version_id) = &incoming.version_id {
-        for prior in &existing {
-            if prior.version_id.as_ref() == Some(version_id) {
-                if prior.canonicalization_profile != incoming.canonicalization_profile {
-                    return Ok(assessment(
-                        RevisionDisposition::CanonicalizationProfileConflict,
-                    ));
-                }
-                if prior.payload_digest != incoming.payload_digest {
-                    return Ok(assessment(RevisionDisposition::VersionEquivocation));
-                }
-                if prior.source_order != incoming.source_order {
-                    return Ok(assessment(RevisionDisposition::SourceOrderMetadataConflict));
-                }
-                return Ok(assessment(RevisionDisposition::ExactReplay));
+        // Do not return on the first match: replicated or corrupted history
+        // can contain contradictory entries for one version ID. Classification
+        // must be independent of history iteration order.
+        let mut matching_version_found = false;
+        let mut profile_conflict = false;
+        let mut digest_conflict = false;
+        let mut order_conflict = false;
+
+        for prior in existing
+            .iter()
+            .filter(|prior| prior.version_id.as_ref() == Some(version_id))
+        {
+            matching_version_found = true;
+            if prior.canonicalization_profile != incoming.canonicalization_profile {
+                profile_conflict = true;
+                continue;
+            }
+            if prior.payload_digest != incoming.payload_digest {
+                digest_conflict = true;
+            }
+            if prior.source_order != incoming.source_order {
+                order_conflict = true;
             }
         }
+
+        if profile_conflict {
+            return Ok(assessment(
+                RevisionDisposition::CanonicalizationProfileConflict,
+            ));
+        }
+        if digest_conflict {
+            return Ok(assessment(RevisionDisposition::VersionEquivocation));
+        }
+        if order_conflict {
+            return Ok(assessment(RevisionDisposition::SourceOrderMetadataConflict));
+        }
+        if matching_version_found {
+            return Ok(assessment(RevisionDisposition::ExactReplay));
+        }
     } else {
-        for prior in &existing {
-            if prior.version_id.is_none()
-                && prior.payload_digest == incoming.payload_digest
+        let mut unversioned_exact_replay = false;
+        let mut source_order_conflict = false;
+        for prior in existing.iter().filter(|prior| prior.version_id.is_none()) {
+            if prior.payload_digest == incoming.payload_digest
                 && prior.canonicalization_profile == incoming.canonicalization_profile
             {
-                return Ok(assessment(RevisionDisposition::ExactReplay));
+                unversioned_exact_replay = true;
+                if prior.source_order != incoming.source_order {
+                    source_order_conflict = true;
+                }
             }
+        }
+        if source_order_conflict {
+            return Ok(assessment(RevisionDisposition::SourceOrderMetadataConflict));
+        }
+        if unversioned_exact_replay {
+            return Ok(assessment(RevisionDisposition::ExactReplay));
         }
     }
 
@@ -236,10 +279,22 @@ pub fn classify_revision(
         return Ok(assessment(RevisionDisposition::OrderUnknown));
     }
 
-    if incoming_order.sequence > current_order.sequence {
+    // Compare against every accepted revision with the same documented source
+    // ordering profile, not merely the current pointer. If the projection lags
+    // behind history, an intermediate late event must not move it forward to
+    // an older revision.
+    let highest_observed_sequence = existing
+        .iter()
+        .filter_map(|revision| revision.source_order.as_ref())
+        .filter(|order| order.profile_id == incoming_order.profile_id)
+        .map(|order| order.sequence)
+        .max()
+        .unwrap_or(current_order.sequence);
+
+    if incoming_order.sequence > highest_observed_sequence {
         return Ok(assessment(RevisionDisposition::NewerBySourceSequence));
     }
-    if incoming_order.sequence < current_order.sequence {
+    if incoming_order.sequence < highest_observed_sequence {
         return Ok(assessment(RevisionDisposition::OlderBySourceSequence));
     }
 
