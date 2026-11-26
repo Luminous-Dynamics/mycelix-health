@@ -474,6 +474,38 @@ describe('EHR Gateway Server', () => {
       expect(mockHolochainClient.callZome).not.toHaveBeenCalled();
     });
 
+    it('POST /fhir/Bundle rejects Patient references with unresolved identifier metadata', async () => {
+      mockGateway.isConnected.mockReturnValueOnce(true);
+      mockHolochainClient.callZome.mockClear();
+      const bundle = {
+        resourceType: 'Bundle',
+        type: 'collection',
+        entry: [
+          { fullUrl: 'Patient/123', resource: { resourceType: 'Patient', id: '123' } },
+          {
+            fullUrl: 'Observation/obs-reference-with-identifier',
+            resource: {
+              resourceType: 'Observation',
+              id: 'obs-reference-with-identifier',
+              subject: {
+                reference: 'Patient/123',
+                identifier: { system: 'urn:test:ehr-patient', value: 'other-patient' },
+              },
+            },
+          },
+        ],
+      };
+
+      const res = await app.request('/fhir/Bundle', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(bundle),
+      });
+
+      expect(res.status).toBe(403);
+      expect(mockHolochainClient.callZome).not.toHaveBeenCalled();
+    });
+
     it('POST /fhir/Bundle rejects invalid bundle', async () => {
       mockGateway.isConnected.mockReturnValueOnce(true);
       const res = await app.request('/fhir/Bundle', {
