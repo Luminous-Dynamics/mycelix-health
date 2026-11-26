@@ -60,6 +60,7 @@ export type GatewayOperationStateV1 =
 export interface GatewayOperationReceiptV1 {
   operationId: string;
   operationKey: string;
+  clientIdempotencyKey: string;
   requestDigest: string;
   tenantId: string;
   principalBinding: string;
@@ -193,7 +194,17 @@ function digest(value: unknown): value is string {
 function validIntent(intent: GatewayOperationIntentV1): boolean {
   return Boolean(
     intent
+      && nonEmpty(intent.clientIdempotencyKey)
+      && intent.clientIdempotencyKey.length <= 256
       && digest(intent.operationKey)
+      && intent.operationKey === deriveGatewayOperationKeyV1({
+        tenantId: intent.tenantId,
+        principalBinding: intent.principalBinding,
+        patientBinding: intent.patientBinding,
+        connectionId: intent.connectionId,
+        action: intent.action,
+        clientIdempotencyKey: intent.clientIdempotencyKey,
+      })
       && digest(intent.requestDigest)
       && nonEmpty(intent.tenantId)
       && nonEmpty(intent.principalBinding)
