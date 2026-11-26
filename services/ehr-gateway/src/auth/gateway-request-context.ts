@@ -130,6 +130,10 @@ export type GatewayAuthorizationResultV1 =
       principal: GatewayPrincipalV1;
       tenantId: string;
       patientBinding: string;
+      sourceConnectionId: string;
+      purpose: string;
+      recipientId: string;
+      requestedResourceTypes: string[];
       action: GatewayActionV1;
       expiresAtMs: number;
     }
@@ -337,6 +341,10 @@ export async function authorizeGatewayRequestV1(
     principal: context.principal,
     tenantId: context.tenantId,
     patientBinding: context.patientBinding,
+    sourceConnectionId: context.sourceConnectionId,
+    purpose: context.purpose,
+    recipientId: context.recipientId,
+    requestedResourceTypes: [...context.requestedResourceTypes],
     action: context.action,
     expiresAtMs: Math.min(context.expiresAtMs, grant.expiresAtMs),
   };
