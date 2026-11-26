@@ -2,7 +2,7 @@ name: CI
 
 on:
   push:
-    branches: [main, develop]
+    branches: [main, develop, fix/zome-license-workspace-inheritance-2026-11-26, fix/crossbeam-epoch-rustsec-2026-11-26, refactor/remove-unused-chrono-workspace-dep-2026-11-26]
   pull_request:
     branches: [main, develop]
 
