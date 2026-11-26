@@ -107,7 +107,7 @@ Symthaea may reason over a minimum-necessary projection of verified evidence and
 
 ## 5. Official validator fixture expansion
 
-The pinned HL7 Validator CLI 7.0.6 / FHIR R4 4.0.1 corpus grows from 16 to 23 fully synthetic cases:
+The pinned HL7 Validator CLI 7.0.6 / FHIR R4 4.0.1 corpus now contains 24 fully synthetic cases (8 newly added to the 16-case baseline):
 
 | Fixture | Expected FHIR core result | What it controls |
 |---|---|---|
@@ -117,9 +117,10 @@ The pinned HL7 Validator CLI 7.0.6 / FHIR R4 4.0.1 corpus grows from 16 to 23 fu
 | `invalid_audit_event_missing_source` | invalid | required AuditEvent source reporter |
 | `valid_active_privacy_consent_with_patient` | valid | privacy Consent and patient invariant |
 | `valid_inactive_privacy_consent_not_an_authority_grant` | valid | FHIR syntax is not an active permission |
-| `invalid_privacy_consent_missing_patient` | invalid | privacy Consent patient invariant |
+| `invalid_privacy_consent_missing_patient` | warnings only | canonical privacy scope was not flagged as an error by the pinned CLI; see validator gap below |
+| `invalid_privacy_consent_missing_status` | invalid | mandatory Consent.status element |
 
-The validator lane uses terminology mode `n/a`; its results qualify FHIR R4 structural/core invariants only. It does not validate terminology bindings, jurisdiction-specific profiles, signature/legal enforceability, source authenticity, consent enforcement or clinical truth.
+The validator lane uses terminology mode `n/a`; its results qualify only the rules actually reported by the pinned validator. The first run returned zero errors for `invalid_privacy_consent_missing_patient`, despite the R4 StructureDefinition's `ppc-2` patient requirement. Inspection of the published R4 Consent snapshot shows the invariant expression uses the literal `system='something'` (see [HL7 R4 Consent StructureDefinition](https://hl7.org/fhir/R4/consent.profile.json.html)), which does not match the canonical `http://terminology.hl7.org/CodeSystem/consentscope` coding. We therefore classify this specific fixture as `warnings_only`, not as an invalid case that the validator successfully caught. A separate missing-status fixture supplies a mandatory-element negative control. It does not validate terminology bindings, jurisdiction-specific profiles, signature/legal enforceability, source authenticity, consent enforcement or clinical truth.
 
 ## 6. Source-audited current implementation boundary
 
