@@ -1154,6 +1154,11 @@ pub fn decrypt_lab_result(input: DecryptLabResultInput) -> ExternResult<LabResul
         )))
     })?;
 
+    if lab_result.patient_hash != encrypted.patient_hash {
+        return Err(wasm_error!(WasmErrorInner::Guest(
+            "Decrypted LabResult patient does not match its encrypted envelope".to_string()
+        )));
+    }
     if encrypted.envelope_version == ENCRYPTED_RECORD_ENVELOPE_VERSION_V2
         && (encrypted.clinical_event_time != Some(lab_result.collection_time)
             || encrypted.encounter_hash != lab_result.encounter_hash)
@@ -1190,11 +1195,13 @@ pub struct StoreEncryptedRecordInput {
     pub data_category: String,
     pub entry_type: String,
     pub encrypted_at: i64,
-    /// V2 event time asserted by the encrypting writer and authenticated as AAD.
-    /// It is compared against the decrypted typed payload before plaintext release.
+    /// V2 clinical event time asserted by the encrypting writer and authenticated as AAD.
+    /// The typed payload must carry the same value before plaintext is released.
+    /// This is writer-attested metadata, not independent EHR issuer/Provenance verification.
     #[serde(default)]
     pub clinical_event_time: Option<Timestamp>,
     /// V2 encounter binding, authenticated as AAD and compared to typed payload.
+    /// Its source relationship still requires external Provenance/issuer qualification.
     #[serde(default)]
     pub encounter_hash: Option<ActionHash>,
     pub is_emergency: bool,
