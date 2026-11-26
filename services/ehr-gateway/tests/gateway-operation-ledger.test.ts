@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
+import { deriveGatewayOperationKeyV1 } from '../src/auth/gateway-operation-ledger.js';
 import {
   GatewayOperationCoordinatorV1,
   type GatewayAdapterExecuteResultV1,
@@ -19,7 +20,7 @@ const DIGEST_C = 'c'.repeat(64);
 
 function intent(overrides: Partial<GatewayOperationIntentV1> = {}): GatewayOperationIntentV1 {
   return {
-    operationKey: 'tenant-1:principal-1:sync_pull:client-key-1',
+    operationKey: deriveGatewayOperationKeyV1({ tenantId: 'tenant-1', principalBinding: 'principal-1', connectionId: 'ehr-connection-1', action: 'sync_pull', clientIdempotencyKey: 'client-key-1' }),
     requestDigest: DIGEST_A,
     tenantId: 'tenant-1',
     principalBinding: 'principal-1',
@@ -147,7 +148,7 @@ class MemoryGatewayOperationStore implements GatewayOperationStoreV1 {
   ): Promise<GatewayOperationWriteResultV1> {
     if (this.unavailable) return { kind: 'unavailable' };
     const current = [...this.records.values()].find((r) => r.operationId === operationId);
-    if (!current || current.version !== expectedVersion || current.state !== 'executing') {
+    if (!current || current.version !== expectedVersion || (current.state !== 'executing' && current.state !== 'outcome_unknown')) {
       return { kind: 'version_conflict' };
     }
     const updated: GatewayOperationReceiptV1 = {
@@ -339,6 +340,52 @@ describe('GatewayOperationCoordinatorV1', () => {
     expect(result.kind).toBe('outcome_unknown');
     expect(adapter.executeCalls).toHaveLength(1);
     expect(adapter.reconcileCalls).toHaveLength(0);
+  });
+
+  it('scopes identical client keys to tenant, principal, connection and action', () => {
+    const base = {
+      tenantId: 'tenant-1',
+      principalBinding: 'principal-1',
+      connectionId: 'ehr-connection-1',
+      action: 'sync_pull' as const,
+      clientIdempotencyKey: 'same-client-key',
+    };
+    const key = deriveGatewayOperationKeyV1(base);
+    expect(key).toMatch(/^[a-f0-9]{64}$/);
+    expect(deriveGatewayOperationKeyV1({ ...base, tenantId: 'tenant-2' })).not.toBe(key);
+    expect(deriveGatewayOperationKeyV1({ ...base, principalBinding: 'principal-2' })).not.toBe(key);
+    expect(deriveGatewayOperationKeyV1({ ...base, connectionId: 'ehr-connection-2' })).not.toBe(key);
+    expect(deriveGatewayOperationKeyV1({ ...base, action: 'sync_bidirectional' })).not.toBe(key);
+  });
+
+  it('requires fresh authority before same-key remote replay can initiate a first delivery', async () => {
+    const store = new MemoryGatewayOperationStore();
+    const adapter = new TestAdapter();
+    adapter.supportsOutcomeReconciliation = false;
+    adapter.nextExecute = { kind: 'outcome_unknown', reason: 'ack_lost' };
+    const reauthorizer: GatewayOperationReauthorizerV1 = {
+      reauthorize: vi.fn()
+        .mockResolvedValueOnce({
+          authorized: true as const,
+          authorizationReceiptDigest: DIGEST_A,
+          expiresAtMs: 10_000,
+        })
+        .mockResolvedValueOnce({
+          authorized: false as const,
+          reason: 'grant_revoked',
+        }),
+    };
+    const service = coordinator(store, adapter, reauthorizer);
+
+    await service.executeOnce(intent());
+    const result = await service.reconcile(intent().operationKey);
+
+    expect(result).toEqual({
+      kind: 'deferred',
+      reason: 'fresh_authority_required_before_same_key_remote_replay',
+    });
+    expect(adapter.executeCalls).toHaveLength(1);
+    expect(store.records.get(intent().operationKey)?.state).toBe('outcome_unknown');
   });
 
   it('defers if the operation ledger is unavailable', async () => {
