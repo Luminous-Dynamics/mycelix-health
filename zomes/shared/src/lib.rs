@@ -540,7 +540,54 @@ pub mod access_control {
         )
     }
 
+    /// Evaluate a resource-scoped authorization without converting an
+    /// explicit policy denial into a transport error. This lets list/read
+    /// handlers omit denied resources while still propagating verifier,
+    /// network and decoding failures as errors.
+    pub fn evaluate_authorization_for_resource(
+        patient_hash: ActionHash,
+        category: DataCategory,
+        permission: Permission,
+        is_emergency: bool,
+        clinical_event_time: Option<Timestamp>,
+        encounter_hash: Option<ActionHash>,
+    ) -> ExternResult<AuthorizationResult> {
+        evaluate_authorization_with_scope(
+            patient_hash,
+            category,
+            permission,
+            is_emergency,
+            clinical_event_time,
+            encounter_hash,
+        )
+    }
+
     fn require_authorization_with_scope(
+        patient_hash: ActionHash,
+        category: DataCategory,
+        permission: Permission,
+        is_emergency: bool,
+        clinical_event_time: Option<Timestamp>,
+        encounter_hash: Option<ActionHash>,
+    ) -> ExternResult<AuthorizationResult> {
+        let result = evaluate_authorization_with_scope(
+            patient_hash,
+            category,
+            permission,
+            is_emergency,
+            clinical_event_time,
+            encounter_hash,
+        )?;
+        if !result.authorized {
+            return Err(wasm_error!(WasmErrorInner::Guest(format!(
+                "Access denied: {}",
+                result.reason
+            ))));
+        }
+        Ok(result)
+    }
+
+    fn evaluate_authorization_with_scope(
         patient_hash: ActionHash,
         category: DataCategory,
         permission: Permission,
@@ -581,7 +628,7 @@ pub mod access_control {
         )?;
 
         // Decode the ZomeCallResponse
-        let auth_result: AuthorizationResult = match response {
+        let mut auth_result: AuthorizationResult = match response {
             ZomeCallResponse::Ok(extern_io) => extern_io.decode().map_err(|e| {
                 wasm_error!(WasmErrorInner::Guest(format!(
                     "Failed to decode authorization response: {:?}",
@@ -670,23 +717,20 @@ pub mod access_control {
             };
 
             if !explicitly_authorized {
-                return Err(wasm_error!(WasmErrorInner::Guest(format!(
-                    "Access denied: {:?} requires explicit category-specific consent",
+                auth_result.authorized = false;
+                auth_result.permissions.clear();
+                auth_result.reason = format!(
+                    "{:?} requires explicit category-specific consent",
                     category
-                ))));
+                );
+                return Ok(auth_result);
             }
         }
 
         // The consent zome is the single authorization authority for both
-        // ordinary and emergency access. A denied emergency request must not be
-        // upgraded by a second, less-scoped check in this shared wrapper.
-        if !auth_result.authorized {
-            return Err(wasm_error!(WasmErrorInner::Guest(format!(
-                "Access denied: {}",
-                auth_result.reason
-            ))));
-        }
-
+        // ordinary and emergency access. The evaluator returns explicit denials
+        // as data; callers that require a single-resource operation use
+        // require_authorization_with_scope to turn the denial into an error.
         Ok(auth_result)
     }
 
