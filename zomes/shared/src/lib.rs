@@ -553,13 +553,7 @@ pub mod chained_audit {
 
         #[test]
         fn verifier_rejects_invalid_genesis_and_sequence_gaps() {
-            let bad_genesis = make_entry(
-                0,
-                Some([9u8; 32]),
-                sample_event(2),
-                100,
-                dummy_agent(7),
-            );
+            let bad_genesis = make_entry(0, Some([9u8; 32]), sample_event(2), 100, dummy_agent(7));
             assert!(!verify_chain(&[bad_genesis]));
 
             let genesis = make_entry(0, None, sample_event(2), 100, dummy_agent(7));
@@ -578,13 +572,7 @@ pub mod chained_audit {
         fn trusted_head_detects_suffix_truncation_and_tail_metadata_tampering() {
             let genesis = make_entry(0, None, sample_event(2), 100, dummy_agent(7));
             let genesis_hash = hash_entry(&genesis).expect("genesis hashes");
-            let second = make_entry(
-                1,
-                Some(genesis_hash),
-                sample_event(3),
-                200,
-                dummy_agent(8),
-            );
+            let second = make_entry(1, Some(genesis_hash), sample_event(3), 200, dummy_agent(8));
             let trusted_head = hash_entry(&second).expect("tail hashes");
 
             assert!(verify_chain(&[genesis.clone(), second.clone()]));
