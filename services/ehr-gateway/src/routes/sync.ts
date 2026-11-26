@@ -12,6 +12,16 @@ import { Hono } from 'hono';
 import type { AppContext } from '../server.js';
 import { requireGatewayRouteAuthorizationV1 } from '../auth/gateway-route-guard.js';
 
+const SUPPORTED_SYNC_RESOURCE_TYPES = [
+  'Patient',
+  'Observation',
+  'Condition',
+  'MedicationRequest',
+  'AllergyIntolerance',
+  'Immunization',
+  'Procedure',
+] as const;
+
 /**
  * Create sync routes
  */
@@ -39,10 +49,15 @@ export function createSyncRoutes(ctx: AppContext): Hono {
     const resourceTypesParam = c.req.query('resourceTypes');
     const requestedResourceTypes = resourceTypesParam
       ? resourceTypesParam.split(',').map((value) => value.trim()).filter(Boolean)
-      : [
-        'Patient', 'Observation', 'Condition', 'MedicationRequest',
-        'AllergyIntolerance', 'Immunization', 'Procedure',
-      ];
+      : [...SUPPORTED_SYNC_RESOURCE_TYPES];
+    if (
+      requestedResourceTypes.length === 0
+      || requestedResourceTypes.some((resourceType) =>
+        !(SUPPORTED_SYNC_RESOURCE_TYPES as readonly string[]).includes(resourceType)
+      )
+    ) {
+      return c.json({ error: 'Unsupported or empty resourceTypes selection' }, 400);
+    }
     const authorization = await requireGatewayRouteAuthorizationV1(
       ctx.gatewayRouteAuthorizer,
       c.req.raw,
@@ -59,7 +74,6 @@ export function createSyncRoutes(ctx: AppContext): Hono {
     const connectionId = authorization.authorization.sourceConnectionId;
     const patientId = authorization.authorization.resolvedSourcePatientId!;
     const credentialHandle = authorization.authorization.credentialHandle!;
-    const sourceSystem = ctx.gateway.getConnectionInfo(connectionId).system;
     const resourceTypes = authorization.authorization.requestedResourceTypes;
     const isAsync = c.req.query('async') === 'true';
 
@@ -73,6 +87,7 @@ export function createSyncRoutes(ctx: AppContext): Hono {
     if (!ctx.gateway.isConnected(connectionId)) {
       return c.json({ error: 'Authorized source connection is unavailable' }, 503);
     }
+    const sourceSystem = ctx.gateway.getConnectionInfo(connectionId).system;
 
     // Background execution remains disabled until the worker has its own fresh,
     // consume-once authorization receipt and durable operation reconciliation.
@@ -297,7 +312,6 @@ export function createSyncRoutes(ctx: AppContext): Hono {
     const patientId = authorization.authorization.resolvedSourcePatientId!;
     const patientHash = authorization.authorization.resolvedMycelixPatientHash!;
     const credentialHandle = authorization.authorization.credentialHandle!;
-    const sourceSystem = ctx.gateway.getConnectionInfo(connectionId).system;
     const resourceTypes = authorization.authorization.requestedResourceTypes;
 
     if (
@@ -310,6 +324,7 @@ export function createSyncRoutes(ctx: AppContext): Hono {
     if (!ctx.gateway.isConnected(connectionId)) {
       return c.json({ error: 'Authorized source connection is unavailable' }, 503);
     }
+    const sourceSystem = ctx.gateway.getConnectionInfo(connectionId).system;
 
     try {
       const hashBytes = new Uint8Array(Buffer.from(patientHash, 'base64'));
