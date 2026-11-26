@@ -410,8 +410,17 @@ describe('EHR Gateway Server', () => {
             },
             tenantId: 'test-tenant',
             patientBinding: 'opaque-test-patient',
+            sourceConnectionId: 'test-connection',
+            purpose: 'treatment',
+            recipientId: 'mycelix-test',
+            requestedResourceTypes: [...(intent.resourceTypes ?? [])],
             action: intent.action,
             expiresAtMs: Date.now() + 60_000,
+            resolvedSourcePatientId: '123',
+            resolvedMycelixPatientHash: 'patient-123',
+            credentialHandle: 'test-credential-handle',
+            resolvedJobId: 'job-visible',
+            resolvedConflictId: 'conflict-visible',
             authorizedResourceIds: intent.action === 'sync_job_list'
               ? ['job-visible']
               : [JSON.stringify(['Observation', 'resource-visible'])],
