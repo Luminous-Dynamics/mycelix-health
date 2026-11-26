@@ -23,10 +23,25 @@ use mycelix_health_shared::{
 };
 use records_integrity::*;
 
-const ENCRYPTED_RECORD_ENVELOPE_VERSION: u8 = 1;
+const ENCRYPTED_RECORD_ENVELOPE_VERSION_V1: u8 = 1;
+const ENCRYPTED_RECORD_ENVELOPE_VERSION_V2: u8 = 2;
 
 fn encrypted_record_aad(record: &EncryptedRecord) -> ExternResult<Vec<u8>> {
-    ExternIO::encode(record.aad())
+    let encoded = match record.envelope_version {
+        ENCRYPTED_RECORD_ENVELOPE_VERSION_V1 => ExternIO::encode(record.aad()),
+        ENCRYPTED_RECORD_ENVELOPE_VERSION_V2 => {
+            let aad = record.aad_v2().ok_or(wasm_error!(WasmErrorInner::Guest(
+                "V2 encrypted record is missing clinical event time".to_string()
+            )))?;
+            ExternIO::encode(aad)
+        }
+        _ => {
+            return Err(wasm_error!(WasmErrorInner::Guest(
+                "Unsupported encrypted record envelope version".to_string()
+            )));
+        }
+    };
+    encoded
         .map(|encoded| encoded.as_bytes().to_vec())
         .map_err(|error| {
             wasm_error!(WasmErrorInner::Guest(format!(
@@ -34,6 +49,52 @@ fn encrypted_record_aad(record: &EncryptedRecord) -> ExternResult<Vec<u8>> {
                 error
             )))
         })
+}
+
+/// Select the exact authorization path for an encrypted envelope. Legacy v1
+/// has no clinical context and therefore cannot satisfy a date- or
+/// encounter-restricted grant. V2 uses only context authenticated by its AAD.
+fn require_encrypted_record_read_authorization(
+    record: &EncryptedRecord,
+    is_emergency: bool,
+) -> ExternResult<mycelix_health_shared::AuthorizationResult> {
+    let category = parse_encrypted_category(&record.data_category)?;
+    match record.envelope_version {
+        ENCRYPTED_RECORD_ENVELOPE_VERSION_V1 => require_authorization(
+            record.patient_hash.clone(),
+            category,
+            Permission::Read,
+            is_emergency,
+        ),
+        ENCRYPTED_RECORD_ENVELOPE_VERSION_V2 => {
+            let event_time = record.clinical_event_time.clone().ok_or(wasm_error!(
+                WasmErrorInner::Guest("V2 encrypted record has no clinical event time".to_string())
+            ))?;
+            require_authorization_for_resource(
+                record.patient_hash.clone(),
+                category,
+                Permission::Read,
+                is_emergency,
+                Some(event_time),
+                record.encounter_hash.clone(),
+            )
+        }
+        _ => Err(wasm_error!(WasmErrorInner::Guest(
+            "Unsupported encrypted record envelope version".to_string()
+        ))),
+    }
+}
+
+/// V2 is currently enabled only for resource types whose typed payload exposes
+/// an event clock that can be compared after decryption.
+fn encrypted_v2_route_is_supported(entry_type: &str, category: &str) -> bool {
+    matches!(
+        (entry_type, category),
+        ("LabResult", "LabResults")
+            | ("ProcedurePerformed", "Procedures")
+            | ("ImagingStudy", "ImagingStudies")
+            | ("VitalSigns", "VitalSigns")
+    )
 }
 
 fn parse_encrypted_category(category: &str) -> ExternResult<DataCategory> {
