@@ -17,4 +17,6 @@ checkpoint_head_mismatch|Rejected|checkpoint_head_mismatch|The terminal source a
 causal_cycle|Rejected|causal_cycle|Explicit causal edges cannot create a cycle.
 self_parent|Rejected|self_parent|An event cannot declare itself as a causal parent.
 duplicate_causal_parent|Rejected|duplicate_causal_parent|An event cannot repeat the same causal parent.
+conflicting_checkpoints|Rejected|duplicate_checkpoint|Conflicting checkpoint observations for one stream cannot select an arbitrary head.
+duplicate_stream_sequence|Rejected|duplicate_stream_sequence|Duplicate actions at one per-agent sequence are rejected rather than first-wins.
 uncheckpointed_suffix|Rejected|uncheckpointed_suffix|An action beyond the independently acknowledged checkpoint is not accepted.
