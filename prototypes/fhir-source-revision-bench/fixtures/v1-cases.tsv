@@ -11,6 +11,9 @@ opaque_version_order|v10 and v9 without source sequence|OrderUnknown|PreserveHis
 timestamp_not_order|source lastUpdated and received times disagree|OrderUnknown|PreserveHistoryOnly
 different_order_profile|source sequences from different ordering profiles|OrderUnknown|PreserveHistoryOnly
 source_sequence_collision|different versions claim one source sequence|SourceSequenceCollision|Quarantine
+projection_behind_history|incoming revision is newer than current pointer but older than accepted history|OlderBySourceSequence|PreserveHistoryOnly
+contradictory_duplicate_history|same version ID has conflicting payloads in stored history|VersionEquivocation|Quarantine
+malformed_matching_history|stored matching revision violates the revision schema|InvalidInput|Reject
 tenant_partition|same logical ID across tenants|FirstRevision|Promote
 invalid_version|FHIR version identifier malformed|InvalidInput|Reject
 principal_missing|source principal absent|InvalidInput|Reject
