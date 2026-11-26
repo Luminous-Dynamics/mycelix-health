@@ -63,6 +63,19 @@ jq '.results |= map(if .case_id == "deny_missing_consent_subject" then .decision
 set +e; bash "$EVALUATOR" "$MANIFEST" "$mutated" >/dev/null 2>&1; status=$?; set -e
 [[ "$status" -eq 2 ]] || { echo "Expected missing-subject allow to fail with status 2; got $status" >&2; exit 1; }
 
+# Provenance, conflict and audit failures must not be admitted.
+for case_id in \
+  deny_missing_provenance_binding \
+  deny_invalid_provenance_signature \
+  deny_unresolved_source_conflict \
+  deny_invalid_audit_chain \
+  deny_unauthenticated_audit_actor \
+  defer_source_registry_unavailable; do
+  jq --arg id "$case_id" '.results |= map(if .case_id == $id then .decision = "allow" | .reason_codes = ["authorized"] else . end)' "$baseline" > "$mutated"
+  set +e; bash "$EVALUATOR" "$MANIFEST" "$mutated" >/dev/null 2>&1; status=$?; set -e
+  [[ "$status" -eq 2 ]] || { echo "Expected $case_id allow to fail with status 2; got $status" >&2; exit 1; }
+done
+
 # Public scorer fixture still validates the scorer independently.
 bash "$EVALUATOR" "$MANIFEST" "$ORACLE" >/dev/null
 
