@@ -111,6 +111,8 @@ pub struct EvidenceEvent {
     pub kind: EventKind,
     pub actor_id: String,
     pub actor_ref_digest: String,
+    /// The subject identity asserted by the identity-binding event.
+    pub bound_actor_ref_digest: Option<String>,
     pub actor_role: ActorRole,
     pub actor_sequence: u64,
     pub observed_at_ms: i64,
@@ -166,6 +168,7 @@ pub enum ReasonCode {
     IncompleteBinding,
     DuplicateEventId,
     CrossEventBindingMismatch,
+    AuthenticatedActorMismatch,
     InvalidDigestOrSignature,
     MissingComponentQualification,
     SelfIssuedQualification,
@@ -385,6 +388,15 @@ where
                 event_count,
             );
         }
+        if event.kind == EventKind::IdentityBound
+            && event.bound_actor_ref_digest.as_deref()
+                != Some(graph.binding.authenticated_actor_ref_digest.as_str())
+        {
+            return VerificationReport::rejected(
+                ReasonCode::AuthenticatedActorMismatch,
+                event_count,
+            );
+        }
         if !valid_parent_transition(event, graph) {
             return VerificationReport::rejected(
                 ReasonCode::MissingRequiredParent,
@@ -486,11 +498,14 @@ fn validate_actor_sequences(events: &[EvidenceEvent]) -> Option<ReasonCode> {
     }
     for sequences in by_actor.values_mut() {
         sequences.sort_unstable();
+        if sequences.first().copied() != Some(1) {
+            return Some(ReasonCode::ActorSequenceGap);
+        }
         for pair in sequences.windows(2) {
             if pair[0] == pair[1] {
                 return Some(ReasonCode::DuplicateActorSequence);
             }
-            if pair[1] != pair[0] + 1 {
+            if pair[0].checked_add(1) != Some(pair[1]) {
                 return Some(ReasonCode::ActorSequenceGap);
             }
         }
@@ -643,6 +658,11 @@ mod tests {
             } else {
                 format!("sha256:{actor}")
             },
+            bound_actor_ref_digest: if kind == EventKind::IdentityBound {
+                Some("sha256:actor".into())
+            } else {
+                None
+            },
             actor_role: role,
             actor_sequence: sequence,
             observed_at_ms: 1_000 - (sequence as i64 * 10),
@@ -656,13 +676,15 @@ mod tests {
                     event_digest: parent.event_digest.clone(),
                 })
                 .collect(),
-            observed_resource_set_digest: if kind
-                == EventKind::DeliveryResult(DeliveryOutcome::RecipientEffectObserved)
-            {
+            observed_resource_set_digest: if matches!(
+                kind,
+                EventKind::DeliveryResult(DeliveryOutcome::RecipientEffectObserved)
+                    | EventKind::DeliveryReconciled(DeliveryOutcome::RecipientEffectObserved)
+            ) {
                 Some("sha256:resource-set-v7".into())
             } else {
                 None
-            },
+            }
         }
     }
 
