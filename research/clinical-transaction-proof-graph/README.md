@@ -105,3 +105,8 @@ The synthetic authenticator only checks deterministic fixture strings. It does n
 ## Claim boundary
 
 This experiment does not demonstrate that a real FHIR server, Holochain DHT, database, OAuth identity provider or recipient system satisfies these contracts. It makes no PHI, HIPAA, 42 CFR Part 2, clinical-safety, regulatory-certification or production-readiness claim.
+
+
+## Runtime receipt probe profile update
+
+The server-only runtime receipt now requires eight probes: CapabilityStatement, multi-resource transaction atomicity, conditional replay, deterministic stale If-Match, concurrent version conflict, 128-way concurrent conditional create, transaction rollback, and the direct read-only PostgreSQL observer. A receipt missing any one of these remains `Defer`; the receipt must not qualify a HAPI build on the strength of only a subset of transaction probes.
