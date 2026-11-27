@@ -144,7 +144,8 @@ pub fn check_authorization(input: AuthorizationCheckInput) -> ExternResult<Autho
     let authenticated_agent = agent_info()?.agent_initial_pubkey;
     if !requestor_matches_authenticated_agent(&input.requestor, &authenticated_agent) {
         return Err(wasm_error!(WasmErrorInner::Guest(
-            "AUTHORIZATION_REQUESTOR_MISMATCH: requestor must match the authenticated caller".to_string()
+            "AUTHORIZATION_REQUESTOR_MISMATCH: requestor must match the authenticated caller"
+                .to_string()
         )));
     }
 
