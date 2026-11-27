@@ -69,6 +69,13 @@ pub enum ActorRole {
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum AuthorityOutcome {
+    Permit,
+    Deny,
+    Defer,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum CommitOutcome {
     Committed,
     Rejected,
@@ -109,6 +116,9 @@ pub struct EvidenceEvent {
     pub signature: String,
     pub binding: OperationBinding,
     pub kind: EventKind,
+    /// Present only on AuthorityDecided events. A positive execution proof
+    /// requires an explicit Permit; Deny and Defer cannot reach preparation.
+    pub authority_outcome: Option<AuthorityOutcome>,
     pub actor_id: String,
     pub actor_ref_digest: String,
     /// The subject identity asserted by the identity-binding event.
@@ -157,6 +167,7 @@ pub enum Verdict {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum OperationConclusion {
     RecipientEffectObserved,
+    DeniedByAuthority,
     RejectedBeforeCommit,
     DeliveryFailed,
     Unresolved,
@@ -169,6 +180,11 @@ pub enum ReasonCode {
     DuplicateEventId,
     CrossEventBindingMismatch,
     AuthenticatedActorMismatch,
+    MissingAuthorityDecision,
+    DuplicateAuthorityDecision,
+    InvalidAuthorityOutcomePlacement,
+    AuthorityDecisionDeferred,
+    DeniedAuthorityExecutionAttempted,
     InvalidDigestOrSignature,
     MissingComponentQualification,
     SelfIssuedQualification,
@@ -468,6 +484,65 @@ where
         );
     }
 
+    let authority_events: Vec<&EvidenceEvent> = graph
+        .events
+        .iter()
+        .filter(|event| event.kind == EventKind::AuthorityDecided)
+        .collect();
+    if authority_events.is_empty() {
+        return VerificationReport::defer(ReasonCode::MissingAuthorityDecision, event_count);
+    }
+    if authority_events.len() != 1 {
+        return VerificationReport::rejected(ReasonCode::DuplicateAuthorityDecision, event_count);
+    }
+    for event in &graph.events {
+        if event.kind == EventKind::AuthorityDecided && event.authority_outcome.is_none() {
+            return VerificationReport::defer(ReasonCode::MissingAuthorityDecision, event_count);
+        }
+        if event.kind != EventKind::AuthorityDecided && event.authority_outcome.is_some() {
+            return VerificationReport::rejected(
+                ReasonCode::InvalidAuthorityOutcomePlacement,
+                event_count,
+            );
+        }
+    }
+    let authority_outcome = authority_events[0]
+        .authority_outcome
+        .expect("authority outcome presence was checked above");
+    let execution_started = graph.events.iter().any(|event| {
+        matches!(
+            event.kind,
+            EventKind::Prepared
+                | EventKind::CommitAttempted
+                | EventKind::CommitResult(_)
+                | EventKind::CommitReconciled(_)
+                | EventKind::DeliveryAttempted
+                | EventKind::DeliveryResult(_)
+                | EventKind::DeliveryReconciled(_)
+        )
+    });
+    match authority_outcome {
+        AuthorityOutcome::Permit => {}
+        AuthorityOutcome::Deny => {
+            if execution_started {
+                return VerificationReport::rejected(
+                    ReasonCode::DeniedAuthorityExecutionAttempted,
+                    event_count,
+                );
+            }
+            return VerificationReport::verified(OperationConclusion::DeniedByAuthority, event_count);
+        }
+        AuthorityOutcome::Defer => {
+            if execution_started {
+                return VerificationReport::rejected(
+                    ReasonCode::DeniedAuthorityExecutionAttempted,
+                    event_count,
+                );
+            }
+            return VerificationReport::defer(ReasonCode::AuthorityDecisionDeferred, event_count);
+        }
+    }
+
     let mut latest_commit: Option<(CommitOutcome, &EvidenceEvent)> = None;
     let mut latest_delivery: Option<(DeliveryOutcome, &EvidenceEvent)> = None;
     for index in topological_order {
@@ -737,6 +812,11 @@ mod tests {
             signature: format!("fixture-signature:{actor}"),
             binding: binding(),
             kind,
+            authority_outcome: if kind == EventKind::AuthorityDecided {
+                Some(AuthorityOutcome::Permit)
+            } else {
+                None
+            },
             actor_id: actor.into(),
             actor_ref_digest: match role {
                 ActorRole::Client => "sha256:actor".into(),
@@ -1115,6 +1195,47 @@ mod tests {
             report.conclusion,
             OperationConclusion::RecipientEffectObserved
         );
+    }
+
+    #[test]
+    fn explicit_authority_deny_produces_a_verified_non_execution() {
+        let mut graph = successful_graph();
+        graph.events.truncate(3);
+        graph.events[2].authority_outcome = Some(AuthorityOutcome::Deny);
+        let report = verify_graph(&graph, 5_000, &FixtureAuthenticator, &qualifications());
+        assert_eq!(report.verdict, Verdict::Verified);
+        assert_eq!(report.conclusion, OperationConclusion::DeniedByAuthority);
+    }
+
+    #[test]
+    fn authority_defer_never_becomes_a_permit() {
+        let mut graph = successful_graph();
+        graph.events.truncate(3);
+        graph.events[2].authority_outcome = Some(AuthorityOutcome::Defer);
+        let report = verify_graph(&graph, 5_000, &FixtureAuthenticator, &qualifications());
+        assert_eq!(report.verdict, Verdict::Defer);
+        assert_eq!(report.findings, vec![ReasonCode::AuthorityDecisionDeferred]);
+    }
+
+    #[test]
+    fn denied_authority_cannot_be_followed_by_preparation_or_commit() {
+        let mut graph = successful_graph();
+        graph.events[2].authority_outcome = Some(AuthorityOutcome::Deny);
+        let report = verify_graph(&graph, 5_000, &FixtureAuthenticator, &qualifications());
+        assert_eq!(report.verdict, Verdict::Rejected);
+        assert_eq!(
+            report.findings,
+            vec![ReasonCode::DeniedAuthorityExecutionAttempted]
+        );
+    }
+
+    #[test]
+    fn missing_authority_result_does_not_default_to_permit() {
+        let mut graph = successful_graph();
+        graph.events[2].authority_outcome = None;
+        let report = verify_graph(&graph, 5_000, &FixtureAuthenticator, &qualifications());
+        assert_eq!(report.verdict, Verdict::Defer);
+        assert_eq!(report.findings, vec![ReasonCode::MissingAuthorityDecision]);
     }
 
     #[test]
