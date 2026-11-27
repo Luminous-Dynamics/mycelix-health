@@ -6,7 +6,7 @@ import {
   type CountersigningSessionState,
   type PreflightRequest,
 } from '@holochain/client';
-import { encode } from '@msgpack/msgpack';
+import { decode, encode } from '@msgpack/msgpack';
 import { describe, expect, it } from 'vitest';
 import {
   clinicalCountersigningIntentDigestV1,
