@@ -20,7 +20,7 @@ expect_state() {
   local expected="$2"
   local actual
   local status=0
-  "$evaluator" "$file" >"$tmp/result.json" || status=$?
+  bash "$evaluator" "$file" >"$tmp/result.json" || status=$?
   actual="$(jq -r '.qualification_state' "$tmp/result.json")"
   if [[ "$actual" != "$expected" ]]; then
     echo "expected $expected, got $actual (exit $status)" >&2
