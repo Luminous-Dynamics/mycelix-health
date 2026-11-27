@@ -59,9 +59,8 @@ patient_full_url="urn:uuid:00000000-0000-4000-8000-000000000001"
 provenance_full_url="urn:uuid:00000000-0000-4000-8000-000000000002"
 recorded_at="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 
-# A minimal synthetic Patient and its Provenance are submitted in one FHIR R4
-# transaction. Patient uses a stable client id (update-as-create); Provenance
-# uses conditional create through its standard target reference search.
+# A synthetic Patient and Provenance are submitted in one FHIR R4 transaction.
+# Patient and Provenance each use a declared conditional-create interaction.
 jq -n \
   --arg patient_full_url "$patient_full_url" \
   --arg provenance_full_url "$provenance_full_url" \
@@ -152,7 +151,6 @@ test "$patient_count" = "1"
 test "$provenance_count" = "1"
 
 # Capture the Patient version before replay; the first search is by synthetic identifier.
-
 curl --silent --show-error --fail --get "$FHIR_BASE_URL/Patient" \
   -H 'Accept: application/fhir+json' \
   --data-urlencode "_count=1" \
@@ -164,7 +162,7 @@ patient_version_before_replay="$(jq -r '.entry[0].resource.meta.versionId // emp
 test -n "$patient_version_before_replay"
 
 # Replay the exact transaction. Conditional create keeps one Patient and one
-# The retry must leave one Patient and one Provenance; this is not a distributed exactly-once claim.
+# matching Provenance; this is not a distributed exactly-once claim.
 
 replay_status="$(curl --silent --show-error --output "$WORK_DIR/replay-response.json" \
   --write-out '%{http_code}' \
