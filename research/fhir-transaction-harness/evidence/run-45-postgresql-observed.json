@@ -1,0 +1,126 @@
+{
+  "schema_version": 1,
+  "evidence_kind": "frozen-runtime-observation",
+  "scope": "synthetic HAPI FHIR R4 + PostgreSQL 18.7 qualification probes",
+  "observed_at": "2026-11-27T15:13:50Z",
+  "source": {
+    "repository": "Luminous-Dynamics/mycelix-health",
+    "branch": "test/fhir-hapi-postgres-transaction-probes-2026-11-27",
+    "commit": "c594b6f2be0a95e3b6957954843e2740d25b0658",
+    "workflow": "HAPI R4 PostgreSQL Transaction Probes",
+    "workflow_run_id": 46022783456,
+    "workflow_run_number": 45,
+    "job_id": 140586631689,
+    "artifact_id": 15208398775,
+    "artifact_sha256": "6cc3ed8ca88defe09e35e24f61993265fa06fda08927136e2e52f7f7ef93c46e"
+  },
+  "runtime": {
+    "platform": "linux/amd64",
+    "hapi": {
+      "version_tag": "v8.12.0-2",
+      "pinned_index_digest": "sha256:0ff86aac4c7bd13a1ee226444a70263bb46ed1c28ef543c30a44f865b80ca04e",
+      "runtime_image_id": "sha256:d4a0dc0bcde83fbbb855fc739aa952b376a31b27dca343c51e8607a1db6a8e35"
+    },
+    "postgresql": {
+      "version_tag": "18.7",
+      "runtime_version": "PostgreSQL 18.7 (Debian 18.7-1.pgdg13+5) on x86_64-pc-linux-gnu, compiled by gcc (Debian 14.2.0-19) 14.2.0, 64-bit",
+      "pinned_index_digest": "sha256:64c8b0d31e4ab6ea665e8426ea406a94bf52de3c05b3a4a8bf713704eefa9328",
+      "runtime_image_id": "sha256:71351f08f4be0e8675d0c8c35c7613b37a8e247e1a346e87ae06592cfa6e2b63"
+    },
+    "capability_statement_sha256": "85b685bc2da0977257fde707845d116ca0277a07161c0701a6d360ebab7ffdb3"
+  },
+  "harness_sha256": {
+    "research/fhir-transaction-harness/compose.yaml": "1ff0dea3e8bed25fb73a7a13ef45c3bedd7666770053dbc167df5b48296957ff",
+    "research/fhir-transaction-harness/init-observer.sql": "4fdfdde1625b0d072b5e646820ca433f758762d7f6bbaf0a77850fba2b12e34f",
+    "research/fhir-transaction-harness/probe-transactions.sh": "625a2fc9e2dc9eac8045f066873c2b5c189a3747995d1841114df0668b01c256"
+  },
+  "declared_capabilities": {
+    "fhir_version": "4.0.1",
+    "transaction": true,
+    "patient_conditional_create": true,
+    "provenance_conditional_create": true,
+    "provenance_target_search": true,
+    "observation_conditional_create": true
+  },
+  "fhir_probes": {
+    "provenance_observation_transaction": {
+      "result": "passed",
+      "http_status": 200,
+      "transaction_response_entries": 2
+    },
+    "replay_resource_cardinality": {
+      "result": "passed",
+      "http_status": 200,
+      "patient_count": 1,
+      "provenance_count": 1,
+      "observation_count": 1,
+      "observation_version_before": "1",
+      "observation_version_after": "1"
+    },
+    "deterministic_stale_if_match": {
+      "result": "passed",
+      "http_status": 409,
+      "response_type": "OperationOutcome",
+      "patient_version_before": "1",
+      "patient_version_after": "1"
+    },
+    "concurrent_if_match_writers": {
+      "result": "passed",
+      "writer_a_http_status": 200,
+      "writer_b_http_status": 409,
+      "accepted_writers": 1,
+      "version_conflicts": 1,
+      "patient_version_before": "1",
+      "patient_version_after": "2"
+    },
+    "transaction_rollback": {
+      "result": "passed",
+      "http_status": 409,
+      "response_type": "OperationOutcome",
+      "rollback_marker_count_after_failure": 0,
+      "patient_version_before": "2",
+      "patient_version_after": "2"
+    }
+  },
+  "independent_postgresql_observer": {
+    "result": "passed",
+    "observer_role": "hapi_observer",
+    "transaction_read_only": true,
+    "is_superuser": false,
+    "can_create_roles": false,
+    "can_insert": false,
+    "can_update": false,
+    "can_delete": false,
+    "patient_master_rows": 1,
+    "patient_history_rows": 2,
+    "patient_current_version": 2,
+    "provenance_master_rows": 1,
+    "provenance_history_rows": 1,
+    "observation_master_rows": 1,
+    "observation_history_rows": 1,
+    "observation_current_version": 1,
+    "rollback_marker_master_rows": 0,
+    "schema_inventory_artifact": "probes/postgres-schema-columns.tsv",
+    "join_contract": "HFJ_RESOURCE.RES_ID = HFJ_RES_VER.RES_ID; HFJ_RESOURCE.RES_ID = HFJ_SPIDX_TOKEN.RES_ID"
+  },
+  "qualification": {
+    "verdict": "defer",
+    "reasons": [
+      "No Mycelix consent-revocation/commit fence was exercised",
+      "No gateway/outbox crash or lost-acknowledgement reconciliation was exercised",
+      "No independent recipient-effect witness was exercised",
+      "No independent cryptographic qualification receipt was issued",
+      "No production authentication, authorization or enterprise audit layer was configured"
+    ]
+  },
+  "privacy": {
+    "phi_used": false,
+    "fixtures_synthetic_only": true,
+    "observer_independence": "Independent of HAPI's HTTP API; shares the same PostgreSQL instance and is not an independent replica or third-party auditor."
+  },
+  "limitations": [
+    "This is a frozen experimental observation for one pinned HAPI image, PostgreSQL version, configuration and corpus.",
+    "It does not establish cross-system exactly-once execution.",
+    "It does not qualify production Mycelix consent enforcement, distributed recovery, recipient effect, cryptographic trust, regulatory compliance or clinical safety."
+  ]
+}

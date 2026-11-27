@@ -1,0 +1,139 @@
+name: HAPI R4 PostgreSQL Transaction Probes
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "research/fhir-transaction-harness/**"
+      - ".github/workflows/fhir-transaction-harness.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: hapi-r4-postgres-probes-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  real-fhir-r4:
+    name: Pinned HAPI R4 + PostgreSQL behavioral probes
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    steps:
+      - name: Check out exact revision
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+
+      - name: Validate harness script and Compose model
+        run: |
+          set -euo pipefail
+          bash -n research/fhir-transaction-harness/probe-transactions.sh
+          git ls-files --error-unmatch research/fhir-transaction-harness/probe-corpus-v1.json
+          test -s research/fhir-transaction-harness/probe-corpus-v1.json
+          jq -e '.schema_version == 1 and .fhir_version == "4.0.1" and (.probes | length) == 8' research/fhir-transaction-harness/probe-corpus-v1.json >/dev/null
+          grep -q 'probe_corpus_sha256' research/fhir-transaction-harness/probe-transactions.sh
+          grep -q 'conditional_race_recovered_409' research/fhir-transaction-harness/probe-transactions.sh
+          grep -q 'hfj_res_search_url_pkey' research/fhir-transaction-harness/probe-transactions.sh
+          grep -q 'retry_patient_id' research/fhir-transaction-harness/probe-transactions.sh
+          git ls-files --error-unmatch research/fhir-transaction-harness/evidence/run-55-conditional-create-contention.json
+          git ls-files --error-unmatch research/fhir-transaction-harness/evidence/run-62-postgresql-conditional-create-recovered.json
+          jq -e '.probes.concurrent_conditional_create.result == "passed" and .probes.concurrent_conditional_create.recovered_409 == .probes.concurrent_conditional_create.transient_409 and .probes.independent_postgres_observer.result == "passed"' research/fhir-transaction-harness/evidence/run-62-postgresql-conditional-create-recovered.json >/dev/null
+          git ls-files --error-unmatch research/fhir-transaction-harness/init-observer.sql
+          test -f research/fhir-transaction-harness/init-observer.sql
+          test -s research/fhir-transaction-harness/init-observer.sql
+          grep -q 'CREATE ROLE hapi_observer' research/fhir-transaction-harness/init-observer.sql
+          grep -q 'default_transaction_read_only' research/fhir-transaction-harness/init-observer.sql
+          grep -Fq './init-observer.sql:/docker-entrypoint-initdb.d/10-observer-role.sql:ro' research/fhir-transaction-harness/compose.yaml
+          grep -Fq 'R.RES_ID = V.RES_ID' research/fhir-transaction-harness/probe-transactions.sh
+          grep -Fq 'R.RES_ID = T.RES_ID' research/fhir-transaction-harness/probe-transactions.sh
+          grep -Fq 'hfj_resource.res_id' research/fhir-transaction-harness/probe-transactions.sh
+          grep -Fq 'hfj_res_ver.res_id' research/fhir-transaction-harness/probe-transactions.sh
+          grep -Fq 'hfj_spidx_token.sp_value' research/fhir-transaction-harness/probe-transactions.sh
+          grep -Fq 'postgres-schema-columns.tsv' research/fhir-transaction-harness/probe-transactions.sh
+          grep -Fq 'information_schema.columns' research/fhir-transaction-harness/probe-transactions.sh
+          grep -Fq 'database_observation="$(docker compose' research/fhir-transaction-harness/probe-transactions.sh
+          grep -Fq 'postgres-schema-columns.tsv' research/fhir-transaction-harness/probe-transactions.sh
+          test "$(grep -Fc '# Independent database observer:' research/fhir-transaction-harness/probe-transactions.sh)" -eq 1
+          test "$(grep -Fc 'qualification-evidence.json' research/fhir-transaction-harness/probe-transactions.sh)" -ge 2
+          ! grep -Fq 'R.PID' research/fhir-transaction-harness/probe-transactions.sh
+          jq -e '
+            .source.workflow_run_number == 45
+            and .fhir_probes.provenance_observation_transaction.result == "passed"
+            and .fhir_probes.replay_resource_cardinality.result == "passed"
+            and .independent_postgresql_observer.result == "passed"
+            and .independent_postgresql_observer.observer_role == "hapi_observer"
+            and .independent_postgresql_observer.transaction_read_only == true
+            and .privacy.phi_used == false
+            and .qualification.verdict == "defer"
+          ' research/fhir-transaction-harness/evidence/run-45-postgresql-observed.json >/dev/null
+          jq -e '
+            .source.workflow_run_number == 47
+            and .fhir_probes.provenance_observation_transaction.result == "passed"
+            and .fhir_probes.replay_resource_cardinality.result == "passed"
+            and .fhir_probes.concurrent_if_match_writers.accepted_writers == 1
+            and .fhir_probes.concurrent_if_match_writers.version_conflicts == 1
+            and .independent_postgresql_observer.result == "passed"
+            and .independent_postgresql_observer.observer_role == "hapi_observer"
+            and .independent_postgresql_observer.transaction_read_only == true
+            and .privacy.phi_used == false
+            and .qualification.verdict == "defer"
+          ' research/fhir-transaction-harness/evidence/run-47-postgresql-observed.json >/dev/null
+          docker compose -f research/fhir-transaction-harness/compose.yaml config --quiet
+          docker compose version
+          docker version
+
+      - name: Prepare evidence directory
+        run: mkdir -p artifacts/fhir-qualification-ci
+
+      - name: Start pinned HAPI R4 and PostgreSQL
+        run: |
+          set -euo pipefail
+          docker compose -f research/fhir-transaction-harness/compose.yaml up \
+            --detach --wait --wait-timeout 900
+
+      - name: Capture runtime identities and PostgreSQL version
+        run: |
+          set -euo pipefail
+          mkdir -p artifacts/fhir-qualification-ci
+          docker compose -f research/fhir-transaction-harness/compose.yaml images --format json \
+            | tee artifacts/fhir-qualification-ci/compose-images.json
+          docker compose -f research/fhir-transaction-harness/compose.yaml exec -T postgres \
+            psql -U hapi_test -d hapi -Atc 'SELECT version();' \
+            | tee artifacts/fhir-qualification-ci/postgres-version.txt
+          sha256sum research/fhir-transaction-harness/compose.yaml \
+            research/fhir-transaction-harness/init-observer.sql \
+            research/fhir-transaction-harness/probe-corpus-v1.json \
+            research/fhir-transaction-harness/probe-transactions.sh \
+            research/fhir-transaction-harness/evidence/run-55-conditional-create-contention.json \
+            research/fhir-transaction-harness/evidence/run-62-postgresql-conditional-create-recovered.json \
+            | tee artifacts/fhir-qualification-ci/harness-sha256.txt
+
+      - name: Execute live FHIR transaction probes
+        run: |
+          set -euo pipefail
+          ARTIFACT_DIR=artifacts/fhir-qualification-ci/probes \
+            FHIR_BASE_URL=http://127.0.0.1:8080/fhir \
+            bash research/fhir-transaction-harness/probe-transactions.sh
+
+      - name: Capture container logs
+        if: always()
+        run: |
+          mkdir -p artifacts/fhir-qualification-ci
+          docker compose -f research/fhir-transaction-harness/compose.yaml ps --all \
+            > artifacts/fhir-qualification-ci/container-status.txt 2>&1 || true
+          docker compose -f research/fhir-transaction-harness/compose.yaml logs --no-color \
+            > artifacts/fhir-qualification-ci/container-logs.txt 2>&1 || true
+          docker compose -f research/fhir-transaction-harness/compose.yaml down --volumes \
+            --remove-orphans || true
+
+      - name: Upload synthetic qualification evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: hapi-r4-postgres-probes-${{ github.sha }}
+          path: artifacts/fhir-qualification-ci/
+          if-no-files-found: warn
+          retention-days: 30
