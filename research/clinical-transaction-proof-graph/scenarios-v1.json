@@ -3,22 +3,125 @@
   "benchmark": "clinical-transaction-proof-graph",
   "claim_boundary": "synthetic structural verifier fixtures; no production cryptographic or clinical-safety claim",
   "scenarios": [
-    {"id":"valid-recipient-effect","mutation":"none","expected":"verified","reason":"exact recipient and resource-set effect witness"},
-    {"id":"clock-skew","mutation":"reorder observed_at_ms while retaining parent digests","expected":"verified","reason":"causal edges, not wall-clock order, define ordering"},
-    {"id":"parent-digest-tamper","mutation":"replace one parent digest","expected":"rejected","reason":"parent reference no longer binds the referenced event"},
-    {"id":"missing-parent","mutation":"remove a referenced event","expected":"defer","reason":"required evidence is unavailable"},
-    {"id":"cross-patient","mutation":"change one event patient reference digest","expected":"rejected","reason":"event bindings disagree"},
-    {"id":"authenticated-actor-substitution","mutation":"identity-bound event names a different authenticated actor","expected":"rejected","reason":"request identity is not bound to authenticated transport identity"},
-    {"id":"expired-qualification","mutation":"expire component qualification at verification time","expected":"defer","reason":"stale component evidence cannot qualify"},
-    {"id":"self-issued-qualification","mutation":"mark component qualification as self-issued","expected":"defer","reason":"independent qualification evidence is missing"},
-    {"id":"unknown-commit","mutation":"commit result is unknown with no reconciliation","expected":"defer","reason":"unknown must not be promoted to success or denial"},
-    {"id":"commit-reconciled","mutation":"append same-attempt durable commit reconciliation","expected":"verified","reason":"same operation and idempotency binding reconciles the unknown commit"},
-    {"id":"delivery-reconciled","mutation":"append recipient-side observation for unknown delivery","expected":"verified","reason":"recipient evidence resolves the delivery unknown"},
-    {"id":"sender-ack-as-effect","mutation":"use gateway actor for recipient effect event","expected":"rejected","reason":"sender acknowledgement is not recipient observation"},
-    {"id":"wrong-resource-set","mutation":"recipient observes a different resource-set digest","expected":"rejected","reason":"effect must match the exact authorized set"},
-    {"id":"causal-cycle","mutation":"add a parent edge back to the root","expected":"rejected","reason":"causal cycle is invalid"},
-    {"id":"actor-sequence-gap","mutation":"remove one actor sequence from evidence","expected":"defer","reason":"per-actor event evidence is incomplete"},
-    {"id":"invalid-signature","mutation":"tamper with actor signature","expected":"rejected","reason":"authenticator refuses event"},
-    {"id":"commit-rejected","mutation":"backend reports rejected before delivery","expected":"verified","reason":"valid proof of a non-release"}
+    {
+      "id": "valid-recipient-effect",
+      "mutation": "none",
+      "expected": "verified",
+      "reason": "exact recipient and resource-set effect witness"
+    },
+    {
+      "id": "clock-skew",
+      "mutation": "reorder observed_at_ms while retaining parent digests",
+      "expected": "verified",
+      "reason": "causal edges, not wall-clock order, define ordering"
+    },
+    {
+      "id": "parent-digest-tamper",
+      "mutation": "replace one parent digest",
+      "expected": "rejected",
+      "reason": "parent reference no longer binds the referenced event"
+    },
+    {
+      "id": "missing-parent",
+      "mutation": "remove a referenced event",
+      "expected": "defer",
+      "reason": "required evidence is unavailable"
+    },
+    {
+      "id": "cross-patient",
+      "mutation": "change one event patient reference digest",
+      "expected": "rejected",
+      "reason": "event bindings disagree"
+    },
+    {
+      "id": "authenticated-actor-substitution",
+      "mutation": "identity-bound event names a different authenticated actor",
+      "expected": "rejected",
+      "reason": "request identity is not bound to authenticated transport identity"
+    },
+    {
+      "id": "expired-qualification",
+      "mutation": "expire component qualification at verification time",
+      "expected": "defer",
+      "reason": "stale component evidence cannot qualify"
+    },
+    {
+      "id": "self-issued-qualification",
+      "mutation": "mark component qualification as self-issued",
+      "expected": "defer",
+      "reason": "independent qualification evidence is missing"
+    },
+    {
+      "id": "unknown-commit",
+      "mutation": "commit result is unknown with no reconciliation",
+      "expected": "defer",
+      "reason": "unknown must not be promoted to success or denial"
+    },
+    {
+      "id": "commit-reconciled",
+      "mutation": "append same-attempt durable commit reconciliation",
+      "expected": "verified",
+      "reason": "same operation and idempotency binding reconciles the unknown commit"
+    },
+    {
+      "id": "delivery-reconciled",
+      "mutation": "append recipient-side observation for unknown delivery",
+      "expected": "verified",
+      "reason": "recipient evidence resolves the delivery unknown"
+    },
+    {
+      "id": "sender-ack-as-effect",
+      "mutation": "use gateway actor for recipient effect event",
+      "expected": "rejected",
+      "reason": "sender acknowledgement is not recipient observation"
+    },
+    {
+      "id": "wrong-resource-set",
+      "mutation": "recipient observes a different resource-set digest",
+      "expected": "rejected",
+      "reason": "effect must match the exact authorized set"
+    },
+    {
+      "id": "causal-cycle",
+      "mutation": "add a parent edge back to the root",
+      "expected": "rejected",
+      "reason": "causal cycle is invalid"
+    },
+    {
+      "id": "actor-sequence-gap",
+      "mutation": "remove one actor sequence from evidence",
+      "expected": "defer",
+      "reason": "per-actor event evidence is incomplete"
+    },
+    {
+      "id": "invalid-signature",
+      "mutation": "tamper with actor signature",
+      "expected": "rejected",
+      "reason": "authenticator refuses event"
+    },
+    {
+      "id": "commit-rejected",
+      "mutation": "backend reports rejected before delivery",
+      "expected": "verified",
+      "reason": "valid proof of a non-release"
+    },
+    {
+      "id": "actor-sequence-unlinked",
+      "mutation": "add same-actor sequential event on a parallel causal branch",
+      "expected": "rejected",
+      "reason": "actor sequence progression must be causally linked"
+    },
+    {
+      "id": "conflicting-commit-results",
+      "mutation": "append conflicting definitive commit outcome",
+      "expected": "rejected",
+      "reason": "verifier must not choose one terminal result by sort order"
+    },
+    {
+      "id": "duplicate-effect-witness",
+      "mutation": "append second recipient effect witness",
+      "expected": "rejected",
+      "reason": "multiple asserted recipient effects for one operation are ambiguous"
+    }
   ]
 }
