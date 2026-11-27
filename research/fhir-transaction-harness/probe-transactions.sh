@@ -168,6 +168,8 @@ existing_id="$(jq -r '.entry[0].resource.id // empty' "$existing_patient_json")"
 existing_version="$(jq -r '.entry[0].resource.meta.versionId // empty' "$existing_patient_json")"
 test -n "$existing_id"
 test -n "$existing_version"
+version_before_concurrency="$existing_version"
+if_match_header="W/\\"${existing_version}\\""
 
 # Two concurrent writers start from exactly the same resource version. The
 # server must accept one If-Match update and reject the stale competitor.
@@ -203,7 +205,7 @@ start_gate="$WORK_DIR/concurrent-start"
   curl --silent --show-error --output "$WORK_DIR/concurrent-a-response.json" \
     --write-out '%{http_code}' \
     -X PUT \
-    -H "If-Match: W/\\"$existing_version\\"" \
+    -H "If-Match: $if_match_header" \
     -H 'Content-Type: application/fhir+json' \
     -H 'Accept: application/fhir+json' \
     --data-binary @"$WORK_DIR/concurrent-a.json" \
@@ -322,7 +324,7 @@ jq -n \
   --arg rollback_http "$rollback_status" \
   --arg concurrent_a_http "$concurrent_a_status" \
   --arg concurrent_b_http "$concurrent_b_status" \
-  --arg version_before_concurrency "$existing_version" \
+  --arg version_before_concurrency "$version_before_concurrency" \
   --arg version_after_concurrency "$version_after_concurrent" \
   --arg patient_count "$patient_count" \
   --arg provenance_count "$provenance_count" \
