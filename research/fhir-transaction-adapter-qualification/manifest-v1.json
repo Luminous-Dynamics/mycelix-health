@@ -4,7 +4,11 @@
   "status": "synthetic-qualification-contract",
   "data_classification": "no_phi",
   "target_fhir_version": "4.0.1",
-  "qualification_states": ["qualified", "not_qualified", "defer"],
+  "qualification_states": [
+    "qualified",
+    "not_qualified",
+    "defer"
+  ],
   "policy": {
     "capability_statement_is_discovery_evidence_only": true,
     "maximum_evidence_age_seconds": 86400,
@@ -20,14 +24,38 @@
     "system_interaction": "transaction"
   },
   "required_probes": [
-    {"id": "transaction_rollback_atomicity", "description": "A transaction containing a valid synthetic write and a deliberately failing entry leaves no partial write."},
-    {"id": "transaction_target_provenance_audit", "description": "A successful single-server transaction persists the synthetic target, its Provenance, and its AuditEvent consistently."},
-    {"id": "stale_version_precondition", "description": "A stale version precondition is rejected and no dependent write is partially committed."},
-    {"id": "conditional_create_deduplication", "description": "Two equivalent synthetic conditional creates do not create two logical resources."},
-    {"id": "consent_guard_at_commit", "description": "A server-side authorization hook or equivalent commit-bound guard races revocation and prevents a release serialized after revocation; a pre-read alone does not pass."},
-    {"id": "audit_outbox_atomic_intent", "description": "A durable release intent, audit intent, and outbox record are committed together before external delivery begins."},
-    {"id": "lost_response_reconciliation", "description": "After commit with a lost response, retry or lookup with the same operation key recovers the original result without repeating the external side effect."},
-    {"id": "principal_patient_tenant_binding", "description": "Synthetic negative controls prove that changing actor, tenant, or patient binding cannot reuse the qualified transaction."}
+    {
+      "id": "transaction_rollback_atomicity",
+      "description": "A transaction containing a valid synthetic write and a deliberately failing entry leaves no partial write."
+    },
+    {
+      "id": "transaction_target_provenance_audit",
+      "description": "A successful single-server transaction persists the synthetic target, its Provenance, and its AuditEvent consistently."
+    },
+    {
+      "id": "stale_version_precondition",
+      "description": "A stale version precondition is rejected and no dependent write is partially committed."
+    },
+    {
+      "id": "conditional_create_deduplication",
+      "description": "Two equivalent synthetic conditional creates do not create two logical resources."
+    },
+    {
+      "id": "consent_guard_at_commit",
+      "description": "A server-side authorization hook or equivalent commit-bound guard races revocation and prevents a release serialized after revocation; a pre-read alone does not pass."
+    },
+    {
+      "id": "audit_outbox_atomic_intent",
+      "description": "A durable release intent, audit intent, and outbox record are committed together before external delivery begins."
+    },
+    {
+      "id": "lost_response_reconciliation",
+      "description": "After commit with a lost response, retry or lookup with the same operation key recovers the original result without repeating the external side effect."
+    },
+    {
+      "id": "principal_patient_tenant_binding",
+      "description": "Synthetic negative controls prove that changing actor, tenant, or patient binding cannot reuse the qualified transaction."
+    }
   ],
   "explicit_non_claims": [
     "CapabilityStatement declarations are not active proof of server behavior.",
@@ -37,5 +65,27 @@
     "A successful probe does not prove a cryptographic signature unless the evidence artifact is independently verified.",
     "An outbox does not prove exactly-once delivery to a remote system without remote idempotency and reconciliation.",
     "This benchmark does not establish HIPAA compliance, clinical validation, or production readiness."
+  ],
+  "required_components": [
+    {
+      "role": "gateway_adapter",
+      "description": "Exact Mycelix gateway adapter build and effective configuration used to execute FHIR operations."
+    },
+    {
+      "role": "identity_provider",
+      "description": "Exact authenticated actor/token issuer and relevant key-set/configuration revision used by principal-binding probes."
+    },
+    {
+      "role": "authority_store",
+      "description": "Exact Consent/revocation/policy authority store build, schema and configuration used at commit."
+    },
+    {
+      "role": "audit_outbox_store",
+      "description": "Exact durable audit/outbox backend build, schema and configuration used for the atomic-intent and retry probes."
+    },
+    {
+      "role": "recipient_sandbox",
+      "description": "Exact isolated synthetic recipient endpoint/build used for response-loss and idempotency probes."
+    }
   ]
 }
