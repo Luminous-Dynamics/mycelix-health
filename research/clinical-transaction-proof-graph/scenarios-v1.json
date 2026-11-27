@@ -160,10 +160,16 @@
       "reason": "denied operations cannot cross execution boundary"
     },
     {
-      "id": "authority-outcome-absent-or-misplaced",
-      "mutation": "remove outcome from authority event or place outcome on a request event",
-      "expected": "defer_or_rejected",
-      "reason": "no implicit Permit default and outcome belongs only to AuthorityDecided"
+      "id": "authority-outcome-missing",
+      "mutation": "remove the Permit/Deny/Defer result from AuthorityDecided",
+      "expected": "defer",
+      "reason": "a missing authority result must not default to Permit"
+    },
+    {
+      "id": "authority-outcome-misplaced",
+      "mutation": "attach authority outcome to Requested or another non-authority event",
+      "expected": "rejected",
+      "reason": "authority outcomes belong only on AuthorityDecided events"
     }
   ]
 }
