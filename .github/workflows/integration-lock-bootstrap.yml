@@ -45,8 +45,8 @@ jobs:
             const lock = require("./package-lock.json");
             const packages = lock.packages || {};
             const expected = {
-              "@holochain/client": "0.20.0",
-              "@holochain/tryorama": "0.19.0"
+              "@holochain/client": "0.20.8",
+              "@holochain/tryorama": "0.19.2"
             };
             for (const [name, version] of Object.entries(expected)) {
               const actual = packages["node_modules/" + name]?.version;
