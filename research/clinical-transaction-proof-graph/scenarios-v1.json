@@ -140,6 +140,30 @@
       "mutation": "construct a 10,000-event sparse DAG with direct actor-sequence edges and commit/recipient witnesses",
       "expected": "verified",
       "reason": "scale smoke test confirms deterministic correctness under a larger evidence graph"
+    },
+    {
+      "id": "authority-deny",
+      "mutation": "authority event explicitly denies and no execution event follows",
+      "expected": "verified",
+      "reason": "proof of a deliberate non-execution without false release"
+    },
+    {
+      "id": "authority-defer",
+      "mutation": "authority event explicitly defers and no execution event follows",
+      "expected": "defer",
+      "reason": "authority uncertainty must not become permit"
+    },
+    {
+      "id": "denied-authority-execution",
+      "mutation": "append preparation or commit after authority Deny",
+      "expected": "rejected",
+      "reason": "denied operations cannot cross execution boundary"
+    },
+    {
+      "id": "authority-outcome-absent-or-misplaced",
+      "mutation": "remove outcome from authority event or place outcome on a request event",
+      "expected": "defer_or_rejected",
+      "reason": "no implicit Permit default and outcome belongs only to AuthorityDecided"
     }
   ]
 }
