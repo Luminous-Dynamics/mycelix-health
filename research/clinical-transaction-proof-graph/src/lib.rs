@@ -5,8 +5,8 @@
 //! here. Cryptographic verification is injected through EvidenceAuthenticator.
 //! The fixture authenticator in these tests is not production cryptography.
 
-pub mod scoped_refs;
 pub mod qualification_receipt;
+pub mod scoped_refs;
 
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 
