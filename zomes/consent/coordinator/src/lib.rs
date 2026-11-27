@@ -126,9 +126,6 @@ pub struct RevokeConsentInput {
     pub reason: String,
 }
 
-/// Check if access is authorized
-/// Called by the shared crate's require_authorization() function
-#[hdk_extern]
 /// Check that an authorization payload is bound to the authenticated cell agent.
 ///
 /// The requestor field is retained in the wire format for compatibility, but
@@ -140,6 +137,9 @@ fn requestor_matches_authenticated_agent(
     claimed_requestor == authenticated_agent
 }
 
+/// Check if access is authorized
+/// Called by the shared crate's require_authorization() function
+#[hdk_extern]
 pub fn check_authorization(input: AuthorizationCheckInput) -> ExternResult<AuthorizationResult> {
     let authenticated_agent = agent_info()?.agent_initial_pubkey;
     if !requestor_matches_authenticated_agent(&input.requestor, &authenticated_agent) {
