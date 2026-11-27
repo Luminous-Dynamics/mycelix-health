@@ -38,6 +38,19 @@ transaction_declared="$(jq -r '
 ' "$WORK_DIR/metadata.json")"
 test "$transaction_declared" = "true"
 
+# The synthetic replay uses a client-assigned Patient id (update-as-create)
+# and a conditional Provenance create matched by the standard target reference.
+patient_update_create_declared="$(jq -r '
+  [.rest[]? | select(.mode == "server") | .resource[]?
+   | select(.type == "Patient" and .updateCreate == true)] | length > 0
+' "$WORK_DIR/metadata.json")"
+provenance_conditional_create_declared="$(jq -r '
+  [.rest[]? | select(.mode == "server") | .resource[]?
+   | select(.type == "Provenance" and .conditionalCreate == true)] | length > 0
+' "$WORK_DIR/metadata.json")"
+test "$patient_update_create_declared" = "true"
+test "$provenance_conditional_create_declared" = "true"
+
 run_id="$(date -u +%s)-$RANDOM-$RANDOM"
 identifier_system="urn:mycelix:qualification:synthetic"
 patient_identifier="patient-$run_id"
@@ -346,6 +359,8 @@ jq -n \
   --arg transaction_http "$transaction_status" \
   --arg replay_http "$replay_status" \
   --arg rollback_http "$rollback_status" \
+  --arg patient_update_create_declared "$patient_update_create_declared" \
+  --arg provenance_conditional_create_declared "$provenance_conditional_create_declared" \
   --arg concurrent_a_http "$concurrent_a_status" \
   --arg concurrent_b_http "$concurrent_b_status" \
   --arg version_before_concurrency "$version_before_concurrency" \
@@ -361,6 +376,10 @@ jq -n \
     fhir_base_url: $base_url,
     capability_statement_sha256: $metadata_sha256,
     declared_transaction_interaction: true,
+    declared_capabilities: {
+      patient_update_create: ($patient_update_create_declared == "true"),
+      provenance_conditional_create: ($provenance_conditional_create_declared == "true")
+    },
     probes: {
       patient_provenance_transaction: {result: "passed", http_status: $transaction_http},
       conditional_create_replay: {
