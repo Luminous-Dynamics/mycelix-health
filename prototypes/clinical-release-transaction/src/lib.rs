@@ -931,8 +931,16 @@ mod tests {
                 attempt_count - 1,
                 "attempt count {attempt_count}"
             );
-            assert_eq!(backend.side_effect_count(), 1, "attempt count {attempt_count}");
-            assert_eq!(backend.audit_records().len(), 2, "attempt count {attempt_count}");
+            assert_eq!(
+                backend.side_effect_count(),
+                1,
+                "attempt count {attempt_count}"
+            );
+            assert_eq!(
+                backend.audit_records().len(),
+                2,
+                "attempt count {attempt_count}"
+            );
         }
     }
 
