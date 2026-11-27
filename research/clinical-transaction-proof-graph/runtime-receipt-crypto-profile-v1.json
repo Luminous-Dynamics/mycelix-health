@@ -1,0 +1,183 @@
+{
+  "schema_version": 1,
+  "profile_id": "mycelix-runtime-receipt-crypto-profile-v1",
+  "status": "research-contract-not-implemented",
+  "created_on": "2026-11-27",
+  "purpose": "Define a non-homegrown, independently reviewable cryptographic verification boundary for runtime qualification receipts. This profile is a design/acceptance contract; it does not claim production cryptographic verification.",
+  "normative_baseline": {
+    "canonicalization": {
+      "standard": "RFC 8785",
+      "name": "JSON Canonicalization Scheme (JCS)",
+      "status": "IETF Informational RFC",
+      "source": "https://www.rfc-editor.org/rfc/rfc8785.html",
+      "rules": [
+        "Accept only an explicitly constrained I-JSON-compatible payload.",
+        "Reject duplicate object member names before typed deserialization; never rely on last-key-wins parsing.",
+        "Reject non-finite numeric values and unsupported numeric forms; encode identifiers and high-range counters as strings where needed.",
+        "Canonical property sorting and ECMAScript-compatible primitive serialization must be performed by a reviewed JCS implementation.",
+        "JCS byte output is the exact signed message; no local reserialization may occur after signing."
+      ]
+    },
+    "signature": {
+      "suite_id": "Ed25519-JCS-SHA256-v1",
+      "algorithm": "Ed25519",
+      "verification": "strict",
+      "message": "canonical JCS UTF-8 bytes of the signed payload projection",
+      "signature_encoding": "base64url-no-padding",
+      "signature_bytes": 64,
+      "signature_text_length": 86,
+      "content_digest": "SHA-256 over exactly the same canonical JCS bytes; representation sha256:<64 lowercase hex>",
+      "source": "https://docs.rs/crate/ed25519-dalek/3.0.0"
+    }
+  },
+  "signed_payload_projection": {
+    "receipt_version": 2,
+    "includes": [
+      "schema_version",
+      "signature_suite",
+      "receipt_id",
+      "audience",
+      "qualification_profile",
+      "issued_at_ms",
+      "expires_at_ms",
+      "FHIR version",
+      "server and database image/build/config identities",
+      "optional adapter identity",
+      "CapabilityStatement digest",
+      "probe corpus digest",
+      "harness digest",
+      "evidence artifact digest",
+      "observer boundary/role/permissions/schema/observation digests",
+      "all required probe IDs, outcomes and artifact digests",
+      "phi_used",
+      "issuer_id",
+      "issuer_key_id"
+    ],
+    "excludes": [
+      "signature",
+      "canonical_payload_digest"
+    ],
+    "reason": "Excluding the detached signature and its own digest avoids circular signing. Every other field, including the issuer/key identifier, audience, profile, validity window, component identities, observer claims and probe outcomes is signed.",
+    "deterministic_encoding": "RFC 8785 JCS",
+    "signing_input": "canonical JCS bytes, not a locally reconstructed subset and not a human-readable string"
+  },
+  "trust_resolution": {
+    "lookup_key": [
+      "issuer_id",
+      "issuer_key_id"
+    ],
+    "required_key_metadata": [
+      "algorithm",
+      "public_key_base64url",
+      "key_epoch",
+      "not_before_ms",
+      "not_after_ms",
+      "status",
+      "revoked_at_ms",
+      "compromised_at_ms",
+      "issuer_registry_revision",
+      "registry_observation_digest"
+    ],
+    "rules": [
+      "Issuer identity must resolve from an independently governed trust registry; self-asserted issuer_id is not a trust anchor.",
+      "Key algorithm must equal the receipt's declared signature suite; algorithm downgrade or unknown suites reject.",
+      "Key must be valid at receipt issuance time and registry/revocation evidence must be fresh at verification time.",
+      "Unknown issuer, unknown key, stale trust registry, unavailable revocation state or missing key lifecycle data defer; known revoked/compromised key at issuance rejects.",
+      "Key rotation uses distinct key IDs/epochs. Never overwrite key material under an existing key ID.",
+      "Routine retirement can preserve historical verification only under an explicit registry policy and trustworthy issue time; compromise invalidates affected intervals and must be represented separately from retirement.",
+      "Issuer registry changes, recovery and administrator actions must themselves have independently verifiable audit evidence."
+    ]
+  },
+  "verifier_context": {
+    "required": [
+      "expected_audience",
+      "expected_qualification_profile",
+      "expected_server_component_id",
+      "expected_database_component_id",
+      "now_ms",
+      "maximum_receipt_age_ms",
+      "trusted_issuer_registry_revision"
+    ],
+    "rules": [
+      "Audience binds the receipt to one deployment/qualification domain and prevents cross-deployment substitution.",
+      "A FHIR-server-only receipt must not contain or imply a Mycelix adapter identity.",
+      "A Mycelix-adapter receipt must bind the adapter's exact build and configuration digests.",
+      "Verifier checks issued_at_ms <= now_ms < expires_at_ms and now_ms - issued_at_ms <= configured maximum age.",
+      "Receipt ID is stable and unique for audit/correlation; replay is not inherently a failure while the receipt remains fresh and audience/profile/component bindings match.",
+      "A receipt cannot authorize an operation or release patient data; it only contributes a time-bounded component qualification."
+    ]
+  },
+  "key_management": {
+    "private_key_location": "HSM/KMS or isolated signing service; private keys never live in source, test artifacts, application config exports or general logs.",
+    "separation_of_duties": [
+      "runtime under test emits evidence but cannot issue its own qualification",
+      "issuer signing service is separate from the server/database under test",
+      "trust registry administration is separate from receipt verification where practical",
+      "verifier does not accept a key supplied only by the receipt"
+    ],
+    "rotation": [
+      "unique key_id per rotation",
+      "monotonic nonzero key_epoch",
+      "overlap windows are explicit",
+      "registry stores not-before/not-after/revocation/compromise times"
+    ],
+    "compromise": [
+      "compromise time distinct from routine revocation/retirement",
+      "retroactive impact window explicit",
+      "re-issuance and requalification required when affected evidence cannot be trusted"
+    ]
+  },
+  "dependency_candidates": {
+    "jcs": {
+      "crate": "serde_json_canonicalizer",
+      "candidate_version": "0.4.1",
+      "purpose": "RFC 8785 JCS serialization",
+      "status": "candidate only; exact Cargo.lock and interoperability vectors required",
+      "source": "https://docs.rs/crate/serde_json_canonicalizer/0.4.1"
+    },
+    "ed25519": {
+      "crate": "ed25519-dalek",
+      "candidate_version": "3.0.0",
+      "purpose": "Ed25519 public-key verification",
+      "required_api": "VerifyingKey::verify_strict",
+      "status": "candidate only; exact Cargo.lock and RFC 8032 vectors required",
+      "source": "https://docs.rs/crate/ed25519-dalek/3.0.0",
+      "warnings": [
+        "Do not silently replace strict verification with VerifyingKey::verify.",
+        "Do not use batch verification as a drop-in replacement unless the verifier independently handles weak-key cases and tests the exact API semantics.",
+        "Keep legacy_compatibility and hazmat disabled."
+      ]
+    },
+    "parser": "Use a duplicate-key rejecting strict JSON parser before canonicalization. serde_json alone's ordinary object-to-map deserialization path must not be assumed to reject duplicate keys."
+  },
+  "required_tests": [
+    "RFC 8785 canonicalization vectors and independent second-language cross-checks produce byte-identical canonical output.",
+    "RFC 8032 Ed25519 known-answer vectors pass.",
+    "Valid strict signature over the full canonical receipt passes.",
+    "Mutation of every signed field independently fails verification.",
+    "Tampered canonical_payload_digest, signature, issuer_id, issuer_key_id, audience, profile, component identity, observer claim, probe outcome or artifact digest rejects.",
+    "Duplicate JSON keys, invalid UTF-8, non-I-JSON values, unsafe numeric values and malformed base64url reject before receipt qualification.",
+    "Unknown issuer/key, stale trust snapshot and unavailable revocation service defer; known revoked/compromised key rejects.",
+    "Expired, future-issued and over-age receipts fail according to explicit policy.",
+    "A FHIR-server-only receipt cannot qualify an adapter; an adapter receipt must bind exact adapter build/config identity.",
+    "Same receipt substituted into a different audience or qualification profile rejects.",
+    "Rotation overlap, old-key retirement, issuer revocation and compromise-time edge cases have positive/negative controls.",
+    "No private key bytes appear in logs, artifacts, test reports, source control or crash output.",
+    "The cryptographic verifier is tested against independent reference implementations and blinded negative fixtures."
+  ],
+  "implementation_gates": [
+    "Add versioned v2 receipt envelope and JSON Schema; do not mutate v1 semantics silently.",
+    "Pin reviewed parser/JCS/Ed25519 dependencies and generate Cargo.lock in a network-enabled reproducible build.",
+    "Implement duplicate-key rejection before typed parse.",
+    "Implement JCS payload projection, SHA-256 digest comparison and Ed25519 verify_strict.",
+    "Implement an issuer/key registry adapter with freshness/revocation/compromise semantics.",
+    "Add RFC8785/RFC8032 KATs, cross-language vectors and field-by-field tampering tests.",
+    "Feed frozen HAPI run #45/#47/#49 (plus the new 128-way probe once it passes) into the receipt, but sign only with a separately governed test issuer.",
+    "Independent security review before production trust."
+  ],
+  "nonclaims": [
+    "No production signature verification is implemented by this design document.",
+    "No trust-root, key registry, HSM/KMS, unlinkability, PHI protection or regulatory compliance claim follows from this schema.",
+    "A signed runtime receipt proves only that the trusted issuer signed the specific evidence projection; it does not make the underlying observations truthful if the observer/issuer collude."
+  ]
+}
