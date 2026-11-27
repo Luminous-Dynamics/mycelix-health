@@ -30,7 +30,7 @@
     },
     {
       "id": "transaction_target_provenance_audit",
-      "description": "A successful single-server transaction persists the synthetic target, its Provenance, and its AuditEvent consistently."
+      "description": "A successful single-server transaction persists the synthetic target and Provenance together; the server's AuditEvent or documented immutable audit interface is independently observed and correlated to the exact committed transaction and resource version."
     },
     {
       "id": "stale_version_precondition",
