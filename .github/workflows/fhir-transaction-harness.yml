@@ -35,6 +35,10 @@ jobs:
           test -s research/fhir-transaction-harness/probe-corpus-v1.json
           jq -e '.schema_version == 1 and .fhir_version == "4.0.1" and (.probes | length) == 8' research/fhir-transaction-harness/probe-corpus-v1.json >/dev/null
           grep -q 'probe_corpus_sha256' research/fhir-transaction-harness/probe-transactions.sh
+          grep -q 'conditional_race_recovered_409' research/fhir-transaction-harness/probe-transactions.sh
+          grep -q 'hfj_res_search_url_pkey' research/fhir-transaction-harness/probe-transactions.sh
+          grep -q 'retry_patient_id' research/fhir-transaction-harness/probe-transactions.sh
+          git ls-files --error-unmatch research/fhir-transaction-harness/evidence/run-55-conditional-create-contention.json
           git ls-files --error-unmatch research/fhir-transaction-harness/init-observer.sql
           test -f research/fhir-transaction-harness/init-observer.sql
           test -s research/fhir-transaction-harness/init-observer.sql
@@ -101,6 +105,7 @@ jobs:
             research/fhir-transaction-harness/init-observer.sql \
             research/fhir-transaction-harness/probe-corpus-v1.json \
             research/fhir-transaction-harness/probe-transactions.sh \
+            research/fhir-transaction-harness/evidence/run-55-conditional-create-contention.json \
             | tee artifacts/fhir-qualification-ci/harness-sha256.txt
 
       - name: Execute live FHIR transaction probes
