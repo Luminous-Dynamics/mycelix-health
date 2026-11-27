@@ -170,6 +170,24 @@
       "mutation": "attach authority outcome to Requested or another non-authority event",
       "expected": "rejected",
       "reason": "authority outcomes belong only on AuthorityDecided events"
+    },
+    {
+      "id": "recipient-effect-witness-missing",
+      "mutation": "remove the recipient-side durable effect witness while retaining effect-observed event",
+      "expected": "defer",
+      "reason": "recipient role and event signature alone do not prove a durable matching effect"
+    },
+    {
+      "id": "recipient-effect-witness-wrong-attempt",
+      "mutation": "witness names a different operation attempt",
+      "expected": "rejected",
+      "reason": "effect must bind the exact attempt being verified"
+    },
+    {
+      "id": "recipient-effect-witness-wrong-idempotency",
+      "mutation": "witness names a different idempotency-key commitment",
+      "expected": "rejected",
+      "reason": "recipient effect must bind the original idempotency key"
     }
   ]
 }
