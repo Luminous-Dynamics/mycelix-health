@@ -56,7 +56,7 @@ jobs:
         run: |
           nix develop .#ci --command bash -euo pipefail -c '
             ARGS="$(cargo metadata --no-deps --format-version 1 \
-              | jq -r "[.packages[] | select(.manifest_path | contains(\"/zomes/\")) | \"-p \\(.name)\"] | join(\" \")")"
+              | jq -r "[.packages[] | select(.manifest_path | contains(\"/zomes/\")) | \"-p \" + .name] | join(\" \")")"
             test -n "$ARGS"
             # shellcheck disable=SC2086
             cargo build --locked --release --target wasm32-unknown-unknown $ARGS
