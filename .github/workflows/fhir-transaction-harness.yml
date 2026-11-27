@@ -35,6 +35,9 @@ jobs:
           docker compose version
           docker version
 
+      - name: Prepare evidence directory
+        run: mkdir -p artifacts/fhir-qualification-ci
+
       - name: Start pinned HAPI R4 and PostgreSQL
         run: |
           set -euo pipefail
@@ -64,6 +67,9 @@ jobs:
       - name: Capture container logs
         if: always()
         run: |
+          mkdir -p artifacts/fhir-qualification-ci
+          docker compose -f research/fhir-transaction-harness/compose.yaml ps --all \
+            > artifacts/fhir-qualification-ci/container-status.txt 2>&1 || true
           docker compose -f research/fhir-transaction-harness/compose.yaml logs --no-color \
             > artifacts/fhir-qualification-ci/container-logs.txt 2>&1 || true
           docker compose -f research/fhir-transaction-harness/compose.yaml down --volumes \
