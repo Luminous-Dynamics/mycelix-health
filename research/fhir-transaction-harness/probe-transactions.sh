@@ -463,15 +463,41 @@ test "$version_after" = "$existing_version"
 cp "$WORK_DIR/rollback-response.json" "$ARTIFACT_DIR/rollback-response.json"
 
 # Independent database observer: connect as hapi_observer, a read-only role
-# provisioned by the PostgreSQL init script. No HAPI HTTP read/search is used
-# for these SQL counts/version checks.
+# provisioned by PostgreSQL init SQL. HAPI HTTP read/search is not used for
+# these SQL counts/version checks.
 compose_file="${COMPOSE_FILE:-research/fhir-transaction-harness/compose.yaml}"
 
-# Discover the exact pinned HAPI 8.12.0 schema before issuing joins. Preserve
-# the observed catalog and fail with a precise missing-column diagnostic.
+# Discover the exact pinned HAPI JPA schema first. This report is preserved even
+# when a required column is absent, so a version mismatch is diagnosable.
 docker compose -f "$compose_file" exec -T \
   -e PGPASSWORD=local-observer-only-not-a-secret postgres \
-  psql -X -qAt -F "$(docker compose -f "$compose_file" exec -T \
+  psql -X -qAt -F $'\\t' -v ON_ERROR_STOP=1 -U hapi_observer -d hapi \
+  -c "SELECT lower(table_name) || '.' || lower(column_name)
+      FROM information_schema.columns
+      WHERE lower(table_name) IN ('hfj_resource', 'hfj_res_ver', 'hfj_spidx_token')
+      ORDER BY lower(table_name), ordinal_position;" \
+  > "$ARTIFACT_DIR/postgres-schema-columns.tsv"
+
+required_schema_columns=(
+  hfj_resource.res_id
+  hfj_resource.res_type
+  hfj_resource.fhir_id
+  hfj_resource.res_ver
+  hfj_res_ver.res_id
+  hfj_spidx_token.res_id
+  hfj_spidx_token.sp_name
+  hfj_spidx_token.sp_system
+  hfj_spidx_token.sp_value
+)
+for required_column in "${required_schema_columns[@]}"; do
+  if ! grep -Fxq "$required_column" "$ARTIFACT_DIR/postgres-schema-columns.tsv"; then
+    printf 'Pinned HAPI PostgreSQL schema lacks required column: %s\\n' "$required_column" >&2
+    cat "$ARTIFACT_DIR/postgres-schema-columns.tsv" >&2
+    exit 1
+  fi
+done
+
+database_observation="$(docker compose -f "$compose_file" exec -T \
   -e PGPASSWORD=local-observer-only-not-a-secret postgres \
   psql -X -qAt -v ON_ERROR_STOP=1 -U hapi_observer -d hapi \
     -v patient_id="$patient_id" \
@@ -541,6 +567,7 @@ SELECT jsonb_build_object(
 )::text;
 SQL
 )"
+
 jq -e '
   .observer_role == "hapi_observer"
   and .observer_read_only == true
