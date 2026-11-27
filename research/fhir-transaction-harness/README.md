@@ -52,6 +52,19 @@ The race probe intentionally distinguishes a deterministic stale precondition fr
 - Run #36 failed at the shell syntax preflight before containers started. The schema-discovery psql call and the JSON observer psql call are now separate shell commands; no nested command substitution is used for the schema inventory.
 - The newest exact-head run must pass bash -n, then prove the catalog query, SELECT-only role, row/history counts, and rollback absence. Until that happens, direct PostgreSQL observation is not qualified.
 
+## Frozen direct-database result
+
+Run #45's read-only PostgreSQL observation is preserved at `evidence/run-45-postgresql-observed.json`. It binds the workflow run/artifact IDs, exact source commit, HAPI/PostgreSQL runtime image IDs, PostgreSQL 18.7 version, CapabilityStatement digest, harness file digests, FHIR probe outcomes and direct database row/version counts.
+
+The snapshot reports:
+- one Patient master row and two history versions, current version 2;
+- one Provenance row/history version;
+- one Observation row/history version, current version 1;
+- zero rollback-marker token-index rows;
+- observer role `hapi_observer`, read-only session, not superuser, no role creation, INSERT, UPDATE or DELETE privileges.
+
+This is a frozen experimental record for one run, not a permanent certification. The latest live run must be re-executed for changes to HAPI/PostgreSQL versions, Compose configuration, probe code or schema.
+
 ## Interpretation
 
 A probe pass establishes only the behavior observed for this exact image, configuration, test corpus and runtime. It does not qualify Mycelix's consent/revocation fence, gateway operation ledger, cross-system recovery or remote recipient effect. The generated evidence deliberately leaves overall qualification at `defer`.
