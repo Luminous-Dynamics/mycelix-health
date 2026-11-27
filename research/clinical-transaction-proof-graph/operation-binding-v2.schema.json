@@ -9,7 +9,6 @@
     "schema_version",
     "operation_id",
     "attempt_id",
-    "purpose",
     "action",
     "source_resource_version",
     "revocation_epoch",
@@ -25,11 +24,6 @@
       "pattern": "\\S"
     },
     "attempt_id": {
-      "type": "string",
-      "minLength": 1,
-      "pattern": "\\S"
-    },
-    "purpose": {
       "type": "string",
       "minLength": 1,
       "pattern": "\\S"
@@ -60,7 +54,8 @@
         "consent_revision",
         "policy_revision",
         "idempotency_key",
-        "tenant"
+        "tenant",
+        "purpose_context"
       ],
       "properties": {
         "patient": {
@@ -211,6 +206,23 @@
                 },
                 "scope": {
                   "const": "tenant-purpose-epoch"
+                }
+              }
+            }
+          ]
+        },
+        "purpose_context": {
+          "allOf": [
+            {
+              "$ref": "urn:mycelix:schema:scoped-reference-v1#"
+            },
+            {
+              "properties": {
+                "scheme": {
+                  "const": "transaction-random-v1"
+                },
+                "scope": {
+                  "const": "operation"
                 }
               }
             }
