@@ -5,7 +5,7 @@
 //! here. Cryptographic verification is injected through EvidenceAuthenticator.
 //! The fixture authenticator in these tests is not production cryptography.
 
-use std::collections::{HashMap, VecDeque};
+use std::collections::{BTreeMap, HashMap, VecDeque};
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct OperationBinding {
@@ -388,9 +388,11 @@ where
                 event_count,
             );
         }
-        if event.kind == EventKind::IdentityBound
-            && event.bound_actor_ref_digest.as_deref()
-                != Some(graph.binding.authenticated_actor_ref_digest.as_str())
+        if (event.kind == EventKind::Requested
+            && event.actor_ref_digest != graph.binding.authenticated_actor_ref_digest)
+            || (event.kind == EventKind::IdentityBound
+                && event.bound_actor_ref_digest.as_deref()
+                    != Some(graph.binding.authenticated_actor_ref_digest.as_str()))
         {
             return VerificationReport::rejected(
                 ReasonCode::AuthenticatedActorMismatch,
@@ -489,7 +491,7 @@ where
 }
 
 fn validate_actor_sequences(events: &[EvidenceEvent]) -> Option<ReasonCode> {
-    let mut by_actor: HashMap<&str, Vec<u64>> = HashMap::new();
+    let mut by_actor: BTreeMap<&str, Vec<u64>> = BTreeMap::new();
     for event in events {
         by_actor
             .entry(event.actor_id.as_str())
@@ -653,10 +655,10 @@ mod tests {
             binding: binding(),
             kind,
             actor_id: actor.into(),
-            actor_ref_digest: if role == ActorRole::Recipient {
-                "sha256:recipient".into()
-            } else {
-                format!("sha256:{actor}")
+            actor_ref_digest: match role {
+                ActorRole::Client => "sha256:actor".into(),
+                ActorRole::Recipient => "sha256:recipient".into(),
+                _ => format!("sha256:{actor}"),
             },
             bound_actor_ref_digest: if kind == EventKind::IdentityBound {
                 Some("sha256:actor".into())
