@@ -4010,42 +4010,25 @@ mod tests {
         now: Timestamp,
     ) -> AuthorizationResult {
         for consent in consents {
-            // Active filter (mirrors get_active_consents)
-            let not_expired = consent
-                .expires_at
-                .map(|expires| expires > now)
-                .unwrap_or(true);
-            let not_revoked = consent.revoked_at.is_none();
-            if !matches!(consent.status, ConsentStatus::Active) || !not_expired || !not_revoked {
-                continue;
-            }
-
-            // Grantee match (mirrors check_authorization)
-            let grantee_matches = match &consent.grantee {
-                ConsentGrantee::Agent(agent) => *agent == *requestor,
-                // The real extern resolves emergency authority from a separate
-                // patient-authored capability; this legacy enum never grants it.
-                ConsentGrantee::EmergencyAccess => false,
-                _ => false,
-            };
-            if !grantee_matches {
-                continue;
-            }
-
-            // Category coverage
-            let category_covered = consent
-                .scope
-                .data_categories
-                .iter()
-                .any(|cat| matches!(cat, DataCategory::All) || *cat == *data_category);
-            let not_excluded = !consent.scope.exclusions.contains(data_category);
-            let permission_granted = consent.permissions.contains(permission);
-
-            if category_covered && not_excluded && permission_granted {
+            // Use the exact same deterministic policy function as the production
+            // coordinator. This helper only replaces the Holochain record lookup;
+            // it no longer reimplements authorization matching.
+            if consent_matches_authorization(
+                consent,
+                requestor,
+                data_category,
+                permission,
+                is_emergency,
+                now,
+            ) {
                 return AuthorizationResult {
                     authorized: true,
                     consent_hash: Some(dummy_hash()),
-                    reason: "Active consent found".to_string(),
+                    reason: if consent.legal_representative.is_some() {
+                        "Guardian-authorized consent".to_string()
+                    } else {
+                        "Active consent found".to_string()
+                    },
                     permissions: consent.permissions.clone(),
                     emergency_override: false,
                 };
@@ -4071,7 +4054,6 @@ mod tests {
             emergency_override: false,
         }
     }
-
     // --- Access without consent (extended) ---
 
     #[test]
