@@ -90,7 +90,7 @@ jq -n \
         fullUrl: $provenance_full_url,
         resource: {
           resourceType: "Provenance",
-          target: [{reference: $patient_full_url}],
+          target: [{reference: $patient_full_url, identifier: {system: $identifier_system, value: $patient_identifier}}],
           recorded: $recorded_at,
           activity: {
             coding: [{
@@ -151,8 +151,8 @@ provenance_count="$(curl --silent --show-error --fail --get "$FHIR_BASE_URL/Prov
 test "$patient_count" = "1"
 test "$provenance_count" = "1"
 
-# Capture the Patient version before replay. The second PUT may create a
-# further version even though it does not create a second logical resource.
+# Capture the Patient version before replay; the first search is by synthetic identifier.
+
 curl --silent --show-error --fail --get "$FHIR_BASE_URL/Patient" \
   -H 'Accept: application/fhir+json' \
   --data-urlencode "_count=1" \
@@ -160,13 +160,12 @@ curl --silent --show-error --fail --get "$FHIR_BASE_URL/Patient" \
   > "$WORK_DIR/patient-before-replay.json"
 patient_id="$(jq -r '.entry[0].resource.id // empty' "$WORK_DIR/patient-before-replay.json")"
 test -n "$patient_id"
-  -H 'Accept: application/fhir+json' > "$WORK_DIR/patient-before-replay.json"
 patient_version_before_replay="$(jq -r '.entry[0].resource.meta.versionId // empty' "$WORK_DIR/patient-before-replay.json")"
 test -n "$patient_version_before_replay"
 
 # Replay the exact transaction. Conditional create keeps one Patient and one
-# matching Provenance. A matching replay response is not distributed exactly-once.
-# Provenance. This is not a claim of no-op replay or distributed exactly-once.
+# The retry must leave one Patient and one Provenance; this is not a distributed exactly-once claim.
+
 replay_status="$(curl --silent --show-error --output "$WORK_DIR/replay-response.json" \
   --write-out '%{http_code}' \
   -H 'Content-Type: application/fhir+json' \
