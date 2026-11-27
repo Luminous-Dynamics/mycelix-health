@@ -138,9 +138,30 @@ jobs:
           cp -r /tmp/mycelix-parent/mycelix-core/. ../mycelix-workspace/mycelix-core/
           rm -rf /tmp/mycelix-parent
 
-      - uses: EmbarkStudios/cargo-deny-action@v2
-        with:
-          command: check
+      # Run on the host so cargo-deny can resolve the sibling path dependencies
+      # copied above; the Docker action cannot see paths outside its workspace mount.
+      - name: Install Rust for host-native dependency audit
+        uses: dtolnay/rust-toolchain@1.96.0
+
+      - name: Install pinned cargo-deny
+        run: cargo install cargo-deny --version 0.22.0 --locked
+
+      - name: Check dependency policy
+        run: cargo deny check
+
+  fhir-transaction-adapter-qualification:
+    name: FHIR Transaction Adapter Qualification
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Validate qualification manifest and example evidence
+        run: |
+          jq -e '.benchmark_id == "mycelix.fhir-transaction-adapter-qualification.v1" and (.required_probes | length == 8) and (.required_components | length == 5)' research/fhir-transaction-adapter-qualification/manifest-v1.json
+          jq -e '.schema_version == 1 and .probe_evidence.suite_version == 1 and (.execution_context.components | length == 5)' research/fhir-transaction-adapter-qualification/example-evidence-v1.json
+
+      - name: Run qualification evaluator adversarial tests
+        run: bash scripts/tests/test-fhir-transaction-qualification.sh
 
   # TypeScript SDK
   sdk:
