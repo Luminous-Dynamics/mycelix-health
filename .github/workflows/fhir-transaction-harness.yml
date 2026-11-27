@@ -39,6 +39,10 @@ jobs:
           grep -Fq './init-observer.sql:/docker-entrypoint-initdb.d/10-observer-role.sql:ro' research/fhir-transaction-harness/compose.yaml
           grep -Fq 'R.RES_ID = V.RES_ID' research/fhir-transaction-harness/probe-transactions.sh
           grep -Fq 'R.RES_ID = T.RES_ID' research/fhir-transaction-harness/probe-transactions.sh
+          grep -Fq 'hfj_resource.res_id' research/fhir-transaction-harness/probe-transactions.sh
+          grep -Fq 'hfj_res_ver.res_id' research/fhir-transaction-harness/probe-transactions.sh
+          grep -Fq 'hfj_spidx_token.sp_value' research/fhir-transaction-harness/probe-transactions.sh
+          grep -Fq 'postgres-schema-columns.tsv' research/fhir-transaction-harness/probe-transactions.sh
           docker compose -f research/fhir-transaction-harness/compose.yaml config --quiet
           docker compose version
           docker version
