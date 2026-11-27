@@ -94,7 +94,7 @@ Measure latency, transaction size, probe cost, rollback behavior, throughput und
 ## Running the evaluator
 
 ```sh
-scripts/evaluate-fhir-transaction-qualification.sh \
+bash scripts/evaluate-fhir-transaction-qualification.sh \
   research/fhir-transaction-adapter-qualification/example-evidence-v1.json
 ```
 
