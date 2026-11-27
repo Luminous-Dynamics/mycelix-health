@@ -425,7 +425,7 @@ mod tests {
                 "tenant-pseudonym-key-7",
                 7
             ),
-            Err(ReferenceError::IncompleteOperationContext)
+            Err(ReferenceError::WrongScopeForScheme)
         );
     }
 
