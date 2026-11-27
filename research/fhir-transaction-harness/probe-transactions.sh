@@ -296,6 +296,30 @@ jq -n \
   }
 ' > "$WORK_DIR/concurrent-b.json"
 
+# Deterministic stale If-Match control: this is not a race. FHIR R4 specifies
+# 412 when the supplied version does not match. Preserve raw response first.
+stale_if_match="W/\\"mycelix-stale-$run_id\\""
+stale_precondition_status="$(curl --silent --show-error --output "$WORK_DIR/stale-precondition-response.json" \
+  --write-out '%{http_code}' \
+  -X PUT \
+  -H "If-Match: $stale_if_match" \
+  -H 'Content-Type: application/fhir+json' \
+  -H 'Accept: application/fhir+json' \
+  --data-binary @"$WORK_DIR/concurrent-a.json" \
+  "$FHIR_BASE_URL/Patient/$existing_id")"
+cp "$WORK_DIR/stale-precondition-response.json" "$ARTIFACT_DIR/stale-precondition-response.json"
+printf '%s\\n' "$stale_precondition_status" > "$ARTIFACT_DIR/stale-precondition-http-status.txt"
+if [[ "$stale_precondition_status" != "412" ]]; then
+  printf 'FHIR R4 stale If-Match must return 412; observed HTTP %s\\n' "$stale_precondition_status" >&2
+  cat "$WORK_DIR/stale-precondition-response.json" >&2
+  exit 1
+fi
+jq -e '.resourceType == "OperationOutcome"' "$WORK_DIR/stale-precondition-response.json" >/dev/null
+curl --silent --show-error --fail "$FHIR_BASE_URL/Patient/$existing_id" \
+  -H 'Accept: application/fhir+json' > "$WORK_DIR/patient-after-stale-precondition.json"
+version_after_stale_precondition="$(jq -r '.meta.versionId // empty' "$WORK_DIR/patient-after-stale-precondition.json")"
+test "$version_after_stale_precondition" = "$existing_version"
+
 start_gate="$WORK_DIR/concurrent-start"
 (
   while [[ ! -e "$start_gate" ]]; do sleep 0.01; done
@@ -335,27 +359,35 @@ fi
 
 concurrent_a_status="$(cat "$WORK_DIR/concurrent-a-status.txt")"
 concurrent_b_status="$(cat "$WORK_DIR/concurrent-b-status.txt")"
+# Preserve every response before enforcing the race expectation.
+cp "$WORK_DIR/concurrent-a-status.txt" "$ARTIFACT_DIR/concurrent-a-http-status.txt"
+cp "$WORK_DIR/concurrent-b-status.txt" "$ARTIFACT_DIR/concurrent-b-http-status.txt"
+cp "$WORK_DIR/concurrent-a-response.json" "$ARTIFACT_DIR/concurrent-a-response.json"
+cp "$WORK_DIR/concurrent-b-response.json" "$ARTIFACT_DIR/concurrent-b-response.json"
+
 success_count=0
-stale_count=0
+conflict_count=0
 for status in "$concurrent_a_status" "$concurrent_b_status"; do
-  if [[ "$status" = "200" ]]; then
+  if [[ "$status" = "200" || "$status" = "201" ]]; then
     success_count=$((success_count + 1))
-  elif [[ "$status" = "412" ]]; then
-    stale_count=$((stale_count + 1))
+  elif [[ "$status" = "409" || "$status" = "412" ]]; then
+    conflict_count=$((conflict_count + 1))
   fi
 done
-test "$success_count" = "1"
-test "$stale_count" = "1"
+printf '%s\\n' "$success_count" > "$ARTIFACT_DIR/concurrent-success-count.txt"
+printf '%s\\n' "$conflict_count" > "$ARTIFACT_DIR/concurrent-version-conflict-count.txt"
+if [[ "$success_count" != "1" || "$conflict_count" != "1" ]]; then
+  printf 'Expected exactly one accepted write and one 409/412 version conflict; observed success=%s conflict=%s (A=%s B=%s)\\n' \
+    "$success_count" "$conflict_count" "$concurrent_a_status" "$concurrent_b_status" >&2
+  exit 1
+fi
 
 curl --silent --show-error --fail "$FHIR_BASE_URL/Patient/$existing_id" \
   -H 'Accept: application/fhir+json' > "$WORK_DIR/concurrent-after.json"
 version_after_concurrent="$(jq -r '.meta.versionId // empty' "$WORK_DIR/concurrent-after.json")"
 test -n "$version_after_concurrent"
 test "$version_after_concurrent" != "$existing_version"
-cp "$WORK_DIR/concurrent-a-status.txt" "$ARTIFACT_DIR/concurrent-a-http-status.txt"
-cp "$WORK_DIR/concurrent-b-status.txt" "$ARTIFACT_DIR/concurrent-b-http-status.txt"
-cp "$WORK_DIR/concurrent-a-response.json" "$ARTIFACT_DIR/concurrent-a-response.json"
-cp "$WORK_DIR/concurrent-b-response.json" "$ARTIFACT_DIR/concurrent-b-response.json"
+cp "$WORK_DIR/patient-after-stale-precondition.json" "$ARTIFACT_DIR/patient-after-stale-precondition.json"
 
 # Use the winning writer's latest version for the transaction rollback probe.
 existing_version="$version_after_concurrent"
@@ -444,6 +476,8 @@ jq -n \
   --arg observation_conditional_create_declared "$observation_conditional_create_declared" \
   --arg concurrent_a_http "$concurrent_a_status" \
   --arg concurrent_b_http "$concurrent_b_status" \
+  --arg stale_precondition_http "$stale_precondition_status" \
+  --arg version_after_stale_precondition "$version_after_stale_precondition" \
   --arg version_before_concurrency "$version_before_concurrency" \
   --arg version_after_concurrency "$version_after_concurrent" \
   --arg patient_count "$patient_count" \
@@ -474,6 +508,12 @@ jq -n \
         observation_count_after_replay: ($observation_count | tonumber),
         observation_version_before_replay: $observation_version_before_replay,
         observation_version_after_replay: $observation_version_after_replay
+      },
+      deterministic_stale_if_match: {
+        result: "passed",
+        http_status: $stale_precondition_http,
+        version_before: $version_before_concurrency,
+        version_after: $version_after_stale_precondition
       },
       concurrent_if_match_writers: {
         result: "passed",
