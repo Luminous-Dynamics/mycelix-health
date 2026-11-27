@@ -50,6 +50,9 @@ pub enum ReferenceError {
     UnexpectedKeyMetadata,
     WrongScopeForScheme,
     MalformedOpaqueHandle,
+    DuplicateScopedHandle,
+    UnsupportedSchemaVersion,
+    IncompleteOperationContext,
 }
 
 impl ScopedReference {
@@ -169,6 +172,106 @@ impl OperationReferenceSet {
     }
 }
 
+/// A v2 operation's subject and resource references are unique handles scoped
+/// to one operation. The tenant reference uses a distinct keyed scope so
+/// cross-operation tenancy checks are possible without a global patient token.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct OperationReferenceSetV2 {
+    pub patient: ScopedReference,
+    pub actor: ScopedReference,
+    pub recipient: ScopedReference,
+    pub source_resource: ScopedReference,
+    pub resource_set: ScopedReference,
+    pub consent_revision: ScopedReference,
+    pub policy_revision: ScopedReference,
+    pub idempotency_key: ScopedReference,
+    pub tenant: ScopedReference,
+}
+
+impl OperationReferenceSetV2 {
+    pub fn validate(
+        &self,
+        operation_scope_id: &str,
+        tenant_scope_id: &str,
+        tenant_key_id: &str,
+        tenant_key_epoch: u64,
+    ) -> Result<(), ReferenceError> {
+        let operation_refs = [
+            &self.patient,
+            &self.actor,
+            &self.recipient,
+            &self.source_resource,
+            &self.resource_set,
+            &self.consent_revision,
+            &self.policy_revision,
+            &self.idempotency_key,
+        ];
+        let mut handles = std::collections::HashSet::new();
+        for reference in operation_refs {
+            reference.validate_operation_scope(operation_scope_id)?;
+            if !handles.insert(reference.handle.as_str()) {
+                return Err(ReferenceError::DuplicateScopedHandle);
+            }
+        }
+        self.tenant.validate_tenant_purpose_epoch(
+            tenant_scope_id,
+            tenant_key_id,
+            tenant_key_epoch,
+        )?;
+        if handles.contains(self.tenant.handle.as_str()) {
+            return Err(ReferenceError::DuplicateScopedHandle);
+        }
+        Ok(())
+    }
+}
+
+/// Versioned operation envelope for migration away from v1's generic digest
+/// strings. The references bind identity/resource equivalence within one
+/// operation without putting globally stable patient hashes into the graph.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct OperationBindingV2 {
+    pub schema_version: u32,
+    pub operation_id: String,
+    pub attempt_id: String,
+    pub purpose: String,
+    pub action: String,
+    pub source_resource_version: String,
+    pub revocation_epoch: u64,
+    pub references: OperationReferenceSetV2,
+}
+
+impl OperationBindingV2 {
+    pub fn validate(
+        &self,
+        operation_scope_id: &str,
+        tenant_scope_id: &str,
+        tenant_key_id: &str,
+        tenant_key_epoch: u64,
+    ) -> Result<(), ReferenceError> {
+        if self.schema_version != 2 {
+            return Err(ReferenceError::UnsupportedSchemaVersion);
+        }
+        if [
+            self.operation_id.as_str(),
+            self.attempt_id.as_str(),
+            self.purpose.as_str(),
+            self.action.as_str(),
+            self.source_resource_version.as_str(),
+        ]
+        .iter()
+        .any(|value| value.trim().is_empty())
+        {
+            return Err(ReferenceError::IncompleteOperationContext);
+        }
+        self.references.validate(
+            operation_scope_id,
+            tenant_scope_id,
+            tenant_key_id,
+            tenant_key_epoch,
+        )
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -204,6 +307,107 @@ mod tests {
             recipient: operation_ref('d'),
             tenant: tenant_ref(),
         }
+    }
+
+    fn valid_operation_binding_v2() -> OperationBindingV2 {
+        let mut set = valid_set();
+        set.source_resource = operation_ref('e');
+        set.resource_set = operation_ref('f');
+        set.consent_revision = operation_ref('1');
+        set.policy_revision = operation_ref('2');
+        set.idempotency_key = operation_ref('3');
+        OperationBindingV2 {
+            schema_version: 2,
+            operation_id: "operation-opaque-001".into(),
+            attempt_id: "attempt-opaque-001".into(),
+            purpose: "treatment-coordination".into(),
+            action: "disclose".into(),
+            source_resource_version: "4".into(),
+            revocation_epoch: 17,
+            references: OperationReferenceSetV2 {
+                patient: set.patient,
+                actor: set.actor,
+                recipient: set.recipient,
+                source_resource: set.source_resource,
+                resource_set: set.resource_set,
+                consent_revision: set.consent_revision,
+                policy_revision: set.policy_revision,
+                idempotency_key: set.idempotency_key,
+                tenant: set.tenant,
+            },
+        }
+    }
+
+    #[test]
+    fn operation_binding_v2_accepts_fully_scoped_references() {
+        assert!(valid_operation_binding_v2()
+            .validate(
+                "op-scope-opaque-001",
+                "tenant-purpose-epoch-opaque-7",
+                "tenant-pseudonym-key-7",
+                7
+            )
+            .is_ok());
+    }
+
+    #[test]
+    fn operation_binding_v2_rejects_cross_operation_resource_reference() {
+        let mut binding = valid_operation_binding_v2();
+        binding.references.resource_set.scope_id = "op-scope-opaque-other".into();
+        assert_eq!(
+            binding.validate(
+                "op-scope-opaque-001",
+                "tenant-purpose-epoch-opaque-7",
+                "tenant-pseudonym-key-7",
+                7
+            ),
+            Err(ReferenceError::WrongScopeForScheme)
+        );
+    }
+
+    #[test]
+    fn operation_binding_v2_rejects_reused_handle_across_reference_roles() {
+        let mut binding = valid_operation_binding_v2();
+        binding.references.resource_set.handle = binding.references.patient.handle.clone();
+        assert_eq!(
+            binding.validate(
+                "op-scope-opaque-001",
+                "tenant-purpose-epoch-opaque-7",
+                "tenant-pseudonym-key-7",
+                7
+            ),
+            Err(ReferenceError::DuplicateScopedHandle)
+        );
+    }
+
+    #[test]
+    fn operation_binding_v2_rejects_wrong_schema_version() {
+        let mut binding = valid_operation_binding_v2();
+        binding.schema_version = 1;
+        assert_eq!(
+            binding.validate(
+                "op-scope-opaque-001",
+                "tenant-purpose-epoch-opaque-7",
+                "tenant-pseudonym-key-7",
+                7
+            ),
+            Err(ReferenceError::UnsupportedSchemaVersion)
+        );
+    }
+
+    #[test]
+    fn operation_binding_v2_rejects_missing_authority_context() {
+        let mut binding = valid_operation_binding_v2();
+        binding.purpose.clear();
+        assert_eq!(
+            binding.validate(
+                "op-scope-opaque-001",
+                "tenant-purpose-epoch-opaque-7",
+                "tenant-pseudonym-key-7",
+                7
+            ),
+            Err(ReferenceError::IncompleteOperationContext)
+        );
     }
 
     #[test]
@@ -261,7 +465,7 @@ mod tests {
     }
 
     #[test]
-    fn rejects_malformed_or_low_entropy_handles() {
+    fn rejects_non_hex_or_malformed_opaque_handles() {
         let mut reference = operation_ref('a');
         reference.handle = "op1:patient-123".into();
         assert_eq!(
