@@ -1031,7 +1031,13 @@ mod tests {
             EventKind::CommitResult(CommitOutcome::Committed),
             &[&graph.events[4], &graph.events[5]],
         );
-        graph.events.push(contradictory);
+        graph.events.push(contradictory.clone());
+        // Make the later success the apparent basis for delivery while still
+        // omitting the explicit CommitReconciled event for the unknown outcome.
+        graph.events[6].parents.push(ParentRef {
+            event_id: contradictory.event_id.clone(),
+            event_digest: contradictory.event_digest.clone(),
+        });
         let report = verify_graph(&graph, 5_000, &FixtureAuthenticator, &qualifications());
         assert_eq!(report.verdict, Verdict::Defer);
         assert_eq!(report.findings, vec![ReasonCode::UnknownCommitOutcome]);
@@ -1066,6 +1072,7 @@ mod tests {
         graph.events[7].actor_id = "gateway".into();
         graph.events[7].actor_ref_digest = "sha256:gateway".into();
         graph.events[7].signature = "fixture-signature:gateway".into();
+        graph.events[7].actor_sequence = 4;
         let report = verify_graph(&graph, 5_000, &FixtureAuthenticator, &qualifications());
         assert_eq!(report.verdict, Verdict::Rejected);
         assert_eq!(report.findings, vec![ReasonCode::InvalidStateTransition]);
@@ -1146,8 +1153,8 @@ mod tests {
             "recipient",
             ActorRole::Recipient,
             2,
-            EventKind::DeliveryReconciled(DeliveryOutcome::RecipientEffectObserved),
-            &[&graph.events[7]],
+            EventKind::DeliveryResult(DeliveryOutcome::RecipientEffectObserved),
+            &[&graph.events[6], &graph.events[7]],
         );
         graph.events.push(duplicate_effect);
         let report = verify_graph(&graph, 5_000, &FixtureAuthenticator, &qualifications());
