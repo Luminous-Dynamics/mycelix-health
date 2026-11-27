@@ -194,7 +194,8 @@ jq -e '
 ' "$WORK_DIR/transaction-response.json" >/dev/null
 cp "$WORK_DIR/transaction-response.json" "$ARTIFACT_DIR/transaction-response.json"
 provenance_location="$(jq -r '.entry[0].response.location // empty' "$WORK_DIR/transaction-response.json")"
-provenance_id="$(sed -E 's#^Provenance/([^/]+)/_history/.*$#\\1#' <<< "$provenance_location")"
+provenance_id="${provenance_location#Provenance/}"
+provenance_id="${provenance_id%%/_history/*}"
 test -n "$provenance_id"
 search_total() {
   local resource_type="$1"
