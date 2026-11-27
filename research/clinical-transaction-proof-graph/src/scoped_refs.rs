@@ -68,21 +68,20 @@ impl ScopedReference {
             return Err(ReferenceError::EmptyKeyId);
         }
 
-        let (expected_scope, expected_prefix, key_id_required, epoch_required) =
-            match self.scheme {
-                ReferenceScheme::TransactionRandomV1 => {
-                    (ReferenceScope::Operation, "op1:", false, false)
-                }
-                ReferenceScheme::TenantPurposeEpochKeyedV1 => {
-                    (ReferenceScope::TenantPurposeEpoch, "tpk1:", true, true)
-                }
-                ReferenceScheme::SdJwtDisclosureV1 => {
-                    (ReferenceScope::Presentation, "sdjwt1:", true, false)
-                }
-                ReferenceScheme::BbsDerivedProofV1 => {
-                    (ReferenceScope::Presentation, "bbs1:", true, true)
-                }
-            };
+        let (expected_scope, expected_prefix, key_id_required, epoch_required) = match self.scheme {
+            ReferenceScheme::TransactionRandomV1 => {
+                (ReferenceScope::Operation, "op1:", false, false)
+            }
+            ReferenceScheme::TenantPurposeEpochKeyedV1 => {
+                (ReferenceScope::TenantPurposeEpoch, "tpk1:", true, true)
+            }
+            ReferenceScheme::SdJwtDisclosureV1 => {
+                (ReferenceScope::Presentation, "sdjwt1:", true, false)
+            }
+            ReferenceScheme::BbsDerivedProofV1 => {
+                (ReferenceScope::Presentation, "bbs1:", true, true)
+            }
+        };
 
         if self.scope != expected_scope {
             return Err(ReferenceError::WrongScopeForScheme);
