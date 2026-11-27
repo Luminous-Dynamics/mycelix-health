@@ -115,6 +115,20 @@
       "attack": "one tenant pseudonym key is compromised and attacker attempts to correlate other tenants",
       "expected": "no-cross-tenant-correlation",
       "layer": "key-isolation-test"
+    },
+    {
+      "id": "PRIV-017",
+      "family": "v2-binding-cross-scope",
+      "attack": "one or more operation references are reused in a different operation scope",
+      "expected": "rejected",
+      "layer": "operation-binding-v2-validator"
+    },
+    {
+      "id": "PRIV-018",
+      "family": "v2-binding-role-collision",
+      "attack": "same opaque handle is assigned to patient and resource-set or another distinct role",
+      "expected": "rejected",
+      "layer": "operation-binding-v2-validator"
     }
   ]
 }
