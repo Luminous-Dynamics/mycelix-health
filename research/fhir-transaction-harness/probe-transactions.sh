@@ -466,6 +466,221 @@ cp "$WORK_DIR/rollback-response.json" "$ARTIFACT_DIR/rollback-response.json"
 # provisioned by the PostgreSQL init script. No HAPI HTTP read/search is used
 # for these SQL counts/version checks.
 compose_file="${COMPOSE_FILE:-research/fhir-transaction-harness/compose.yaml}"
+
+# Discover the exact pinned HAPI 8.12.0 schema before issuing joins. Preserve
+# the observed catalog and fail with a precise missing-column diagnostic.
+docker compose -f "$compose_file" exec -T \
+  -e PGPASSWORD=local-observer-only-not-a-secret postgres \
+  psql -X -qAt -F "$(docker compose -f "$compose_file" exec -T \
+  -e PGPASSWORD=local-observer-only-not-a-secret postgres \
+  psql -X -qAt -v ON_ERROR_STOP=1 -U hapi_observer -d hapi \
+    -v patient_id="$patient_id" \
+    -v provenance_id="$provenance_id" \
+    -v observation_id="$observation_id" \
+    -v rollback_identifier="$rollback_identifier" \
+    -v identifier_system="$identifier_system" <<'SQL'
+SELECT jsonb_build_object(
+  'observer_role', current_user,
+  'observer_read_only', current_setting('transaction_read_only')::boolean,
+  'observer_is_superuser', (
+    SELECT rolsuper FROM pg_roles WHERE rolname = current_user
+  ),
+  'observer_can_create_roles', (
+    SELECT rolcreaterole FROM pg_roles WHERE rolname = current_user
+  ),
+  'observer_can_insert', has_table_privilege(current_user, 'public.hfj_resource', 'INSERT'),
+  'observer_can_update', has_table_privilege(current_user, 'public.hfj_resource', 'UPDATE'),
+  'observer_can_delete', has_table_privilege(current_user, 'public.hfj_resource', 'DELETE'),
+  'patient_master_rows', (
+    SELECT count(*) FROM HFJ_RESOURCE
+    WHERE RES_TYPE = 'Patient' AND FHIR_ID = :'patient_id'
+  ),
+  'patient_current_version', (
+    SELECT max(RES_VER) FROM HFJ_RESOURCE
+    WHERE RES_TYPE = 'Patient' AND FHIR_ID = :'patient_id'
+  ),
+  'patient_history_rows', (
+    SELECT count(*)
+    FROM HFJ_RES_VER V
+    JOIN HFJ_RESOURCE R ON R.RES_ID = V.RES_ID
+    WHERE R.RES_TYPE = 'Patient' AND R.FHIR_ID = :'patient_id'
+  ),
+  'provenance_master_rows', (
+    SELECT count(*) FROM HFJ_RESOURCE
+    WHERE RES_TYPE = 'Provenance' AND FHIR_ID = :'provenance_id'
+  ),
+  'provenance_history_rows', (
+    SELECT count(*)
+    FROM HFJ_RES_VER V
+    JOIN HFJ_RESOURCE R ON R.RES_ID = V.RES_ID
+    WHERE R.RES_TYPE = 'Provenance' AND R.FHIR_ID = :'provenance_id'
+  ),
+  'observation_master_rows', (
+    SELECT count(*) FROM HFJ_RESOURCE
+    WHERE RES_TYPE = 'Observation' AND FHIR_ID = :'observation_id'
+  ),
+  'observation_current_version', (
+    SELECT max(RES_VER) FROM HFJ_RESOURCE
+    WHERE RES_TYPE = 'Observation' AND FHIR_ID = :'observation_id'
+  ),
+  'observation_history_rows', (
+    SELECT count(*)
+    FROM HFJ_RES_VER V
+    JOIN HFJ_RESOURCE R ON R.RES_ID = V.RES_ID
+    WHERE R.RES_TYPE = 'Observation' AND R.FHIR_ID = :'observation_id'
+  ),
+  'rollback_marker_master_rows', (
+    SELECT count(*)
+    FROM HFJ_SPIDX_TOKEN T
+    JOIN HFJ_RESOURCE R ON R.RES_ID = T.RES_ID
+    WHERE R.RES_TYPE = 'Patient'
+      AND T.SP_NAME = 'identifier'
+      AND T.SP_SYSTEM = :'identifier_system'
+      AND T.SP_VALUE = :'rollback_identifier'
+  )
+)::text;
+SQL
+)"
+jq -e '
+  .observer_role == "hapi_observer"
+  and .observer_read_only == true
+  and .observer_is_superuser == false
+  and .observer_can_create_roles == false
+  and .observer_can_insert == false
+  and .observer_can_update == false
+  and .observer_can_delete == false
+  and .patient_master_rows == 1
+  and .patient_current_version == 2
+  and .patient_history_rows == 2
+  and .provenance_master_rows == 1
+  and .provenance_history_rows == 1
+  and .observation_master_rows == 1
+  and .observation_current_version == 1
+  and .observation_history_rows == 1
+  and .rollback_marker_master_rows == 0
+' <<< "$database_observation" >/dev/null
+cp <(jq . <<< "$database_observation") "$ARTIFACT_DIR/direct-postgres-observation.json"
+
+# This is deliberately an incomplete qualification result. The harness does
+# not test consent revocation at commit, cross-service recovery, recipient-side
+# effects, independent signing, or security/audit configuration.
+jq -n \
+  --arg timestamp "$recorded_at" \
+  --arg base_url "$FHIR_BASE_URL" \
+  --arg metadata_sha256 "$metadata_sha256" \
+  --arg transaction_http "$transaction_status" \
+  --arg replay_http "$replay_status" \
+  --arg observation_version_before_replay "$observation_version_before_replay" \
+  --arg observation_version_after_replay "$observation_version_after_replay" \
+  --arg rollback_http "$rollback_status" \
+  --arg patient_conditional_create_declared "$patient_conditional_create_declared" \
+  --arg provenance_conditional_create_declared "$provenance_conditional_create_declared" \
+  --arg provenance_target_search_declared "$provenance_target_search_declared" \
+  --arg observation_conditional_create_declared "$observation_conditional_create_declared" \
+  --arg concurrent_a_http "$concurrent_a_status" \
+  --arg concurrent_b_http "$concurrent_b_status" \
+  --arg stale_precondition_http "$stale_precondition_status" \
+  --arg version_after_stale_precondition "$version_after_stale_precondition" \
+  --arg version_before_concurrency "$version_before_concurrency" \
+  --arg version_after_concurrency "$version_after_concurrent" \
+  --arg patient_count "$patient_count" \
+  --arg provenance_count "$provenance_count" \
+  --arg observation_count "$observation_count" \
+  --arg existing_version_before "$version_before_rollback" \
+  --arg existing_version_after "$version_after" \
+  --argjson database_observation "$database_observation" '
+  {
+    schema_version: 1,
+    harness: "mycelix-hapi-r4-postgres-probes-v1",
+    observed_at: $timestamp,
+    fhir_base_url: $base_url,
+    capability_statement_sha256: $metadata_sha256,
+    declared_transaction_interaction: true,
+    declared_capabilities: {
+      patient_conditional_create: ($patient_conditional_create_declared == "true"),
+      provenance_conditional_create: ($provenance_conditional_create_declared == "true"),
+      provenance_target_search: ($provenance_target_search_declared == "true"),
+      observation_conditional_create: ($observation_conditional_create_declared == "true")
+    },
+    independent_postgres_observation: {
+      result: "passed",
+      backend: "PostgreSQL",
+      observation: $database_observation
+    },
+    probes: {
+      provenance_observation_transaction: {result: "passed", http_status: $transaction_http},
+      replay_resource_cardinality: {
+        result: "passed",
+        http_status: $replay_http,
+        patient_count_after_replay: ($patient_count | tonumber),
+        provenance_count_after_replay: ($provenance_count | tonumber),
+        observation_count_after_replay: ($observation_count | tonumber),
+        observation_version_before_replay: $observation_version_before_replay,
+        observation_version_after_replay: $observation_version_after_replay
+      },
+      deterministic_stale_if_match: {
+        result: "passed",
+        http_status: $stale_precondition_http,
+        version_before: $version_before_concurrency,
+        version_after: $version_after_stale_precondition
+      },
+      concurrent_if_match_writers: {
+        result: "passed",
+        writer_a_http_status: $concurrent_a_http,
+        writer_b_http_status: $concurrent_b_http,
+        version_before: $version_before_concurrency,
+        version_after: $version_after_concurrency,
+        accepted_writers: 1,
+        stale_rejections: 1
+      },
+      stale_if_match_transaction_rollback: {
+        result: "passed",
+        http_status: $rollback_http,
+        rollback_marker_count_after_failure: 0,
+        existing_resource_version_before: $existing_version_before,
+        existing_resource_version_after: $existing_version_after
+      }
+    },
+    qualification_verdict: "defer",
+    defer_reasons: [
+      "No Mycelix consent-revocation/commit fence was exercised",
+      "No gateway/outbox crash or lost-acknowledgement reconciliation was exercised",
+      "No independent recipient-effect witness was exercised",
+      "No independent cryptographic qualification receipt was issued",
+      "No authentication, authorization or enterprise audit layer was configured by this local test stack"
+    ],
+    phi_used: false
+  }
+' > "$ARTIFACT_DIR/qualification-evidence.json"
+
+printf '\nProbe slice passed. Overall qualification remains DEFER.\n'
+printf 'Evidence: %s/qualification-evidence.json\n' "$ARTIFACT_DIR"
+\\t' -v ON_ERROR_STOP=1 -U hapi_observer -d hapi -c "
+    SELECT lower(table_name) || '.' || lower(column_name)
+    FROM information_schema.columns
+    WHERE lower(table_name) IN ('hfj_resource', 'hfj_res_ver', 'hfj_spidx_token')
+    ORDER BY lower(table_name), ordinal_position;
+  " > "$ARTIFACT_DIR/postgres-schema-columns.tsv"
+
+required_schema_columns=(
+  hfj_resource.res_id
+  hfj_resource.res_type
+  hfj_resource.fhir_id
+  hfj_resource.res_ver
+  hfj_res_ver.res_id
+  hfj_spidx_token.res_id
+  hfj_spidx_token.sp_name
+  hfj_spidx_token.sp_system
+  hfj_spidx_token.sp_value
+)
+for required_column in "${required_schema_columns[@]}"; do
+  if ! grep -Fxq "$required_column" "$ARTIFACT_DIR/postgres-schema-columns.tsv"; then
+    printf 'Pinned HAPI PostgreSQL schema lacks required column: %s\\n' "$required_column" >&2
+    cat "$ARTIFACT_DIR/postgres-schema-columns.tsv" >&2
+    exit 1
+  fi
+done
+
 database_observation="$(docker compose -f "$compose_file" exec -T \
   -e PGPASSWORD=local-observer-only-not-a-secret postgres \
   psql -X -qAt -v ON_ERROR_STOP=1 -U hapi_observer -d hapi \
@@ -497,7 +712,7 @@ SELECT jsonb_build_object(
   'patient_history_rows', (
     SELECT count(*)
     FROM HFJ_RES_VER V
-    JOIN HFJ_RESOURCE R ON R.PID = V.RES_ID
+    JOIN HFJ_RESOURCE R ON R.RES_ID = V.RES_ID
     WHERE R.RES_TYPE = 'Patient' AND R.FHIR_ID = :'patient_id'
   ),
   'provenance_master_rows', (
@@ -507,7 +722,7 @@ SELECT jsonb_build_object(
   'provenance_history_rows', (
     SELECT count(*)
     FROM HFJ_RES_VER V
-    JOIN HFJ_RESOURCE R ON R.PID = V.RES_ID
+    JOIN HFJ_RESOURCE R ON R.RES_ID = V.RES_ID
     WHERE R.RES_TYPE = 'Provenance' AND R.FHIR_ID = :'provenance_id'
   ),
   'observation_master_rows', (
@@ -521,13 +736,13 @@ SELECT jsonb_build_object(
   'observation_history_rows', (
     SELECT count(*)
     FROM HFJ_RES_VER V
-    JOIN HFJ_RESOURCE R ON R.PID = V.RES_ID
+    JOIN HFJ_RESOURCE R ON R.RES_ID = V.RES_ID
     WHERE R.RES_TYPE = 'Observation' AND R.FHIR_ID = :'observation_id'
   ),
   'rollback_marker_master_rows', (
     SELECT count(*)
     FROM HFJ_SPIDX_TOKEN T
-    JOIN HFJ_RESOURCE R ON R.PID = T.RES_ID
+    JOIN HFJ_RESOURCE R ON R.RES_ID = T.RES_ID
     WHERE R.RES_TYPE = 'Patient'
       AND T.SP_NAME = 'identifier'
       AND T.SP_SYSTEM = :'identifier_system'
