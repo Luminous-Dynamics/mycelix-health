@@ -1,0 +1,45 @@
+services:
+  postgres:
+    # postgres:18.7 — immutable multi-platform index digest.
+    image: postgres@sha256:64c8b0d31e4ab6ea665e8426ea406a94bf52de3c05b3a4a8bf713704eefa9328
+    restart: "no"
+    environment:
+      POSTGRES_DB: hapi
+      POSTGRES_USER: hapi_test
+      POSTGRES_PASSWORD: local-test-only-not-a-secret
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U hapi_test -d hapi"]
+      interval: 5s
+      timeout: 5s
+      start_period: 10s
+      retries: 20
+    volumes:
+      - hapi-postgres-data:/var/lib/postgresql/data
+
+  hapi:
+    # hapiproject/hapi:v8.12.0-2 — immutable multi-platform index digest.
+    image: hapiproject/hapi@sha256:0ff86aac4c7bd13a1ee226444a70263bb46ed1c28ef543c30a44f865b80ca04e
+    restart: "no"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/hapi
+      SPRING_DATASOURCE_USERNAME: hapi_test
+      SPRING_DATASOURCE_PASSWORD: local-test-only-not-a-secret
+      SPRING_DATASOURCE_DRIVER_CLASS_NAME: org.postgresql.Driver
+      HIBERNATE_DIALECT: ca.uhn.fhir.jpa.model.dialect.HapiFhirPostgresDialect
+      HAPI_FHIR_FHIR_VERSION: R4
+    ports:
+      # Loopback only: the upstream starter has no security implementation by default.
+      - "127.0.0.1:8080:8080"
+    healthcheck:
+      # This is the health-check entry point documented by the HAPI starter.
+      test: ["CMD", "java", "-cp", "/app", "HealthCheck"]
+      interval: 15s
+      timeout: 10s
+      start_period: 120s
+      retries: 20
+
+volumes:
+  hapi-postgres-data:
