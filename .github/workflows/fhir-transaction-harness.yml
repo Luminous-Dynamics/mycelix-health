@@ -43,6 +43,8 @@ jobs:
           grep -Fq 'hfj_res_ver.res_id' research/fhir-transaction-harness/probe-transactions.sh
           grep -Fq 'hfj_spidx_token.sp_value' research/fhir-transaction-harness/probe-transactions.sh
           grep -Fq 'postgres-schema-columns.tsv' research/fhir-transaction-harness/probe-transactions.sh
+          grep -Fq 'information_schema.columns' research/fhir-transaction-harness/probe-transactions.sh
+          ! grep -Fq 'R.PID' research/fhir-transaction-harness/probe-transactions.sh
           docker compose -f research/fhir-transaction-harness/compose.yaml config --quiet
           docker compose version
           docker version
