@@ -74,6 +74,7 @@ result="$(jq -n \
       or $d.capability_observation.resource.fhirVersion != $s.target_fhir_version then
       verdict("not_qualified"; "fhir_version_not_supported")
     elif $d.capability_observation.resource.resourceType != "CapabilityStatement"
+      or $d.capability_observation.resource.status != "active"
       or $d.capability_observation.resource.kind != "instance"
       or ($d.server.base_url | type) != "string"
       or ($d.server.base_url | length) == 0
@@ -86,7 +87,9 @@ result="$(jq -n \
       | select(.code == "transaction")
     ] | length) == 0 then
       verdict("not_qualified"; "server_does_not_advertise_system_transaction")
-    elif ($d.capability_observation.resource.software.version | type) != "string"
+    elif ($d.capability_observation.resource.software.name | type) != "string"
+      or ($d.capability_observation.resource.software.version | type) != "string"
+      or $d.server.software_name != $d.capability_observation.resource.software.name
       or $d.server.software_version != $d.capability_observation.resource.software.version then
       verdict("defer"; "server_software_identity_mismatch")
     elif (digest_ok($d.capability_observation.sha256) | not)
@@ -94,7 +97,8 @@ result="$(jq -n \
       verdict("defer"; "capability_digest_missing_or_malformed")
     elif $d.probe_evidence.capability_sha256 != $d.capability_observation.sha256 then
       verdict("defer"; "probe_evidence_bound_to_different_capability_statement")
-    elif $d.probe_evidence.server_software_version != $d.server.software_version then
+    elif $d.probe_evidence.server_software_name != $d.server.software_name
+      or $d.probe_evidence.server_software_version != $d.server.software_version then
       verdict("defer"; "probe_evidence_bound_to_different_server_build")
     elif $d.probe_evidence.suite_id != $s.benchmark_id
       or $d.probe_evidence.suite_version != 1 then
