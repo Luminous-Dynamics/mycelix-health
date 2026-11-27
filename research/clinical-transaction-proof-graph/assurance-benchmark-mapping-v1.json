@@ -99,12 +99,15 @@
         "conditional replay cardinality",
         "If-Match behavior",
         "crash/restart",
-        "direct DB observer"
+        "direct DB observer",
+        "128-way conditional-create cardinality",
+        "read-only SQL observer agreement"
       ],
       "hard_gates": [
         "no partial writes",
         "no lost update accepted",
-        "unknown acknowledgement not promoted"
+        "unknown acknowledgement not promoted",
+        "zero duplicate resources under the 128-way same-identifier conditional-create race"
       ]
     },
     {
