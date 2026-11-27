@@ -218,16 +218,10 @@ pub fn verify_runtime_qualification<A: QualificationReceiptAuthenticator>(
         || !valid_sha256(&receipt.observer.schema_digest)
         || !valid_sha256(&receipt.observer.observation_digest)
     {
-        return QualificationReport::rejected(
-            QualificationFinding::IncompleteReceipt,
-            probe_count,
-        );
+        return QualificationReport::rejected(QualificationFinding::IncompleteReceipt, probe_count);
     }
     if receipt.issued_at_ms <= 0 || receipt.expires_at_ms <= receipt.issued_at_ms {
-        return QualificationReport::rejected(
-            QualificationFinding::InvalidTimeWindow,
-            probe_count,
-        );
+        return QualificationReport::rejected(QualificationFinding::InvalidTimeWindow, probe_count);
     }
     if now_ms < receipt.issued_at_ms {
         return QualificationReport::rejected(
@@ -236,16 +230,10 @@ pub fn verify_runtime_qualification<A: QualificationReceiptAuthenticator>(
         );
     }
     if now_ms >= receipt.expires_at_ms {
-        return QualificationReport::deferred(
-            QualificationFinding::EvidenceExpired,
-            probe_count,
-        );
+        return QualificationReport::deferred(QualificationFinding::EvidenceExpired, probe_count);
     }
     if receipt.fhir_version != "4.0.1" {
-        return QualificationReport::rejected(
-            QualificationFinding::WrongFhirVersion,
-            probe_count,
-        );
+        return QualificationReport::rejected(QualificationFinding::WrongFhirVersion, probe_count);
     }
     if receipt.phi_used {
         return QualificationReport::rejected(QualificationFinding::PhiPresent, probe_count);
@@ -266,10 +254,7 @@ pub fn verify_runtime_qualification<A: QualificationReceiptAuthenticator>(
         || receipt.observer.can_update
         || receipt.observer.can_delete
     {
-        return QualificationReport::rejected(
-            QualificationFinding::ObserverCanMutate,
-            probe_count,
-        );
+        return QualificationReport::rejected(QualificationFinding::ObserverCanMutate, probe_count);
     }
 
     let mut seen = BTreeSet::new();
@@ -281,10 +266,7 @@ pub fn verify_runtime_qualification<A: QualificationReceiptAuthenticator>(
             );
         }
         if !valid_sha256(&probe.artifact_digest) {
-            return QualificationReport::rejected(
-                QualificationFinding::InvalidDigest,
-                probe_count,
-            );
+            return QualificationReport::rejected(QualificationFinding::InvalidDigest, probe_count);
         }
         match probe.outcome {
             ProbeOutcome::Passed => {}
@@ -308,7 +290,13 @@ pub fn verify_runtime_qualification<A: QualificationReceiptAuthenticator>(
             probe_count,
         );
     }
-    if receipt.signature.as_deref().map(str::trim).unwrap_or("").is_empty() {
+    if receipt
+        .signature
+        .as_deref()
+        .map(str::trim)
+        .unwrap_or("")
+        .is_empty()
+    {
         return QualificationReport::deferred(
             QualificationFinding::MissingIssuerSignature,
             probe_count,
@@ -334,8 +322,7 @@ mod tests {
 
     impl QualificationReceiptAuthenticator for FixtureAuthenticator {
         fn verify_receipt_signature(&self, receipt: &RuntimeQualificationReceiptV1) -> bool {
-            self.valid
-                && receipt.signature.as_deref() == Some("fixture-signature")
+            self.valid && receipt.signature.as_deref() == Some("fixture-signature")
         }
     }
 
@@ -343,7 +330,13 @@ mod tests {
         format!("sha256:{}", fill.to_string().repeat(64))
     }
 
-    fn identity(id: &str, image: char, runtime: char, build: char, config: char) -> ComponentRuntimeIdentity {
+    fn identity(
+        id: &str,
+        image: char,
+        runtime: char,
+        build: char,
+        config: char,
+    ) -> ComponentRuntimeIdentity {
         ComponentRuntimeIdentity {
             component_id: id.into(),
             image_index_digest: digest(image),
@@ -423,7 +416,10 @@ mod tests {
             &FixtureAuthenticator { valid: true },
         );
         assert_eq!(report.verdict, QualificationVerdict::Defer);
-        assert_eq!(report.findings, vec![QualificationFinding::MissingIssuerSignature]);
+        assert_eq!(
+            report.findings,
+            vec![QualificationFinding::MissingIssuerSignature]
+        );
     }
 
     #[test]
@@ -451,7 +447,10 @@ mod tests {
             &FixtureAuthenticator { valid: true },
         );
         assert_eq!(report.verdict, QualificationVerdict::Defer);
-        assert_eq!(report.findings, vec![QualificationFinding::MissingRequiredProbe]);
+        assert_eq!(
+            report.findings,
+            vec![QualificationFinding::MissingRequiredProbe]
+        );
     }
 
     #[test]
@@ -481,7 +480,10 @@ mod tests {
             &FixtureAuthenticator { valid: true },
         );
         assert_eq!(report.verdict, QualificationVerdict::NotQualified);
-        assert_eq!(report.findings, vec![QualificationFinding::ObserverCanMutate]);
+        assert_eq!(
+            report.findings,
+            vec![QualificationFinding::ObserverCanMutate]
+        );
     }
 
     #[test]
@@ -496,7 +498,10 @@ mod tests {
             &FixtureAuthenticator { valid: true },
         );
         assert_eq!(report.verdict, QualificationVerdict::NotQualified);
-        assert_eq!(report.findings, vec![QualificationFinding::ObserverIdentityMismatch]);
+        assert_eq!(
+            report.findings,
+            vec![QualificationFinding::ObserverIdentityMismatch]
+        );
     }
 
     #[test]
@@ -554,7 +559,10 @@ mod tests {
             &FixtureAuthenticator { valid: true },
         );
         assert_eq!(report.verdict, QualificationVerdict::NotQualified);
-        assert_eq!(report.findings, vec![QualificationFinding::EvidenceNotYetIssued]);
+        assert_eq!(
+            report.findings,
+            vec![QualificationFinding::EvidenceNotYetIssued]
+        );
     }
 
     #[test]
@@ -569,7 +577,10 @@ mod tests {
             &FixtureAuthenticator { valid: true },
         );
         assert_eq!(report.verdict, QualificationVerdict::NotQualified);
-        assert_eq!(report.findings, vec![QualificationFinding::InvalidTimeWindow]);
+        assert_eq!(
+            report.findings,
+            vec![QualificationFinding::InvalidTimeWindow]
+        );
     }
 
     #[test]
@@ -582,7 +593,10 @@ mod tests {
             &FixtureAuthenticator { valid: false },
         );
         assert_eq!(report.verdict, QualificationVerdict::NotQualified);
-        assert_eq!(report.findings, vec![QualificationFinding::InvalidIssuerSignature]);
+        assert_eq!(
+            report.findings,
+            vec![QualificationFinding::InvalidIssuerSignature]
+        );
     }
 
     #[test]
@@ -597,7 +611,10 @@ mod tests {
             &FixtureAuthenticator { valid: true },
         );
         assert_eq!(report.verdict, QualificationVerdict::NotQualified);
-        assert_eq!(report.findings, vec![QualificationFinding::WrongFhirVersion]);
+        assert_eq!(
+            report.findings,
+            vec![QualificationFinding::WrongFhirVersion]
+        );
     }
 
     #[test]
@@ -612,6 +629,9 @@ mod tests {
             &FixtureAuthenticator { valid: true },
         );
         assert_eq!(report.verdict, QualificationVerdict::NotQualified);
-        assert_eq!(report.findings, vec![QualificationFinding::IncompleteReceipt]);
+        assert_eq!(
+            report.findings,
+            vec![QualificationFinding::IncompleteReceipt]
+        );
     }
 }
