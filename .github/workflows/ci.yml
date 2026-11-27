@@ -231,31 +231,53 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Checkout pinned Mycelix shared bridge dependency
+      # This standalone repository has four Cargo path dependencies supplied
+      # by its parent Mycelix checkout: ../crates/*, ../mycelix-core, and
+      # ../mycelix-workspace/mycelix-core. Stage the same complete, pinned
+      # parent layout used by the Rust and cargo-deny jobs; do not copy only
+      # mycelix-bridge-common or synthesize placeholders.
+      - name: Checkout pinned parent Mycelix workspace
         uses: actions/checkout@v4
         with:
           repository: Luminous-Dynamics/mycelix
           ref: d597dcd99ccbf1cc3c341c3442ef6a53efd0dbff
-          path: mycelix-upstream
-          sparse-checkout: crates/mycelix-bridge-common
-          sparse-checkout-cone-mode: true
+          path: mycelix-parent
           persist-credentials: false
 
-      - name: Stage expected sibling workspace dependency
+      - name: Stage all declared sibling path dependencies
         run: |
           set -euo pipefail
-          source="mycelix-upstream/crates/mycelix-bridge-common"
-          sibling="../crates/mycelix-bridge-common"
-          test -s "$source/Cargo.toml"
-          mkdir -p ../crates
-          if [[ -e "$sibling" || -L "$sibling" ]]; then
-            echo "Refusing to overwrite existing sibling dependency path: $sibling" >&2
-            exit 1
-          fi
-          cp -a "$source" "$sibling"
-          test -s "$sibling/Cargo.toml"
+          source="$GITHUB_WORKSPACE/mycelix-parent"
+          for target in ../crates ../mycelix-core ../mycelix-workspace/mycelix-core; do
+            if [[ -e "$target" || -L "$target" ]]; then
+              echo "Refusing to overwrite existing sibling dependency path: $target" >&2
+              exit 1
+            fi
+          done
+
+          mkdir -p ../crates ../mycelix-core ../mycelix-workspace/mycelix-core
+          cp -a "$source/crates/." ../crates/
+          cp -a "$source/mycelix-core/." ../mycelix-core/
+          cp -a "$source/mycelix-core/." ../mycelix-workspace/mycelix-core/
+
+          required=(
+            ../crates/mycelix-bridge-common/Cargo.toml
+            ../crates/mycelix-leptos-core/Cargo.toml
+            ../crates/mycelix-zkp-core/Cargo.toml
+            ../mycelix-core/libs/mycelix-fl/Cargo.toml
+            ../mycelix-workspace/mycelix-core/libs/proofs-commitment/Cargo.toml
+          )
+          for manifest in "${required[@]}"; do
+            test -s "$manifest" || {
+              echo "Missing declared sibling workspace manifest: $manifest" >&2
+              exit 1
+            }
+          done
+
           echo "upstream_commit=d597dcd99ccbf1cc3c341c3442ef6a53efd0dbff"
-          echo "manifest_sha256=$(sha256sum "$sibling/Cargo.toml" | cut -d' ' -f1)"
+          for manifest in "${required[@]}"; do
+            printf '%s %s\n' "$manifest" "$(sha256sum "$manifest" | cut -d' ' -f1)"
+          done | tee "$RUNNER_TEMP/health-sibling-manifests.txt"
 
       - name: Install Nix with Holochain binary cache
         uses: cachix/install-nix-action@v27
