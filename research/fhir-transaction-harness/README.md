@@ -8,7 +8,7 @@
 - PostgreSQL 18.7, multi-platform index digest `sha256:64c8b0d31e4ab6ea665e8426ea406a94bf52de3c05b3a4a8bf713704eefa9328`.
 - HAPI is explicitly configured for FHIR R4 and PostgreSQL. The endpoint is bound to `127.0.0.1` only.
 
-The digest pins are part of the experimental identity; do not replace them with `:latest`. The amd64 manifests are recorded in research issue #371.
+PostgreSQL 18+ uses the versioned data-directory layout (`/var/lib/postgresql/18/docker`); the Compose volume is therefore mounted at `/var/lib/postgresql`, not the pre-18 `/var/lib/postgresql/data` path. The digest pins are part of the experimental identity; do not replace them with `:latest`. The amd64 manifests are recorded in research issue #371.
 
 ## Run locally
 
