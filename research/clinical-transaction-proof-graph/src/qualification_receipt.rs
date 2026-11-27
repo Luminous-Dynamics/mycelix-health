@@ -5,6 +5,7 @@
 //! It does not canonicalize/serialize the payload or implement cryptography.
 
 use std::collections::BTreeSet;
+use crate::QualificationRegistry;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Ord, PartialOrd)]
 pub enum RequiredProbe {
