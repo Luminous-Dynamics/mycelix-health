@@ -1155,7 +1155,10 @@ mod tests {
 
         let report = verify_graph(&graph, 5_000, &FixtureAuthenticator, &qualifications());
         assert_eq!(report.verdict, Verdict::Verified);
-        assert_eq!(report.conclusion, OperationConclusion::RecipientEffectObserved);
+        assert_eq!(
+            report.conclusion,
+            OperationConclusion::RecipientEffectObserved
+        );
     }
 
     #[test]
@@ -1178,5 +1181,4 @@ mod tests {
         assert_eq!(report.verdict, Verdict::Verified);
         assert_eq!(report.conclusion, OperationConclusion::RecipientEffectObserved);
     }
-
 }
