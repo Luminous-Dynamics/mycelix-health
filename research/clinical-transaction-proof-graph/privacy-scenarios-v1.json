@@ -150,6 +150,20 @@
       "attack": "exported v2 operation binding contains plaintext clinical purpose instead of an opaque operation-scoped purpose reference",
       "expected": "rejected",
       "layer": "v2-envelope-schema-and-export-policy"
+    },
+    {
+      "id": "PRIV-022",
+      "family": "runtime-receipt-missing-signature",
+      "attack": "runtime qualification evidence has no trusted issuer signature",
+      "expected": "defer",
+      "layer": "runtime-qualification-verifier"
+    },
+    {
+      "id": "PRIV-023",
+      "family": "runtime-receipt-expired",
+      "attack": "runtime qualification receipt validity window has expired",
+      "expected": "defer",
+      "layer": "runtime-qualification-verifier"
     }
   ]
 }
