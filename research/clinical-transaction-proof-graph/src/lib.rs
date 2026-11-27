@@ -1239,6 +1239,37 @@ mod tests {
     }
 
     #[test]
+    fn duplicate_authority_decisions_are_rejected() {
+        let mut graph = successful_graph();
+        let identity = graph.events[1].clone();
+        let first_authority = graph.events[2].clone();
+        let duplicate = event(
+            "event-09",
+            "policy-engine",
+            ActorRole::PolicyEngine,
+            2,
+            EventKind::AuthorityDecided,
+            &[&identity, &first_authority],
+        );
+        graph.events.push(duplicate);
+        let report = verify_graph(&graph, 5_000, &FixtureAuthenticator, &qualifications());
+        assert_eq!(report.verdict, Verdict::Rejected);
+        assert_eq!(report.findings, vec![ReasonCode::DuplicateAuthorityDecision]);
+    }
+
+    #[test]
+    fn authority_outcome_cannot_be_attached_to_a_request_event() {
+        let mut graph = successful_graph();
+        graph.events[0].authority_outcome = Some(AuthorityOutcome::Permit);
+        let report = verify_graph(&graph, 5_000, &FixtureAuthenticator, &qualifications());
+        assert_eq!(report.verdict, Verdict::Rejected);
+        assert_eq!(
+            report.findings,
+            vec![ReasonCode::InvalidAuthorityOutcomePlacement]
+        );
+    }
+
+    #[test]
     fn invalid_signature_is_rejected() {
         let mut graph = successful_graph();
         graph.events[2].signature = "tampered".into();
