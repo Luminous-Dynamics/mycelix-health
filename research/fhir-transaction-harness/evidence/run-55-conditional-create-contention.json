@@ -1,0 +1,60 @@
+{
+  "schema_version": 1,
+  "evidence_kind": "frozen-runtime-observation",
+  "scope": "synthetic HAPI FHIR R4 + PostgreSQL 18.7; 128-way same-identifier conditional-create contention",
+  "observed_at": "2026-11-27T18:03:32Z",
+  "source": {
+    "repository": "Luminous-Dynamics/mycelix-health",
+    "branch": "test/fhir-hapi-postgres-transaction-probes-2026-11-27",
+    "commit": "4edf655cedec667acbd25ea8ec9f263f3977dfcb",
+    "workflow_run_id": 46045883432,
+    "workflow_run_number": 55,
+    "artifact_id": 15222796974,
+    "artifact_sha256": "b3850d9349fed863e1302fe11cf4bfb43a824f4a8920789148e4f45f00a6fd64"
+  },
+  "runtime": {
+    "hapi_version": "v8.12.0-2",
+    "postgres_version": "18.7",
+    "hapi_image_digest": "sha256:0ff86aac4c7bd13a1ee226444a70263bb46ed1c28ef543c30a44f865b80ca04e",
+    "postgres_image_digest": "sha256:64c8b0d31e4ab6ea665e8426ea406a94bf52de3c05b3a4a8bf713704eefa9328"
+  },
+  "probe": {
+    "attempts": 128,
+    "first_attempt_http_status_counts": {
+      "200": 125,
+      "201": 1,
+      "409": 2
+    },
+    "other_statuses": 0,
+    "patient_resource_id_returned_by_http_200_or_201": "1001",
+    "distinct_resource_ids_in_success_responses": 1,
+    "conflicts": [
+      {
+        "http_status": 409,
+        "response": "OperationOutcome",
+        "diagnostic_class": "HAPI-0550 / PostgreSQL duplicate key",
+        "constraint": "hfj_res_search_url_pkey"
+      },
+      {
+        "http_status": 409,
+        "response": "OperationOutcome",
+        "diagnostic_class": "HAPI-0550 / PostgreSQL duplicate key",
+        "constraint": "hfj_res_search_url_pkey"
+      }
+    ],
+    "conflict_retries_attempted": false,
+    "fhir_search_cardinality_checked": false,
+    "direct_postgres_observer_executed": false
+  },
+  "finding": {
+    "verdict": "not_qualified_for_128_way_conditional_create_without_recovery",
+    "reason": "Two concurrent conditional-create attempts surfaced an internal unique-key conflict rather than an existing-resource response. The script exited before final FHIR/SQL cardinality observation.",
+    "next_probe": "Retry only the identical conditional-create request for the exact hfj_res_search_url_pkey OperationOutcome; require HTTP 200 and the winner's same resource ID, then verify one resource through FHIR and direct SQL.",
+    "no_claims": [
+      "No duplicate persisted Patient was proven by this run.",
+      "No final cardinality or independent SQL observation was reached.",
+      "This is not a full Mycelix qualification failure; it is a failed HAPI 128-way first-attempt behavior probe."
+    ]
+  },
+  "phi_used": false
+}
