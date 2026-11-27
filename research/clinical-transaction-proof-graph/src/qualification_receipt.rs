@@ -4,7 +4,6 @@
 //! and observer privilege boundaries. Signature verification is injected.
 //! It does not canonicalize/serialize the payload or implement cryptography.
 
-use crate::QualificationRegistry;
 use std::collections::BTreeSet;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Ord, PartialOrd)]
