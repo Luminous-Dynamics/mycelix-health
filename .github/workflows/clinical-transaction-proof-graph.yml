@@ -43,7 +43,7 @@ jobs:
           jq -e . research/clinical-transaction-proof-graph/schema-v1.json >/dev/null
           jq -e . research/clinical-transaction-proof-graph/scenarios-v1.json >/dev/null
           jq -e . research/clinical-transaction-proof-graph/scoped-reference-v1.schema.json >/dev/null
-          jq -e . research/clinical-transaction-proof-graph/operation-binding-v2.schema.json >/dev/null
+          jq -e '.properties.schema_version.const == 2' research/clinical-transaction-proof-graph/operation-binding-v2.schema.json >/dev/null
           jq -e . research/clinical-transaction-proof-graph/privacy-scenarios-v1.json >/dev/null
           jq -e . research/clinical-transaction-proof-graph/assurance-benchmark-mapping-v1.json >/dev/null
 
