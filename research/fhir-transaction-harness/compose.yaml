@@ -15,7 +15,7 @@ services:
       retries: 20
     volumes:
       - hapi-postgres-data:/var/lib/postgresql
-      - ./research/fhir-transaction-harness/init-observer.sql:/docker-entrypoint-initdb.d/10-observer-role.sql:ro
+      - ./init-observer.sql:/docker-entrypoint-initdb.d/10-observer-role.sql:ro
 
   hapi:
     # hapiproject/hapi:v8.12.0-2 — immutable multi-platform index digest.
