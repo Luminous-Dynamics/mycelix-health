@@ -38,6 +38,13 @@ The script records the exact CapabilityStatement, transaction/replay responses, 
 
 The race probe intentionally distinguishes a deterministic stale precondition from two truly overlapping updates: a single 409/412 conflict for the former does not prove the database can serialize the latter. Post-state is checked twice: through the FHIR API and independently through PostgreSQL using a SELECT-only `hapi_observer` role. The SQL probe first exports the exact live `information_schema.columns` inventory for the HAPI JPA tables and checks the required columns. It uses `HFJ_RESOURCE.RES_ID` (not an assumed `PID`) to join `HFJ_RES_VER.RES_ID` and `HFJ_SPIDX_TOKEN.RES_ID`. It then verifies exactly one master row and one history version for Provenance/Observation, Patient history at version 2, Observation version 1, and no token-index row for the rolled-back Patient identifier. The observer has no INSERT/UPDATE/DELETE privileges and runs with `default_transaction_read_only=on`. It still shares the same PostgreSQL instance as HAPI; it is independent of the FHIR API, not an independent physical database or third-party auditor.
 
+## Direct database observer debugging history
+
+- HAPI-only run #25 passed the FHIR/API probe set: multi-resource transaction, conditional replay, deterministic stale-ETag conflict, concurrent version conflict, and transaction rollback.
+- First direct-SQL attempt #33 reached the observer query but failed because the script assumed HFJ_RESOURCE.PID. The live HAPI 8.12.0 schema does not expose that column; the relationships use HFJ_RESOURCE.RES_ID. The current probe records the live information_schema column inventory, requires the needed columns, and joins HFJ_RES_VER.RES_ID / HFJ_SPIDX_TOKEN.RES_ID to HFJ_RESOURCE.RES_ID.
+- The next attempt exposed a shell quoting defect in the combined schema-discovery/observer command before services started. These commands are now separate shell operations: first export the schema inventory, then execute the observer SQL. The current exact-head workflow is the first run of that corrected shell structure.
+- Until that run completes, direct PostgreSQL observation is not qualified. The earlier HAPI-only #25 result remains valid for its FHIR API probes, but must not be presented as proof of direct SQL read-back.
+
 ## Interpretation
 
 A probe pass establishes only the behavior observed for this exact image, configuration, test corpus and runtime. It does not qualify Mycelix's consent/revocation fence, gateway operation ledger, cross-system recovery or remote recipient effect. The generated evidence deliberately leaves overall qualification at `defer`.
