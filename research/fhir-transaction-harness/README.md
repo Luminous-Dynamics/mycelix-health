@@ -31,10 +31,11 @@ The script records the exact CapabilityStatement, the transaction request/respon
    - Create a Provenance resource with a normal `target=Patient/{id}` reference and conditional-create query.
    - Create a synthetic Observation bound to that Patient, using conditional create by `Observation.identifier`.
 4. Replay the exact two-entry transaction. Assert exactly one matching Provenance and Observation remain. Check that the Observation version remains unchanged. This is in-server resource-cardinality/replay evidence, not distributed exactly-once.
-5. Run two concurrent Patient updates using the same `If-Match` version. Require one accepted update and one HTTP 412 stale-version rejection.
+5. Send a deterministic stale-ETag update and require HTTP 412 plus an unchanged resource version.
+6. Run two concurrent Patient updates using the same valid `If-Match` version. Require one accepted update and one FHIR version-conflict response (HTTP 409/412). Preserve both raw responses and statuses before assertions; server-side 5xx/unique-index failures are evidence of a qualification failure, not a passing conflict.
 6. Submit a transaction that creates a rollback-marker Patient and then attempts a Patient update with an impossible `If-Match`. Require an OperationOutcome failure, verify the marker is absent, and verify the original Patient version did not advance.
 
-The post-state checks use HAPI FHIR read/search endpoints. They are **not** an independent PostgreSQL observer. The workflow captures PostgreSQL runtime version and image identity but does not yet directly inspect database rows.
+The race probe intentionally distinguishes a deterministic stale precondition from two truly overlapping updates: a clean 412 for the former does not prove the database can serialize the latter. The post-state checks use HAPI FHIR read/search endpoints. They are **not** an independent PostgreSQL observer. The workflow captures PostgreSQL runtime version and image identity but does not yet directly inspect database rows.
 
 ## Interpretation
 
