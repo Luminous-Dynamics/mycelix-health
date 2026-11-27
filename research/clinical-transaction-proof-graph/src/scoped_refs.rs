@@ -116,8 +116,7 @@ impl ScopedReference {
 
     pub fn validate_operation_scope(&self, expected_scope_id: &str) -> Result<(), ReferenceError> {
         self.validate()?;
-        if self.scheme != ReferenceScheme::TransactionRandomV1
-            || self.scope_id != expected_scope_id
+        if self.scheme != ReferenceScheme::TransactionRandomV1 || self.scope_id != expected_scope_id
         {
             return Err(ReferenceError::WrongScopeForScheme);
         }
@@ -160,7 +159,8 @@ impl OperationReferenceSet {
     ) -> Result<(), ReferenceError> {
         self.patient.validate_operation_scope(operation_scope_id)?;
         self.actor.validate_operation_scope(operation_scope_id)?;
-        self.recipient.validate_operation_scope(operation_scope_id)?;
+        self.recipient
+            .validate_operation_scope(operation_scope_id)?;
         self.tenant.validate_tenant_purpose_epoch(
             tenant_scope_id,
             tenant_key_id,
