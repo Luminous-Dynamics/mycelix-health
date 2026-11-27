@@ -142,7 +142,8 @@
         "component_build_digest",
         "component_config_digest",
         "parents",
-        "authority_outcome"
+        "authority_outcome",
+        "recipient_effect_witness"
       ],
       "properties": {
         "event_id": {
@@ -250,6 +251,53 @@
               ]
             }
           ]
+        },
+        "recipient_effect_witness": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/recipientEffectWitness"
+            }
+          ]
+        }
+      }
+    },
+    "recipientEffectWitness": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "operation_id",
+        "attempt_id",
+        "recipient_ref_digest",
+        "idempotency_key_digest",
+        "resource_set_digest",
+        "durable_effect_receipt_digest",
+        "durable_sequence"
+      ],
+      "properties": {
+        "operation_id": {
+          "$ref": "#/$defs/nonEmpty"
+        },
+        "attempt_id": {
+          "$ref": "#/$defs/nonEmpty"
+        },
+        "recipient_ref_digest": {
+          "$ref": "#/$defs/nonEmpty"
+        },
+        "idempotency_key_digest": {
+          "$ref": "#/$defs/nonEmpty"
+        },
+        "resource_set_digest": {
+          "$ref": "#/$defs/nonEmpty"
+        },
+        "durable_effect_receipt_digest": {
+          "$ref": "#/$defs/nonEmpty"
+        },
+        "durable_sequence": {
+          "type": "integer",
+          "minimum": 1
         }
       }
     }
