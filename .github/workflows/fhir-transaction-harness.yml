@@ -31,6 +31,9 @@ jobs:
         run: |
           set -euo pipefail
           bash -n research/fhir-transaction-harness/probe-transactions.sh
+          test -s research/fhir-transaction-harness/init-observer.sql
+          grep -q 'CREATE ROLE hapi_observer' research/fhir-transaction-harness/init-observer.sql
+          grep -q 'default_transaction_read_only' research/fhir-transaction-harness/init-observer.sql
           docker compose -f research/fhir-transaction-harness/compose.yaml config --quiet
           docker compose version
           docker version
