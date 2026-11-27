@@ -25,21 +25,20 @@ The script records the exact CapabilityStatement, transaction/replay responses, 
 
 ## What is probed
 
-1. Read `/metadata`; hash the exact CapabilityStatement bytes; assert FHIR R4 (`4.0.1`); require transaction support and declared conditional-create/search capabilities for the resource types used.
-2. Create a synthetic Patient anchor via the declared conditional-create interaction. Search it back through FHIR to obtain the server-assigned ID and current version.
-3. Submit a two-entry FHIR transaction Bundle:
-   - Create a Provenance resource with a normal `target=Patient/{id}` reference and conditional-create query.
-   - Create a synthetic Observation bound to that Patient, using conditional create by `Observation.identifier`.
-4. Replay the exact two-entry transaction. Assert exactly one matching Provenance and Observation remain. Check that the Observation version remains unchanged. This is in-server resource-cardinality/replay evidence, not distributed exactly-once.
-7. Send a deterministic stale-ETag update and require an HTTP 409/412 version conflict plus an unchanged resource version, recording the exact status. The FHIR R4 version-aware update example describes 412 on ETag mismatch, while the HAPI 8.12.0 image under test returns 409 OperationOutcome for a stale ETag; the harness records the exact observed status and accepts the R4 conflict classes without disguising the server's behavior.
-8. Run two concurrent Patient updates using the same valid `If-Match` version. Require one accepted update and one FHIR version-conflict response (HTTP 409/412). Preserve both raw responses and statuses before assertions; server-side 5xx/unique-index failures are evidence of a qualification failure, not a passing conflict.
-9. Submit a transaction that creates a rollback-marker Patient and then attempts a Patient update with an impossible `If-Match`. Require an OperationOutcome failure, verify the marker is absent, and verify the original Patient version did not advance.
-10. As a separate read-only PostgreSQL role, directly inspect HAPI master/version rows and the rollback marker's token index. Require the DB counts/versions to agree with the API observations.
+1. Read `/metadata`; hash the exact CapabilityStatement bytes; assert FHIR R4 (`4.0.1`); require transaction support and declared conditional-create/search capabilities.
+2. Create one synthetic Patient anchor via conditional create and read it back to obtain the server-assigned ID/version.
+3. Submit 128 concurrent conditional-create requests using the same synthetic Patient identifier. Require exactly one HTTP 201 creator and no unexpected statuses. A pinned HAPI 8.12.0 run exposed two transient HTTP 409 OperationOutcomes from a duplicate `HFJ_RES_SEARCH_URL` unique-key collision; the revised harness preserves these responses and retries **only** that exact diagnostic using the identical conditional-create request.
+4. Require every qualifying 409 retry to return HTTP 200 and the exact resource ID created by the original winner. Then assert one matching resource via FHIR and one master/history/version-1 row through the read-only PostgreSQL observer. Unknown 409 diagnostics, retry failure, ID mismatch or duplicate rows fail the probe. Initial 409 rate is reported separately rather than hidden.
+5. Submit a two-entry FHIR transaction Bundle: create Provenance targeting the pre-created Patient and a linked synthetic Observation.
+6. Replay the exact transaction; assert one Provenance and Observation remain and Observation version is unchanged.
+7. Send a deterministic stale-ETag update; require the observed FHIR version-conflict response (HAPI returns 409 OperationOutcome) and unchanged resource version.
+8. Run two truly concurrent Patient updates from the same valid ETag; require one accepted write and one 409/412 version conflict, with exactly one version increment.
+9. Submit a transaction that creates a rollback-marker Patient then attempts an update with impossible If-Match. Require OperationOutcome failure, no marker, and unchanged existing resource version.
+10. Use a separate read-only PostgreSQL role to inspect HAPI master/history rows, versions and token-index state; assert role privileges and agreement with API-level effects.
 
-The race probe intentionally distinguishes a deterministic stale precondition from two truly overlapping updates: a single 409/412 conflict for the former does not prove the database can serialize the latter. Post-state is checked twice: through the FHIR API and independently through PostgreSQL using a SELECT-only `hapi_observer` role. The SQL probe first exports the exact live `information_schema.columns` inventory for the HAPI JPA tables and checks the required columns. It uses `HFJ_RESOURCE.RES_ID` (not an assumed `PID`) to join `HFJ_RES_VER.RES_ID` and `HFJ_SPIDX_TOKEN.RES_ID`. It then verifies exactly one master row and one history version for Provenance/Observation, Patient history at version 2, Observation version 1, exactly one master/history/version-1 row for the 128-way conditional-create identity, and no token-index row for the rolled-back Patient identifier. The observer has no INSERT/UPDATE/DELETE privileges and runs with `default_transaction_read_only=on`. It still shares the same PostgreSQL instance as HAPI; it is independent of the FHIR API, not an independent physical database or third-party auditor.
+The race probe distinguishes a normal conflict from an internal contention collision. A 409 only counts as recovered when its diagnostic matches the known unique-index collision and the same conditional operation resolves to the already-created resource. This does not convert the first-attempt 409 into a clean success: it remains separately reported and is a target for reducing/ eliminating in later database/server versions.
 
-Run #47 (workflow 46023436149) repeated the complete harness PASS on source commit `d3f88912729fe5b89510d86b5be1356aa7726588`; its artifact is 15210467027 (SHA-256 `8bbde40ca63bd902473256b637cc9f196ff86c8862c96ad50e4e52f7f7ef93c46f`). It observed the same direct DB counts and read-only role properties as #45, but the concurrent writers reversed which one won: writer A=409, writer B=200. This independently confirms the exactly-one-winner/one-conflict invariant for a second run.
-
+Post-state is checked through both FHIR and SQL. The observer is independent of the FHIR HTTP API but shares the same PostgreSQL instance, not an independent replica or third-party auditor.
 ## Direct database observer debugging history
 
 - HAPI-only run #25 passed the FHIR/API probe set: multi-resource transaction, conditional replay, deterministic stale-ETag conflict, concurrent version conflict, and transaction rollback.
