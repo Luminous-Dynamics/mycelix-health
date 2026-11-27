@@ -91,6 +91,58 @@
         "observed_at": null
       }
     ],
-    "server_software_name": "synthetic-unqualified-example"
+    "server_software_name": "synthetic-unqualified-example",
+    "component_inventory_sha256": "sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
+  },
+  "execution_context": {
+    "observed_at": "2026-11-27T00:00:00Z",
+    "component_inventory_sha256": "sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+    "components": [
+      {
+        "role": "gateway_adapter",
+        "component_id": "synthetic-gateway",
+        "software_name": "synthetic-gateway-adapter",
+        "software_version": "0.0.0-test",
+        "build_sha256": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "configuration_sha256": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "observed_at": "2026-11-27T00:00:00Z"
+      },
+      {
+        "role": "identity_provider",
+        "component_id": "synthetic-identity",
+        "software_name": "synthetic-identity-provider",
+        "software_version": "0.0.0-test",
+        "build_sha256": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "configuration_sha256": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "observed_at": "2026-11-27T00:00:00Z"
+      },
+      {
+        "role": "authority_store",
+        "component_id": "synthetic-authority",
+        "software_name": "synthetic-consent-store",
+        "software_version": "0.0.0-test",
+        "build_sha256": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "configuration_sha256": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "observed_at": "2026-11-27T00:00:00Z"
+      },
+      {
+        "role": "audit_outbox_store",
+        "component_id": "synthetic-outbox",
+        "software_name": "synthetic-audit-outbox-store",
+        "software_version": "0.0.0-test",
+        "build_sha256": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "configuration_sha256": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "observed_at": "2026-11-27T00:00:00Z"
+      },
+      {
+        "role": "recipient_sandbox",
+        "component_id": "synthetic-recipient",
+        "software_name": "synthetic-recipient-sandbox",
+        "software_version": "0.0.0-test",
+        "build_sha256": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "configuration_sha256": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "observed_at": "2026-11-27T00:00:00Z"
+      }
+    ]
   }
 }
