@@ -31,6 +31,10 @@ jobs:
         run: |
           set -euo pipefail
           bash -n research/fhir-transaction-harness/probe-transactions.sh
+          git ls-files --error-unmatch research/fhir-transaction-harness/probe-corpus-v1.json
+          test -s research/fhir-transaction-harness/probe-corpus-v1.json
+          jq -e '.schema_version == 1 and .fhir_version == "4.0.1" and (.probes | length) == 8' research/fhir-transaction-harness/probe-corpus-v1.json >/dev/null
+          grep -q 'probe_corpus_sha256' research/fhir-transaction-harness/probe-transactions.sh
           git ls-files --error-unmatch research/fhir-transaction-harness/init-observer.sql
           test -f research/fhir-transaction-harness/init-observer.sql
           test -s research/fhir-transaction-harness/init-observer.sql
