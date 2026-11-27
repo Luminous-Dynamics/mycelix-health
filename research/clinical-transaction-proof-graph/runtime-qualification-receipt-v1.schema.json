@@ -1,0 +1,236 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:mycelix:schema:runtime-qualification-receipt-v1",
+  "title": "Mycelix Runtime Qualification Receipt v1",
+  "description": "Freshness-bound deployed-component and observed-probe receipt. JSON shape only; issuer signature and trust/key status require an independent cryptographic verifier.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "receipt_id",
+    "operation_profile",
+    "fhir_version",
+    "issued_at_ms",
+    "expires_at_ms",
+    "server",
+    "database",
+    "adapter_build_digest",
+    "adapter_config_digest",
+    "capability_statement_digest",
+    "probe_corpus_digest",
+    "evidence_artifact_digest",
+    "observer",
+    "probes",
+    "phi_used",
+    "issuer_id",
+    "issuer_key_id",
+    "canonical_payload_digest",
+    "signature"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": 1
+    },
+    "receipt_id": {
+      "$ref": "#/$defs/nonEmpty"
+    },
+    "operation_profile": {
+      "$ref": "#/$defs/nonEmpty"
+    },
+    "fhir_version": {
+      "const": "4.0.1"
+    },
+    "issued_at_ms": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "expires_at_ms": {
+      "type": "integer",
+      "minimum": 2
+    },
+    "server": {
+      "$ref": "#/$defs/componentRuntimeIdentity"
+    },
+    "database": {
+      "$ref": "#/$defs/componentRuntimeIdentity"
+    },
+    "adapter_build_digest": {
+      "$ref": "#/$defs/sha256"
+    },
+    "adapter_config_digest": {
+      "$ref": "#/$defs/sha256"
+    },
+    "capability_statement_digest": {
+      "$ref": "#/$defs/sha256"
+    },
+    "probe_corpus_digest": {
+      "$ref": "#/$defs/sha256"
+    },
+    "evidence_artifact_digest": {
+      "$ref": "#/$defs/sha256"
+    },
+    "observer": {
+      "$ref": "#/$defs/readOnlyObserver"
+    },
+    "probes": {
+      "type": "array",
+      "minItems": 7,
+      "items": {
+        "$ref": "#/$defs/probeEvidence"
+      }
+    },
+    "phi_used": {
+      "type": "boolean"
+    },
+    "issuer_id": {
+      "$ref": "#/$defs/nonEmpty"
+    },
+    "issuer_key_id": {
+      "$ref": "#/$defs/nonEmpty"
+    },
+    "canonical_payload_digest": {
+      "$ref": "#/$defs/sha256"
+    },
+    "signature": {
+      "oneOf": [
+        {
+          "type": "null"
+        },
+        {
+          "$ref": "#/$defs/nonEmpty"
+        }
+      ]
+    }
+  },
+  "$defs": {
+    "nonEmpty": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "\\S"
+    },
+    "sha256": {
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$"
+    },
+    "componentRuntimeIdentity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "component_id",
+        "image_index_digest",
+        "runtime_image_digest",
+        "build_digest",
+        "config_digest"
+      ],
+      "properties": {
+        "component_id": {
+          "$ref": "#/$defs/nonEmpty"
+        },
+        "image_index_digest": {
+          "$ref": "#/$defs/sha256"
+        },
+        "runtime_image_digest": {
+          "$ref": "#/$defs/sha256"
+        },
+        "build_digest": {
+          "$ref": "#/$defs/sha256"
+        },
+        "config_digest": {
+          "$ref": "#/$defs/sha256"
+        }
+      }
+    },
+    "readOnlyObserver": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "observer_id",
+        "database_component_id",
+        "role_name",
+        "boundary",
+        "session_read_only",
+        "is_superuser",
+        "can_create_roles",
+        "can_insert",
+        "can_update",
+        "can_delete",
+        "schema_digest",
+        "observation_digest"
+      ],
+      "properties": {
+        "observer_id": {
+          "$ref": "#/$defs/nonEmpty"
+        },
+        "database_component_id": {
+          "$ref": "#/$defs/nonEmpty"
+        },
+        "role_name": {
+          "$ref": "#/$defs/nonEmpty"
+        },
+        "boundary": {
+          "enum": [
+            "same-database-independent-sql-role",
+            "independent-replica",
+            "third-party-auditor"
+          ]
+        },
+        "session_read_only": {
+          "type": "boolean"
+        },
+        "is_superuser": {
+          "type": "boolean"
+        },
+        "can_create_roles": {
+          "type": "boolean"
+        },
+        "can_insert": {
+          "type": "boolean"
+        },
+        "can_update": {
+          "type": "boolean"
+        },
+        "can_delete": {
+          "type": "boolean"
+        },
+        "schema_digest": {
+          "$ref": "#/$defs/sha256"
+        },
+        "observation_digest": {
+          "$ref": "#/$defs/sha256"
+        }
+      }
+    },
+    "probeEvidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "probe",
+        "outcome",
+        "artifact_digest"
+      ],
+      "properties": {
+        "probe": {
+          "enum": [
+            "capability-statement",
+            "transaction-atomicity",
+            "conditional-replay",
+            "stale-if-match",
+            "concurrent-version-conflict",
+            "transaction-rollback",
+            "direct-postgres-observer"
+          ]
+        },
+        "outcome": {
+          "enum": [
+            "passed",
+            "failed",
+            "defer"
+          ]
+        },
+        "artifact_digest": {
+          "$ref": "#/$defs/sha256"
+        }
+      }
+    }
+  }
+}
