@@ -60,7 +60,8 @@ provenance_full_url="urn:uuid:00000000-0000-4000-8000-000000000002"
 recorded_at="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 
 # A minimal synthetic Patient and its Provenance are submitted in one FHIR R4
-# transaction. Both use conditional create so replay has an observable bound.
+# transaction. Patient uses a stable client id (update-as-create); Provenance
+# uses conditional create through its standard target reference search.
 jq -n \
   --arg patient_full_url "$patient_full_url" \
   --arg provenance_full_url "$provenance_full_url" \
@@ -151,9 +152,16 @@ provenance_count="$(curl --silent --show-error --fail --get "$FHIR_BASE_URL/Prov
 test "$patient_count" = "1"
 test "$provenance_count" = "1"
 
-# Replay the exact transaction. Conditional create should keep one Patient and
-# one Provenance. This probes FHIR-level conditional create, not a distributed
-# Mycelix idempotency guarantee.
+# Capture the Patient version before replay. The second PUT may create a
+# further version even though it does not create a second logical resource.
+curl --silent --show-error --fail "$FHIR_BASE_URL/Patient/$patient_id" \
+  -H 'Accept: application/fhir+json' > "$WORK_DIR/patient-before-replay.json"
+patient_version_before_replay="$(jq -r '.meta.versionId // empty' "$WORK_DIR/patient-before-replay.json")"
+test -n "$patient_version_before_replay"
+
+# Replay the exact transaction. Stable update-as-create keeps one Patient
+# identity; Provenance conditional create (target=Patient/id) keeps one
+# Provenance. This is not a claim of no-op replay or distributed exactly-once.
 replay_status="$(curl --silent --show-error --output "$WORK_DIR/replay-response.json" \
   --write-out '%{http_code}' \
   -H 'Content-Type: application/fhir+json' \
@@ -173,7 +181,13 @@ test "$(curl --silent --show-error --fail --get "$FHIR_BASE_URL/Provenance" \
   --data-urlencode "_count=10" \
   --data-urlencode "target=Patient/$patient_id" \
   | jq -r '.total // 0')" = "1"
+curl --silent --show-error --fail "$FHIR_BASE_URL/Patient/$patient_id" \
+  -H 'Accept: application/fhir+json' > "$WORK_DIR/patient-after-replay.json"
+patient_version_after_replay="$(jq -r '.meta.versionId // empty' "$WORK_DIR/patient-after-replay.json")"
+test -n "$patient_version_after_replay"
 cp "$WORK_DIR/replay-response.json" "$ARTIFACT_DIR/replay-response.json"
+cp "$WORK_DIR/patient-before-replay.json" "$ARTIFACT_DIR/patient-before-replay.json"
+cp "$WORK_DIR/patient-after-replay.json" "$ARTIFACT_DIR/patient-after-replay.json"
 
 # Verify rollback: create a new marker Patient, then in the same transaction
 # update the existing Patient with a deliberately impossible If-Match version.
@@ -358,6 +372,8 @@ jq -n \
   --arg metadata_sha256 "$metadata_sha256" \
   --arg transaction_http "$transaction_status" \
   --arg replay_http "$replay_status" \
+  --arg patient_version_before_replay "$patient_version_before_replay" \
+  --arg patient_version_after_replay "$patient_version_after_replay" \
   --arg rollback_http "$rollback_status" \
   --arg patient_update_create_declared "$patient_update_create_declared" \
   --arg provenance_conditional_create_declared "$provenance_conditional_create_declared" \
@@ -382,11 +398,13 @@ jq -n \
     },
     probes: {
       patient_provenance_transaction: {result: "passed", http_status: $transaction_http},
-      conditional_create_replay: {
+      replay_resource_cardinality: {
         result: "passed",
         http_status: $replay_http,
         patient_count_after_replay: ($patient_count | tonumber),
-        provenance_count_after_replay: ($provenance_count | tonumber)
+        provenance_count_after_replay: ($provenance_count | tonumber),
+        patient_version_before_replay: $patient_version_before_replay,
+        patient_version_after_replay: $patient_version_after_replay
       },
       concurrent_if_match_writers: {
         result: "passed",
