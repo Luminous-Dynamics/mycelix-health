@@ -129,6 +129,20 @@
       "attack": "same opaque handle is assigned to patient and resource-set or another distinct role",
       "expected": "rejected",
       "layer": "operation-binding-v2-validator"
+    },
+    {
+      "id": "PRIV-019",
+      "family": "scope-id-grammar",
+      "attack": "scope identifier is shorter than 16 characters, longer than 128 characters, or contains characters outside the opaque scope grammar",
+      "expected": "rejected",
+      "layer": "scoped-reference-validator"
+    },
+    {
+      "id": "PRIV-020",
+      "family": "zero-key-epoch",
+      "attack": "tenant or BBS reference uses key_epoch zero",
+      "expected": "rejected",
+      "layer": "scoped-reference-validator"
     }
   ]
 }
