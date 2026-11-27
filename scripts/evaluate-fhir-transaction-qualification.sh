@@ -45,9 +45,9 @@ result="$(jq -n \
       reason: $reason,
       benchmark_id: "mycelix.fhir-transaction-adapter-qualification.v1"
     };
-  def digest_ok($value):
+  def digest_ok($value; $pattern):
     ($value | type) == "string"
-    and ($value | test("^sha256:[0-9a-f]{64}$"));
+    and ($value | test($pattern));
   def epoch_or_null($value):
     try ($value | fromdateiso8601) catch null;
   def fresh($value; $now; $max_age; $future_skew):
@@ -92,8 +92,8 @@ result="$(jq -n \
       or $d.server.software_name != $d.capability_observation.resource.software.name
       or $d.server.software_version != $d.capability_observation.resource.software.version then
       verdict("defer"; "server_software_identity_mismatch")
-    elif (digest_ok($d.capability_observation.sha256) | not)
-      or (digest_ok($d.probe_evidence.capability_sha256) | not) then
+    elif (digest_ok($d.capability_observation.sha256; $s.policy.sha256_evidence_digest_pattern) | not)
+      or (digest_ok($d.probe_evidence.capability_sha256; $s.policy.sha256_evidence_digest_pattern) | not) then
       verdict("defer"; "capability_digest_missing_or_malformed")
     elif $d.probe_evidence.capability_sha256 != $d.capability_observation.sha256 then
       verdict("defer"; "probe_evidence_bound_to_different_capability_statement")
@@ -126,7 +126,7 @@ result="$(jq -n \
     elif any($matched[]; .matches[0].result != "pass") then
       verdict("defer"; "required_probe_not_passed")
     elif any($matched[];
-      (digest_ok(.matches[0].evidence_sha256) | not)
+      (digest_ok(.matches[0].evidence_sha256; $s.policy.sha256_evidence_digest_pattern) | not)
       or (fresh(
         .matches[0].observed_at;
         $now;
