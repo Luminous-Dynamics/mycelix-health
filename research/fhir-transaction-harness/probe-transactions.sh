@@ -477,6 +477,15 @@ database_observation="$(docker compose -f "$compose_file" exec -T \
 SELECT jsonb_build_object(
   'observer_role', current_user,
   'observer_read_only', current_setting('transaction_read_only')::boolean,
+  'observer_is_superuser', (
+    SELECT rolsuper FROM pg_roles WHERE rolname = current_user
+  ),
+  'observer_can_create_roles', (
+    SELECT rolcreaterole FROM pg_roles WHERE rolname = current_user
+  ),
+  'observer_can_insert', has_table_privilege(current_user, 'public.hfj_resource', 'INSERT'),
+  'observer_can_update', has_table_privilege(current_user, 'public.hfj_resource', 'UPDATE'),
+  'observer_can_delete', has_table_privilege(current_user, 'public.hfj_resource', 'DELETE'),
   'patient_master_rows', (
     SELECT count(*) FROM HFJ_RESOURCE
     WHERE RES_TYPE = 'Patient' AND FHIR_ID = :'patient_id'
@@ -530,6 +539,11 @@ SQL
 jq -e '
   .observer_role == "hapi_observer"
   and .observer_read_only == true
+  and .observer_is_superuser == false
+  and .observer_can_create_roles == false
+  and .observer_can_insert == false
+  and .observer_can_update == false
+  and .observer_can_delete == false
   and .patient_master_rows == 1
   and .patient_current_version == 2
   and .patient_history_rows == 2
