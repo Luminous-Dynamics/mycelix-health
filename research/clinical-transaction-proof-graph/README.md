@@ -56,9 +56,9 @@ The companion `scoped-reference-v1.schema.json` defines four distinct envelope s
 - `sd-jwt-disclosure-ref-v1`: an opaque reference to an SD-JWT presentation, never the raw token;
 - `bbs-derived-proof-ref-v1`: an opaque reference to an experimental BBS derived proof and issuer key epoch.
 
-The Rust module `scoped_refs.rs` checks scheme/scope/key metadata and rejects malformed or cross-scope references. It now also defines `OperationBindingV2` / `OperationReferenceSetV2`, with separate operation-scoped handles for subject, actor, recipient, source resource, resource set, consent revision, policy revision and idempotency key, plus a tenant/purpose/epoch-keyed reference. The companion `operation-binding-v2.schema.json` defines the JSON envelope. It does **not** generate CSPRNG values, compute HMACs, verify SD-JWT, verify BBS, validate issuer signatures, check revocation status, or establish unlinkability. The v2 schema and validator are a structural input contract, not a production cryptographic implementation. The v1 `OperationBinding` still exists for compatibility; new v2 integrations should use the typed envelope and a reviewed issuer/key verifier. BBS remains experimental.
+The Rust module `scoped_refs.rs` checks scheme/scope/key metadata and rejects malformed or cross-scope references, invalid scope IDs and zero key epochs. It now also defines `OperationBindingV2` / `OperationReferenceSetV2`, with separate operation-scoped handles for subject, actor, recipient, source resource, resource set, consent revision, policy revision and idempotency key, plus a tenant/purpose/epoch-keyed reference. The companion `operation-binding-v2.schema.json` defines the JSON envelope. It does **not** generate CSPRNG values, compute HMACs, verify SD-JWT, verify BBS, validate issuer signatures, check revocation status, or establish unlinkability. The v2 schema and validator are a structural input contract, not a production cryptographic implementation. The v1 `OperationBinding` still exists for compatibility; new v2 integrations should use the typed envelope and a reviewed issuer/key verifier. BBS remains experimental.
 
-The 16-case `privacy-scenarios-v1.json` identifies dictionary attacks, stable-handle reuse, cross-tenant linkage, key rotation/revocation, unauthorized re-identification, over-disclosure and metadata side channels. Most require an external key registry, presentation verifier or independent attack harness; do not report the structural validator as passing those tests.
+The 20-case `privacy-scenarios-v1.json` identifies dictionary attacks, stable-handle reuse, cross-tenant linkage, key rotation/revocation, unauthorized re-identification, over-disclosure and metadata side channels. Most require an external key registry, presentation verifier or independent attack harness; do not report the structural validator as passing those tests.
 
 The `assurance-benchmark-mapping-v1.json` composes the work with existing #288 longitudinal evaluation, #334 authority semantics, #343/#346 commit and recovery, #338 causal evidence, #356/#371 FHIR qualification, and #373 privacy. It explicitly forbids a single composite score from masking failures in safety gates.
 
@@ -72,7 +72,7 @@ The crate has no third-party dependencies and is excluded from the large Holocha
 
 The synthetic authenticator only checks deterministic fixture strings. It does not verify real signatures or hashes. The qualification registry is also a test fixture. These tests validate graph logic only.
 
-## Current verifier tests (45 Rust unit tests)
+## Current verifier tests (47 Rust unit tests)
 
 - valid flow with deliberately out-of-order wall-clock observations;
 - explicit authenticated-subject binding and spoofed-identity rejection;
@@ -91,7 +91,7 @@ The synthetic authenticator only checks deterministic fixture strings. It does n
 - unrelated later success cannot erase an earlier unreconciled unknown commit/delivery result;
 - invalid signature fixture;
 - scoped-reference metadata and operation/tenant/purpose/key-epoch validation;
-- v2 operation binding rejects cross-operation substitution, duplicate role handles, missing policy context and unsupported schema version.
+- v2 operation binding rejects cross-operation substitution, duplicate role handles, missing policy context, unsupported schema version, malformed scope IDs and zero key epochs.
 - verified commit rejection without delivery.
 
 ## Next evidence gates
