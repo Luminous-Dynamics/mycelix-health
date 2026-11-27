@@ -1017,17 +1017,13 @@ mod tests {
         let outcome = release.join().expect("release worker succeeds");
         revoke.join().expect("revocation worker succeeds");
 
-        let committed_before_revocation =
-            matches!(&outcome, ReleaseOutcome::Released { .. });
+        let committed_before_revocation = matches!(&outcome, ReleaseOutcome::Released { .. });
         let expected_effects = if committed_before_revocation { 1 } else { 0 };
         assert!(
             committed_before_revocation
                 || outcome == ReleaseOutcome::Denied("consent_revoked_before_commit")
         );
-        assert_eq!(
-            backend.side_effect_count(),
-            expected_effects
-        );
+        assert_eq!(backend.side_effect_count(), expected_effects);
         assert_eq!(
             backend.audit_records().len(),
             2 * usize::from(committed_before_revocation)
