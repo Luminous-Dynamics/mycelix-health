@@ -4,95 +4,253 @@
   "title": "Clinical Transaction Proof Graph v1",
   "type": "object",
   "additionalProperties": false,
-  "required": ["schema_version", "binding", "events"],
+  "required": [
+    "schema_version",
+    "binding",
+    "events"
+  ],
   "properties": {
-    "schema_version": {"const": 1},
-    "binding": {"$ref": "#/$defs/operationBinding"},
+    "schema_version": {
+      "const": 1
+    },
+    "binding": {
+      "$ref": "#/$defs/operationBinding"
+    },
     "events": {
       "type": "array",
       "minItems": 1,
-      "items": {"$ref": "#/$defs/evidenceEvent"}
+      "items": {
+        "$ref": "#/$defs/evidenceEvent"
+      }
     }
   },
   "$defs": {
-    "nonEmpty": {"type": "string", "minLength": 1},
+    "nonEmpty": {
+      "type": "string",
+      "minLength": 1
+    },
     "operationBinding": {
       "type": "object",
       "additionalProperties": false,
       "required": [
-        "operation_id", "attempt_id", "patient_ref_digest", "tenant_ref_digest",
-        "authenticated_actor_ref_digest", "recipient_ref_digest", "purpose", "action",
-        "resource_set_digest", "source_system_ref_digest", "source_resource_version",
-        "source_resource_digest", "consent_revision_digest", "revocation_epoch",
-        "policy_digest", "idempotency_key_digest"
+        "operation_id",
+        "attempt_id",
+        "patient_ref_digest",
+        "tenant_ref_digest",
+        "authenticated_actor_ref_digest",
+        "recipient_ref_digest",
+        "purpose",
+        "action",
+        "resource_set_digest",
+        "source_system_ref_digest",
+        "source_resource_version",
+        "source_resource_digest",
+        "consent_revision_digest",
+        "revocation_epoch",
+        "policy_digest",
+        "idempotency_key_digest"
       ],
       "properties": {
-        "operation_id": {"$ref": "#/$defs/nonEmpty"},
-        "attempt_id": {"$ref": "#/$defs/nonEmpty"},
-        "patient_ref_digest": {"$ref": "#/$defs/nonEmpty"},
-        "tenant_ref_digest": {"$ref": "#/$defs/nonEmpty"},
-        "authenticated_actor_ref_digest": {"$ref": "#/$defs/nonEmpty"},
-        "recipient_ref_digest": {"$ref": "#/$defs/nonEmpty"},
-        "purpose": {"$ref": "#/$defs/nonEmpty"},
-        "action": {"$ref": "#/$defs/nonEmpty"},
-        "resource_set_digest": {"$ref": "#/$defs/nonEmpty"},
-        "source_system_ref_digest": {"$ref": "#/$defs/nonEmpty"},
-        "source_resource_version": {"$ref": "#/$defs/nonEmpty"},
-        "source_resource_digest": {"$ref": "#/$defs/nonEmpty"},
-        "encounter_ref_digest": {"type": ["string", "null"]},
-        "consent_revision_digest": {"$ref": "#/$defs/nonEmpty"},
-        "revocation_epoch": {"type": "integer", "minimum": 0},
-        "policy_digest": {"$ref": "#/$defs/nonEmpty"},
-        "idempotency_key_digest": {"$ref": "#/$defs/nonEmpty"}
+        "operation_id": {
+          "$ref": "#/$defs/nonEmpty"
+        },
+        "attempt_id": {
+          "$ref": "#/$defs/nonEmpty"
+        },
+        "patient_ref_digest": {
+          "$ref": "#/$defs/nonEmpty"
+        },
+        "tenant_ref_digest": {
+          "$ref": "#/$defs/nonEmpty"
+        },
+        "authenticated_actor_ref_digest": {
+          "$ref": "#/$defs/nonEmpty"
+        },
+        "recipient_ref_digest": {
+          "$ref": "#/$defs/nonEmpty"
+        },
+        "purpose": {
+          "$ref": "#/$defs/nonEmpty"
+        },
+        "action": {
+          "$ref": "#/$defs/nonEmpty"
+        },
+        "resource_set_digest": {
+          "$ref": "#/$defs/nonEmpty"
+        },
+        "source_system_ref_digest": {
+          "$ref": "#/$defs/nonEmpty"
+        },
+        "source_resource_version": {
+          "$ref": "#/$defs/nonEmpty"
+        },
+        "source_resource_digest": {
+          "$ref": "#/$defs/nonEmpty"
+        },
+        "encounter_ref_digest": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "consent_revision_digest": {
+          "$ref": "#/$defs/nonEmpty"
+        },
+        "revocation_epoch": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "policy_digest": {
+          "$ref": "#/$defs/nonEmpty"
+        },
+        "idempotency_key_digest": {
+          "$ref": "#/$defs/nonEmpty"
+        }
       }
     },
     "parentRef": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["event_id", "event_digest"],
+      "required": [
+        "event_id",
+        "event_digest"
+      ],
       "properties": {
-        "event_id": {"$ref": "#/$defs/nonEmpty"},
-        "event_digest": {"$ref": "#/$defs/nonEmpty"}
+        "event_id": {
+          "$ref": "#/$defs/nonEmpty"
+        },
+        "event_digest": {
+          "$ref": "#/$defs/nonEmpty"
+        }
       }
     },
     "evidenceEvent": {
       "type": "object",
       "additionalProperties": false,
       "required": [
-        "event_id", "event_digest", "signature", "binding", "kind", "actor_id",
-        "actor_ref_digest", "actor_role", "actor_sequence", "observed_at_ms",
-        "component_id", "component_build_digest", "component_config_digest", "parents"
+        "event_id",
+        "event_digest",
+        "signature",
+        "binding",
+        "kind",
+        "actor_id",
+        "actor_ref_digest",
+        "actor_role",
+        "actor_sequence",
+        "observed_at_ms",
+        "component_id",
+        "component_build_digest",
+        "component_config_digest",
+        "parents",
+        "authority_outcome"
       ],
       "properties": {
-        "event_id": {"$ref": "#/$defs/nonEmpty"},
-        "event_digest": {"$ref": "#/$defs/nonEmpty"},
-        "signature": {"$ref": "#/$defs/nonEmpty"},
-        "binding": {"$ref": "#/$defs/operationBinding"},
+        "event_id": {
+          "$ref": "#/$defs/nonEmpty"
+        },
+        "event_digest": {
+          "$ref": "#/$defs/nonEmpty"
+        },
+        "signature": {
+          "$ref": "#/$defs/nonEmpty"
+        },
+        "binding": {
+          "$ref": "#/$defs/operationBinding"
+        },
         "kind": {
           "enum": [
-            "requested", "identity_bound", "authority_decided", "prepared",
-            "commit_attempted", "commit_result", "commit_reconciled",
-            "delivery_attempted", "delivery_result", "delivery_reconciled"
+            "requested",
+            "identity_bound",
+            "authority_decided",
+            "prepared",
+            "commit_attempted",
+            "commit_result",
+            "commit_reconciled",
+            "delivery_attempted",
+            "delivery_result",
+            "delivery_reconciled"
           ]
         },
-        "commit_outcome": {"enum": ["committed", "rejected", "unknown"]},
-        "delivery_outcome": {"enum": ["recipient_effect_observed", "failed", "unknown"]},
-        "actor_id": {"$ref": "#/$defs/nonEmpty"},
-        "actor_ref_digest": {"$ref": "#/$defs/nonEmpty"},
-        "bound_actor_ref_digest": {"type": ["string", "null"]},
+        "commit_outcome": {
+          "enum": [
+            "committed",
+            "rejected",
+            "unknown"
+          ]
+        },
+        "delivery_outcome": {
+          "enum": [
+            "recipient_effect_observed",
+            "failed",
+            "unknown"
+          ]
+        },
+        "actor_id": {
+          "$ref": "#/$defs/nonEmpty"
+        },
+        "actor_ref_digest": {
+          "$ref": "#/$defs/nonEmpty"
+        },
+        "bound_actor_ref_digest": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
         "actor_role": {
           "enum": [
-            "client", "identity_provider", "policy_engine", "gateway",
-            "execution_backend", "recipient", "reconciler"
+            "client",
+            "identity_provider",
+            "policy_engine",
+            "gateway",
+            "execution_backend",
+            "recipient",
+            "reconciler"
           ]
         },
-        "actor_sequence": {"type": "integer", "minimum": 1},
-        "observed_at_ms": {"type": "integer"},
-        "component_id": {"$ref": "#/$defs/nonEmpty"},
-        "component_build_digest": {"$ref": "#/$defs/nonEmpty"},
-        "component_config_digest": {"$ref": "#/$defs/nonEmpty"},
-        "parents": {"type": "array", "items": {"$ref": "#/$defs/parentRef"}},
-        "observed_resource_set_digest": {"type": ["string", "null"]}
+        "actor_sequence": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "observed_at_ms": {
+          "type": "integer"
+        },
+        "component_id": {
+          "$ref": "#/$defs/nonEmpty"
+        },
+        "component_build_digest": {
+          "$ref": "#/$defs/nonEmpty"
+        },
+        "component_config_digest": {
+          "$ref": "#/$defs/nonEmpty"
+        },
+        "parents": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/parentRef"
+          }
+        },
+        "observed_resource_set_digest": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "authority_outcome": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "type": "string",
+              "enum": [
+                "permit",
+                "deny",
+                "defer"
+              ]
+            }
+          ]
+        }
       }
     }
   }
