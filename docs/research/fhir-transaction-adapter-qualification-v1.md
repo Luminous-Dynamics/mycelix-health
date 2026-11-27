@@ -39,9 +39,11 @@ Qualification is scoped to one concrete deployed instance, not a vendor or produ
 - exact SHA-256 digest of the captured CapabilityStatement;
 - implementation/software identity and version;
 - probe-suite identifier/version, run time, and individual evidence artifact digests;
+- a component inventory covering the gateway adapter, identity provider, Consent/revocation authority store, audit/outbox store, and synthetic recipient sandbox, with each component's build digest, effective-configuration digest, identity and observation time;
+- the component-inventory digest bound into the probe evidence, so a gateway, identity, authority, persistence, or recipient change invalidates the result;
 - the result's freshness window.
 
-A change to the base URL, FHIR version, software/build identity, or CapabilityStatement digest requires fresh evidence. CapabilityStatement claims do not substitute for active probes. The v1 profile also requires the instance CapabilityStatement to expose software name and version; because these fields can be omitted by an otherwise valid FHIR instance statement, their absence deliberately yields `defer` until an independently authenticated build observation is supplied. This is a Mycelix qualification constraint, not an HL7 conformance requirement.
+A change to the base URL, FHIR version, FHIR-server software/build identity, CapabilityStatement digest, any required component build/configuration digest, or component inventory requires fresh evidence. The required roles are listed in the manifest: `gateway_adapter`, `identity_provider`, `authority_store`, `audit_outbox_store`, and `recipient_sandbox`. The FHIR server itself is bound separately through its exact base URL and CapabilityStatement observation. CapabilityStatement claims do not substitute for active probes. The v1 profile also requires the instance CapabilityStatement to expose software name and version; because these fields can be omitted by an otherwise valid FHIR instance statement, their absence deliberately yields `defer` until an independently authenticated build observation is supplied. This is a Mycelix qualification constraint, not an HL7 conformance requirement.
 
 ## Decision contract
 
@@ -83,7 +85,7 @@ A FHIR transaction can be atomic inside one FHIR server. It does not atomically 
 
 The v1 evaluator uses a maximum evidence age of 24 hours and a maximum future clock skew of 300 seconds. These are initial engineering policy values, not HL7 requirements. Tighten or relax them only through a versioned policy change with an explicit threat analysis.
 
-The CapabilityStatement digest and software version are compared against the values embedded in the probe evidence. If either changes, the old probe evidence cannot qualify the new target. A real qualification controller should capture the endpoint response, canonicalize its exact bytes under a documented profile, compute SHA-256, and retain the original artifact with a signed observation envelope.
+The CapabilityStatement digest and software version are compared against the values embedded in the probe evidence. If either changes, the old probe evidence cannot qualify the new target. A real qualification controller should capture the endpoint response, canonicalize its exact bytes under a documented profile, compute SHA-256, capture a canonical component inventory from trusted deployment attestations, compute its digest, and retain the original artifacts with a signed observation envelope. The evaluator only compares supplied digests; it does not recompute them or verify the observation signature.
 
 ## Benchmark targets
 
