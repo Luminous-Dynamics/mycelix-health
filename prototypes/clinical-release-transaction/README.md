@@ -62,7 +62,7 @@ The crate is excluded from the large Holochain workspace so this benchmark runs 
 - Side effects after revocation/resource-version drift: 0.
 - Side effects without durable audit intent: 0.
 - Unknown outcome blindly replayed under a new key: 0.
-- 32 concurrent duplicate attempts: exactly one committed side effect.
+- Concurrent duplicate attempts at 1, 10, 32 and 128 contenders: exactly one committed side effect per run.
 - Distinct idempotency keys racing on one nonce: exactly one committed side effect.
 - Consent revocation racing release: linearizable order, with zero release after revocation.
 - Correct replay/reconciliation on deterministic fixtures: 100%.
