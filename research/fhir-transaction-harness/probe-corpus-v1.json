@@ -1,0 +1,123 @@
+{
+  "schema_version": 1,
+  "corpus_id": "mycelix-health-fhir-transaction-assurance-r4-v1",
+  "fhir_version": "4.0.1",
+  "synthetic_only": true,
+  "data_policy": "No PHI. All Patient identifiers, names and observations are generated solely for the test run.",
+  "probes": [
+    {
+      "id": "FHIR-CAP-001",
+      "name": "capability-statement",
+      "method": "GET /metadata",
+      "expected": {
+        "http_status": 200,
+        "fhir_version": "4.0.1",
+        "transaction": true,
+        "conditional_create": [
+          "Patient",
+          "Provenance",
+          "Observation"
+        ],
+        "search": [
+          "Provenance.target",
+          "Patient.identifier",
+          "Observation.identifier"
+        ]
+      }
+    },
+    {
+      "id": "FHIR-CREATE-128",
+      "name": "concurrent-conditional-create",
+      "method": "POST /Patient with If-None-Exist",
+      "attempts": 128,
+      "max_parallel": 32,
+      "same_identifier": true,
+      "expected": {
+        "created_http_201": 1,
+        "existing_http_200": 127,
+        "other_status": 0,
+        "unique_resource_count": 1
+      }
+    },
+    {
+      "id": "FHIR-TX-002",
+      "name": "multi-resource-transaction",
+      "method": "POST transaction Bundle",
+      "entries": [
+        "Provenance",
+        "Observation"
+      ],
+      "expected": {
+        "http_status": 200,
+        "response_entries": 2,
+        "atomic_boundary": "one FHIR server"
+      }
+    },
+    {
+      "id": "FHIR-REPLAY-003",
+      "name": "conditional-transaction-replay",
+      "method": "replay exact Bundle",
+      "expected": {
+        "http_status": 200,
+        "patient_count": 1,
+        "provenance_count": 1,
+        "observation_count": 1,
+        "observation_version_unchanged": true
+      }
+    },
+    {
+      "id": "FHIR-ETAG-004",
+      "name": "deterministic-stale-if-match",
+      "method": "PUT resource with deliberately stale If-Match",
+      "expected": {
+        "conflict_http": [
+          409,
+          412
+        ],
+        "operation_outcome": true,
+        "resource_version_unchanged": true
+      }
+    },
+    {
+      "id": "FHIR-RACE-005",
+      "name": "concurrent-version-conflict",
+      "method": "two simultaneous PUTs from same version",
+      "expected": {
+        "accepted_http_200_or_201": 1,
+        "conflict_http_409_or_412": 1,
+        "resource_version_increment": 1
+      }
+    },
+    {
+      "id": "FHIR-ROLLBACK-006",
+      "name": "transaction-rollback",
+      "method": "create marker and stale-version update within one transaction",
+      "expected": {
+        "failure_response": "OperationOutcome",
+        "rollback_marker_count": 0,
+        "existing_resource_version_unchanged": true
+      }
+    },
+    {
+      "id": "FHIR-DB-007",
+      "name": "direct-postgres-observer",
+      "method": "read-only SQL role against PostgreSQL 18.7",
+      "expected": {
+        "role": "hapi_observer",
+        "session_read_only": true,
+        "superuser": false,
+        "can_create_roles": false,
+        "can_insert": false,
+        "can_update": false,
+        "can_delete": false,
+        "master_history_and_token_index_agree": true
+      }
+    }
+  ],
+  "boundaries": [
+    "The FHIR transaction is atomic only within the supporting FHIR server.",
+    "A read-only SQL observer on the same database is independent of the FHIR API, not an independent database replica or third-party auditor.",
+    "The corpus does not exercise Mycelix consent-revocation commit fencing, gateway/outbox crash recovery, recipient-side durable effects, or production authentication.",
+    "Overall Mycelix qualification remains defer."
+  ]
+}
