@@ -1,0 +1,174 @@
+{
+  "schema_version": 1,
+  "title": "Clinical Transaction Assurance Benchmark Composition",
+  "statement": "Clinical utility, policy authority, in-server transaction behavior, distributed recovery, proof verification, and privacy are separate score dimensions. No aggregate score may compensate for a safety gate failure.",
+  "tracks": [
+    {
+      "issue": 288,
+      "name": "longitudinal clinical intelligence",
+      "score_dimensions": [
+        "timeline reconstruction",
+        "source/correction integrity",
+        "FHIR loss-aware roundtrip",
+        "clinician-adjudicated task utility",
+        "abstention/calibration"
+      ],
+      "hard_gates": [
+        "no wrong-patient association",
+        "no silent source overwrite",
+        "no fabricated provenance"
+      ]
+    },
+    {
+      "issue": 334,
+      "name": "clinical evidence authority semantics",
+      "score_dimensions": [
+        "authorization decision accuracy",
+        "reason-code coverage",
+        "false denials",
+        "defer correctness",
+        "mutation monotonicity"
+      ],
+      "hard_gates": [
+        "zero unauthorized allows",
+        "zero post-revocation permits",
+        "missing context never broadens scope"
+      ]
+    },
+    {
+      "issue": 343,
+      "name": "atomic release transaction reference model",
+      "score_dimensions": [
+        "commit-boundary recheck",
+        "consume-once idempotency",
+        "rollback",
+        "audit intent durability",
+        "concurrency"
+      ],
+      "hard_gates": [
+        "zero duplicate releases",
+        "unknown remains unresolved"
+      ]
+    },
+    {
+      "issue": 346,
+      "name": "gateway operation ledger and reconciliation",
+      "score_dimensions": [
+        "unknown outcome recovery",
+        "retry identity continuity",
+        "reconciliation latency",
+        "duplicate effect count"
+      ],
+      "hard_gates": [
+        "no fresh mutation before unknown reconciled"
+      ]
+    },
+    {
+      "issue": 338,
+      "name": "causal audit evidence",
+      "score_dimensions": [
+        "causal reconstruction",
+        "actor sequence correctness",
+        "tamper detection",
+        "proof verification latency"
+      ],
+      "hard_gates": [
+        "no timestamp-only ordering",
+        "no orphan accepted"
+      ]
+    },
+    {
+      "issue": 356,
+      "name": "active FHIR adapter qualification",
+      "score_dimensions": [
+        "declared capability",
+        "observed behavior",
+        "freshness",
+        "runtime identity",
+        "evidence completeness"
+      ],
+      "hard_gates": [
+        "missing/stale/mismatched evidence cannot qualify"
+      ]
+    },
+    {
+      "issue": 371,
+      "name": "HAPI R4 and PostgreSQL live qualification",
+      "score_dimensions": [
+        "transaction atomicity",
+        "conditional replay cardinality",
+        "If-Match behavior",
+        "crash/restart",
+        "direct DB observer"
+      ],
+      "hard_gates": [
+        "no partial writes",
+        "no lost update accepted",
+        "unknown acknowledgement not promoted"
+      ]
+    },
+    {
+      "issue": 373,
+      "name": "privacy-preserving proof references",
+      "score_dimensions": [
+        "dictionary attack resistance",
+        "cross-operation linkage",
+        "cross-tenant linkage",
+        "disclosure minimization",
+        "key lifecycle",
+        "side channels"
+      ],
+      "hard_gates": [
+        "no direct identifiers",
+        "no unkeyed low-entropy hashes",
+        "no unauthorized reidentification"
+      ]
+    }
+  ],
+  "external_comparators": [
+    {
+      "name": "HealthAgentBench v2",
+      "what_it_measures": "75 executable healthcare tasks across nine categories",
+      "do_not_conflate_with": "clinical transaction authorization or durable recipient-effect assurance"
+    },
+    {
+      "name": "HealthFlow/EHRFlowBench",
+      "what_it_measures": "EHR analysis workflows and report quality",
+      "do_not_conflate_with": "commit-boundary revocation, replay safety, or recipient-side effect proof"
+    },
+    {
+      "name": "Inferno US Core Test Kit 1.2.0",
+      "what_it_measures": "US Core FHIR profile/client/server conformance",
+      "do_not_conflate_with": "Mycelix consent enforcement, transaction recovery or cross-system effect"
+    },
+    {
+      "name": "SMART App Launch 2.2",
+      "what_it_measures": "OAuth scopes, client access and launch context",
+      "do_not_conflate_with": "durable commit fence or recipient-effect evidence"
+    }
+  ],
+  "reporting": {
+    "required_percentiles": [
+      "p50",
+      "p95",
+      "p99"
+    ],
+    "required_metrics": [
+      "throughput",
+      "latency",
+      "false-denial-rate",
+      "defer-rate",
+      "unauthorized-allow-count",
+      "duplicate-effect-count",
+      "rollback-failure-count",
+      "recovery-time",
+      "proof-size-bytes",
+      "peak-memory-bytes",
+      "verification-cost",
+      "privacy-linkage-precision",
+      "privacy-linkage-recall"
+    ],
+    "independence": "Report separately sourced evidence, evaluator implementation, server-under-test, database observer, recipient witness issuer and signing-key registry.",
+    "no_single_composite_score": true
+  }
+}
