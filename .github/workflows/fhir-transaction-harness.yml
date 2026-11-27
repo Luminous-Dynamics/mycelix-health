@@ -36,6 +36,7 @@ jobs:
           test -s research/fhir-transaction-harness/init-observer.sql
           grep -q 'CREATE ROLE hapi_observer' research/fhir-transaction-harness/init-observer.sql
           grep -q 'default_transaction_read_only' research/fhir-transaction-harness/init-observer.sql
+          grep -Fq './init-observer.sql:/docker-entrypoint-initdb.d/10-observer-role.sql:ro' research/fhir-transaction-harness/compose.yaml
           docker compose -f research/fhir-transaction-harness/compose.yaml config --quiet
           docker compose version
           docker version
