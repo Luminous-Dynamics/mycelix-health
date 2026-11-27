@@ -72,7 +72,7 @@ The crate has no third-party dependencies and is excluded from the large Holocha
 
 The synthetic authenticator only checks deterministic fixture strings. It does not verify real signatures or hashes. The qualification registry is also a test fixture. These tests validate graph logic only.
 
-## Current verifier tests (71 Rust unit tests)
+## Current verifier tests (72 Rust unit tests; current full-head pass pending)
 
 - valid flow with deliberately out-of-order wall-clock observations;
 - explicit authenticated-subject binding and spoofed-identity rejection;
@@ -121,3 +121,14 @@ The chosen research direction is RFC 8785 JCS canonical bytes signed directly wi
 Candidate Rust dependencies are `serde_json_canonicalizer 0.4.1` and `ed25519-dalek 3.0.0`, subject to exact Cargo.lock generation, policy review and cross-language test vectors. `verify_strict` is required rather than permissive verification; batch verification is not an automatic substitute because weak-key checks differ. Keep the BBS path experimental; its W3C cryptosuite is still a Candidate Recommendation Draft.
 
 The 20-case `runtime-receipt-crypto-adversarial-v1.json` is an expected-outcome corpus, not a set of passed tests. The current injected `FixtureAuthenticator` still does not perform these operations. No real issuer signature, JCS digest or key lifecycle verification is claimed until the dependencies, key registry and tests exist.
+
+
+## Exact-head validation status (2026-11-27)
+
+- Workflow #51 checked out 5ba53772b87e9e9f15a18899d730e7bfeb7ed6b7 with Rust 1.96.0. JSON preflight, rustfmt, 67 unit tests, doc tests and Clippy with -D warnings passed. That run predates the later scoped receipt registry, eighth required runtime probe and v2 privacy references.
+- Workflow #57 failed only at rustfmt (five formatting differences) before tests/Clippy ran. The first formatting correction was committed as 67ab45f86c83c12486855b8643098d40e8faf43f.
+- Workflow #58 failed only at rustfmt (two remaining formatting differences) before tests/Clippy ran. The final formatter output was applied in 1565e9808b5d85f607965a9c0bdb4339432fd8ac.
+- Workflow #60 was cancelled before a complete exact-head validation result was produced. The latest crypto-profile schema/manifest preflight additions are present on the branch but do not have a completed green result yet.
+- The current source contains 72 Rust unit tests: 32 core proof-graph tests, 16 scoped-reference tests and 24 runtime-receipt/registry tests. That is a source inventory, not a passed test result.
+
+The current proof verifier remains a structural model. Its FixtureAuthenticator is not production cryptography; real RFC 8785 canonicalization, strict Ed25519 verification, trusted issuer/key lifecycle, Holochain/FHIR integration, Mycelix commit-time consent fencing, distributed recovery and independently signed recipient evidence remain unimplemented or unqualified.
