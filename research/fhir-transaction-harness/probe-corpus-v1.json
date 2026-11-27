@@ -33,11 +33,19 @@
       "max_parallel": 32,
       "same_identifier": true,
       "expected": {
-        "created_http_201": 1,
-        "existing_http_200": 127,
-        "other_status": 0,
-        "unique_resource_count": 1
-      }
+        "initial_creator_http_201": 1,
+        "initial_existing_http_200": "all remaining non-conflicting attempts",
+        "initial_transient_http_409": "may occur only when OperationOutcome diagnostics contain hfj_res_search_url_pkey",
+        "other_statuses": 0,
+        "recovery": "retry the identical conditional-create request for each qualifying 409",
+        "retry_http_200_per_initial_409": true,
+        "retry_resource_id_must_equal_initial_creator_resource_id": true,
+        "final_unique_resource_count": 1,
+        "final_history_rows": 1,
+        "final_resource_version": "1",
+        "unresolved_attempts": 0
+      },
+      "qualification_note": "Report first-attempt 409 rate separately. A retry is accepted only for the exact known duplicate search-URL index conflict and only when the same conditional request returns HTTP 200 for the exact original resource ID. Unknown conflict diagnostics or retry failure fail qualification."
     },
     {
       "id": "FHIR-TX-002",
