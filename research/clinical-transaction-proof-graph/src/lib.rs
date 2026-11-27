@@ -184,6 +184,9 @@ pub enum ReasonCode {
     InvalidStateTransition,
     DuplicateActorSequence,
     ActorSequenceGap,
+    ActorSequenceUnlinked,
+    MultipleDefinitiveCommitOutcomes,
+    MultipleRecipientEffectWitnesses,
     MissingCommitOutcome,
     UnknownCommitOutcome,
     MissingDeliveryOutcome,
@@ -374,7 +377,7 @@ where
         return VerificationReport::rejected(ReasonCode::MultipleOrMissingRoots, event_count);
     }
 
-    if let Some(reason) = validate_actor_sequences(&graph.events) {
+    if let Some(reason) = validate_actor_sequences(&graph.events, &event_index) {
         return match reason {
             ReasonCode::ActorSequenceGap => VerificationReport::defer(reason, event_count),
             _ => VerificationReport::rejected(reason, event_count),
@@ -405,6 +408,34 @@ where
                 event_count,
             );
         }
+    }
+
+    let definitive_commit_count = graph.events.iter().filter(|event| {
+        matches!(
+            event.kind,
+            EventKind::CommitResult(CommitOutcome::Committed | CommitOutcome::Rejected)
+                | EventKind::CommitReconciled(CommitOutcome::Committed | CommitOutcome::Rejected)
+        )
+    }).count();
+    if definitive_commit_count > 1 {
+        return VerificationReport::rejected(
+            ReasonCode::MultipleDefinitiveCommitOutcomes,
+            event_count,
+        );
+    }
+
+    let recipient_effect_count = graph.events.iter().filter(|event| {
+        matches!(
+            event.kind,
+            EventKind::DeliveryResult(DeliveryOutcome::RecipientEffectObserved)
+                | EventKind::DeliveryReconciled(DeliveryOutcome::RecipientEffectObserved)
+        )
+    }).count();
+    if recipient_effect_count > 1 {
+        return VerificationReport::rejected(
+            ReasonCode::MultipleRecipientEffectWitnesses,
+            event_count,
+        );
     }
 
     let mut latest_commit: Option<(CommitOutcome, &EvidenceEvent)> = None;
@@ -490,29 +521,73 @@ where
     }
 }
 
-fn validate_actor_sequences(events: &[EvidenceEvent]) -> Option<ReasonCode> {
-    let mut by_actor: BTreeMap<&str, Vec<u64>> = BTreeMap::new();
+fn validate_actor_sequences(
+    events: &[EvidenceEvent],
+    event_index: &HashMap<&str, usize>,
+) -> Option<ReasonCode> {
+    let mut by_actor: BTreeMap<&str, Vec<(u64, &str)>> = BTreeMap::new();
     for event in events {
         by_actor
             .entry(event.actor_id.as_str())
             .or_default()
-            .push(event.actor_sequence);
+            .push((event.actor_sequence, event.event_id.as_str()));
     }
-    for sequences in by_actor.values_mut() {
-        sequences.sort_unstable();
-        if sequences.first().copied() != Some(1) {
+
+    for actor_events in by_actor.values_mut() {
+        actor_events.sort_unstable_by_key(|(sequence, _)| *sequence);
+        if actor_events.first().map(|(sequence, _)| *sequence) != Some(1) {
             return Some(ReasonCode::ActorSequenceGap);
         }
-        for pair in sequences.windows(2) {
-            if pair[0] == pair[1] {
+        for pair in actor_events.windows(2) {
+            let (previous_sequence, previous_id) = pair[0];
+            let (next_sequence, next_id) = pair[1];
+            if previous_sequence == next_sequence {
                 return Some(ReasonCode::DuplicateActorSequence);
             }
-            if pair[0].checked_add(1) != Some(pair[1]) {
+            if previous_sequence.checked_add(1) != Some(next_sequence) {
                 return Some(ReasonCode::ActorSequenceGap);
+            }
+            if !is_causal_ancestor(previous_id, next_id, events, event_index) {
+                return Some(ReasonCode::ActorSequenceUnlinked);
             }
         }
     }
     None
+}
+
+fn is_causal_ancestor(
+    ancestor_id: &str,
+    descendant_id: &str,
+    events: &[EvidenceEvent],
+    event_index: &HashMap<&str, usize>,
+) -> bool {
+    let Some(descendant_index) = event_index.get(descendant_id).copied() else {
+        return false;
+    };
+    let mut stack: Vec<&str> = events[descendant_index]
+        .parents
+        .iter()
+        .map(|parent| parent.event_id.as_str())
+        .collect();
+    let mut visited = std::collections::HashSet::new();
+
+    while let Some(parent_id) = stack.pop() {
+        if parent_id == ancestor_id {
+            return true;
+        }
+        if !visited.insert(parent_id) {
+            continue;
+        }
+        if let Some(parent_index) = event_index.get(parent_id).copied() {
+            stack.extend(
+                events[parent_index]
+                    .parents
+                    .iter()
+                    .map(|parent| parent.event_id.as_str()),
+            );
+        }
+    }
+    false
 }
 
 fn valid_role_for_event(event: &EvidenceEvent) -> bool {
@@ -851,6 +926,63 @@ mod tests {
         let report = verify_graph(&graph, 5_000, &FixtureAuthenticator, &qualifications());
         assert_eq!(report.verdict, Verdict::Defer);
         assert_eq!(report.findings, vec![ReasonCode::ActorSequenceGap]);
+    }
+
+    #[test]
+    fn same_actor_sequence_must_follow_causal_parent_chain() {
+        let mut graph = successful_graph();
+        let parallel_delivery = event(
+            "event-09",
+            "gateway",
+            ActorRole::Gateway,
+            4,
+            EventKind::DeliveryAttempted,
+            &[&graph.events[5]],
+        );
+        graph.events.push(parallel_delivery);
+        let report = verify_graph(&graph, 5_000, &FixtureAuthenticator, &qualifications());
+        assert_eq!(report.verdict, Verdict::Rejected);
+        assert_eq!(report.findings, vec![ReasonCode::ActorSequenceUnlinked]);
+    }
+
+    #[test]
+    fn conflicting_definitive_commit_outcomes_are_rejected() {
+        let mut graph = successful_graph();
+        let contradictory = event(
+            "event-09",
+            "database-adapter",
+            ActorRole::ExecutionBackend,
+            2,
+            EventKind::CommitResult(CommitOutcome::Rejected),
+            &[&graph.events[4], &graph.events[5]],
+        );
+        graph.events.push(contradictory);
+        let report = verify_graph(&graph, 5_000, &FixtureAuthenticator, &qualifications());
+        assert_eq!(report.verdict, Verdict::Rejected);
+        assert_eq!(
+            report.findings,
+            vec![ReasonCode::MultipleDefinitiveCommitOutcomes]
+        );
+    }
+
+    #[test]
+    fn duplicate_recipient_effect_witnesses_are_rejected() {
+        let mut graph = successful_graph();
+        let duplicate_effect = event(
+            "event-09",
+            "recipient",
+            ActorRole::Recipient,
+            2,
+            EventKind::DeliveryReconciled(DeliveryOutcome::RecipientEffectObserved),
+            &[&graph.events[7]],
+        );
+        graph.events.push(duplicate_effect);
+        let report = verify_graph(&graph, 5_000, &FixtureAuthenticator, &qualifications());
+        assert_eq!(report.verdict, Verdict::Rejected);
+        assert_eq!(
+            report.findings,
+            vec![ReasonCode::MultipleRecipientEffectWitnesses]
+        );
     }
 
     #[test]
