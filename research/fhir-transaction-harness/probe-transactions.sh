@@ -1,6 +1,12 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+PROBE_CORPUS_PATH="$SCRIPT_DIR/probe-corpus-v1.json"
+test -s "$PROBE_CORPUS_PATH"
+jq -e '.schema_version == 1 and .fhir_version == "4.0.1" and (.probes | length) == 8' "$PROBE_CORPUS_PATH" >/dev/null
+probe_corpus_sha256="$(sha256sum "$PROBE_CORPUS_PATH" | awk '{print $1}')"
+
 FHIR_BASE_URL="${FHIR_BASE_URL:-http://127.0.0.1:8080/fhir}"
 ARTIFACT_DIR="${ARTIFACT_DIR:-./artifacts/fhir-qualification-$(date -u +%Y%m%dT%H%M%SZ)}"
 mkdir -p "$ARTIFACT_DIR"
@@ -694,6 +700,7 @@ jq -n \
   --arg timestamp "$recorded_at" \
   --arg base_url "$FHIR_BASE_URL" \
   --arg metadata_sha256 "$metadata_sha256" \
+  --arg probe_corpus_sha256 "$probe_corpus_sha256" \
   --arg transaction_http "$transaction_status" \
   --arg replay_http "$replay_status" \
   --arg observation_version_before_replay "$observation_version_before_replay" \
@@ -725,6 +732,7 @@ jq -n \
     observed_at: $timestamp,
     fhir_base_url: $base_url,
     capability_statement_sha256: $metadata_sha256,
+    probe_corpus_sha256: $probe_corpus_sha256,
     declared_transaction_interaction: true,
     declared_capabilities: {
       patient_conditional_create: ($patient_conditional_create_declared == "true"),
