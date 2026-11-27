@@ -109,6 +109,20 @@ pub struct ParentRef {
     pub event_digest: String,
 }
 
+/// Recipient-authored durable evidence that the exact operation effect was
+/// persisted by the intended recipient. The receipt digest is opaque and scoped;
+/// it must not be a globally reusable patient identifier or plain low-entropy hash.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct RecipientEffectWitness {
+    pub operation_id: String,
+    pub attempt_id: String,
+    pub recipient_ref_digest: String,
+    pub idempotency_key_digest: String,
+    pub resource_set_digest: String,
+    pub durable_effect_receipt_digest: String,
+    pub durable_sequence: u64,
+}
+
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct EvidenceEvent {
     pub event_id: String,
@@ -130,7 +144,8 @@ pub struct EvidenceEvent {
     pub component_build_digest: String,
     pub component_config_digest: String,
     pub parents: Vec<ParentRef>,
-    pub observed_resource_set_digest: Option<String>,
+    /// Present only when the recipient durably attests the exact effect.
+    pub recipient_effect_witness: Option<RecipientEffectWitness>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -208,6 +223,8 @@ pub enum ReasonCode {
     MissingDeliveryOutcome,
     UnknownDeliveryOutcome,
     RecipientWitnessRequired,
+    MissingRecipientEffectWitness,
+    InvalidRecipientEffectWitness,
     RecipientIdentityMismatch,
     ResourceSetEffectMismatch,
     DeliveryAfterRejectedCommit,
@@ -484,6 +501,42 @@ where
         );
     }
 
+    let mut recipient_receipt_digests = std::collections::HashSet::new();
+    for event in &graph.events {
+        let effect_observed = matches!(
+            event.kind,
+            EventKind::DeliveryResult(DeliveryOutcome::RecipientEffectObserved)
+                | EventKind::DeliveryReconciled(DeliveryOutcome::RecipientEffectObserved)
+        );
+        match (effect_observed, event.recipient_effect_witness.as_ref()) {
+            (true, None) => {
+                return VerificationReport::defer(
+                    ReasonCode::MissingRecipientEffectWitness,
+                    event_count,
+                );
+            }
+            (false, Some(_)) => {
+                return VerificationReport::rejected(
+                    ReasonCode::InvalidRecipientEffectWitness,
+                    event_count,
+                );
+            }
+            (true, Some(witness)) => {
+                if witness.durable_effect_receipt_digest.trim().is_empty()
+                    || witness.durable_sequence == 0
+                    || !recipient_receipt_digests
+                        .insert(witness.durable_effect_receipt_digest.as_str())
+                {
+                    return VerificationReport::rejected(
+                        ReasonCode::InvalidRecipientEffectWitness,
+                        event_count,
+                    );
+                }
+            }
+            (false, None) => {}
+        }
+    }
+
     let authority_events: Vec<&EvidenceEvent> = graph
         .events
         .iter()
@@ -613,11 +666,34 @@ where
                     event_count,
                 );
             }
-            if delivery_event.observed_resource_set_digest.as_deref()
-                != Some(graph.binding.resource_set_digest.as_str())
+            let Some(witness) = delivery_event.recipient_effect_witness.as_ref() else {
+                return VerificationReport::defer(
+                    ReasonCode::MissingRecipientEffectWitness,
+                    event_count,
+                );
+            };
+            if witness.recipient_ref_digest != graph.binding.recipient_ref_digest
+                || witness.recipient_ref_digest != delivery_event.actor_ref_digest
             {
                 return VerificationReport::rejected(
+                    ReasonCode::RecipientIdentityMismatch,
+                    event_count,
+                );
+            }
+            if witness.resource_set_digest != graph.binding.resource_set_digest {
+                return VerificationReport::rejected(
                     ReasonCode::ResourceSetEffectMismatch,
+                    event_count,
+                );
+            }
+            if witness.operation_id != graph.binding.operation_id
+                || witness.attempt_id != graph.binding.attempt_id
+                || witness.idempotency_key_digest != graph.binding.idempotency_key_digest
+                || witness.durable_effect_receipt_digest.trim().is_empty()
+                || witness.durable_sequence == 0
+            {
+                return VerificationReport::rejected(
+                    ReasonCode::InvalidRecipientEffectWitness,
                     event_count,
                 );
             }
@@ -844,12 +920,20 @@ mod tests {
                     event_digest: parent.event_digest.clone(),
                 })
                 .collect(),
-            observed_resource_set_digest: if matches!(
+            recipient_effect_witness: if matches!(
                 kind,
                 EventKind::DeliveryResult(DeliveryOutcome::RecipientEffectObserved)
                     | EventKind::DeliveryReconciled(DeliveryOutcome::RecipientEffectObserved)
             ) {
-                Some("sha256:resource-set-v7".into())
+                Some(RecipientEffectWitness {
+                    operation_id: "operation-001".into(),
+                    attempt_id: "attempt-001".into(),
+                    recipient_ref_digest: "sha256:recipient".into(),
+                    idempotency_key_digest: "sha256:idempotency-key".into(),
+                    resource_set_digest: "sha256:resource-set-v7".into(),
+                    durable_effect_receipt_digest: format!("fixture-receipt:{id}"),
+                    durable_sequence: sequence,
+                })
             } else {
                 None
             },
@@ -1047,7 +1131,7 @@ mod tests {
     fn later_delivery_success_does_not_erase_unreconciled_unknown() {
         let mut graph = successful_graph();
         graph.events[7].kind = EventKind::DeliveryResult(DeliveryOutcome::Unknown);
-        graph.events[7].observed_resource_set_digest = None;
+        graph.events[7].recipient_effect_witness = None;
         let contradictory = event(
             "event-09",
             "recipient",
@@ -1081,10 +1165,52 @@ mod tests {
     #[test]
     fn recipient_cannot_claim_a_different_resource_set() {
         let mut graph = successful_graph();
-        graph.events[7].observed_resource_set_digest = Some("sha256:other-set".into());
+        graph.events[7]
+            .recipient_effect_witness
+            .as_mut()
+            .unwrap()
+            .resource_set_digest = "sha256:other-set".into();
         let report = verify_graph(&graph, 5_000, &FixtureAuthenticator, &qualifications());
         assert_eq!(report.verdict, Verdict::Rejected);
         assert_eq!(report.findings, vec![ReasonCode::ResourceSetEffectMismatch]);
+    }
+
+    #[test]
+    fn missing_recipient_effect_witness_defers() {
+        let mut graph = successful_graph();
+        graph.events[7].recipient_effect_witness = None;
+        let report = verify_graph(&graph, 5_000, &FixtureAuthenticator, &qualifications());
+        assert_eq!(report.verdict, Verdict::Defer);
+        assert_eq!(
+            report.findings,
+            vec![ReasonCode::MissingRecipientEffectWitness]
+        );
+    }
+
+    #[test]
+    fn recipient_witness_must_bind_operation_attempt_and_idempotency() {
+        let mut graph = successful_graph();
+        let witness = graph.events[7].recipient_effect_witness.as_mut().unwrap();
+        witness.attempt_id = "other-attempt".into();
+        let report = verify_graph(&graph, 5_000, &FixtureAuthenticator, &qualifications());
+        assert_eq!(report.verdict, Verdict::Rejected);
+        assert_eq!(
+            report.findings,
+            vec![ReasonCode::InvalidRecipientEffectWitness]
+        );
+    }
+
+    #[test]
+    fn recipient_witness_must_bind_the_expected_idempotency_key() {
+        let mut graph = successful_graph();
+        let witness = graph.events[7].recipient_effect_witness.as_mut().unwrap();
+        witness.idempotency_key_digest = "sha256:other-key".into();
+        let report = verify_graph(&graph, 5_000, &FixtureAuthenticator, &qualifications());
+        assert_eq!(report.verdict, Verdict::Rejected);
+        assert_eq!(
+            report.findings,
+            vec![ReasonCode::InvalidRecipientEffectWitness]
+        );
     }
 
     #[test]
@@ -1350,7 +1476,7 @@ mod tests {
     fn unknown_delivery_can_only_resolve_with_recipient_evidence() {
         let mut graph = successful_graph();
         graph.events[7].kind = EventKind::DeliveryResult(DeliveryOutcome::Unknown);
-        graph.events[7].observed_resource_set_digest = None;
+        graph.events[7].recipient_effect_witness = None;
         let unknown_delivery = graph.events[7].clone();
         let reconciled = event(
             "event-09",
