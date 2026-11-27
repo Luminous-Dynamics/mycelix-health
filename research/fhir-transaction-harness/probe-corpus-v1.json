@@ -33,19 +33,26 @@
       "max_parallel": 32,
       "same_identifier": true,
       "expected": {
-        "initial_creator_http_201": 1,
-        "initial_existing_http_200": "all remaining non-conflicting attempts",
-        "initial_transient_http_409": "may occur only when OperationOutcome diagnostics contain hfj_res_search_url_pkey",
-        "other_statuses": 0,
-        "recovery": "retry the identical conditional-create request for each qualifying 409",
-        "retry_http_200_per_initial_409": true,
-        "retry_resource_id_must_equal_initial_creator_resource_id": true,
-        "final_unique_resource_count": 1,
-        "final_history_rows": 1,
-        "final_resource_version": "1",
-        "unresolved_attempts": 0
+        "initial_http_statuses": {
+          "created_201": 1,
+          "existing_200": "all remaining non-conflicting attempts",
+          "transient_conflict_409": "may occur only with the pinned HAPI duplicate HFJ_RES_SEARCH_URL primary-key diagnostic",
+          "other": 0
+        },
+        "conflict_recovery": {
+          "retry_request": "exact same POST /Patient body and If-None-Exist identifier",
+          "expected_retry_http": 200,
+          "expected_retry_resource_id": "same ID as the single original 201 creator",
+          "unresolved_attempts": 0
+        },
+        "final_state": {
+          "fhir_search_match_count": 1,
+          "postgres_master_rows": 1,
+          "postgres_history_rows": 1,
+          "postgres_current_version": "1"
+        }
       },
-      "qualification_note": "Report first-attempt 409 rate separately. A retry is accepted only for the exact known duplicate search-URL index conflict and only when the same conditional request returns HTTP 200 for the exact original resource ID. Unknown conflict diagnostics or retry failure fail qualification."
+      "qualification_note": "First-attempt 409 rate must be recorded and reported, not hidden. Retry only an OperationOutcome whose diagnostics identify hfj_res_search_url_pkey. Every retry must return HTTP 200 for the exact original Patient ID. Any other 409, retry failure, ID mismatch or duplicate DB row fails the probe."
     },
     {
       "id": "FHIR-TX-002",
