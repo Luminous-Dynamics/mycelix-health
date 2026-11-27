@@ -471,7 +471,7 @@ compose_file="${COMPOSE_FILE:-research/fhir-transaction-harness/compose.yaml}"
 # when a required column is absent, so a version mismatch is diagnosable.
 docker compose -f "$compose_file" exec -T \
   -e PGPASSWORD=local-observer-only-not-a-secret postgres \
-  psql -X -qAt -F $'\\t' -v ON_ERROR_STOP=1 -U hapi_observer -d hapi \
+  psql -X -qAt -v ON_ERROR_STOP=1 -U hapi_observer -d hapi \
   -c "SELECT lower(table_name) || '.' || lower(column_name)
       FROM information_schema.columns
       WHERE lower(table_name) IN ('hfj_resource', 'hfj_res_ver', 'hfj_spidx_token')
@@ -491,7 +491,7 @@ required_schema_columns=(
 )
 for required_column in "${required_schema_columns[@]}"; do
   if ! grep -Fxq "$required_column" "$ARTIFACT_DIR/postgres-schema-columns.tsv"; then
-    printf 'Pinned HAPI PostgreSQL schema lacks required column: %s\\n' "$required_column" >&2
+    printf 'Pinned HAPI PostgreSQL schema lacks required column: %s\n' "$required_column" >&2
     cat "$ARTIFACT_DIR/postgres-schema-columns.tsv" >&2
     exit 1
   fi
@@ -702,7 +702,7 @@ required_schema_columns=(
 )
 for required_column in "${required_schema_columns[@]}"; do
   if ! grep -Fxq "$required_column" "$ARTIFACT_DIR/postgres-schema-columns.tsv"; then
-    printf 'Pinned HAPI PostgreSQL schema lacks required column: %s\\n' "$required_column" >&2
+    printf 'Pinned HAPI PostgreSQL schema lacks required column: %s\n' "$required_column" >&2
     cat "$ARTIFACT_DIR/postgres-schema-columns.tsv" >&2
     exit 1
   fi
