@@ -5,7 +5,7 @@
 //! here. Cryptographic verification is injected through EvidenceAuthenticator.
 //! The fixture authenticator in these tests is not production cryptography.
 
-use std::collections::{BTreeMap, HashMap, VecDeque};
+use std::collections::{BTreeMap, BTreeSet, HashMap};
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct OperationBinding {
@@ -338,18 +338,13 @@ where
 
     // Deterministic Kahn topological sort. Wall-clock timestamps are deliberately
     // excluded: causal parent edges, not timestamp order, establish precedence.
-    let mut ready: Vec<usize> = (0..event_count)
+    let mut ready: BTreeSet<(String, usize)> = (0..event_count)
         .filter(|index| indegree[*index] == 0)
+        .map(|index| (graph.events[index].event_id.clone(), index))
         .collect();
-    ready.sort_by(|left, right| {
-        graph.events[*left]
-            .event_id
-            .cmp(&graph.events[*right].event_id)
-    });
-    let mut queue: VecDeque<usize> = ready.into();
     let mut topological_order = Vec::with_capacity(event_count);
 
-    while let Some(parent_index) = queue.pop_front() {
+    while let Some((_, parent_index)) = ready.pop_first() {
         topological_order.push(parent_index);
         children[parent_index].sort_by(|left, right| {
             graph.events[*left]
@@ -359,7 +354,7 @@ where
         for child_index in &children[parent_index] {
             indegree[*child_index] -= 1;
             if indegree[*child_index] == 0 {
-                queue.push_back(*child_index);
+                ready.insert((graph.events[*child_index].event_id.clone(), *child_index));
             }
         }
     }
@@ -393,7 +388,7 @@ where
                 event_count,
             );
         }
-        if !valid_parent_transition(event, graph) {
+        if !valid_parent_transition(event, graph, &event_index) {
             return VerificationReport::rejected(ReasonCode::MissingRequiredParent, event_count);
         }
     }
@@ -579,47 +574,22 @@ fn validate_actor_sequences(
             if previous_sequence.checked_add(1) != Some(next_sequence) {
                 return Some(ReasonCode::ActorSequenceGap);
             }
-            if !is_causal_ancestor(previous_id, next_id, events, event_index) {
+            let Some(next_index) = event_index.get(next_id).copied() else {
+                return Some(ReasonCode::MissingParentEvidence);
+            };
+            // Require an explicit direct parent edge between adjacent events
+            // from the same actor. This avoids O(N^2) repeated ancestor walks
+            // and prevents unrelated branches from reusing sequence numbers.
+            if !events[next_index]
+                .parents
+                .iter()
+                .any(|parent| parent.event_id == previous_id)
+            {
                 return Some(ReasonCode::ActorSequenceUnlinked);
             }
         }
     }
     None
-}
-
-fn is_causal_ancestor(
-    ancestor_id: &str,
-    descendant_id: &str,
-    events: &[EvidenceEvent],
-    event_index: &HashMap<&str, usize>,
-) -> bool {
-    let Some(descendant_index) = event_index.get(descendant_id).copied() else {
-        return false;
-    };
-    let mut stack: Vec<&str> = events[descendant_index]
-        .parents
-        .iter()
-        .map(|parent| parent.event_id.as_str())
-        .collect();
-    let mut visited = std::collections::HashSet::new();
-
-    while let Some(parent_id) = stack.pop() {
-        if parent_id == ancestor_id {
-            return true;
-        }
-        if !visited.insert(parent_id) {
-            continue;
-        }
-        if let Some(parent_index) = event_index.get(parent_id).copied() {
-            stack.extend(
-                events[parent_index]
-                    .parents
-                    .iter()
-                    .map(|parent| parent.event_id.as_str()),
-            );
-        }
-    }
-    false
 }
 
 fn valid_role_for_event(event: &EvidenceEvent) -> bool {
@@ -638,14 +608,16 @@ fn valid_role_for_event(event: &EvidenceEvent) -> bool {
     }
 }
 
-fn valid_parent_transition(event: &EvidenceEvent, graph: &ProofGraph) -> bool {
+fn valid_parent_transition(
+    event: &EvidenceEvent,
+    graph: &ProofGraph,
+    event_index: &HashMap<&str, usize>,
+) -> bool {
     let has_parent = |predicate: &dyn Fn(EventKind) -> bool| {
         event.parents.iter().any(|parent| {
-            graph
-                .events
-                .iter()
-                .find(|candidate| candidate.event_id == parent.event_id)
-                .map(|candidate| predicate(candidate.kind))
+            event_index
+                .get(parent.event_id.as_str())
+                .map(|index| predicate(graph.events[*index].kind))
                 .unwrap_or(false)
         })
     };
@@ -856,7 +828,7 @@ mod tests {
             ActorRole::Gateway,
             3,
             EventKind::DeliveryAttempted,
-            &[&committed],
+            &[&commit_attempt, &committed],
         );
         let observed = event(
             "event-08",
@@ -1104,6 +1076,48 @@ mod tests {
     }
 
     #[test]
+    fn verifies_ten_thousand_event_causal_graph() {
+        let mut graph = successful_graph();
+        // Replace the original recipient terminal event with a long chain of
+        // delivery attempts, all bound to the same durable committed effect.
+        graph.events.pop();
+        let committed = graph.events[5].clone();
+        let mut previous_delivery = graph.events[6].clone();
+
+        for index in 0..9_992u64 {
+            let event_id = format!("stress-delivery-{index:05}");
+            let next = event(
+                &event_id,
+                "gateway",
+                ActorRole::Gateway,
+                index + 4,
+                EventKind::DeliveryAttempted,
+                &[&previous_delivery, &committed],
+            );
+            graph.events.push(next.clone());
+            previous_delivery = next;
+        }
+
+        let observed = event(
+            "stress-recipient-effect",
+            "recipient",
+            ActorRole::Recipient,
+            1,
+            EventKind::DeliveryResult(DeliveryOutcome::RecipientEffectObserved),
+            &[&previous_delivery],
+        );
+        graph.events.push(observed);
+
+        assert_eq!(graph.events.len(), 10_000);
+        let report = verify_graph(&graph, 5_000, &FixtureAuthenticator, &qualifications());
+        assert_eq!(report.verdict, Verdict::Verified);
+        assert_eq!(
+            report.conclusion,
+            OperationConclusion::RecipientEffectObserved
+        );
+    }
+
+    #[test]
     fn invalid_signature_is_rejected() {
         let mut graph = successful_graph();
         graph.events[2].signature = "tampered".into();
@@ -1147,10 +1161,16 @@ mod tests {
             EventKind::CommitReconciled(CommitOutcome::Committed),
             &[&unknown_commit],
         );
-        graph.events[6].parents = vec![ParentRef {
-            event_id: reconciled.event_id.clone(),
-            event_digest: reconciled.event_digest.clone(),
-        }];
+        graph.events[6].parents = vec![
+            ParentRef {
+                event_id: graph.events[4].event_id.clone(),
+                event_digest: graph.events[4].event_digest.clone(),
+            },
+            ParentRef {
+                event_id: reconciled.event_id.clone(),
+                event_digest: reconciled.event_digest.clone(),
+            },
+        ];
         graph.events.push(reconciled);
 
         let report = verify_graph(&graph, 5_000, &FixtureAuthenticator, &qualifications());
