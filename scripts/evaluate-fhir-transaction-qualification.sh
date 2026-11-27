@@ -115,7 +115,7 @@ result="$(jq -n \
       verdict("defer"; "probe_evidence_stale_or_future_dated")
     elif ($d.probe_evidence.probes | type) != "array" then
       verdict("defer"; "probe_results_missing")
-    elif any($probes[]; .result == "fail" and ($required_ids | index(.id)) != null) then
+    elif any($probes[]; . as $probe | $probe.result == "fail" and ($required_ids | index($probe.id)) != null) then
       verdict("not_qualified"; "required_probe_failed")
     elif any($matched[]; (.matches | length) != 1) then
       verdict("defer"; "required_probe_missing_or_duplicated")
