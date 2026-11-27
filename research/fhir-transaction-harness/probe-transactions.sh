@@ -298,7 +298,7 @@ jq -n \
 
 # Deterministic stale If-Match control: this is not a race. FHIR R4 specifies
 # 412 when the supplied version does not match. Preserve raw response first.
-stale_if_match="$(printf 'W/\"mycelix-stale-%s\"' \"$run_id\")"
+stale_if_match=$(printf 'W/"mycelix-stale-%s"' "$run_id")
 stale_precondition_status="$(curl --silent --show-error --output "$WORK_DIR/stale-precondition-response.json" \
   --write-out '%{http_code}' \
   -X PUT \
