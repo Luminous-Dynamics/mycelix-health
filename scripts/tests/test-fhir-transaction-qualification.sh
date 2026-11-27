@@ -71,4 +71,19 @@ jq '.capability_observation.resource.rest[0].interaction = []' \
   "$tmp/qualified.json" >"$tmp/no-transaction.json"
 expect_state "$tmp/no-transaction.json" not_qualified
 
+# Duplicate required evidence rows are ambiguous and must defer.
+jq '.probe_evidence.probes += [.probe_evidence.probes[0]]' \
+  "$tmp/qualified.json" >"$tmp/duplicate.json"
+expect_state "$tmp/duplicate.json" defer
+
+# Probe evidence beyond the allowed future clock skew must defer.
+jq '.probe_evidence.completed_at = "2026-11-27T01:00:00Z"' \
+  "$tmp/qualified.json" >"$tmp/future.json"
+expect_state "$tmp/future.json" defer
+
+# A different claimed software identity must not inherit qualification.
+jq '.probe_evidence.server_software_version = "9.9.9"' \
+  "$tmp/qualified.json" >"$tmp/software-drift.json"
+expect_state "$tmp/software-drift.json" defer
+
 echo "FHIR transaction adapter qualification evaluator: all tests passed"
