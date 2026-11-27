@@ -131,76 +131,29 @@ pub struct RevokeConsentInput {
 #[hdk_extern]
 pub fn check_authorization(input: AuthorizationCheckInput) -> ExternResult<AuthorizationResult> {
     let consents = get_active_consents(input.patient_hash.clone())?;
+    let now = sys_time()?;
 
     for record in consents {
         if let Some(consent) = record.entry().to_app_option::<Consent>().ok().flatten() {
-            // ── Minors Protection (#6) ──
-            // If the consent was created by a legal representative (guardian),
-            // verify the representative is still valid and the consent scope
-            // doesn't exceed what a guardian can authorize.
-            if let Some(ref representative) = consent.legal_representative {
-                // Guardian-authorized consent: verify the requestor is either
-                // the guardian themselves or an agent the guardian consented to.
-                let guardian_authorized = *representative == input.requestor
-                    || matches!(&consent.grantee, ConsentGrantee::Agent(a) if *a == input.requestor);
-
-                // Guardians cannot authorize access to certain categories for minors
-                // without explicit judicial or clinical override
-                if matches!(
-                    input.data_category,
-                    DataCategory::SubstanceAbuse | DataCategory::SexualHealth
-                ) && !input.is_emergency
-                {
-                    // Minor's sensitive data requires the minor's own consent
-                    // (if they are a "mature minor") or a court order.
-                    // For now, deny and log.
-                    if !guardian_authorized {
-                        continue;
-                    }
-                }
-            }
-
-            // Check if grantee matches
-            let grantee_matches = match &consent.grantee {
-                ConsentGrantee::Agent(agent) => *agent == input.requestor,
-                // Emergency access is never granted by a caller-selected flag.
-                // It is evaluated below against a patient-authored capability.
-                ConsentGrantee::EmergencyAccess => false,
-                ConsentGrantee::Provider(_hash) => {
-                    // Provider hash match — check via a hash comparison
-                    // In production, this would resolve the provider's agent key
-                    false // Requires provider resolution
-                }
-                ConsentGrantee::Organization(_) => {
-                    // Organization match would check membership
-                    false // Requires org membership check
-                }
-                ConsentGrantee::Public => true,
-                _ => false,
-            };
-
-            if grantee_matches {
-                let category_covered = consent
-                    .scope
-                    .data_categories
-                    .iter()
-                    .any(|cat| matches!(cat, DataCategory::All) || *cat == input.data_category);
-                let not_excluded = !consent.scope.exclusions.contains(&input.data_category);
-                let permission_granted = consent.permissions.contains(&input.permission);
-
-                if category_covered && not_excluded && permission_granted {
-                    return Ok(AuthorizationResult {
-                        authorized: true,
-                        consent_hash: Some(record.action_address().clone()),
-                        reason: if consent.legal_representative.is_some() {
-                            "Guardian-authorized consent".to_string()
-                        } else {
-                            "Active consent found".to_string()
-                        },
-                        permissions: consent.permissions.clone(),
-                        emergency_override: false,
-                    });
-                }
+            if consent_matches_authorization(
+                &consent,
+                &input.requestor,
+                &input.data_category,
+                &input.permission,
+                input.is_emergency,
+                now,
+            ) {
+                return Ok(AuthorizationResult {
+                    authorized: true,
+                    consent_hash: Some(record.action_address().clone()),
+                    reason: if consent.legal_representative.is_some() {
+                        "Guardian-authorized consent".to_string()
+                    } else {
+                        "Active consent found".to_string()
+                    },
+                    permissions: consent.permissions.clone(),
+                    emergency_override: false,
+                });
             }
         }
     }
@@ -257,7 +210,6 @@ pub fn check_authorization(input: AuthorizationCheckInput) -> ExternResult<Autho
         emergency_override: false,
     })
 }
-
 /// Input for authorization check - compatible with shared crate's AuthorizationInput
 #[derive(Serialize, Deserialize, Debug)]
 pub struct AuthorizationCheckInput {
