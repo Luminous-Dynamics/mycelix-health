@@ -530,6 +530,49 @@ mod tests {
     }
 
     #[test]
+    fn deferred_required_probe_defers_qualification() {
+        let mut receipt = valid_receipt();
+        receipt.probes[0].outcome = ProbeOutcome::Defer;
+        let report = verify_runtime_qualification(
+            &receipt,
+            15_000,
+            "hapi-r4",
+            "postgres-18",
+            &FixtureAuthenticator { valid: true },
+        );
+        assert_eq!(report.verdict, QualificationVerdict::Defer);
+        assert_eq!(report.findings, vec![QualificationFinding::ProbeDeferred]);
+    }
+
+    #[test]
+    fn future_issued_receipt_is_rejected() {
+        let report = verify_runtime_qualification(
+            &valid_receipt(),
+            9_999,
+            "hapi-r4",
+            "postgres-18",
+            &FixtureAuthenticator { valid: true },
+        );
+        assert_eq!(report.verdict, QualificationVerdict::NotQualified);
+        assert_eq!(report.findings, vec![QualificationFinding::EvidenceNotYetIssued]);
+    }
+
+    #[test]
+    fn invalid_validity_window_is_rejected() {
+        let mut receipt = valid_receipt();
+        receipt.expires_at_ms = receipt.issued_at_ms;
+        let report = verify_runtime_qualification(
+            &receipt,
+            15_000,
+            "hapi-r4",
+            "postgres-18",
+            &FixtureAuthenticator { valid: true },
+        );
+        assert_eq!(report.verdict, QualificationVerdict::NotQualified);
+        assert_eq!(report.findings, vec![QualificationFinding::InvalidTimeWindow]);
+    }
+
+    #[test]
     fn invalid_issuer_signature_rejects_qualification() {
         let report = verify_runtime_qualification(
             &valid_receipt(),
