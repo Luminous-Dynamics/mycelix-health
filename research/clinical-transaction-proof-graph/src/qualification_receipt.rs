@@ -592,7 +592,7 @@ mod tests {
             &FixtureAuthenticator { valid: true },
         );
         assert_eq!(report.verdict, QualificationVerdict::Qualified);
-        assert_eq!(report.verified_probe_count, 7);
+        assert_eq!(report.verified_probe_count, 8);
     }
 
     #[test]
