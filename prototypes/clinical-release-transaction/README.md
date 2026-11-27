@@ -43,7 +43,9 @@ The ReceiptVerifier trait is an explicit boundary: production must supply a real
 
 Execution identity and time are also trusted adapter inputs. A production gateway must derive the actor from authenticated transport/session context and the time from a trusted server clock, not from request body fields.
 
-## Running
+## Tests and running
+
+The reference crate currently contains 23 deterministic unit tests and a 21-scenario machine-readable manifest. The tests exercise receipt binding, expiry, authority changes, replay, unknown acknowledgements, idempotency collisions, nonce contention and the revocation/commit race.
 
 ```bash
 cargo fmt --manifest-path prototypes/clinical-release-transaction/Cargo.toml -- --check
@@ -60,7 +62,9 @@ The crate is excluded from the large Holochain workspace so this benchmark runs 
 - Side effects after revocation/resource-version drift: 0.
 - Side effects without durable audit intent: 0.
 - Unknown outcome blindly replayed under a new key: 0.
-- 32 concurrent duplicate attempts: exactly one committed side effect.\n- Distinct idempotency keys racing on one nonce: exactly one committed side effect.\n- Consent revocation racing release: linearizable order, with zero release after revocation.
+- 32 concurrent duplicate attempts: exactly one committed side effect.
+- Distinct idempotency keys racing on one nonce: exactly one committed side effect.
+- Consent revocation racing release: linearizable order, with zero release after revocation.
 - Correct replay/reconciliation on deterministic fixtures: 100%.
 
 These are reference-test targets, not measured production results.
