@@ -31,6 +31,8 @@ jobs:
         run: |
           set -euo pipefail
           bash -n research/fhir-transaction-harness/probe-transactions.sh
+          git ls-files --error-unmatch research/fhir-transaction-harness/init-observer.sql
+          test -f research/fhir-transaction-harness/init-observer.sql
           test -s research/fhir-transaction-harness/init-observer.sql
           grep -q 'CREATE ROLE hapi_observer' research/fhir-transaction-harness/init-observer.sql
           grep -q 'default_transaction_read_only' research/fhir-transaction-harness/init-observer.sql
