@@ -483,8 +483,10 @@ export async function verifyNativeClinicalCountersigningEvidenceV1(
       throw new Error(`Countersigned response ${index} has invalid participant metadata or signature length`);
     }
     expectHash(responseState.chain_top, `Countersigned response ${index} chain_top`);
-    if (!Number.isSafeInteger(responseState.action_seq) || (responseState.action_seq as number) < 0) {
-      throw new Error(`Countersigned response ${index} has invalid action sequence`);
+    if (!Number.isSafeInteger(responseState.action_seq)
+      || (responseState.action_seq as number) < 0
+      || (responseState.action_seq as number) >= 0xffff_ffff) {
+      throw new Error(`Countersigned response ${index} has invalid frozen-chain action sequence`);
     }
   });
 
@@ -508,6 +510,36 @@ export async function verifyNativeClinicalCountersigningEvidenceV1(
       throw new Error("Participant action has missing, duplicate, or unexpected author identity");
     }
     seenParticipants.add(authorBinding);
+
+    const participantIndex = evidence.intent.participants.findIndex(
+      (participant) => participant.agent_binding === authorBinding,
+    );
+    if (participantIndex < 0) {
+      throw new Error("Participant action has no matching countersigning response index");
+    }
+    const responseState = asRecord(responses[participantIndex]?.[0]);
+    if (!responseState) {
+      throw new Error("Participant action has no matching frozen-chain response state");
+    }
+    const frozenChainTop = expectHash(
+      responseState.chain_top,
+      `Participant ${participantIndex} frozen chain top`,
+    );
+    const frozenActionSequence = responseState.action_seq;
+    if (!Number.isSafeInteger(frozenActionSequence)
+      || (frozenActionSequence as number) < 0
+      || (frozenActionSequence as number) >= 0xffff_ffff) {
+      throw new Error("Participant frozen-chain sequence is outside the Holochain u32 range");
+    }
+    if (!bytesEqual(
+      expectHash(action.previous_action_hash_bytes, "Participant previous ActionHash"),
+      frozenChainTop,
+    )) {
+      throw new Error("Participant Create action does not extend the exact frozen chain top");
+    }
+    if (action.action_seq !== (frozenActionSequence as number) + 1) {
+      throw new Error("Participant Create action sequence is not the next frozen-chain sequence");
+    }
 
     if (action.author_binding !== authorBinding
       || action.signer_binding !== action.author_binding
