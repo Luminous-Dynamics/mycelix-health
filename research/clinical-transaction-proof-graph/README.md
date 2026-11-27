@@ -50,7 +50,7 @@ The crate has no third-party dependencies and is excluded from the large Holocha
 
 The synthetic authenticator only checks deterministic fixture strings. It does not verify real signatures or hashes. The qualification registry is also a test fixture. These tests validate graph logic only.
 
-## Current v1 test families (17 Rust unit tests)
+## Current v1 test families (20 Rust unit tests)
 
 - valid flow with deliberately out-of-order wall-clock observations;
 - explicit authenticated-subject binding and spoofed-identity rejection;
@@ -61,7 +61,8 @@ The synthetic authenticator only checks deterministic fixture strings. It does n
 - unresolved commit outcome;
 - sender acknowledgement incorrectly presented as recipient effect;
 - incorrect recipient resource-set digest;
-- causal cycle and per-actor sequence gap;
+- causal cycle, sequence gaps, and unlinked same-actor sequence forks;
+- conflicting terminal commit outcomes and duplicate recipient effect witnesses;
 - invalid signature fixture;
 - verified commit rejection without delivery.
 
