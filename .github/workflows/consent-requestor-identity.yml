@@ -1,0 +1,91 @@
+name: Consent Requestor Identity Binding
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "zomes/consent/coordinator/src/lib.rs"
+      - "tests/sweettest/**"
+      - "dna/**"
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - "flake.nix"
+      - ".github/workflows/consent-requestor-identity.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: consent-requestor-identity-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  authenticated-caller-sweettest:
+    name: Two-agent caller-spoofing Sweettest
+    runs-on: ubuntu-24.04
+    timeout-minutes: 75
+    steps:
+      - name: Check out exact PR head
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+          fetch-depth: 1
+
+      - name: Install Nix
+        uses: cachix/install-nix-action@v25
+        with:
+          nix_path: nixpkgs=channel:nixos-unstable
+
+      - name: Stage pinned Mycelix sibling dependencies
+        run: |
+          set -euo pipefail
+          upstream=/tmp/mycelix-parent
+          git clone --quiet https://github.com/Luminous-Dynamics/mycelix.git "$upstream"
+          git -C "$upstream" checkout --quiet d597dcd99ccbf1cc3c341c3442ef6a53efd0dbff
+          actual="$(git -C "$upstream" rev-parse HEAD)"
+          test "$actual" = "d597dcd99ccbf1cc3c341c3442ef6a53efd0dbff"
+          mkdir -p ../crates ../mycelix-core ../mycelix-workspace/mycelix-core
+          cp -a "$upstream/crates/." ../crates/
+          cp -a "$upstream/mycelix-core/." ../mycelix-core/
+          cp -a "$upstream/mycelix-core/." ../mycelix-workspace/mycelix-core/
+          rm -rf "$upstream"
+
+      - name: Build the exact DNA zome set and pack test DNA
+        run: |
+          nix develop .#ci --command bash -euo pipefail -c '
+            ARGS="$(cargo metadata --no-deps --format-version 1 \
+              | jq -r "[.packages[] | select(.manifest_path | contains(\"/zomes/\")) | \"-p \\(.name)\"] | join(\" \")")"
+            test -n "$ARGS"
+            # shellcheck disable=SC2086
+            cargo build --locked --release --target wasm32-unknown-unknown $ARGS
+            mkdir -p workdir
+            hc dna pack dna/ -o workdir/health.dna
+            test -s workdir/health.dna
+          '
+
+      - name: Run the real two-agent consent extern test
+        run: |
+          nix develop .#ci --command bash -euo pipefail -c '
+            HOST="$(rustc -vV | sed -n "s/^host: //p")"
+            test -n "$HOST"
+            cargo test --manifest-path tests/sweettest/Cargo.toml \
+              --target "$HOST" \
+              --test consent_ownership \
+              test_authorization_requestor_is_bound_to_authenticated_cell_agent \
+              -- --ignored --exact --nocapture
+          '
+
+      - name: Preserve exact qualification identity
+        if: always()
+        run: |
+          {
+            echo "source_head=$GITHUB_SHA"
+            echo "checked_out_head=$(git rev-parse HEAD)"
+            echo "upstream_dependency_commit=d597dcd99ccbf1cc3c341c3442ef6a53efd0dbff"
+            rustc --version || true
+            cargo --version || true
+            hc --version || true
+          } | tee "$RUNNER_TEMP/consent-requestor-identity-metadata.txt"
+          
