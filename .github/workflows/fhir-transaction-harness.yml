@@ -40,7 +40,7 @@ jobs:
           grep -q 'retry_patient_id' research/fhir-transaction-harness/probe-transactions.sh
           git ls-files --error-unmatch research/fhir-transaction-harness/evidence/run-55-conditional-create-contention.json
           git ls-files --error-unmatch research/fhir-transaction-harness/evidence/run-62-postgresql-conditional-create-recovered.json
-          jq -e '.probes.concurrent_conditional_create.result == "passed" and .probes.concurrent_conditional_create.recovered_409 == .probes.concurrent_conditional_create.transient_409 and .independent_postgres_observer.result == "passed"' research/fhir-transaction-harness/evidence/run-62-postgresql-conditional-create-recovered.json >/dev/null
+          jq -e '.probes.concurrent_conditional_create.result == "passed" and .probes.concurrent_conditional_create.recovered_409 == .probes.concurrent_conditional_create.transient_409 and .probes.independent_postgres_observer.result == "passed"' research/fhir-transaction-harness/evidence/run-62-postgresql-conditional-create-recovered.json >/dev/null
           git ls-files --error-unmatch research/fhir-transaction-harness/init-observer.sql
           test -f research/fhir-transaction-harness/init-observer.sql
           test -s research/fhir-transaction-harness/init-observer.sql
