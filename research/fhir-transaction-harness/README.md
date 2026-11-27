@@ -21,7 +21,7 @@ FHIR_BASE_URL=http://127.0.0.1:8080/fhir \
 docker compose -f research/fhir-transaction-harness/compose.yaml down -v
 ```
 
-The script records the exact CapabilityStatement, transaction/replay responses, stale-ETag and concurrent-writer responses, rollback OperationOutcome, and a machine-readable evidence summary. PostgreSQL init creates a separate SELECT-only `hapi_observer` role; the final probe queries `HFJ_RESOURCE`, `HFJ_RES_VER`, and `HFJ_SPIDX_TOKEN` directly and checks resource counts/versions plus the absent rollback marker. The observer's result is stored separately from HAPI API read/search results. The Compose bind mount is relative to this Compose file's directory, so the init SQL source is `./init-observer.sql`.
+The script records the exact CapabilityStatement, transaction/replay responses, stale-ETag and concurrent-writer responses, rollback OperationOutcome, and a machine-readable evidence summary. It hashes the checked-in probe-corpus-v1.json, which defines all eight active probes and their expected outcomes; the corpus digest is included in qualification-evidence.json and the workflow harness manifest. PostgreSQL init creates a separate SELECT-only `hapi_observer` role; the final probe queries `HFJ_RESOURCE`, `HFJ_RES_VER`, and `HFJ_SPIDX_TOKEN` directly and checks resource counts/versions plus the absent rollback marker. The observer's result is stored separately from HAPI API read/search results. The Compose bind mount is relative to this Compose file's directory, so the init SQL source is `./init-observer.sql`.
 
 ## What is probed
 
