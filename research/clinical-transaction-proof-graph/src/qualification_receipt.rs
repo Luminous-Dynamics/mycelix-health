@@ -42,6 +42,19 @@ pub struct ProbeEvidence {
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum QualificationProfile {
+    FhirServerR4,
+    MycelixFhirAdapterR4,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct AdapterBuildIdentity {
+    pub component_id: String,
+    pub build_digest: String,
+    pub config_digest: String,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum ObserverBoundary {
     SameDatabaseIndependentSqlRole,
     IndependentReplica,
@@ -78,14 +91,17 @@ pub struct RuntimeQualificationReceiptV1 {
     pub schema_version: u32,
     pub canonicalization: String,
     pub receipt_id: String,
-    pub operation_profile: String,
+    pub qualification_profile: QualificationProfile,
     pub fhir_version: String,
     pub issued_at_ms: i64,
     pub expires_at_ms: i64,
     pub server: ComponentRuntimeIdentity,
     pub database: ComponentRuntimeIdentity,
-    pub adapter_build_digest: String,
-    pub adapter_config_digest: String,
+    /// Exact harness that generated the active probes.
+    pub test_harness_digest: String,
+    /// Required only for MycelixFhirAdapterR4; a server-only receipt must not
+    /// imply an adapter was present or qualified.
+    pub adapter: Option<AdapterBuildIdentity>,
     pub capability_statement_digest: String,
     pub probe_corpus_digest: String,
     pub evidence_artifact_digest: String,
@@ -125,6 +141,7 @@ pub enum QualificationFinding {
     UnsupportedCanonicalization,
     PhiPresent,
     ObserverIdentityMismatch,
+    ProfileIdentityMismatch,
     ObserverCanMutate,
     DuplicateProbe,
     MissingRequiredProbe,
@@ -203,12 +220,9 @@ pub fn verify_runtime_qualification<A: QualificationReceiptAuthenticator>(
         );
     }
     if receipt.receipt_id.trim().is_empty()
-        || receipt.operation_profile.trim().is_empty()
         || receipt.issuer_id.trim().is_empty()
         || receipt.issuer_key_id.trim().is_empty()
-        || receipt.adapter_build_digest.trim().is_empty()
-        || !valid_sha256(&receipt.adapter_build_digest)
-        || !valid_sha256(&receipt.adapter_config_digest)
+        || !valid_sha256(&receipt.test_harness_digest)
         || !valid_sha256(&receipt.capability_statement_digest)
         || !valid_sha256(&receipt.probe_corpus_digest)
         || !valid_sha256(&receipt.evidence_artifact_digest)
@@ -254,6 +268,25 @@ pub fn verify_runtime_qualification<A: QualificationReceiptAuthenticator>(
             QualificationFinding::ObserverIdentityMismatch,
             probe_count,
         );
+    }
+    match (&receipt.qualification_profile, &receipt.adapter) {
+        (QualificationProfile::FhirServerR4, None) => {}
+        (QualificationProfile::FhirServerR4, Some(_)) => {
+            return QualificationReport::rejected(
+                QualificationFinding::ProfileIdentityMismatch,
+                probe_count,
+            );
+        }
+        (QualificationProfile::MycelixFhirAdapterR4, Some(adapter))
+            if !adapter.component_id.trim().is_empty()
+                && valid_sha256(&adapter.build_digest)
+                && valid_sha256(&adapter.config_digest) => {}
+        (QualificationProfile::MycelixFhirAdapterR4, _) => {
+            return QualificationReport::rejected(
+                QualificationFinding::IncompleteReceipt,
+                probe_count,
+            );
+        }
     }
     if !receipt.observer.session_read_only
         || receipt.observer.is_superuser
@@ -359,14 +392,14 @@ mod tests {
             schema_version: 1,
             canonicalization: "RFC8785-JCS".into(),
             receipt_id: "qualification-hapi-postgres-run-47".into(),
-            operation_profile: "mycelix-clinical-transaction-r4".into(),
+            qualification_profile: QualificationProfile::FhirServerR4,
             fhir_version: "4.0.1".into(),
             issued_at_ms: 10_000,
             expires_at_ms: 20_000,
             server: identity("hapi-r4", 'a', 'b', 'c', 'd'),
             database: identity("postgres-18", 'e', 'f', '1', '2'),
-            adapter_build_digest: digest('3'),
-            adapter_config_digest: digest('4'),
+            test_harness_digest: digest('3'),
+            adapter: None,
             capability_statement_digest: digest('5'),
             probe_corpus_digest: digest('6'),
             evidence_artifact_digest: digest('7'),
@@ -411,6 +444,65 @@ mod tests {
         );
         assert_eq!(report.verdict, QualificationVerdict::Qualified);
         assert_eq!(report.verified_probe_count, 7);
+    }
+
+    #[test]
+    fn hapi_server_profile_does_not_claim_an_adapter() {
+        let mut receipt = valid_receipt();
+        receipt.adapter = Some(AdapterBuildIdentity {
+            component_id: "mycelix-fhir-adapter".into(),
+            build_digest: digest('c'),
+            config_digest: digest('d'),
+        });
+        let report = verify_runtime_qualification(
+            &receipt,
+            15_000,
+            "hapi-r4",
+            "postgres-18",
+            &FixtureAuthenticator { valid: true },
+        );
+        assert_eq!(report.verdict, QualificationVerdict::NotQualified);
+        assert_eq!(
+            report.findings,
+            vec![QualificationFinding::ProfileIdentityMismatch]
+        );
+    }
+
+    #[test]
+    fn mycelix_adapter_profile_requires_adapter_identity() {
+        let mut receipt = valid_receipt();
+        receipt.qualification_profile = QualificationProfile::MycelixFhirAdapterR4;
+        let report = verify_runtime_qualification(
+            &receipt,
+            15_000,
+            "hapi-r4",
+            "postgres-18",
+            &FixtureAuthenticator { valid: true },
+        );
+        assert_eq!(report.verdict, QualificationVerdict::NotQualified);
+        assert_eq!(
+            report.findings,
+            vec![QualificationFinding::IncompleteReceipt]
+        );
+    }
+
+    #[test]
+    fn mycelix_adapter_profile_accepts_its_own_build_and_config_identity() {
+        let mut receipt = valid_receipt();
+        receipt.qualification_profile = QualificationProfile::MycelixFhirAdapterR4;
+        receipt.adapter = Some(AdapterBuildIdentity {
+            component_id: "mycelix-fhir-adapter".into(),
+            build_digest: digest('c'),
+            config_digest: digest('d'),
+        });
+        let report = verify_runtime_qualification(
+            &receipt,
+            15_000,
+            "hapi-r4",
+            "postgres-18",
+            &FixtureAuthenticator { valid: true },
+        );
+        assert_eq!(report.verdict, QualificationVerdict::Qualified);
     }
 
     #[test]
