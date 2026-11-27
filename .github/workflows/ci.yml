@@ -157,8 +157,8 @@ jobs:
 
       - name: Validate qualification manifest and example evidence
         run: |
-          jq -e '.benchmark_id == "mycelix.fhir-transaction-adapter-qualification.v1" and (.required_probes | length == 8)' research/fhir-transaction-adapter-qualification/manifest-v1.json
-          jq -e '.schema_version == 1 and .probe_evidence.suite_version == 1' research/fhir-transaction-adapter-qualification/example-evidence-v1.json
+          jq -e '.benchmark_id == "mycelix.fhir-transaction-adapter-qualification.v1" and (.required_probes | length == 8) and (.required_components | length == 5)' research/fhir-transaction-adapter-qualification/manifest-v1.json
+          jq -e '.schema_version == 1 and .probe_evidence.suite_version == 1 and (.execution_context.components | length == 5)' research/fhir-transaction-adapter-qualification/example-evidence-v1.json
 
       - name: Run qualification evaluator adversarial tests
         run: bash scripts/tests/test-fhir-transaction-qualification.sh
