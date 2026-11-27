@@ -25,12 +25,13 @@ The script writes raw CapabilityStatement, request/response Bundles and a machin
 
 ## What is probed
 
-1. Read `/metadata`, record the exact bytes' SHA-256, assert FHIR R4 version `4.0.1`, and confirm that transaction interaction is declared.
-2. Submit a transaction Bundle containing a synthetic Patient and linked Provenance.
-3. Replay the same Bundle with conditional create and assert exactly one Patient and one Provenance remain.
-4. Cause an `If-Match` version precondition failure inside a transaction after a preceding create; independently search the database through the FHIR read API and assert the first create rolled back and the pre-existing Patient version did not change.
+1. Read `/metadata`, record the exact bytes' SHA-256, assert FHIR R4 version `4.0.1`, and require the server to declare transaction interaction plus conditional create for Patient and Provenance.
+2. Submit a FHIR R4 transaction Bundle with a synthetic Patient using conditional create by `Patient.identifier`, and a linked Provenance whose `target` Reference carries both the transaction `fullUrl` and a synthetic `Reference.identifier`. The Provenance conditional create and follow-up search use the standard `target:identifier` reference modifier—not a non-existent Provenance `identifier` search parameter.
+3. Replay the same transaction and check that exactly one Patient and one Provenance remain. Capture Patient version movement separately; this is a cardinality/replay test, not proof that the replay was a no-op or that distributed execution is exactly-once.
+4. Run two concurrent Patient updates with the same `If-Match` version. Require one successful update and one HTTP 412 stale-version rejection.
+5. Submit a transaction that first creates a rollback marker and then attempts an update with an impossible `If-Match` value. Require an OperationOutcome failure, verify the marker is absent, and verify the prior Patient version did not advance.
 
-A passed probe means only that this specific image/configuration behaved as observed for these synthetic fixtures. The generated evidence deliberately says overall `defer`.
+The follow-up reads are performed through the same HAPI FHIR service. They are not an independent database observer and must not be described as such. The generated evidence deliberately leaves overall qualification at `defer`.
 
 ## Important limitations
 
