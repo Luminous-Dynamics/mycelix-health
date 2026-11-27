@@ -298,7 +298,7 @@ jq -n \
 
 # Deterministic stale If-Match control: this is not a race. FHIR R4 specifies
 # 412 when the supplied version does not match. Preserve raw response first.
-stale_if_match="W/\\"mycelix-stale-$run_id\\""
+stale_if_match="$(printf 'W/\"mycelix-stale-%s\"' \"$run_id\")"
 stale_precondition_status="$(curl --silent --show-error --output "$WORK_DIR/stale-precondition-response.json" \
   --write-out '%{http_code}' \
   -X PUT \
@@ -308,9 +308,9 @@ stale_precondition_status="$(curl --silent --show-error --output "$WORK_DIR/stal
   --data-binary @"$WORK_DIR/concurrent-a.json" \
   "$FHIR_BASE_URL/Patient/$existing_id")"
 cp "$WORK_DIR/stale-precondition-response.json" "$ARTIFACT_DIR/stale-precondition-response.json"
-printf '%s\\n' "$stale_precondition_status" > "$ARTIFACT_DIR/stale-precondition-http-status.txt"
+printf '%s\n' "$stale_precondition_status" > "$ARTIFACT_DIR/stale-precondition-http-status.txt"
 if [[ "$stale_precondition_status" != "412" ]]; then
-  printf 'FHIR R4 stale If-Match must return 412; observed HTTP %s\\n' "$stale_precondition_status" >&2
+  printf 'FHIR R4 stale If-Match must return 412; observed HTTP %s\n' "$stale_precondition_status" >&2
   cat "$WORK_DIR/stale-precondition-response.json" >&2
   exit 1
 fi
@@ -374,10 +374,10 @@ for status in "$concurrent_a_status" "$concurrent_b_status"; do
     conflict_count=$((conflict_count + 1))
   fi
 done
-printf '%s\\n' "$success_count" > "$ARTIFACT_DIR/concurrent-success-count.txt"
-printf '%s\\n' "$conflict_count" > "$ARTIFACT_DIR/concurrent-version-conflict-count.txt"
+printf '%s\n' "$success_count" > "$ARTIFACT_DIR/concurrent-success-count.txt"
+printf '%s\n' "$conflict_count" > "$ARTIFACT_DIR/concurrent-version-conflict-count.txt"
 if [[ "$success_count" != "1" || "$conflict_count" != "1" ]]; then
-  printf 'Expected exactly one accepted write and one 409/412 version conflict; observed success=%s conflict=%s (A=%s B=%s)\\n' \
+  printf 'Expected exactly one accepted write and one 409/412 version conflict; observed success=%s conflict=%s (A=%s B=%s)\n' \
     "$success_count" "$conflict_count" "$concurrent_a_status" "$concurrent_b_status" >&2
   exit 1
 fi
