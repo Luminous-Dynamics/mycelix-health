@@ -403,8 +403,7 @@ impl crate::QualificationRegistry for RuntimeReceiptQualificationRegistry<'_> {
                 &self.receipt.database.build_digest,
                 &self.receipt.database.config_digest,
             )
-        } else if self.receipt.qualification_profile
-            == QualificationProfile::MycelixFhirAdapterR4
+        } else if self.receipt.qualification_profile == QualificationProfile::MycelixFhirAdapterR4
             && self
                 .receipt
                 .adapter
@@ -557,10 +556,7 @@ mod tests {
         );
         assert!(registry.qualification_for("hapi-r4").is_none());
         assert!(registry.qualification_for("postgres-18").is_none());
-        assert_eq!(
-            registry.report().verdict,
-            QualificationVerdict::Defer
-        );
+        assert_eq!(registry.report().verdict, QualificationVerdict::Defer);
     }
 
     #[test]
