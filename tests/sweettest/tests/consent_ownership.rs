@@ -335,3 +335,107 @@ async fn test_non_owner_cannot_create_consent() -> Result<()> {
 
     Ok(())
 }
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+struct AuthorizationCheckInput {
+    patient_hash: ActionHash,
+    requestor: AgentPubKey,
+    data_category: DataCategory,
+    permission: DataPermission,
+    is_emergency: bool,
+}
+
+#[tokio::test]
+#[ignore = "Requires a built health.dna and Holochain conductor"]
+async fn test_authorization_requestor_is_bound_to_authenticated_cell_agent() -> Result<()> {
+    let (conductor, alice_cell, bob_cell) = setup_two_agents().await?;
+
+    let patient_record: Record = conductor
+        .call_zome(&alice_cell, "patient", "create_patient", test_patient())
+        .await?;
+    let patient_hash = patient_record.action_address().clone();
+
+    // Alice, the patient owner, grants only Alice read access to demographics.
+    let consent = Consent {
+        consent_id: "CONSENT-AUTHOR-BOUND-001".to_string(),
+        patient_hash: patient_hash.clone(),
+        grantee: ConsentGrantee::Agent(alice_cell.agent_pubkey().clone()),
+        scope: ConsentScope {
+            data_categories: vec![DataCategory::Demographics],
+            date_range: None,
+            encounter_hashes: None,
+            exclusions: Vec::new(),
+        },
+        permissions: vec![DataPermission::Read],
+        purpose: ConsentPurpose::Treatment,
+        status: ConsentStatus::Active,
+        granted_at: Timestamp::from_micros(0),
+        expires_at: None,
+        revoked_at: None,
+        revocation_reason: None,
+        document_hash: None,
+        witness: None,
+        legal_representative: None,
+        notes: None,
+    };
+    let _: Record = conductor
+        .call_zome(&alice_cell, "consent", "create_consent", consent)
+        .await?;
+
+    // The grantee may ask about their own authority.
+    let alice_result: serde_json::Value = conductor
+        .call_zome(
+            &alice_cell,
+            "consent",
+            "check_authorization",
+            AuthorizationCheckInput {
+                patient_hash: patient_hash.clone(),
+                requestor: alice_cell.agent_pubkey().clone(),
+                data_category: DataCategory::Demographics,
+                permission: DataPermission::Read,
+                is_emergency: false,
+            },
+        )
+        .await?;
+    assert_eq!(alice_result["authorized"], true);
+
+    // A different authenticated agent cannot obtain an allowed result.
+    let bob_result: serde_json::Value = conductor
+        .call_zome(
+            &bob_cell,
+            "consent",
+            "check_authorization",
+            AuthorizationCheckInput {
+                patient_hash: patient_hash.clone(),
+                requestor: bob_cell.agent_pubkey().clone(),
+                data_category: DataCategory::Demographics,
+                permission: DataPermission::Read,
+                is_emergency: false,
+            },
+        )
+        .await?;
+    assert_eq!(bob_result["authorized"], false);
+
+    // Crucial negative control: Bob cannot place Alice's public key in the
+    // request payload and have the consent zome evaluate Alice's grant.
+    let spoofed: Result<serde_json::Value, _> = conductor
+        .call_zome(
+            &bob_cell,
+            "consent",
+            "check_authorization",
+            AuthorizationCheckInput {
+                patient_hash,
+                requestor: alice_cell.agent_pubkey().clone(),
+                data_category: DataCategory::Demographics,
+                permission: DataPermission::Read,
+                is_emergency: false,
+            },
+        )
+        .await;
+    assert!(
+        spoofed.is_err(),
+        "caller-supplied requestor must not override the authenticated cell agent"
+    );
+
+    Ok(())
+}
