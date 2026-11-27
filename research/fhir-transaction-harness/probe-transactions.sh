@@ -217,7 +217,7 @@ writer_a_pid=$!
   curl --silent --show-error --output "$WORK_DIR/concurrent-b-response.json" \
     --write-out '%{http_code}' \
     -X PUT \
-    -H "If-Match: $if_match_header"
+    -H "If-Match: $if_match_header" \
     -H 'Content-Type: application/fhir+json' \
     -H 'Accept: application/fhir+json' \
     --data-binary @"$WORK_DIR/concurrent-b.json" \
