@@ -1,0 +1,79 @@
+name: HAPI R4 PostgreSQL Transaction Probes
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "research/fhir-transaction-harness/**"
+      - ".github/workflows/fhir-transaction-harness.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: hapi-r4-postgres-probes-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  real-fhir-r4:
+    name: Pinned HAPI R4 + PostgreSQL behavioral probes
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    steps:
+      - name: Check out exact revision
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+
+      - name: Validate harness script and Compose model
+        run: |
+          set -euo pipefail
+          bash -n research/fhir-transaction-harness/probe-transactions.sh
+          docker compose -f research/fhir-transaction-harness/compose.yaml config --quiet
+          docker compose version
+          docker version
+
+      - name: Start pinned HAPI R4 and PostgreSQL
+        run: |
+          set -euo pipefail
+          docker compose -f research/fhir-transaction-harness/compose.yaml up \
+            --detach --wait --wait-timeout 900
+
+      - name: Capture runtime identities and PostgreSQL version
+        run: |
+          set -euo pipefail
+          mkdir -p artifacts/fhir-qualification-ci
+          docker compose -f research/fhir-transaction-harness/compose.yaml images --format json \
+            | tee artifacts/fhir-qualification-ci/compose-images.json
+          docker compose -f research/fhir-transaction-harness/compose.yaml exec -T postgres \
+            psql -U hapi_test -d hapi -Atc 'SELECT version();' \
+            | tee artifacts/fhir-qualification-ci/postgres-version.txt
+          sha256sum research/fhir-transaction-harness/compose.yaml \
+            research/fhir-transaction-harness/probe-transactions.sh \
+            | tee artifacts/fhir-qualification-ci/harness-sha256.txt
+
+      - name: Execute live FHIR transaction probes
+        run: |
+          set -euo pipefail
+          ARTIFACT_DIR=artifacts/fhir-qualification-ci/probes \
+            FHIR_BASE_URL=http://127.0.0.1:8080/fhir \
+            bash research/fhir-transaction-harness/probe-transactions.sh
+
+      - name: Capture container logs
+        if: always()
+        run: |
+          docker compose -f research/fhir-transaction-harness/compose.yaml logs --no-color \
+            > artifacts/fhir-qualification-ci/container-logs.txt 2>&1 || true
+          docker compose -f research/fhir-transaction-harness/compose.yaml down --volumes \
+            --remove-orphans || true
+
+      - name: Upload synthetic qualification evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: hapi-r4-postgres-probes-${{ github.sha }}
+          path: artifacts/fhir-qualification-ci/
+          if-no-files-found: warn
+          retention-days: 30
