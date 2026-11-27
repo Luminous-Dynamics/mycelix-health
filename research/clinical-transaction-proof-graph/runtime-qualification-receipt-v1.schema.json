@@ -66,7 +66,7 @@
     },
     "probes": {
       "type": "array",
-      "minItems": 7,
+      "minItems": 8,
       "items": {
         "$ref": "#/$defs/probeEvidence"
       }
@@ -247,6 +247,7 @@
             "conditional-replay",
             "stale-if-match",
             "concurrent-version-conflict",
+            "concurrent-conditional-create",
             "transaction-rollback",
             "direct-postgres-observer"
           ]
