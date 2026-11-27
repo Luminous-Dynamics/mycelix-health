@@ -1,0 +1,41 @@
+{
+  "schema_version": 1,
+  "benchmark_id": "mycelix.fhir-transaction-adapter-qualification.v1",
+  "status": "synthetic-qualification-contract",
+  "data_classification": "no_phi",
+  "target_fhir_version": "4.0.1",
+  "qualification_states": ["qualified", "not_qualified", "defer"],
+  "policy": {
+    "capability_statement_is_discovery_evidence_only": true,
+    "maximum_evidence_age_seconds": 86400,
+    "maximum_future_clock_skew_seconds": 300,
+    "sha256_evidence_digest_pattern": "^sha256:[0-9a-f]{64}$"
+  },
+  "required_capability": {
+    "resource_type": "CapabilityStatement",
+    "kind": "instance",
+    "implementation_url_must_equal_exact_server_base_url": true,
+    "fhir_version": "4.0.1",
+    "rest_mode": "server",
+    "system_interaction": "transaction"
+  },
+  "required_probes": [
+    {"id": "transaction_rollback_atomicity", "description": "A transaction containing a valid synthetic write and a deliberately failing entry leaves no partial write."},
+    {"id": "transaction_target_provenance_audit", "description": "A successful single-server transaction persists the synthetic target, its Provenance, and its AuditEvent consistently."},
+    {"id": "stale_version_precondition", "description": "A stale version precondition is rejected and no dependent write is partially committed."},
+    {"id": "conditional_create_deduplication", "description": "Two equivalent synthetic conditional creates do not create two logical resources."},
+    {"id": "consent_guard_at_commit", "description": "A server-side authorization hook or equivalent commit-bound guard races revocation and prevents a release serialized after revocation; a pre-read alone does not pass."},
+    {"id": "audit_outbox_atomic_intent", "description": "A durable release intent, audit intent, and outbox record are committed together before external delivery begins."},
+    {"id": "lost_response_reconciliation", "description": "After commit with a lost response, retry or lookup with the same operation key recovers the original result without repeating the external side effect."},
+    {"id": "principal_patient_tenant_binding", "description": "Synthetic negative controls prove that changing actor, tenant, or patient binding cannot reuse the qualified transaction."}
+  ],
+  "explicit_non_claims": [
+    "CapabilityStatement declarations are not active proof of server behavior.",
+    "FHIR transaction atomicity is limited to the transaction boundary of one FHIR server.",
+    "A FHIR transaction does not create an atomic transaction across a separate consent registry, Holochain DHT, gateway, and remote recipient.",
+    "FHIR REST does not itself define authentication, authorization, or audit collection.",
+    "A successful probe does not prove a cryptographic signature unless the evidence artifact is independently verified.",
+    "An outbox does not prove exactly-once delivery to a remote system without remote idempotency and reconciliation.",
+    "This benchmark does not establish HIPAA compliance, clinical validation, or production readiness."
+  ]
+}
