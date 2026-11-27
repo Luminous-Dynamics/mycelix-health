@@ -247,11 +247,34 @@ describe('native clinical countersigning evidence', () => {
     expect(unknownObservation.state).toBe('unknown');
   });
 
-  it('requires explicit action evidence for a completed terminal observation', async () => {
+  it('requires verifier-produced evidence for a completed terminal observation', async () => {
     const { evidence } = await fixture();
-    await expect(createTerminalCountersigningObservationV1('observer', evidence.intent.participants[0]!.agent_binding, evidence.intent, 'completed', null, 1_700_000_140_000n, new Uint8Array(32).fill(13))).rejects.toThrow(/action hash/i);
-    const observation = await createTerminalCountersigningObservationV1('observer', evidence.intent.participants[0]!.agent_binding, evidence.intent, 'completed', evidence.participant_actions[0]!.action_hash, 1_700_000_140_000n, new Uint8Array(32).fill(14));
+    const participantBinding = evidence.intent.participants[0]!.agent_binding;
+
+    await expect(
+      createTerminalCountersigningObservationV1(
+        'observer',
+        participantBinding,
+        evidence.intent,
+        null as never,
+        1_700_000_140_000n,
+        new Uint8Array(32).fill(13),
+      ),
+    ).rejects.toThrow(/private verifier-produced evidence/i);
+
+    const verified = await verifyNativeClinicalCountersigningEvidenceV1(evidence);
+    const observation = await createTerminalCountersigningObservationV1(
+      'observer',
+      participantBinding,
+      evidence.intent,
+      verified,
+      1_700_000_140_000n,
+      new Uint8Array(32).fill(14),
+    );
     expect(observation.state).toBe('completed');
-    expect(await clinicalCountersigningIntentDigestV1(evidence.intent)).toEqual(Uint8Array.from(observation.intent_digest));
+    expect(observation.action_hash_binding).toBe(evidence.participant_actions[0]!.action_hash);
+    expect(await clinicalCountersigningIntentDigestV1(evidence.intent)).toEqual(
+      Uint8Array.from(observation.intent_digest),
+    );
   });
 });
