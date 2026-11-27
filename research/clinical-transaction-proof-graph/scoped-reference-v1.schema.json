@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://mycelix.health/schemas/scoped-reference-v1.schema.json",
+  "$id": "urn:mycelix:schema:scoped-reference-v1",
   "title": "Mycelix Scoped Reference Envelope v1",
   "description": "Typed opaque references for clinical transaction evidence. Shape validation only; no cryptographic or unlinkability claim.",
   "oneOf": [
