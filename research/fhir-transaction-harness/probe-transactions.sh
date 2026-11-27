@@ -380,7 +380,7 @@ jq -n \
   --arg patient_version_before_replay "$patient_version_before_replay" \
   --arg patient_version_after_replay "$patient_version_after_replay" \
   --arg rollback_http "$rollback_status" \
-  --arg patient_conditional_create_declared "$patient_update_create_declared" \
+  --arg patient_conditional_create_declared "$patient_conditional_create_declared" \
   --arg provenance_conditional_create_declared "$provenance_conditional_create_declared" \
   --arg concurrent_a_http "$concurrent_a_status" \
   --arg concurrent_b_http "$concurrent_b_status" \
