@@ -2,6 +2,18 @@
 
 **Status:** synthetic qualification contract and deterministic evidence evaluator. No production FHIR endpoint has been qualified by this document.
 
+## Positioning relative to existing conformance tooling
+
+This profile complements established FHIR conformance tooling; it is not a replacement for it.
+
+- Run the official FHIR R4 validator and the applicable implementation-guide validator for structural/profile conformance.
+- Reuse Inferno Test Kits for their intended API-conformance scope, including the ONC Standardized API and SMART App Launch test suites where applicable.
+- Run this profile after those checks to qualify the *deployed instance's* transactional and recovery behavior under synthetic adversarial histories.
+
+Inferno is an existing framework for authoring and running portable FHIR API conformance suites, and ONC lists it for the §170.315(g)(10) standardized API criterion with FHIR R4 and US Core. Mycelix should compose with those tools and add the transactional authorization/recovery probes they are not designed to replace.
+
+A green FHIR validator or Inferno suite does not imply that a Consent revocation race is closed, that a cross-system outbox is durable, or that a lost remote acknowledgement can be reconciled without a duplicate side effect.
+
 ## Why qualification must be active
 
 FHIR R4 transaction Bundles can submit a set of server interactions as one atomic transaction, where the server accepts all changes or rejects the set. The R4 specification explicitly notes that transactions and conditional create/update/delete are complex and are not expected to be implemented by every server. A transaction can be useful for storing a target resource with its Provenance, but the actual deployed server must be tested.
