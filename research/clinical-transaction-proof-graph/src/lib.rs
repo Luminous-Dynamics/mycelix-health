@@ -277,10 +277,7 @@ where
             return VerificationReport::defer(ReasonCode::IncompleteBinding, event_count);
         }
         if !authenticator.verify_event_and_signature(event) {
-            return VerificationReport::rejected(
-                ReasonCode::InvalidDigestOrSignature,
-                event_count,
-            );
+            return VerificationReport::rejected(ReasonCode::InvalidDigestOrSignature, event_count);
         }
 
         let Some(qualification) = qualifications.qualification_for(&event.component_id) else {
@@ -332,10 +329,7 @@ where
             };
             let parent_event = &graph.events[parent_index];
             if parent_event.event_digest != parent.event_digest {
-                return VerificationReport::rejected(
-                    ReasonCode::ParentDigestMismatch,
-                    event_count,
-                );
+                return VerificationReport::rejected(ReasonCode::ParentDigestMismatch, event_count);
             }
             indegree[child_index] += 1;
             children[parent_index].push(child_index);
@@ -386,10 +380,7 @@ where
 
     for event in &graph.events {
         if !valid_role_for_event(event) {
-            return VerificationReport::rejected(
-                ReasonCode::InvalidStateTransition,
-                event_count,
-            );
+            return VerificationReport::rejected(ReasonCode::InvalidStateTransition, event_count);
         }
         if (event.kind == EventKind::Requested
             && event.actor_ref_digest != graph.binding.authenticated_actor_ref_digest)
@@ -403,19 +394,18 @@ where
             );
         }
         if !valid_parent_transition(event, graph) {
-            return VerificationReport::rejected(
-                ReasonCode::MissingRequiredParent,
-                event_count,
-            );
+            return VerificationReport::rejected(ReasonCode::MissingRequiredParent, event_count);
         }
     }
 
     // Every explicit unknown must be reconciled by a later event that
     // names that exact unknown event as a parent. A separate "success" result
     // elsewhere in the graph cannot erase an unresolved attempt.
-    for unknown in graph.events.iter().filter(|event| {
-        event.kind == EventKind::CommitResult(CommitOutcome::Unknown)
-    }) {
+    for unknown in graph
+        .events
+        .iter()
+        .filter(|event| event.kind == EventKind::CommitResult(CommitOutcome::Unknown))
+    {
         let reconciled = graph.events.iter().any(|candidate| {
             matches!(candidate.kind, EventKind::CommitReconciled(_))
                 && candidate
@@ -428,9 +418,11 @@ where
         }
     }
 
-    for unknown in graph.events.iter().filter(|event| {
-        event.kind == EventKind::DeliveryResult(DeliveryOutcome::Unknown)
-    }) {
+    for unknown in graph
+        .events
+        .iter()
+        .filter(|event| event.kind == EventKind::DeliveryResult(DeliveryOutcome::Unknown))
+    {
         let reconciled = graph.events.iter().any(|candidate| {
             matches!(candidate.kind, EventKind::DeliveryReconciled(_))
                 && candidate
@@ -443,13 +435,19 @@ where
         }
     }
 
-    let definitive_commit_count = graph.events.iter().filter(|event| {
-        matches!(
-            event.kind,
-            EventKind::CommitResult(CommitOutcome::Committed | CommitOutcome::Rejected)
-                | EventKind::CommitReconciled(CommitOutcome::Committed | CommitOutcome::Rejected)
-        )
-    }).count();
+    let definitive_commit_count = graph
+        .events
+        .iter()
+        .filter(|event| {
+            matches!(
+                event.kind,
+                EventKind::CommitResult(CommitOutcome::Committed | CommitOutcome::Rejected)
+                    | EventKind::CommitReconciled(
+                        CommitOutcome::Committed | CommitOutcome::Rejected
+                    )
+            )
+        })
+        .count();
     if definitive_commit_count > 1 {
         return VerificationReport::rejected(
             ReasonCode::MultipleDefinitiveCommitOutcomes,
@@ -457,13 +455,17 @@ where
         );
     }
 
-    let recipient_effect_count = graph.events.iter().filter(|event| {
-        matches!(
-            event.kind,
-            EventKind::DeliveryResult(DeliveryOutcome::RecipientEffectObserved)
-                | EventKind::DeliveryReconciled(DeliveryOutcome::RecipientEffectObserved)
-        )
-    }).count();
+    let recipient_effect_count = graph
+        .events
+        .iter()
+        .filter(|event| {
+            matches!(
+                event.kind,
+                EventKind::DeliveryResult(DeliveryOutcome::RecipientEffectObserved)
+                    | EventKind::DeliveryReconciled(DeliveryOutcome::RecipientEffectObserved)
+            )
+        })
+        .count();
     if recipient_effect_count > 1 {
         return VerificationReport::rejected(
             ReasonCode::MultipleRecipientEffectWitnesses,
@@ -546,10 +548,7 @@ where
                     event_count,
                 );
             }
-            VerificationReport::verified(
-                OperationConclusion::RecipientEffectObserved,
-                event_count,
-            )
+            VerificationReport::verified(OperationConclusion::RecipientEffectObserved, event_count)
         }
     }
 }
@@ -664,9 +663,7 @@ fn valid_parent_transition(event: &EvidenceEvent, graph: &ProofGraph) -> bool {
         }
         EventKind::DeliveryAttempted => {
             has_parent(&|kind| kind == EventKind::CommitResult(CommitOutcome::Committed))
-                || has_parent(&|kind| {
-                    kind == EventKind::CommitReconciled(CommitOutcome::Committed)
-                })
+                || has_parent(&|kind| kind == EventKind::CommitReconciled(CommitOutcome::Committed))
         }
         EventKind::DeliveryResult(_) => has_parent(&|kind| kind == EventKind::DeliveryAttempted),
         EventKind::DeliveryReconciled(outcome) => {
@@ -724,7 +721,13 @@ mod tests {
     fn qualifications() -> FixtureQualifications {
         let mut entries = HashMap::new();
         for component in [
-            "client", "idp", "policy", "gateway", "backend", "recipient", "reconciler",
+            "client",
+            "idp",
+            "policy",
+            "gateway",
+            "backend",
+            "recipient",
+            "reconciler",
         ] {
             entries.insert(
                 component.into(),
@@ -794,48 +797,86 @@ mod tests {
                 Some("sha256:resource-set-v7".into())
             } else {
                 None
-            }
+            },
         }
     }
 
     fn successful_graph() -> ProofGraph {
         let requested = event(
-            "event-01", "patient-client", ActorRole::Client, 1,
-            EventKind::Requested, &[],
+            "event-01",
+            "patient-client",
+            ActorRole::Client,
+            1,
+            EventKind::Requested,
+            &[],
         );
         let identity = event(
-            "event-02", "identity-service", ActorRole::IdentityProvider, 1,
-            EventKind::IdentityBound, &[&requested],
+            "event-02",
+            "identity-service",
+            ActorRole::IdentityProvider,
+            1,
+            EventKind::IdentityBound,
+            &[&requested],
         );
         let authority = event(
-            "event-03", "policy-engine", ActorRole::PolicyEngine, 1,
-            EventKind::AuthorityDecided, &[&identity],
+            "event-03",
+            "policy-engine",
+            ActorRole::PolicyEngine,
+            1,
+            EventKind::AuthorityDecided,
+            &[&identity],
         );
         let prepared = event(
-            "event-04", "gateway", ActorRole::Gateway, 1,
-            EventKind::Prepared, &[&authority],
+            "event-04",
+            "gateway",
+            ActorRole::Gateway,
+            1,
+            EventKind::Prepared,
+            &[&authority],
         );
         let commit_attempt = event(
-            "event-05", "gateway", ActorRole::Gateway, 2,
-            EventKind::CommitAttempted, &[&prepared],
+            "event-05",
+            "gateway",
+            ActorRole::Gateway,
+            2,
+            EventKind::CommitAttempted,
+            &[&prepared],
         );
         let committed = event(
-            "event-06", "database-adapter", ActorRole::ExecutionBackend, 1,
-            EventKind::CommitResult(CommitOutcome::Committed), &[&commit_attempt, &authority],
+            "event-06",
+            "database-adapter",
+            ActorRole::ExecutionBackend,
+            1,
+            EventKind::CommitResult(CommitOutcome::Committed),
+            &[&commit_attempt, &authority],
         );
         let delivery_attempt = event(
-            "event-07", "gateway", ActorRole::Gateway, 3,
-            EventKind::DeliveryAttempted, &[&committed],
+            "event-07",
+            "gateway",
+            ActorRole::Gateway,
+            3,
+            EventKind::DeliveryAttempted,
+            &[&committed],
         );
         let observed = event(
-            "event-08", "recipient", ActorRole::Recipient, 1,
-            EventKind::DeliveryResult(DeliveryOutcome::RecipientEffectObserved), &[&delivery_attempt],
+            "event-08",
+            "recipient",
+            ActorRole::Recipient,
+            1,
+            EventKind::DeliveryResult(DeliveryOutcome::RecipientEffectObserved),
+            &[&delivery_attempt],
         );
         ProofGraph {
             binding: binding(),
             events: vec![
-                requested, identity, authority, prepared, commit_attempt, committed,
-                delivery_attempt, observed,
+                requested,
+                identity,
+                authority,
+                prepared,
+                commit_attempt,
+                committed,
+                delivery_attempt,
+                observed,
             ],
         }
     }
@@ -845,7 +886,10 @@ mod tests {
         let graph = successful_graph();
         let report = verify_graph(&graph, 5_000, &FixtureAuthenticator, &qualifications());
         assert_eq!(report.verdict, Verdict::Verified);
-        assert_eq!(report.conclusion, OperationConclusion::RecipientEffectObserved);
+        assert_eq!(
+            report.conclusion,
+            OperationConclusion::RecipientEffectObserved
+        );
         assert!(report.findings.is_empty());
     }
 
@@ -900,7 +944,11 @@ mod tests {
     fn untrusted_self_issued_qualification_defers() {
         let graph = successful_graph();
         let mut registry = qualifications();
-        registry.entries.get_mut("backend").unwrap().independently_issued = false;
+        registry
+            .entries
+            .get_mut("backend")
+            .unwrap()
+            .independently_issued = false;
         let report = verify_graph(&graph, 5_000, &FixtureAuthenticator, &registry);
         assert_eq!(report.verdict, Verdict::Defer);
         assert_eq!(report.findings, vec![ReasonCode::SelfIssuedQualification]);
@@ -1080,7 +1128,10 @@ mod tests {
         graph.events[1].bound_actor_ref_digest = Some("sha256:spoofed-actor".into());
         let report = verify_graph(&graph, 5_000, &FixtureAuthenticator, &qualifications());
         assert_eq!(report.verdict, Verdict::Rejected);
-        assert_eq!(report.findings, vec![ReasonCode::AuthenticatedActorMismatch]);
+        assert_eq!(
+            report.findings,
+            vec![ReasonCode::AuthenticatedActorMismatch]
+        );
     }
 
     #[test]
