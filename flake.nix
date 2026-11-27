@@ -136,6 +136,7 @@
             buildInputs = with pkgs; [
               holochainPackages.holochain
               holochainPackages.hc
+              pkgs.nodejs_20
               rustToolchain
               pkg-config
               openssl
