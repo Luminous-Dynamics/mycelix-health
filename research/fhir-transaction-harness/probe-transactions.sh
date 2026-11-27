@@ -161,20 +161,69 @@ done
 
 conditional_race_201=0
 conditional_race_200=0
+conditional_race_409=0
 conditional_race_other=0
 for attempt in $(seq 1 128); do
   status="$(cat "$WORK_DIR/conditional-race-status-$attempt.txt")"
   case "$status" in
     201) conditional_race_201=$((conditional_race_201 + 1)) ;;
     200) conditional_race_200=$((conditional_race_200 + 1)) ;;
+    409) conditional_race_409=$((conditional_race_409 + 1)) ;;
     *) conditional_race_other=$((conditional_race_other + 1)) ;;
   esac
   cp "$WORK_DIR/conditional-race-status-$attempt.txt" "$ARTIFACT_DIR/conditional-race-status-$attempt.txt"
   cp "$WORK_DIR/conditional-race-response-$attempt.json" "$ARTIFACT_DIR/conditional-race-response-$attempt.json"
 done
+
+# Exactly one creator remains required. HAPI may transiently surface its
+# HFJ_RES_SEARCH_URL uniqueness race as a 409 OperationOutcome for a concurrent
+# loser. Treat that as a recovery exercise, not a success: only a same-request
+# retry that resolves to the existing resource can clear the operation.
 test "$conditional_race_201" = "1"
-test "$conditional_race_200" = "127"
 test "$conditional_race_other" = "0"
+test "$((conditional_race_200 + conditional_race_409 + conditional_race_201))" = "128"
+
+conditional_race_patient_id=""
+for attempt in $(seq 1 128); do
+  response="$WORK_DIR/conditional-race-response-$attempt.json"
+  if jq -e '.resourceType == "Patient" and (.id | type == "string" and length > 0)' "$response" >/dev/null; then
+    conditional_race_patient_id="$(jq -r '.id' "$response")"
+    break
+  fi
+done
+test -n "$conditional_race_patient_id"
+
+conditional_race_recovered_409=0
+for attempt in $(seq 1 128); do
+  status="$(cat "$WORK_DIR/conditional-race-status-$attempt.txt")"
+  if [[ "$status" != "409" ]]; then
+    continue
+  fi
+
+  # Only the known duplicate conditional-search-URL uniqueness race is retried.
+  jq -e '
+    .resourceType == "OperationOutcome"
+    and ([.issue[]? | (.diagnostics // "") | contains("hfj_res_search_url_pkey")] | any)
+  ' "$WORK_DIR/conditional-race-response-$attempt.json" >/dev/null
+
+  retry_status="$(curl --silent --show-error \
+    --output "$WORK_DIR/conditional-race-retry-response-$attempt.json" \
+    --write-out '%{http_code}' \
+    -X POST \
+    -H "If-None-Exist: identifier=$identifier_system|$conditional_race_identifier" \
+    -H 'Content-Type: application/fhir+json' \
+    -H 'Accept: application/fhir+json' \
+    --data-binary @"$WORK_DIR/conditional-race-patient.json" \
+    "$FHIR_BASE_URL/Patient")"
+  printf '%s\n' "$retry_status" > "$WORK_DIR/conditional-race-retry-status-$attempt.txt"
+  cp "$WORK_DIR/conditional-race-retry-status-$attempt.txt" "$ARTIFACT_DIR/conditional-race-retry-status-$attempt.txt"
+  cp "$WORK_DIR/conditional-race-retry-response-$attempt.json" "$ARTIFACT_DIR/conditional-race-retry-response-$attempt.json"
+  test "$retry_status" = "200"
+  retry_patient_id="$(jq -r '.id // empty' "$WORK_DIR/conditional-race-retry-response-$attempt.json")"
+  test "$retry_patient_id" = "$conditional_race_patient_id"
+  conditional_race_recovered_409=$((conditional_race_recovered_409 + 1))
+done
+test "$conditional_race_recovered_409" = "$conditional_race_409"
 
 conditional_race_count="$(curl --silent --show-error --fail --get "$FHIR_BASE_URL/Patient" \
   -H 'Accept: application/fhir+json' \
@@ -184,6 +233,9 @@ conditional_race_count="$(curl --silent --show-error --fail --get "$FHIR_BASE_UR
 test "$conditional_race_count" = "1"
 printf '%s\n' "$conditional_race_201" > "$ARTIFACT_DIR/conditional-race-created-count.txt"
 printf '%s\n' "$conditional_race_200" > "$ARTIFACT_DIR/conditional-race-existing-count.txt"
+printf '%s\n' "$conditional_race_409" > "$ARTIFACT_DIR/conditional-race-conflict-count.txt"
+printf '%s\n' "$conditional_race_recovered_409" > "$ARTIFACT_DIR/conditional-race-recovered-count.txt"
+printf '%s\n' "$conditional_race_patient_id" > "$ARTIFACT_DIR/conditional-race-patient-id.txt"
 
 provenance_full_url="urn:uuid:00000000-0000-4000-8000-000000000002"
 
@@ -721,8 +773,11 @@ jq -n \
   --arg observation_count "$observation_count" \
   --arg conditional_race_identifier "$conditional_race_identifier" \
   --arg conditional_race_count "$conditional_race_count" \
+  --arg conditional_race_patient_id "$conditional_race_patient_id" \
   --arg conditional_race_201 "$conditional_race_201" \
   --arg conditional_race_200 "$conditional_race_200" \
+  --arg conditional_race_409 "$conditional_race_409" \
+  --arg conditional_race_recovered_409 "$conditional_race_recovered_409" \
   --arg existing_version_before "$version_before_rollback" \
   --arg existing_version_after "$version_after" \
   --argjson database_observation "$database_observation" '
@@ -757,6 +812,10 @@ jq -n \
         unique_resources: ($conditional_race_count | tonumber),
         created_201: ($conditional_race_201 | tonumber),
         existing_200: ($conditional_race_200 | tonumber),
+        transient_409: ($conditional_race_409 | tonumber),
+        recovered_409: ($conditional_race_recovered_409 | tonumber),
+        retry_semantics: "same conditional create resolves to same resource ID",
+        resource_id: $conditional_race_patient_id,
         other_statuses: 0
       },
       provenance_observation_transaction: {result: "passed", http_status: $transaction_http},
