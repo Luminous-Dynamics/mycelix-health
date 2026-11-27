@@ -193,6 +193,9 @@ jq -e '
   and (.entry | length) == 2
 ' "$WORK_DIR/transaction-response.json" >/dev/null
 cp "$WORK_DIR/transaction-response.json" "$ARTIFACT_DIR/transaction-response.json"
+provenance_location="$(jq -r '.entry[0].response.location // empty' "$WORK_DIR/transaction-response.json")"
+provenance_id="$(sed -E 's#^Provenance/([^/]+)/_history/.*$#\\1#' <<< "$provenance_location")"
+test -n "$provenance_id"
 search_total() {
   local resource_type="$1"
   local identifier_value="$2"
@@ -458,6 +461,86 @@ version_after="$(jq -r '.meta.versionId // empty' "$WORK_DIR/existing-after-roll
 test "$version_after" = "$existing_version"
 cp "$WORK_DIR/rollback-response.json" "$ARTIFACT_DIR/rollback-response.json"
 
+# Independent database observer: connect as hapi_observer, a read-only role
+# provisioned by the PostgreSQL init script. No HAPI HTTP read/search is used
+# for these SQL counts/version checks.
+compose_file="${COMPOSE_FILE:-research/fhir-transaction-harness/compose.yaml}"
+database_observation="$(docker compose -f "$compose_file" exec -T \
+  -e PGPASSWORD=local-observer-only-not-a-secret postgres \
+  psql -X -qAt -v ON_ERROR_STOP=1 -U hapi_observer -d hapi \
+    -v patient_id="$patient_id" \
+    -v provenance_id="$provenance_id" \
+    -v observation_id="$observation_id" \
+    -v rollback_identifier="$rollback_identifier" \
+    -v identifier_system="$identifier_system" <<'SQL'
+SELECT jsonb_build_object(
+  'observer_role', current_user,
+  'observer_read_only', current_setting('transaction_read_only')::boolean,
+  'patient_master_rows', (
+    SELECT count(*) FROM HFJ_RESOURCE
+    WHERE RES_TYPE = 'Patient' AND FHIR_ID = :'patient_id'
+  ),
+  'patient_current_version', (
+    SELECT max(RES_VER) FROM HFJ_RESOURCE
+    WHERE RES_TYPE = 'Patient' AND FHIR_ID = :'patient_id'
+  ),
+  'patient_history_rows', (
+    SELECT count(*)
+    FROM HFJ_RES_VER V
+    JOIN HFJ_RESOURCE R ON R.PID = V.RES_ID
+    WHERE R.RES_TYPE = 'Patient' AND R.FHIR_ID = :'patient_id'
+  ),
+  'provenance_master_rows', (
+    SELECT count(*) FROM HFJ_RESOURCE
+    WHERE RES_TYPE = 'Provenance' AND FHIR_ID = :'provenance_id'
+  ),
+  'provenance_history_rows', (
+    SELECT count(*)
+    FROM HFJ_RES_VER V
+    JOIN HFJ_RESOURCE R ON R.PID = V.RES_ID
+    WHERE R.RES_TYPE = 'Provenance' AND R.FHIR_ID = :'provenance_id'
+  ),
+  'observation_master_rows', (
+    SELECT count(*) FROM HFJ_RESOURCE
+    WHERE RES_TYPE = 'Observation' AND FHIR_ID = :'observation_id'
+  ),
+  'observation_current_version', (
+    SELECT max(RES_VER) FROM HFJ_RESOURCE
+    WHERE RES_TYPE = 'Observation' AND FHIR_ID = :'observation_id'
+  ),
+  'observation_history_rows', (
+    SELECT count(*)
+    FROM HFJ_RES_VER V
+    JOIN HFJ_RESOURCE R ON R.PID = V.RES_ID
+    WHERE R.RES_TYPE = 'Observation' AND R.FHIR_ID = :'observation_id'
+  ),
+  'rollback_marker_master_rows', (
+    SELECT count(*)
+    FROM HFJ_SPIDX_TOKEN T
+    JOIN HFJ_RESOURCE R ON R.PID = T.RES_ID
+    WHERE R.RES_TYPE = 'Patient'
+      AND T.SP_NAME = 'identifier'
+      AND T.SP_SYSTEM = :'identifier_system'
+      AND T.SP_VALUE = :'rollback_identifier'
+  )
+)::text;
+SQL
+)"
+jq -e '
+  .observer_role == "hapi_observer"
+  and .observer_read_only == true
+  and .patient_master_rows == 1
+  and .patient_current_version == 2
+  and .patient_history_rows == 2
+  and .provenance_master_rows == 1
+  and .provenance_history_rows == 1
+  and .observation_master_rows == 1
+  and .observation_current_version == 1
+  and .observation_history_rows == 1
+  and .rollback_marker_master_rows == 0
+' <<< "$database_observation" >/dev/null
+cp <(jq . <<< "$database_observation") "$ARTIFACT_DIR/direct-postgres-observation.json"
+
 # This is deliberately an incomplete qualification result. The harness does
 # not test consent revocation at commit, cross-service recovery, recipient-side
 # effects, independent signing, or security/audit configuration.
@@ -484,7 +567,8 @@ jq -n \
   --arg provenance_count "$provenance_count" \
   --arg observation_count "$observation_count" \
   --arg existing_version_before "$version_before_rollback" \
-  --arg existing_version_after "$version_after" '
+  --arg existing_version_after "$version_after" \
+  --argjson database_observation "$database_observation" '
   {
     schema_version: 1,
     harness: "mycelix-hapi-r4-postgres-probes-v1",
@@ -497,6 +581,11 @@ jq -n \
       provenance_conditional_create: ($provenance_conditional_create_declared == "true"),
       provenance_target_search: ($provenance_target_search_declared == "true"),
       observation_conditional_create: ($observation_conditional_create_declared == "true")
+    },
+    independent_postgres_observation: {
+      result: "passed",
+      backend: "PostgreSQL",
+      observation: $database_observation
     },
     probes: {
       provenance_observation_transaction: {result: "passed", http_status: $transaction_http},
