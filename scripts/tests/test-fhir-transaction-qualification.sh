@@ -106,4 +106,14 @@ jq '.execution_context.components[0].observed_at = "2026-11-25T00:00:00Z"' \
   "$tmp/qualified.json" >"$tmp/stale-component.json"
 expect_state "$tmp/stale-component.json" defer
 
+# Unexpected component roles cannot be smuggled into the qualified path.
+jq '.execution_context.components[0].role = "untracked_proxy"' \
+  "$tmp/qualified.json" >"$tmp/unexpected-component.json"
+expect_state "$tmp/unexpected-component.json" defer
+
+# Malformed build digests must not be treated as trustworthy inventory evidence.
+jq '.execution_context.components[0].build_sha256 = "not-a-digest"' \
+  "$tmp/qualified.json" >"$tmp/malformed-component-digest.json"
+expect_state "$tmp/malformed-component-digest.json" defer
+
 echo "FHIR transaction adapter qualification evaluator: all tests passed"
