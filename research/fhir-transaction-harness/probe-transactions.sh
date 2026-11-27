@@ -169,11 +169,100 @@ existing_version="$(jq -r '.entry[0].resource.meta.versionId // empty' "$existin
 test -n "$existing_id"
 test -n "$existing_version"
 
+# Two concurrent writers start from exactly the same resource version. The
+# server must accept one If-Match update and reject the stale competitor.
+jq -n \
+  --arg id "$existing_id" \
+  --arg system "$identifier_system" \
+  --arg value "$patient_identifier" '
+  {
+    resourceType: "Patient",
+    id: $id,
+    active: true,
+    identifier: [{system: $system, value: $value}],
+    name: [{family: "MycelixConcurrentWriterA"}]
+  }
+' > "$WORK_DIR/concurrent-a.json"
+
+jq -n \
+  --arg id "$existing_id" \
+  --arg system "$identifier_system" \
+  --arg value "$patient_identifier" '
+  {
+    resourceType: "Patient",
+    id: $id,
+    active: false,
+    identifier: [{system: $system, value: $value}],
+    name: [{family: "MycelixConcurrentWriterB"}]
+  }
+' > "$WORK_DIR/concurrent-b.json"
+
+start_gate="$WORK_DIR/concurrent-start"
+(
+  while [[ ! -e "$start_gate" ]]; do sleep 0.01; done
+  curl --silent --show-error --output "$WORK_DIR/concurrent-a-response.json" \
+    --write-out '%{http_code}' \
+    -X PUT \
+    -H "If-Match: W/\\"$existing_version\\"" \
+    -H 'Content-Type: application/fhir+json' \
+    -H 'Accept: application/fhir+json' \
+    --data-binary @"$WORK_DIR/concurrent-a.json" \
+    "$FHIR_BASE_URL/Patient/$existing_id" > "$WORK_DIR/concurrent-a-status.txt"
+) &
+writer_a_pid=$!
+(
+  while [[ ! -e "$start_gate" ]]; do sleep 0.01; done
+  curl --silent --show-error --output "$WORK_DIR/concurrent-b-response.json" \
+    --write-out '%{http_code}' \
+    -X PUT \
+    -H "If-Match: W/\\"$existing_version\\"" \
+    -H 'Content-Type: application/fhir+json' \
+    -H 'Accept: application/fhir+json' \
+    --data-binary @"$WORK_DIR/concurrent-b.json" \
+    "$FHIR_BASE_URL/Patient/$existing_id" > "$WORK_DIR/concurrent-b-status.txt"
+) &
+writer_b_pid=$!
+: > "$start_gate"
+if ! wait "$writer_a_pid"; then
+  cat "$WORK_DIR/concurrent-a-response.json" >&2 || true
+  printf 'Concurrent writer A failed at transport level\n' >&2
+  exit 1
+fi
+if ! wait "$writer_b_pid"; then
+  cat "$WORK_DIR/concurrent-b-response.json" >&2 || true
+  printf 'Concurrent writer B failed at transport level\n' >&2
+  exit 1
+fi
+
+concurrent_a_status="$(cat "$WORK_DIR/concurrent-a-status.txt")"
+concurrent_b_status="$(cat "$WORK_DIR/concurrent-b-status.txt")"
+success_count=0
+stale_count=0
+for status in "$concurrent_a_status" "$concurrent_b_status"; do
+  [[ "$status" = "200" ]] && ((success_count += 1))
+  [[ "$status" = "412" ]] && ((stale_count += 1))
+done
+test "$success_count" = "1"
+test "$stale_count" = "1"
+
+curl --silent --show-error --fail "$FHIR_BASE_URL/Patient/$existing_id" \
+  -H 'Accept: application/fhir+json' > "$WORK_DIR/concurrent-after.json"
+version_after_concurrent="$(jq -r '.meta.versionId // empty' "$WORK_DIR/concurrent-after.json")"
+test -n "$version_after_concurrent"
+test "$version_after_concurrent" != "$existing_version"
+cp "$WORK_DIR/concurrent-a-status.txt" "$ARTIFACT_DIR/concurrent-a-http-status.txt"
+cp "$WORK_DIR/concurrent-b-status.txt" "$ARTIFACT_DIR/concurrent-b-http-status.txt"
+cp "$WORK_DIR/concurrent-a-response.json" "$ARTIFACT_DIR/concurrent-a-response.json"
+cp "$WORK_DIR/concurrent-b-response.json" "$ARTIFACT_DIR/concurrent-b-response.json"
+
+# Use the winning writer's latest version for the transaction rollback probe.
+existing_version="$version_after_concurrent"
 rollback_identifier="rollback-$run_id"
 jq -n \
   --arg identifier_system "$identifier_system" \
   --arg rollback_identifier "$rollback_identifier" \
-  --arg existing_id "$existing_id" '
+  --arg existing_id "$existing_id" \
+  --arg if_match 'W/"999999999"' '
   {
     resourceType: "Bundle",
     type: "transaction",
@@ -196,7 +285,7 @@ jq -n \
         request: {
           method: "PUT",
           url: ("Patient/" + $existing_id),
-          ifMatch: "W/"__MYCELIX_QUAL_NONEXISTENT_VERSION__""
+          ifMatch: $if_match
         }
       }
     ]
@@ -208,9 +297,9 @@ rollback_status="$(curl --silent --show-error --output "$WORK_DIR/rollback-respo
   -H 'Content-Type: application/fhir+json' \
   -H 'Accept: application/fhir+json' \
   --data-binary @"$WORK_DIR/rollback-transaction.json" "$FHIR_BASE_URL")"
-if [[ "$rollback_status" -lt 400 || "$rollback_status" -ge 500 ]]; then
+if [[ "$rollback_status" != "412" ]]; then
   cat "$WORK_DIR/rollback-response.json" >&2
-  printf 'Expected a client-side version-precondition failure; got HTTP %s\n' "$rollback_status" >&2
+  printf 'Expected HTTP 412 for the stale If-Match transaction; got HTTP %s\n' "$rollback_status" >&2
   exit 1
 fi
 test "$(search_total Patient "$rollback_identifier")" = "0"
@@ -231,6 +320,10 @@ jq -n \
   --arg transaction_http "$transaction_status" \
   --arg replay_http "$replay_status" \
   --arg rollback_http "$rollback_status" \
+  --arg concurrent_a_http "$concurrent_a_status" \
+  --arg concurrent_b_http "$concurrent_b_status" \
+  --arg version_before_concurrency "$existing_version" \
+  --arg version_after_concurrency "$version_after_concurrent" \
   --arg patient_count "$patient_count" \
   --arg provenance_count "$provenance_count" \
   --arg existing_version_before "$existing_version" \
@@ -249,6 +342,15 @@ jq -n \
         http_status: $replay_http,
         patient_count_after_replay: ($patient_count | tonumber),
         provenance_count_after_replay: ($provenance_count | tonumber)
+      },
+      concurrent_if_match_writers: {
+        result: "passed",
+        writer_a_http_status: $concurrent_a_http,
+        writer_b_http_status: $concurrent_b_http,
+        version_before: $version_before_concurrency,
+        version_after: $version_after_concurrency,
+        accepted_writers: 1,
+        stale_rejections: 1
       },
       stale_if_match_transaction_rollback: {
         result: "passed",
