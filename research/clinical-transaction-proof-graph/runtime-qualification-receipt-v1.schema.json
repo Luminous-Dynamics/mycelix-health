@@ -9,14 +9,11 @@
     "schema_version",
     "canonicalization",
     "receipt_id",
-    "operation_profile",
     "fhir_version",
     "issued_at_ms",
     "expires_at_ms",
     "server",
     "database",
-    "adapter_build_digest",
-    "adapter_config_digest",
     "capability_statement_digest",
     "probe_corpus_digest",
     "evidence_artifact_digest",
@@ -26,16 +23,16 @@
     "issuer_id",
     "issuer_key_id",
     "canonical_payload_digest",
-    "signature"
+    "signature",
+    "qualification_profile",
+    "test_harness_digest",
+    "adapter"
   ],
   "properties": {
     "schema_version": {
       "const": 1
     },
     "receipt_id": {
-      "$ref": "#/$defs/nonEmpty"
-    },
-    "operation_profile": {
       "$ref": "#/$defs/nonEmpty"
     },
     "fhir_version": {
@@ -54,12 +51,6 @@
     },
     "database": {
       "$ref": "#/$defs/componentRuntimeIdentity"
-    },
-    "adapter_build_digest": {
-      "$ref": "#/$defs/sha256"
-    },
-    "adapter_config_digest": {
-      "$ref": "#/$defs/sha256"
     },
     "capability_statement_digest": {
       "$ref": "#/$defs/sha256"
@@ -104,6 +95,42 @@
     },
     "canonicalization": {
       "const": "RFC8785-JCS"
+    },
+    "qualification_profile": {
+      "enum": [
+        "fhir-server-r4",
+        "mycelix-fhir-adapter-r4"
+      ]
+    },
+    "test_harness_digest": {
+      "$ref": "#/$defs/sha256"
+    },
+    "adapter": {
+      "oneOf": [
+        {
+          "type": "null"
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "component_id",
+            "build_digest",
+            "config_digest"
+          ],
+          "properties": {
+            "component_id": {
+              "$ref": "#/$defs/nonEmpty"
+            },
+            "build_digest": {
+              "$ref": "#/$defs/sha256"
+            },
+            "config_digest": {
+              "$ref": "#/$defs/sha256"
+            }
+          }
+        }
+      ]
     }
   },
   "$defs": {
@@ -236,5 +263,39 @@
         }
       }
     }
-  }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "qualification_profile": {
+            "const": "fhir-server-r4"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "adapter": {
+            "type": "null"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "qualification_profile": {
+            "const": "mycelix-fhir-adapter-r4"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "adapter": {
+            "type": "object"
+          }
+        }
+      }
+    }
+  ]
 }
