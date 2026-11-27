@@ -221,36 +221,70 @@ jobs:
       - name: Test
         run: npm test
 
-  # Integration tests (requires Holochain conductor)
+  # Integration tests use community Tryorama 0.19.x (compatible with HC 0.6.x).
+  # The exact Holonix revision is pinned so conductor and CLI versions cannot drift.
   integration:
     name: Integration Tests
     runs-on: ubuntu-latest
     needs: [rust, sdk]
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install Nix
-        uses: cachix/install-nix-action@v25
+      - name: Install Nix with Holochain binary cache
+        uses: cachix/install-nix-action@v27
         with:
           nix_path: nixpkgs=channel:nixos-unstable
+          extra_nix_config: |
+            experimental-features = nix-command flakes
+            extra-substituters = https://holochain-ci.cachix.org
+            extra-trusted-public-keys = holochain-ci.cachix.org-1:5IUSkZc0aoRS53rfkvH9Kid40NpyjwCMCzwRTXy+QN8=
 
-      - name: Setup Holochain
-        uses: holochain/holochain-nix-setup-action@v1
-
-      - name: Setup Node.js
+      - name: Set up Node.js 20
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: tests/integration/package-lock.json
 
-      - name: Build hApp
+      - name: Require committed integration lockfile
         run: |
-          nix develop --command bash -c "
-            cargo build --release --workspace
-            # Build WASM zomes and package hApp
-          "
+          set -euo pipefail
+          test -s tests/integration/package-lock.json
+          node -e '
+            const lock = require("./tests/integration/package-lock.json");
+            const p = lock.packages || {};
+            if (p["node_modules/@holochain/client"]?.version !== "0.20.0") {
+              throw new Error("integration lockfile does not pin @holochain/client 0.20.0");
+            }
+            if (p["node_modules/@holochain/tryorama"]?.version !== "0.19.0") {
+              throw new Error("integration lockfile does not pin @holochain/tryorama 0.19.0");
+            }
+          '
 
-      - name: Run integration tests
+      - name: Build and package hApp in pinned Holonix 0.6
+        env:
+          HOLONIX_FLAKE: github:holochain/holonix/21d3a9f3eb1d7a533fc816ab53825f3ef35b0007
         run: |
-          cd tests/integration
-          npm ci
-          npm test
+          set -euo pipefail
+          nix develop "$HOLONIX_FLAKE" --command bash -euo pipefail -c '
+            echo "Holonix pinned to 21d3a9f3eb1d7a533fc816ab53825f3ef35b0007"
+            holochain --version
+            hc --version
+            cargo build --release --workspace --target wasm32-unknown-unknown
+            hc dna pack dna/
+            hc app pack .
+          '
+          test -s dna/health.dna
+          find . -maxdepth 1 -name "*.happ" -type f -size +0c | grep -q .
+
+      - name: Run real two-conductor Tryorama integration tests
+        env:
+          HOLONIX_FLAKE: github:holochain/holonix/21d3a9f3eb1d7a533fc816ab53825f3ef35b0007
+        run: |
+          set -euo pipefail
+          nix develop "$HOLONIX_FLAKE" --command bash -euo pipefail -c '
+            cd tests/integration
+            npm ci --no-audit --no-fund
+            npm test
+          '
