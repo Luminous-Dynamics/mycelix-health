@@ -76,6 +76,7 @@ pub struct ReadOnlyObserverEvidence {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct RuntimeQualificationReceiptV1 {
     pub schema_version: u32,
+    pub canonicalization: String,
     pub receipt_id: String,
     pub operation_profile: String,
     pub fhir_version: String,
@@ -121,6 +122,7 @@ pub enum QualificationFinding {
     EvidenceNotYetIssued,
     EvidenceExpired,
     WrongFhirVersion,
+    UnsupportedCanonicalization,
     PhiPresent,
     ObserverIdentityMismatch,
     ObserverCanMutate,
@@ -234,6 +236,12 @@ pub fn verify_runtime_qualification<A: QualificationReceiptAuthenticator>(
     }
     if receipt.fhir_version != "4.0.1" {
         return QualificationReport::rejected(QualificationFinding::WrongFhirVersion, probe_count);
+    }
+    if receipt.canonicalization != "RFC8785-JCS" {
+        return QualificationReport::rejected(
+            QualificationFinding::UnsupportedCanonicalization,
+            probe_count,
+        );
     }
     if receipt.phi_used {
         return QualificationReport::rejected(QualificationFinding::PhiPresent, probe_count);
@@ -349,6 +357,7 @@ mod tests {
     fn valid_receipt() -> RuntimeQualificationReceiptV1 {
         RuntimeQualificationReceiptV1 {
             schema_version: 1,
+            canonicalization: "RFC8785-JCS".into(),
             receipt_id: "qualification-hapi-postgres-run-47".into(),
             operation_profile: "mycelix-clinical-transaction-r4".into(),
             fhir_version: "4.0.1".into(),
@@ -596,6 +605,24 @@ mod tests {
         assert_eq!(
             report.findings,
             vec![QualificationFinding::InvalidIssuerSignature]
+        );
+    }
+
+    #[test]
+    fn unsupported_canonicalization_rejects_qualification() {
+        let mut receipt = valid_receipt();
+        receipt.canonicalization = "unspecified-json".into();
+        let report = verify_runtime_qualification(
+            &receipt,
+            15_000,
+            "hapi-r4",
+            "postgres-18",
+            &FixtureAuthenticator { valid: true },
+        );
+        assert_eq!(report.verdict, QualificationVerdict::NotQualified);
+        assert_eq!(
+            report.findings,
+            vec![QualificationFinding::UnsupportedCanonicalization]
         );
     }
 
