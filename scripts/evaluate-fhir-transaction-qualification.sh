@@ -128,14 +128,14 @@ result="$(jq -n \
     elif any($matched_components[]; (.matches | length) != 1) then
       verdict("defer"; "required_component_missing_or_duplicated")
     elif any($matched_components[];
-      ($matches[0].component_id | type) != "string"
-      or ($matches[0].component_id | length) == 0
-      or ($matches[0].software_name | type) != "string"
-      or ($matches[0].software_version | type) != "string"
-      or (digest_ok($matches[0].build_sha256; $s.policy.sha256_evidence_digest_pattern) | not)
-      or (digest_ok($matches[0].configuration_sha256; $s.policy.sha256_evidence_digest_pattern) | not)
+      (.matches[0].component_id | type) != "string"
+      or (.matches[0].component_id | length) == 0
+      or (.matches[0].software_name | type) != "string"
+      or (.matches[0].software_version | type) != "string"
+      or (digest_ok(.matches[0].build_sha256; $s.policy.sha256_evidence_digest_pattern) | not)
+      or (digest_ok(.matches[0].configuration_sha256; $s.policy.sha256_evidence_digest_pattern) | not)
       or (fresh(
-        $matches[0].observed_at;
+        .matches[0].observed_at;
         $now;
         $s.policy.maximum_evidence_age_seconds;
         $s.policy.maximum_future_clock_skew_seconds
