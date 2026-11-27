@@ -110,3 +110,14 @@ This experiment does not demonstrate that a real FHIR server, Holochain DHT, dat
 ## Runtime receipt probe profile update
 
 The server-only runtime receipt now requires eight probes: CapabilityStatement, multi-resource transaction atomicity, conditional replay, deterministic stale If-Match, concurrent version conflict, 128-way concurrent conditional create, transaction rollback, and the direct read-only PostgreSQL observer. A receipt missing any one of these remains `Defer`; the receipt must not qualify a HAPI build on the strength of only a subset of transaction probes.
+
+
+## Runtime receipt cryptographic verification profile
+
+`runtime-receipt-crypto-profile-v1.json` specifies the intended implementation boundary without pretending it is already built. It freezes the signed-payload projection, canonicalization/signing contract, issuer/key resolution, audience binding, validity and revocation policy, key rotation/compromise semantics, dependency candidates, implementation gates and required known-answer tests.
+
+The chosen research direction is RFC 8785 JCS canonical bytes signed directly with Ed25519, with SHA-256 retained as a content digest. The signer must sign the **entire canonical payload projection** (excluding only the detached signature and its own digest) so the issuer, key, audience, runtime identities, observer permissions and probe outcomes are all integrity-bound. Duplicate JSON keys must be rejected before typed deserialization. The production verifier must use strict Ed25519 verification and an independently trusted issuer/key registry; an issuer/key ID supplied in the receipt is not a trust anchor.
+
+Candidate Rust dependencies are `serde_json_canonicalizer 0.4.1` and `ed25519-dalek 3.0.0`, subject to exact Cargo.lock generation, policy review and cross-language test vectors. `verify_strict` is required rather than permissive verification; batch verification is not an automatic substitute because weak-key checks differ. Keep the BBS path experimental; its W3C cryptosuite is still a Candidate Recommendation Draft.
+
+The 20-case `runtime-receipt-crypto-adversarial-v1.json` is an expected-outcome corpus, not a set of passed tests. The current injected `FixtureAuthenticator` still does not perform these operations. No real issuer signature, JCS digest or key lifecycle verification is claimed until the dependencies, key registry and tests exist.
