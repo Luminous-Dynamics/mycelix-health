@@ -41,7 +41,7 @@ test "$transaction_declared" = "true"
 run_id="$(date -u +%s)-$RANDOM-$RANDOM"
 identifier_system="urn:mycelix:qualification:synthetic"
 patient_identifier="patient-$run_id"
-provenance_identifier="provenance-$run_id"
+patient_id="patient-$run_id"
 patient_full_url="urn:uuid:00000000-0000-4000-8000-000000000001"
 provenance_full_url="urn:uuid:00000000-0000-4000-8000-000000000002"
 recorded_at="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
@@ -53,7 +53,7 @@ jq -n \
   --arg provenance_full_url "$provenance_full_url" \
   --arg identifier_system "$identifier_system" \
   --arg patient_identifier "$patient_identifier" \
-  --arg provenance_identifier "$provenance_identifier" \
+  --arg patient_id "$patient_id" \
   --arg recorded_at "$recorded_at" '
   {
     resourceType: "Bundle",
@@ -63,21 +63,20 @@ jq -n \
         fullUrl: $patient_full_url,
         resource: {
           resourceType: "Patient",
+          id: $patient_id,
           active: true,
           identifier: [{system: $identifier_system, value: $patient_identifier}],
           name: [{family: "MycelixQualificationSynthetic"}]
         },
         request: {
-          method: "POST",
-          url: "Patient",
-          ifNoneExist: ("identifier=" + $identifier_system + "|" + $patient_identifier)
+          method: "PUT",
+          url: ("Patient/" + $patient_id)
         }
       },
       {
         fullUrl: $provenance_full_url,
         resource: {
           resourceType: "Provenance",
-          identifier: [{system: $identifier_system, value: $provenance_identifier}],
           target: [{reference: $patient_full_url}],
           recorded: $recorded_at,
           activity: {
@@ -92,7 +91,7 @@ jq -n \
         request: {
           method: "POST",
           url: "Provenance",
-          ifNoneExist: ("identifier=" + $identifier_system + "|" + $provenance_identifier)
+          ifNoneExist: ("target=Patient/" + $patient_id)
         }
       }
     ]
@@ -131,7 +130,11 @@ search_total() {
 }
 
 patient_count="$(search_total Patient "$patient_identifier")"
-provenance_count="$(search_total Provenance "$provenance_identifier")"
+provenance_count="$(curl --silent --show-error --fail --get "$FHIR_BASE_URL/Provenance" \
+  -H 'Accept: application/fhir+json' \
+  --data-urlencode "_count=10" \
+  --data-urlencode "target=Patient/$patient_id" \
+  | jq -r '.total // 0')"
 test "$patient_count" = "1"
 test "$provenance_count" = "1"
 
@@ -152,7 +155,11 @@ case "$replay_status" in
     ;;
 esac
 test "$(search_total Patient "$patient_identifier")" = "1"
-test "$(search_total Provenance "$provenance_identifier")" = "1"
+test "$(curl --silent --show-error --fail --get "$FHIR_BASE_URL/Provenance" \
+  -H 'Accept: application/fhir+json' \
+  --data-urlencode "_count=10" \
+  --data-urlencode "target=Patient/$patient_id" \
+  | jq -r '.total // 0')" = "1"
 cp "$WORK_DIR/replay-response.json" "$ARTIFACT_DIR/replay-response.json"
 
 # Verify rollback: create a new marker Patient, then in the same transaction
