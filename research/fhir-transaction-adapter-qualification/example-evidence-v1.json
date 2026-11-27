@@ -1,0 +1,41 @@
+{
+  "schema_version": 1,
+  "server": {
+    "base_url": "https://ehr.example.test/fhir",
+    "fhir_version": "4.0.1",
+    "software_name": "synthetic-unqualified-example",
+    "software_version": "0.0.0-test",
+    "implementation_id": "synthetic-instance-not-a-real-server"
+  },
+  "capability_observation": {
+    "observed_at": "2026-11-27T00:00:00Z",
+    "sha256": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "resource": {
+      "resourceType": "CapabilityStatement",
+      "status": "active",
+      "date": "2026-11-27",
+      "kind": "instance",
+      "fhirVersion": "4.0.1",
+      "implementation": {"url": "https://ehr.example.test/fhir"},
+      "software": {"name": "synthetic-unqualified-example", "version": "0.0.0-test"},
+      "rest": [{"mode": "server", "interaction": [{"code": "transaction"}]}]
+    }
+  },
+  "probe_evidence": {
+    "suite_id": "mycelix.fhir-transaction-adapter-qualification.v1",
+    "suite_version": 1,
+    "completed_at": "2026-11-27T00:00:00Z",
+    "capability_sha256": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "server_software_version": "0.0.0-test",
+    "probes": [
+      {"id": "transaction_rollback_atomicity", "result": "not_run", "evidence_sha256": null, "observed_at": null},
+      {"id": "transaction_target_provenance_audit", "result": "not_run", "evidence_sha256": null, "observed_at": null},
+      {"id": "stale_version_precondition", "result": "not_run", "evidence_sha256": null, "observed_at": null},
+      {"id": "conditional_create_deduplication", "result": "not_run", "evidence_sha256": null, "observed_at": null},
+      {"id": "consent_guard_at_commit", "result": "not_run", "evidence_sha256": null, "observed_at": null},
+      {"id": "audit_outbox_atomic_intent", "result": "not_run", "evidence_sha256": null, "observed_at": null},
+      {"id": "lost_response_reconciliation", "result": "not_run", "evidence_sha256": null, "observed_at": null},
+      {"id": "principal_patient_tenant_binding", "result": "not_run", "evidence_sha256": null, "observed_at": null}
+    ]
+  }
+}
