@@ -53,6 +53,8 @@ jobs:
           ' research/clinical-transaction-proof-graph/operation-binding-v2.schema.json >/dev/null
           jq -e . research/clinical-transaction-proof-graph/privacy-scenarios-v1.json >/dev/null
           jq -e . research/clinical-transaction-proof-graph/runtime-qualification-receipt-v1.schema.json >/dev/null
+          jq -e . research/clinical-transaction-proof-graph/runtime-receipt-crypto-profile-v1.json >/dev/null
+          jq -e '(.scenarios | length) == 20' research/clinical-transaction-proof-graph/runtime-receipt-crypto-adversarial-v1.json >/dev/null
           jq -e . research/clinical-transaction-proof-graph/assurance-benchmark-mapping-v1.json >/dev/null
 
       - name: Format
