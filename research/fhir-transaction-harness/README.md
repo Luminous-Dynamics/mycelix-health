@@ -38,6 +38,8 @@ The script records the exact CapabilityStatement, transaction/replay responses, 
 
 The race probe intentionally distinguishes a deterministic stale precondition from two truly overlapping updates: a single 409/412 conflict for the former does not prove the database can serialize the latter. Post-state is checked twice: through the FHIR API and independently through PostgreSQL using a SELECT-only `hapi_observer` role. The SQL probe first exports the exact live `information_schema.columns` inventory for the HAPI JPA tables and checks the required columns. It uses `HFJ_RESOURCE.RES_ID` (not an assumed `PID`) to join `HFJ_RES_VER.RES_ID` and `HFJ_SPIDX_TOKEN.RES_ID`. It then verifies exactly one master row and one history version for Provenance/Observation, Patient history at version 2, Observation version 1, and no token-index row for the rolled-back Patient identifier. The observer has no INSERT/UPDATE/DELETE privileges and runs with `default_transaction_read_only=on`. It still shares the same PostgreSQL instance as HAPI; it is independent of the FHIR API, not an independent physical database or third-party auditor.
 
+Run #47 (workflow 46023436149) repeated the complete harness PASS on source commit `d3f88912729fe5b89510d86b5be1356aa7726588`; its artifact is 15210467027 (SHA-256 `8bbde40ca63bd902473256b637cc9f196ff86c8862c96ad50e4e52f7f7ef93c46f`). It observed the same direct DB counts and read-only role properties as #45, but the concurrent writers reversed which one won: writer A=409, writer B=200. This independently confirms the exactly-one-winner/one-conflict invariant for a second run.
+
 ## Direct database observer debugging history
 
 - HAPI-only run #25 passed the FHIR/API probe set: multi-resource transaction, conditional replay, deterministic stale-ETag conflict, concurrent version conflict, and transaction rollback.
@@ -54,7 +56,7 @@ The race probe intentionally distinguishes a deterministic stale precondition fr
 
 ## Frozen direct-database result
 
-Run #45's read-only PostgreSQL observation is preserved at `evidence/run-45-postgresql-observed.json`. It binds the workflow run/artifact IDs, exact source commit, HAPI/PostgreSQL runtime image IDs, PostgreSQL 18.7 version, CapabilityStatement digest, harness file digests, FHIR probe outcomes and direct database row/version counts.
+Runs #45 and #47's read-only PostgreSQL observations are preserved at `evidence/run-45-postgresql-observed.json` and `evidence/run-47-postgresql-observed.json`. It binds the workflow run/artifact IDs, exact source commit, HAPI/PostgreSQL runtime image IDs, PostgreSQL 18.7 version, CapabilityStatement digest, harness file digests, FHIR probe outcomes and direct database row/version counts.
 
 The snapshot reports:
 - one Patient master row and two history versions, current version 2;
@@ -63,7 +65,7 @@ The snapshot reports:
 - zero rollback-marker token-index rows;
 - observer role `hapi_observer`, read-only session, not superuser, no role creation, INSERT, UPDATE or DELETE privileges.
 
-This is a frozen experimental record for one run, not a permanent certification. The latest live run must be re-executed for changes to HAPI/PostgreSQL versions, Compose configuration, probe code or schema.
+Both snapshots are frozen experimental observations, not permanent certifications. Run #47 repeats the same FHIR and database invariants with the concurrent write winners reversed (A=409, B=200); that is useful evidence that the invariant is independent of which writer wins. Re-execute for changes to HAPI/PostgreSQL versions, Compose configuration, probe code or schema.
 
 ## Interpretation
 
