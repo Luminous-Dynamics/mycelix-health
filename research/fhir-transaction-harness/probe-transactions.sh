@@ -241,8 +241,11 @@ concurrent_b_status="$(cat "$WORK_DIR/concurrent-b-status.txt")"
 success_count=0
 stale_count=0
 for status in "$concurrent_a_status" "$concurrent_b_status"; do
-  [[ "$status" = "200" ]] && ((success_count += 1))
-  [[ "$status" = "412" ]] && ((stale_count += 1))
+  if [[ "$status" = "200" ]]; then
+    success_count=$((success_count + 1))
+  elif [[ "$status" = "412" ]]; then
+    stale_count=$((stale_count + 1))
+  fi
 done
 test "$success_count" = "1"
 test "$stale_count" = "1"
@@ -259,6 +262,7 @@ cp "$WORK_DIR/concurrent-b-response.json" "$ARTIFACT_DIR/concurrent-b-response.j
 
 # Use the winning writer's latest version for the transaction rollback probe.
 existing_version="$version_after_concurrent"
+version_before_rollback="$existing_version"
 rollback_identifier="rollback-$run_id"
 jq -n \
   --arg identifier_system "$identifier_system" \
@@ -299,11 +303,24 @@ rollback_status="$(curl --silent --show-error --output "$WORK_DIR/rollback-respo
   -H 'Content-Type: application/fhir+json' \
   -H 'Accept: application/fhir+json' \
   --data-binary @"$WORK_DIR/rollback-transaction.json" "$FHIR_BASE_URL")"
-if [[ "$rollback_status" != "412" ]]; then
+# FHIR R4 transaction failure is returned as one OperationOutcome
+# with an overall 4xx/5xx response; the per-entry 412 is represented in the
+# failure details rather than as the standalone REST response status.
+if [[ "$rollback_status" -lt 400 || "$rollback_status" -ge 600 ]]; then
   cat "$WORK_DIR/rollback-response.json" >&2
-  printf 'Expected HTTP 412 for the stale If-Match transaction; got HTTP %s\n' "$rollback_status" >&2
+  printf 'Expected a failed FHIR transaction (4xx/5xx); got HTTP %s\n' "$rollback_status" >&2
   exit 1
 fi
+jq -e '
+  .resourceType == "OperationOutcome"
+  and (
+    [.issue[]? |
+      ((.diagnostics // "") + " " + (.details.text // "") + " " + (.code // ""))
+      | ascii_downcase
+      | test("version|etag|if-match|precondition")
+    ] | any
+  )
+' "$WORK_DIR/rollback-response.json" >/dev/null
 test "$(search_total Patient "$rollback_identifier")" = "0"
 
 curl --silent --show-error --fail "$FHIR_BASE_URL/Patient/$existing_id" \
@@ -328,7 +345,7 @@ jq -n \
   --arg version_after_concurrency "$version_after_concurrent" \
   --arg patient_count "$patient_count" \
   --arg provenance_count "$provenance_count" \
-  --arg existing_version_before "$existing_version" \
+  --arg existing_version_before "$version_before_rollback" \
   --arg existing_version_after "$version_after" '
   {
     schema_version: 1,
