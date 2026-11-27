@@ -14,16 +14,18 @@ pub enum RequiredProbe {
     ConditionalReplay,
     StaleIfMatch,
     ConcurrentVersionConflict,
+    ConcurrentConditionalCreate,
     TransactionRollback,
     DirectPostgresObserver,
 }
 
-const REQUIRED_PROBES: [RequiredProbe; 7] = [
+const REQUIRED_PROBES: [RequiredProbe; 8] = [
     RequiredProbe::CapabilityStatement,
     RequiredProbe::TransactionAtomicity,
     RequiredProbe::ConditionalReplay,
     RequiredProbe::StaleIfMatch,
     RequiredProbe::ConcurrentVersionConflict,
+    RequiredProbe::ConcurrentConditionalCreate,
     RequiredProbe::TransactionRollback,
     RequiredProbe::DirectPostgresObserver,
 ];
@@ -696,6 +698,26 @@ mod tests {
     fn missing_required_probe_defers() {
         let mut receipt = valid_receipt();
         receipt.probes.pop();
+        let report = verify_runtime_qualification(
+            &receipt,
+            15_000,
+            "hapi-r4",
+            "postgres-18",
+            &FixtureAuthenticator { valid: true },
+        );
+        assert_eq!(report.verdict, QualificationVerdict::Defer);
+        assert_eq!(
+            report.findings,
+            vec![QualificationFinding::MissingRequiredProbe]
+        );
+    }
+
+    #[test]
+    fn missing_concurrent_conditional_create_probe_defers() {
+        let mut receipt = valid_receipt();
+        receipt
+            .probes
+            .retain(|probe| probe.probe != RequiredProbe::ConcurrentConditionalCreate);
         let report = verify_runtime_qualification(
             &receipt,
             15_000,
