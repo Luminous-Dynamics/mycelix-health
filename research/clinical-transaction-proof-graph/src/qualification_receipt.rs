@@ -4,8 +4,8 @@
 //! and observer privilege boundaries. Signature verification is injected.
 //! It does not canonicalize/serialize the payload or implement cryptography.
 
-use std::collections::BTreeSet;
 use crate::QualificationRegistry;
+use std::collections::BTreeSet;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Ord, PartialOrd)]
 pub enum RequiredProbe {
@@ -393,29 +393,29 @@ impl crate::QualificationRegistry for RuntimeReceiptQualificationRegistry<'_> {
             return None;
         }
 
-        let (build_digest, config_digest) =
-            if component_id == self.receipt.server.component_id {
-                (
-                    &self.receipt.server.build_digest,
-                    &self.receipt.server.config_digest,
-                )
-            } else if component_id == self.receipt.database.component_id {
-                (
-                    &self.receipt.database.build_digest,
-                    &self.receipt.database.config_digest,
-                )
-            } else if self.receipt.qualification_profile == QualificationProfile::MycelixFhirAdapterR4
-                && self
-                    .receipt
-                    .adapter
-                    .as_ref()
-                    .is_some_and(|adapter| adapter.component_id == component_id)
-            {
-                let adapter = self.receipt.adapter.as_ref()?;
-                (&adapter.build_digest, &adapter.config_digest)
-            } else {
-                return None;
-            };
+        let (build_digest, config_digest) = if component_id == self.receipt.server.component_id {
+            (
+                &self.receipt.server.build_digest,
+                &self.receipt.server.config_digest,
+            )
+        } else if component_id == self.receipt.database.component_id {
+            (
+                &self.receipt.database.build_digest,
+                &self.receipt.database.config_digest,
+            )
+        } else if self.receipt.qualification_profile
+            == QualificationProfile::MycelixFhirAdapterR4
+            && self
+                .receipt
+                .adapter
+                .as_ref()
+                .is_some_and(|adapter| adapter.component_id == component_id)
+        {
+            let adapter = self.receipt.adapter.as_ref()?;
+            (&adapter.build_digest, &adapter.config_digest)
+        } else {
+            return None;
+        };
 
         Some(crate::ComponentQualification {
             build_digest: build_digest.clone(),
@@ -541,10 +541,7 @@ mod tests {
             &authenticator,
         );
         assert!(registry.qualification_for("hapi-r4").is_none());
-        assert_eq!(
-            registry.report().verdict,
-            QualificationVerdict::Defer
-        );
+        assert_eq!(registry.report().verdict, QualificationVerdict::Defer);
     }
 
     #[test]
@@ -583,9 +580,7 @@ mod tests {
             "postgres-18",
             &authenticator,
         );
-        let adapter = registry
-            .qualification_for("mycelix-fhir-adapter")
-            .unwrap();
+        let adapter = registry.qualification_for("mycelix-fhir-adapter").unwrap();
         assert_eq!(adapter.build_digest, digest('c'));
         assert_eq!(adapter.config_digest, digest('d'));
         assert!(registry.qualification_for("different-adapter").is_none());
