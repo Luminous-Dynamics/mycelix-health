@@ -41,7 +41,7 @@ Qualification is scoped to one concrete deployed instance, not a vendor or produ
 - probe-suite identifier/version, run time, and individual evidence artifact digests;
 - the result's freshness window.
 
-A change to the base URL, FHIR version, software/build identity, or CapabilityStatement digest requires fresh evidence. CapabilityStatement claims do not substitute for active probes.
+A change to the base URL, FHIR version, software/build identity, or CapabilityStatement digest requires fresh evidence. CapabilityStatement claims do not substitute for active probes. The v1 profile also requires the instance CapabilityStatement to expose software name and version; because these fields can be omitted by an otherwise valid FHIR instance statement, their absence deliberately yields `defer` until an independently authenticated build observation is supplied. This is a Mycelix qualification constraint, not an HL7 conformance requirement.
 
 ## Decision contract
 
