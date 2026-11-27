@@ -54,9 +54,14 @@ provenance_target_search_declared="$(jq -r '
    | select(.type == "Provenance") | .searchParam[]?
    | select(.name == "target")] | length > 0
 ' "$WORK_DIR/metadata.json")"
+observation_conditional_create_declared="$(jq -r '
+  [.rest[]? | select(.mode == "server") | .resource[]?
+   | select(.type == "Observation" and .conditionalCreate == true)] | length > 0
+' "$WORK_DIR/metadata.json")"
 test "$patient_conditional_create_declared" = "true"
 test "$provenance_conditional_create_declared" = "true"
 test "$provenance_target_search_declared" = "true"
+test "$observation_conditional_create_declared" = "true"
 
 run_id="$(date -u +%s)-$RANDOM-$RANDOM"
 identifier_system="urn:mycelix:qualification:synthetic"
@@ -436,6 +441,7 @@ jq -n \
   --arg patient_conditional_create_declared "$patient_conditional_create_declared" \
   --arg provenance_conditional_create_declared "$provenance_conditional_create_declared" \
   --arg provenance_target_search_declared "$provenance_target_search_declared" \
+  --arg observation_conditional_create_declared "$observation_conditional_create_declared" \
   --arg concurrent_a_http "$concurrent_a_status" \
   --arg concurrent_b_http "$concurrent_b_status" \
   --arg version_before_concurrency "$version_before_concurrency" \
@@ -455,7 +461,8 @@ jq -n \
     declared_capabilities: {
       patient_conditional_create: ($patient_conditional_create_declared == "true"),
       provenance_conditional_create: ($provenance_conditional_create_declared == "true"),
-      provenance_target_search: ($provenance_target_search_declared == "true")
+      provenance_target_search: ($provenance_target_search_declared == "true"),
+      observation_conditional_create: ($observation_conditional_create_declared == "true")
     },
     probes: {
       provenance_observation_transaction: {result: "passed", http_status: $transaction_http},
