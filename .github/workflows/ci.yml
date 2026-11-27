@@ -173,6 +173,16 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Verify pinned Holochain sodium wrapper
+        run: |
+          node -e '
+            const p = require("libsodium-wrappers/package.json");
+            if (p.version !== "0.7.15") {
+              throw new Error("Expected libsodium-wrappers 0.7.15, resolved " + p.version);
+            }
+            console.log("libsodium-wrappers " + p.version + " pinned");
+          '
+
       - name: Type check
         run: npm run typecheck
 
