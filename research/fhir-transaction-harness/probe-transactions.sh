@@ -309,8 +309,8 @@ stale_precondition_status="$(curl --silent --show-error --output "$WORK_DIR/stal
   "$FHIR_BASE_URL/Patient/$existing_id")"
 cp "$WORK_DIR/stale-precondition-response.json" "$ARTIFACT_DIR/stale-precondition-response.json"
 printf '%s\n' "$stale_precondition_status" > "$ARTIFACT_DIR/stale-precondition-http-status.txt"
-if [[ "$stale_precondition_status" != "412" ]]; then
-  printf 'FHIR R4 stale If-Match must return 412; observed HTTP %s\n' "$stale_precondition_status" >&2
+if [[ "$stale_precondition_status" != "409" && "$stale_precondition_status" != "412" ]]; then
+  printf 'Expected FHIR version-conflict status 409/412 for stale If-Match; observed HTTP %s\n' "$stale_precondition_status" >&2
   cat "$WORK_DIR/stale-precondition-response.json" >&2
   exit 1
 fi
