@@ -45,6 +45,13 @@ The race probe intentionally distinguishes a deterministic stale precondition fr
 - The next attempt exposed a shell quoting defect in the combined schema-discovery/observer command before services started. These commands are now separate shell operations: first export the schema inventory, then execute the observer SQL. The current exact-head workflow is the first run of that corrected shell structure.
 - Until that run completes, direct PostgreSQL observation is not qualified. The earlier HAPI-only #25 result remains valid for its FHIR API probes, but must not be presented as proof of direct SQL read-back.
 
+## Direct database observer debugging history
+
+- HAPI-only run #25 passed the FHIR/API probe set: multi-resource transaction, conditional replay, deterministic stale-ETag conflict, concurrent version conflict, and transaction rollback. This remains the last fully green HAPI-only baseline.
+- Direct-SQL run #33 reached the observer query but failed because the script assumed HFJ_RESOURCE.PID. The pinned HAPI 8.12.0 schema does not expose that column; the resource joins use HFJ_RESOURCE.RES_ID. The current script uses RES_ID and records/validates the exact live information_schema column inventory before joining.
+- Run #36 failed at the shell syntax preflight before containers started. The schema-discovery psql call and the JSON observer psql call are now separate shell commands; no nested command substitution is used for the schema inventory.
+- The newest exact-head run must pass bash -n, then prove the catalog query, SELECT-only role, row/history counts, and rollback absence. Until that happens, direct PostgreSQL observation is not qualified.
+
 ## Interpretation
 
 A probe pass establishes only the behavior observed for this exact image, configuration, test corpus and runtime. It does not qualify Mycelix's consent/revocation fence, gateway operation ledger, cross-system recovery or remote recipient effect. The generated evidence deliberately leaves overall qualification at `defer`.
