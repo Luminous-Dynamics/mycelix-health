@@ -410,6 +410,39 @@ where
         }
     }
 
+    // Every explicit unknown must be reconciled by a later event that
+    // names that exact unknown event as a parent. A separate "success" result
+    // elsewhere in the graph cannot erase an unresolved attempt.
+    for unknown in graph.events.iter().filter(|event| {
+        event.kind == EventKind::CommitResult(CommitOutcome::Unknown)
+    }) {
+        let reconciled = graph.events.iter().any(|candidate| {
+            matches!(candidate.kind, EventKind::CommitReconciled(_))
+                && candidate
+                    .parents
+                    .iter()
+                    .any(|parent| parent.event_id == unknown.event_id)
+        });
+        if !reconciled {
+            return VerificationReport::defer(ReasonCode::UnknownCommitOutcome, event_count);
+        }
+    }
+
+    for unknown in graph.events.iter().filter(|event| {
+        event.kind == EventKind::DeliveryResult(DeliveryOutcome::Unknown)
+    }) {
+        let reconciled = graph.events.iter().any(|candidate| {
+            matches!(candidate.kind, EventKind::DeliveryReconciled(_))
+                && candidate
+                    .parents
+                    .iter()
+                    .any(|parent| parent.event_id == unknown.event_id)
+        });
+        if !reconciled {
+            return VerificationReport::defer(ReasonCode::UnknownDeliveryOutcome, event_count);
+        }
+    }
+
     let definitive_commit_count = graph.events.iter().filter(|event| {
         matches!(
             event.kind,
@@ -881,6 +914,43 @@ mod tests {
         let report = verify_graph(&graph, 5_000, &FixtureAuthenticator, &qualifications());
         assert_eq!(report.verdict, Verdict::Defer);
         assert_eq!(report.findings, vec![ReasonCode::UnknownCommitOutcome]);
+    }
+
+    #[test]
+    fn later_commit_success_does_not_erase_unreconciled_unknown() {
+        let mut graph = successful_graph();
+        graph.events[5].kind = EventKind::CommitResult(CommitOutcome::Unknown);
+        let contradictory = event(
+            "event-09",
+            "database-adapter",
+            ActorRole::ExecutionBackend,
+            2,
+            EventKind::CommitResult(CommitOutcome::Committed),
+            &[&graph.events[4], &graph.events[5]],
+        );
+        graph.events.push(contradictory);
+        let report = verify_graph(&graph, 5_000, &FixtureAuthenticator, &qualifications());
+        assert_eq!(report.verdict, Verdict::Defer);
+        assert_eq!(report.findings, vec![ReasonCode::UnknownCommitOutcome]);
+    }
+
+    #[test]
+    fn later_delivery_success_does_not_erase_unreconciled_unknown() {
+        let mut graph = successful_graph();
+        graph.events[7].kind = EventKind::DeliveryResult(DeliveryOutcome::Unknown);
+        graph.events[7].observed_resource_set_digest = None;
+        let contradictory = event(
+            "event-09",
+            "recipient",
+            ActorRole::Recipient,
+            2,
+            EventKind::DeliveryResult(DeliveryOutcome::RecipientEffectObserved),
+            &[&graph.events[6], &graph.events[7]],
+        );
+        graph.events.push(contradictory);
+        let report = verify_graph(&graph, 5_000, &FixtureAuthenticator, &qualifications());
+        assert_eq!(report.verdict, Verdict::Defer);
+        assert_eq!(report.findings, vec![ReasonCode::UnknownDeliveryOutcome]);
     }
 
     #[test]
