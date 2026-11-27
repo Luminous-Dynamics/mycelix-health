@@ -143,6 +143,13 @@
       "attack": "tenant or BBS reference uses key_epoch zero",
       "expected": "rejected",
       "layer": "scoped-reference-validator"
+    },
+    {
+      "id": "PRIV-021",
+      "family": "purpose-metadata-leakage",
+      "attack": "exported v2 operation binding contains plaintext clinical purpose instead of an opaque operation-scoped purpose reference",
+      "expected": "rejected",
+      "layer": "v2-envelope-schema-and-export-policy"
     }
   ]
 }
