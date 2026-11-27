@@ -86,4 +86,24 @@ jq '.probe_evidence.server_software_version = "9.9.9"' \
   "$tmp/qualified.json" >"$tmp/software-drift.json"
 expect_state "$tmp/software-drift.json" defer
 
+# Missing a component that participated in the end-to-end probes must defer.
+jq '.execution_context.components |= map(select(.role != "recipient_sandbox"))' \
+  "$tmp/qualified.json" >"$tmp/missing-component.json"
+expect_state "$tmp/missing-component.json" defer
+
+# Duplicated component roles make the execution environment ambiguous.
+jq '.execution_context.components += [(.execution_context.components[0] | .component_id = "gateway-copy")]' \
+  "$tmp/qualified.json" >"$tmp/duplicate-component.json"
+expect_state "$tmp/duplicate-component.json" defer
+
+# Probe results bound to another component inventory must defer.
+jq '.probe_evidence.component_inventory_sha256 = "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"' \
+  "$tmp/qualified.json" >"$tmp/component-drift.json"
+expect_state "$tmp/component-drift.json" defer
+
+# Stale component identity/configuration evidence must not qualify.
+jq '.execution_context.components[0].observed_at = "2026-11-25T00:00:00Z"' \
+  "$tmp/qualified.json" >"$tmp/stale-component.json"
+expect_state "$tmp/stale-component.json" defer
+
 echo "FHIR transaction adapter qualification evaluator: all tests passed"
