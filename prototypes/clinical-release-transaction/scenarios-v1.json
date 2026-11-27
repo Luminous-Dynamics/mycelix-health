@@ -1,0 +1,160 @@
+{
+  "schema_version": 1,
+  "benchmark_id": "mycelix-clinical-release-transaction.v1",
+  "release_status": "public-synthetic-reference-scenarios",
+  "data_classification": "no_phi",
+  "reference_contract": "transactional_authority_receipt_v1",
+  "non_claims": [
+    "not a production FHIR server or Holochain adapter",
+    "not a cryptographic implementation of receipt signatures",
+    "not proof of distributed exactly-once execution across arbitrary external systems",
+    "not clinical validation or security certification"
+  ],
+  "required_atomic_boundary": [
+    "current_consent_and_revocation_recheck",
+    "resource_version_and_digest_compare",
+    "nonce_and_idempotency_reservation",
+    "durable_audit_intent",
+    "release_side_effect",
+    "durable_outcome_receipt"
+  ],
+  "scenarios": [
+    {
+      "id": "valid_release",
+      "expected": "released",
+      "additional_side_effects": 1,
+      "description": "valid signed request with current authority and matching resource version"
+    },
+    {
+      "id": "invalid_receipt_signature",
+      "expected": "deny",
+      "additional_side_effects": 0,
+      "description": "receipt signature verifier rejects"
+    },
+    {
+      "id": "request_binding_tamper",
+      "expected": "deny",
+      "additional_side_effects": 0,
+      "description": "patient, tenant, actor, recipient, purpose, action or resource binding differs"
+    },
+    {
+      "id": "receipt_expired",
+      "expected": "deny",
+      "additional_side_effects": 0,
+      "description": "receipt outside validity window"
+    },
+    {
+      "id": "revoked_after_prepare",
+      "expected": "deny",
+      "additional_side_effects": 0,
+      "description": "consent is revoked immediately before atomic commit"
+    },
+    {
+      "id": "revocation_state_stale",
+      "expected": "defer",
+      "additional_side_effects": 0,
+      "description": "current revocation state cannot be trusted"
+    },
+    {
+      "id": "consent_or_policy_version_changed",
+      "expected": "deny",
+      "additional_side_effects": 0,
+      "description": "consent version or policy version changed after receipt issuance"
+    },
+    {
+      "id": "resource_version_changed",
+      "expected": "deny",
+      "additional_side_effects": 0,
+      "description": "resource version or digest changed after receipt issuance"
+    },
+    {
+      "id": "audit_store_unavailable",
+      "expected": "defer",
+      "additional_side_effects": 0,
+      "description": "durable audit intent cannot be written"
+    },
+    {
+      "id": "idempotency_store_unavailable",
+      "expected": "defer",
+      "additional_side_effects": 0,
+      "description": "consume-once state cannot be established"
+    },
+    {
+      "id": "atomic_commit_unavailable",
+      "expected": "defer",
+      "additional_side_effects": 0,
+      "description": "adapter cannot provide atomic compare-and-commit"
+    },
+    {
+      "id": "exact_replay_after_success",
+      "expected": "already_released",
+      "additional_side_effects": 0,
+      "description": "same idempotency key returns original outcome without a second side effect"
+    },
+    {
+      "id": "same_nonce_new_request",
+      "expected": "deny",
+      "additional_side_effects": 0,
+      "description": "same nonce cannot authorize a second idempotency key"
+    },
+    {
+      "id": "commit_acknowledgement_lost",
+      "expected": "defer_then_reconcile",
+      "additional_side_effects": 1,
+      "description": "commit may have succeeded; query same key and never repeat"
+    },
+    {
+      "id": "reconciliation_unavailable",
+      "expected": "defer",
+      "additional_side_effects": 0,
+      "description": "unavailable idempotency lookup cannot be promoted to completion"
+    },
+    {
+      "id": "concurrent_duplicate_attempts",
+      "expected": "one_release",
+      "additional_side_effects": 1,
+      "attempt_count": 128,
+      "description": "Concurrent duplicate attempts at 1, 10, 32 and 128 contenders with the same idempotency key must produce one committed side effect at each scale.",
+      "attempt_counts": [
+        1,
+        10,
+        32,
+        128
+      ]
+    },
+    {
+      "id": "revocation_epoch_changed",
+      "expected": "deny",
+      "additional_side_effects": 0,
+      "description": "revocation epoch increments after receipt issuance even if the latest status is not yet confirmed revoked"
+    },
+    {
+      "id": "idempotency_key_collision",
+      "expected": "deny",
+      "additional_side_effects": 0,
+      "description": "a completed idempotency key cannot be rebound to another receipt or request"
+    },
+    {
+      "id": "completed_replay_after_receipt_expiry",
+      "expected": "already_released",
+      "additional_side_effects": 0,
+      "description": "expiry blocks new releases but does not erase a prior committed receipt"
+    },
+    {
+      "id": "concurrent_distinct_nonce_contenders",
+      "expected": "one_release_one_nonce_denial",
+      "additional_side_effects": 1,
+      "description": "Two concurrent receipts use distinct idempotency keys but the same nonce; only one side effect may commit."
+    },
+    {
+      "id": "consent_revocation_commit_race",
+      "expected": "linearizable_release_or_revocation_denial",
+      "additional_side_effects_max": 1,
+      "allowed_outcomes": [
+        "release_commits_before_revocation",
+        "revocation_commits_before_release"
+      ],
+      "description": "Race consent revocation against the atomic release boundary; either serialized order is valid, but post-revocation release is forbidden."
+    }
+  ]
+}

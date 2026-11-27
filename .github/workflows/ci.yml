@@ -138,9 +138,16 @@ jobs:
           cp -r /tmp/mycelix-parent/mycelix-core/. ../mycelix-workspace/mycelix-core/
           rm -rf /tmp/mycelix-parent
 
-      - uses: EmbarkStudios/cargo-deny-action@v2
-        with:
-          command: check
+      # Run on the host so cargo-deny can resolve the sibling path dependencies
+      # copied above; the Docker action cannot see paths outside its workspace mount.
+      - name: Install Rust for host-native dependency audit
+        uses: dtolnay/rust-toolchain@1.96.0
+
+      - name: Install pinned cargo-deny
+        run: cargo install cargo-deny --version 0.22.0 --locked
+
+      - name: Check dependency policy
+        run: cargo deny check
 
   # TypeScript SDK
   sdk:
@@ -199,6 +206,22 @@ jobs:
 
       - name: Test
         run: npm test
+
+  clinical-release-transaction:
+    name: Clinical Release Transaction Benchmark
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install pinned Rust
+        uses: dtolnay/rust-toolchain@1.96.0
+        with:
+          components: rustfmt, clippy
+      - name: Check standalone formatting
+        run: cargo fmt --manifest-path prototypes/clinical-release-transaction/Cargo.toml -- --check
+      - name: Run transactional release adversarial tests
+        run: cargo test --manifest-path prototypes/clinical-release-transaction/Cargo.toml --locked --target x86_64-unknown-linux-gnu
+      - name: Run Clippy
+        run: cargo clippy --manifest-path prototypes/clinical-release-transaction/Cargo.toml --locked --target x86_64-unknown-linux-gnu -- -D warnings
 
   # Integration tests (requires Holochain conductor)
   integration:

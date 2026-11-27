@@ -64,7 +64,7 @@ members = [
 ]
 
 # Tests are separate - run with: cargo test -p mycelix-health-tests
-exclude = ["tests"]
+exclude = ["tests", "prototypes/clinical-release-transaction"]
 
 [workspace.package]
 version = "0.1.0"
