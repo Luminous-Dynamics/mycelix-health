@@ -21,6 +21,22 @@ npm install @mycelix/health-sdk
 yarn add @mycelix/health-sdk
 ```
 
+## Reproducible SDK build and sodium runtime
+
+The SDK lockfile pins `libsodium-wrappers` to **0.7.13**. This is an exact runtime dependency because the Holochain client currently allows a compatible-version range; the later 0.7.16 ESM package layout has been observed to omit the companion `libsodium.mjs` file required by its wrapper entrypoint in Node/Vitest environments.
+
+Use the committed lockfile for development and CI:
+
+```bash
+cd sdk
+npm ci
+npm run typecheck
+npm run build
+npm test
+```
+
+CI verifies the resolved wrapper version before running the SDK tests. Do not replace `npm ci` with an unconstrained install in release qualification. When the upstream Holochain client publishes a verified compatible range or the wrapper package repairs its ESM distribution, this pin can be reviewed and removed in a separate dependency PR.
+
 ## Quick Start
 
 ```typescript
