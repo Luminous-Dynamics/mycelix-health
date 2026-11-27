@@ -173,5 +173,206 @@
     ],
     "independence": "Report separately sourced evidence, evaluator implementation, server-under-test, database observer, recipient witness issuer and signing-key registry.",
     "no_single_composite_score": true
+  },
+  "external_benchmark_baselines": [
+    {
+      "name": "HealthAgentBench v2.0",
+      "date": "2026-10-25",
+      "tasks": 75,
+      "categories": 9,
+      "published_leader": {
+        "agent": "Claude Code (Opus 5.5)",
+        "success_rate_percent": 57.3,
+        "cost_per_task_usd": 4.7,
+        "time_per_task_minutes": 14.7
+      },
+      "evaluation_setting": "one scored attempt per task; xhigh reasoning; model API only; web disabled",
+      "category_examples": {
+        "ehr_data_quality_percent": 50,
+        "event_modeling_percent": 83.3
+      },
+      "source": "https://microsoft.github.io/HealthAgentBench/v2/results/",
+      "comparator_rule": "reproduce the exact task set, attempt count, tools and scoring; disclose cost/time alongside utility"
+    },
+    {
+      "name": "HealthFlow / EHRFlowBench",
+      "date": "2026-08-01",
+      "tasks": 100,
+      "categories": 10,
+      "published_leader": {
+        "agent": "HealthFlow",
+        "ehrflowbench_score": 4.01,
+        "baseline_agent": "Biomni",
+        "baseline_score": 3.76,
+        "medagentboard_success_percent": 63.05,
+        "medagentboard_baseline_percent": 50.1
+      },
+      "evaluation_setting": "paper-specific TJH and MIMIC-IV demo EHR analysis workflow tasks",
+      "source": "https://www.nature.com/articles/s41746-026-03097-0",
+      "comparator_rule": "reproduce the task-level artifacts and rating protocol; do not compare EHRFlowBench score with HealthAgentBench success rate"
+    },
+    {
+      "name": "LongMedBench",
+      "date": "2026-09-01",
+      "corpus": {
+        "patients": 355,
+        "mean_inpatient_visits_per_patient": 19.72,
+        "mean_events_per_visit": 44.91
+      },
+      "task_families": [
+        "factual QA",
+        "temporal reasoning",
+        "long-horizon decision-making"
+      ],
+      "known_limitations": [
+        "high-acuity cohort due to abnormal-lab filtering",
+        "minimum 15 inpatient visits per included patient"
+      ],
+      "source": "https://papers.miccai.org/miccai-2026/0593-Paper4292.html",
+      "comparator_rule": "use the published split for direct comparison and a separate mixed-acuity/variable-length cohort for generalization; never mistake cohort selection for representative population sampling"
+    },
+    {
+      "name": "Inferno US Core Test Kit",
+      "date": "2026-10-27",
+      "version": "1.2.0",
+      "supported_us_core_versions": [
+        "3.1.1",
+        "4.0.0",
+        "5.0.1",
+        "6.1.0",
+        "7.0.0",
+        "8.0.0"
+      ],
+      "source": "https://inferno.healthit.gov/test-kits/",
+      "comparator_rule": "run the exact relevant US Core/SMART test kit; its result is profile conformance, not a consent commit-fence or distributed effect qualification"
+    },
+    {
+      "name": "SMART App Launch",
+      "version": "2.2.0",
+      "source": "https://hl7.org/fhir/smart-app-launch/STU2.2/scopes-and-launch-context.html",
+      "comparator_rule": "preserve OAuth 2.0, resource scopes and launch/patient/encounter context; Mycelix assurance is an additive commit/receipt layer rather than a replacement access protocol"
+    },
+    {
+      "name": "W3C Verifiable Credentials Data Model",
+      "version": "2.0",
+      "status": "Recommendation",
+      "published": "2025-05-15",
+      "source": "https://www.w3.org/TR/vc-data-model/",
+      "comparator_rule": "use the standard issuer/holder/verifier vocabulary; proof format alone does not establish clinical consent or execution truth"
+    },
+    {
+      "name": "W3C Data Integrity BBS Cryptosuites",
+      "version": "1.0",
+      "status": "Candidate Recommendation Draft",
+      "last_checked": "2026-11-27",
+      "source": "https://www.w3.org/TR/2026/CRD-vc-di-bbs-20260910/",
+      "comparator_rule": "keep as experimental selective-disclosure lane until independent implementation coverage and interoperability justify production use"
+    }
+  ],
+  "target_ladder": {
+    "status": "targets only; none of these targets is claimed achieved by the current PRs",
+    "clinical_utility": [
+      {
+        "benchmark": "HealthAgentBench v2.0 matched 75-task setting",
+        "target_success_rate_percent": 60,
+        "stretch_percent": 65,
+        "report": [
+          "mean task success",
+          "category success",
+          "cost/task",
+          "time/task",
+          "artifact correctness",
+          "unsafe action count"
+        ]
+      },
+      {
+        "benchmark": "EHRFlowBench matched task and rating protocol",
+        "target_score": 4.2,
+        "baseline_to_reproduce": 4.01,
+        "report": [
+          "blinded expert rating",
+          "cohort/query artifact validity",
+          "reproducibility",
+          "cost/task"
+        ]
+      },
+      {
+        "benchmark": "MedAgentBoard matched task set",
+        "target_success_rate_percent": 68,
+        "baseline_to_reproduce_percent": 63.05,
+        "report": [
+          "paired confidence intervals",
+          "task-level errors",
+          "abstention",
+          "cost"
+        ]
+      },
+      {
+        "benchmark": "Longitudinal reasoning held-out patients",
+        "target_relative_improvement_percent": 10,
+        "hard_constraints": [
+          "patient-level split",
+          "mixed-acuity cohort",
+          "variable visit counts",
+          "temporal leakage audit",
+          "clinician-adjudicated alternatives"
+        ]
+      }
+    ],
+    "execution_assurance": [
+      {
+        "target": "zero unauthorized allows, wrong-patient effects, post-revocation commits and duplicate recipient effects in the frozen adversarial suite",
+        "gate": "any such event fails the assurance profile; utility score cannot compensate"
+      },
+      {
+        "target": "128 concurrent same-identifier conditional creates",
+        "status": "new HAPI harness probe; exact-head run pending",
+        "expected": "one persisted resource and one creator result, remaining requests resolve to same resource"
+      },
+      {
+        "target": "scale concurrency to 1000 then 10000 attempts",
+        "status": "future target",
+        "backend": "real persistent database and recipient sandbox; measure p50/p95/p99, errors and recovery"
+      },
+      {
+        "target": "at least 2995 independent held-out zero-failure security trials for an approximate 0.1% one-sided 95% rule-of-three upper bound",
+        "status": "statistical target, not current evidence",
+        "caveat": "trials must be independent; repeated mutations of the same seed do not qualify"
+      }
+    ],
+    "interoperability": [
+      {
+        "target": "100% supported-profile positive fixtures pass pinned official HL7 validator and applicable Inferno kit"
+      },
+      {
+        "target": "100% malformed/unsupported negative controls reject with expected typed result"
+      },
+      {
+        "target": "zero silent loss of designated must-preserve FHIR fields in round-trip tests"
+      },
+      {
+        "target": "CapabilityStatement declaration never counts as observed behavior without a live probe"
+      }
+    ],
+    "privacy": [
+      {
+        "target": "zero direct identifiers, raw clinical payloads, or unkeyed low-entropy hashes in exported proof artifacts"
+      },
+      {
+        "target": "zero false acceptance of cross-operation, cross-tenant, wrong-scope, revoked-key, replayed or tampered references"
+      },
+      {
+        "target": "publish linkage attack precision/recall and confidence intervals on held-out synthetic cohorts"
+      },
+      {
+        "target": "preserve verifier accountability while using least-disclosure presentations"
+      }
+    ],
+    "reporting_doctrine": [
+      "No pooled composite score across clinical utility, authority, execution, privacy or interoperability.",
+      "Publish every failed, deferred and abstained attempt; never discard failed executions from the denominator.",
+      "Use matched baselines, frozen task/corpus manifests, exact software/model versions, paired confidence intervals and blinded clinician adjudication.",
+      "Report p50/p95/p99 latency, cost, memory, throughput and recovery separately."
+    ]
   }
 }
