@@ -56,7 +56,7 @@ The companion `scoped-reference-v1.schema.json` defines four distinct envelope s
 - `sd-jwt-disclosure-ref-v1`: an opaque reference to an SD-JWT presentation, never the raw token;
 - `bbs-derived-proof-ref-v1`: an opaque reference to an experimental BBS derived proof and issuer key epoch.
 
-The Rust module `scoped_refs.rs` checks scheme/scope/key metadata and rejects malformed or cross-scope references. It does **not** generate CSPRNG values, compute HMACs, verify SD-JWT, verify BBS, validate issuer signatures, check revocation status, or establish unlinkability. The schema and validator are a structural boundary to guide the eventual v2 proof envelope, not a production cryptographic implementation. BBS remains experimental.
+The Rust module `scoped_refs.rs` checks scheme/scope/key metadata and rejects malformed or cross-scope references. It now also defines `OperationBindingV2` / `OperationReferenceSetV2`, with separate operation-scoped handles for subject, actor, recipient, source resource, resource set, consent revision, policy revision and idempotency key, plus a tenant/purpose/epoch-keyed reference. The companion `operation-binding-v2.schema.json` defines the JSON envelope. It does **not** generate CSPRNG values, compute HMACs, verify SD-JWT, verify BBS, validate issuer signatures, check revocation status, or establish unlinkability. The v2 schema and validator are a structural input contract, not a production cryptographic implementation. The v1 `OperationBinding` still exists for compatibility; new v2 integrations should use the typed envelope and a reviewed issuer/key verifier. BBS remains experimental.
 
 The 16-case `privacy-scenarios-v1.json` identifies dictionary attacks, stable-handle reuse, cross-tenant linkage, key rotation/revocation, unauthorized re-identification, over-disclosure and metadata side channels. Most require an external key registry, presentation verifier or independent attack harness; do not report the structural validator as passing those tests.
 
@@ -72,7 +72,7 @@ The crate has no third-party dependencies and is excluded from the large Holocha
 
 The synthetic authenticator only checks deterministic fixture strings. It does not verify real signatures or hashes. The qualification registry is also a test fixture. These tests validate graph logic only.
 
-## Current v1 test families (40 Rust unit tests)
+## Current verifier tests (45 Rust unit tests)
 
 - valid flow with deliberately out-of-order wall-clock observations;
 - explicit authenticated-subject binding and spoofed-identity rejection;
@@ -90,7 +90,8 @@ The synthetic authenticator only checks deterministic fixture strings. It does n
 - conflicting terminal commit outcomes and duplicate recipient effect witnesses;
 - unrelated later success cannot erase an earlier unreconciled unknown commit/delivery result;
 - invalid signature fixture;
-- scoped-reference metadata and operation/tenant/purpose/key-epoch validation (8 additional Rust tests).
+- scoped-reference metadata and operation/tenant/purpose/key-epoch validation;
+- v2 operation binding rejects cross-operation substitution, duplicate role handles, missing policy context and unsupported schema version.
 - verified commit rejection without delivery.
 
 ## Next evidence gates
