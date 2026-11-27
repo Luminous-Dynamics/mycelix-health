@@ -193,6 +193,9 @@ pub struct OperationReferenceSetV2 {
     pub patient: ScopedReference,
     pub actor: ScopedReference,
     pub recipient: ScopedReference,
+    /// Opaque operation-scoped reference to the purpose claim. The claim itself
+    /// is disclosed only to an authority verifier that is entitled to see it.
+    pub purpose_context: ScopedReference,
     pub source_resource: ScopedReference,
     pub resource_set: ScopedReference,
     pub consent_revision: ScopedReference,
@@ -213,6 +216,7 @@ impl OperationReferenceSetV2 {
             &self.patient,
             &self.actor,
             &self.recipient,
+            &self.purpose_context,
             &self.source_resource,
             &self.resource_set,
             &self.consent_revision,
@@ -246,7 +250,8 @@ pub struct OperationBindingV2 {
     pub schema_version: u32,
     pub operation_id: String,
     pub attempt_id: String,
-    pub purpose: String,
+    /// Generic operation action code; sensitive purpose is carried as an opaque
+    /// scoped reference rather than plaintext in exported evidence.
     pub action: String,
     pub source_resource_version: String,
     pub revocation_epoch: u64,
@@ -267,7 +272,6 @@ impl OperationBindingV2 {
         if [
             self.operation_id.as_str(),
             self.attempt_id.as_str(),
-            self.purpose.as_str(),
             self.action.as_str(),
             self.source_resource_version.as_str(),
         ]
@@ -327,7 +331,6 @@ mod tests {
             schema_version: 2,
             operation_id: "operation-opaque-001".into(),
             attempt_id: "attempt-opaque-001".into(),
-            purpose: "treatment-coordination".into(),
             action: "disclose".into(),
             source_resource_version: "4".into(),
             revocation_epoch: 17,
@@ -335,6 +338,7 @@ mod tests {
                 patient: operation_ref('a'),
                 actor: operation_ref('c'),
                 recipient: operation_ref('d'),
+                purpose_context: operation_ref('4'),
                 source_resource: operation_ref('e'),
                 resource_set: operation_ref('f'),
                 consent_revision: operation_ref('1'),
@@ -355,6 +359,14 @@ mod tests {
                 7
             )
             .is_ok());
+    }
+
+    #[test]
+    fn operation_binding_v2_binds_purpose_without_exporting_plaintext() {
+        let binding = valid_operation_binding_v2();
+        assert!(binding.references.purpose_context.validate_operation_scope(
+            "op-scope-opaque-001"
+        ).is_ok());
     }
 
     #[test]
@@ -403,9 +415,9 @@ mod tests {
     }
 
     #[test]
-    fn operation_binding_v2_rejects_missing_authority_context() {
+    fn operation_binding_v2_rejects_purpose_reference_from_another_scope() {
         let mut binding = valid_operation_binding_v2();
-        binding.purpose.clear();
+        binding.references.purpose_context.scope_id = "other-operation-scope".into();
         assert_eq!(
             binding.validate(
                 "op-scope-opaque-001",
