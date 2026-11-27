@@ -4,7 +4,8 @@
 //! Sweettest Integration Tests for Consent Ownership
 //!
 //! Validates that only the patient owner can create consent entries
-//! for their patient record.
+//! for their patient record, and characterizes the current peer-visible
+//! retrieval behavior tracked by the Tier-1 PHI privacy P0.
 
 use anyhow::Result;
 use holochain::conductor::config::ConductorConfig;
@@ -12,6 +13,7 @@ use holochain::conductor::ConductorBuilder;
 use holochain::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
+use std::time::Duration;
 
 // ============================================================================//
 // Type Definitions (match zome types)
@@ -332,6 +334,112 @@ async fn test_non_owner_cannot_create_consent() -> Result<()> {
         .await;
 
     assert!(result.is_err(), "Non-owner should not be able to create consent");
+
+    Ok(())
+}
+
+// ============================================================================//
+// Characterization: Current Consent Confidentiality Boundary
+// ============================================================================//
+
+/// Characterizes the current P0 tracked by #157/#164.
+///
+/// Alice authors a valid MentalHealth consent whose grantee is Alice herself;
+/// Bob is neither patient nor grantee. Bob then calls `get_patient_consents` from
+/// Bob's own cell. That coordinator function performs `get_links` + `get` without
+/// an authorization check. If the full Alice-authored consent arrives in Bob's
+/// cell, the canary demonstrates peer-visible policy detail through the currently
+/// packaged public-DHT-backed path.
+///
+/// This is intentionally an ignored *current-behavior* test. After the protected
+/// capability migration, the expected behavior should be inverted: Bob must not
+/// obtain the human-readable consent/category/note detail.
+#[tokio::test]
+#[ignore = "P0 characterization: requires packaged health.dna + multi-agent conductor; expected current behavior is sensitive peer retrieval"]
+async fn characterize_ungranted_peer_can_read_full_consent_via_public_getter() -> Result<()> {
+    const CANARY: &str = "PRIVACY-CANARY: psychotherapy-consent-detail-must-not-be-peer-visible";
+
+    let (conductor, alice_cell, bob_cell) = setup_two_agents().await?;
+
+    let patient_record: Record = conductor
+        .call_zome(&alice_cell, "patient", "create_patient", test_patient())
+        .await?;
+    let patient_hash = patient_record.action_address().clone();
+
+    let consent = Consent {
+        consent_id: "CONSENT-PRIVACY-CHAR-001".to_string(),
+        patient_hash: patient_hash.clone(),
+        // Bob is deliberately NOT the grantee.
+        grantee: ConsentGrantee::Agent(alice_cell.agent_pubkey().clone()),
+        scope: ConsentScope {
+            data_categories: vec![DataCategory::MentalHealth],
+            date_range: None,
+            encounter_hashes: None,
+            exclusions: vec![DataCategory::SubstanceAbuse],
+        },
+        permissions: vec![DataPermission::Read],
+        purpose: ConsentPurpose::Treatment,
+        status: ConsentStatus::Active,
+        granted_at: Timestamp::from_micros(1),
+        expires_at: None,
+        revoked_at: None,
+        revocation_reason: None,
+        document_hash: None,
+        witness: None,
+        legal_representative: None,
+        notes: Some(CANARY.to_string()),
+    };
+
+    let _: Record = conductor
+        .call_zome(&alice_cell, "consent", "create_consent", consent)
+        .await?;
+
+    // Public DHT integration is asynchronous. Retry only the read; do not mutate
+    // any policy or grant Bob access while waiting for the authored entry/link to
+    // become visible from Bob's cell.
+    let mut observed: Option<Consent> = None;
+    for _ in 0..50 {
+        let records: Vec<Record> = conductor
+            .call_zome(
+                &bob_cell,
+                "consent",
+                "get_patient_consents",
+                patient_hash.clone(),
+            )
+            .await?;
+
+        observed = records.into_iter().find_map(|record| {
+            record
+                .entry()
+                .to_app_option::<Consent>()
+                .ok()
+                .flatten()
+                .filter(|entry| entry.notes.as_deref() == Some(CANARY))
+        });
+
+        if observed.is_some() {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(100)).await;
+    }
+
+    let leaked = observed.expect(
+        "characterization canary was not visible from Bob's cell; either DHT integration did not complete or current privacy behavior changed",
+    );
+
+    assert_eq!(leaked.patient_hash, patient_hash);
+    assert_eq!(leaked.scope.data_categories, vec![DataCategory::MentalHealth]);
+    assert_eq!(leaked.scope.exclusions, vec![DataCategory::SubstanceAbuse]);
+    assert_eq!(leaked.purpose, ConsentPurpose::Treatment);
+    assert_eq!(leaked.notes.as_deref(), Some(CANARY));
+
+    // The characterization is meaningful only if Bob is not accidentally the
+    // authorized grantee represented by the consent.
+    assert_ne!(
+        leaked.grantee,
+        ConsentGrantee::Agent(bob_cell.agent_pubkey().clone()),
+        "test fixture accidentally granted Bob the consent"
+    );
 
     Ok(())
 }
