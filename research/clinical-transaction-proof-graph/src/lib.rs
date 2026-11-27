@@ -6,6 +6,7 @@
 //! The fixture authenticator in these tests is not production cryptography.
 
 pub mod scoped_refs;
+pub mod qualification_receipt;
 
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 
