@@ -14,7 +14,7 @@ services:
       start_period: 10s
       retries: 20
     volumes:
-      - hapi-postgres-data:/var/lib/postgresql/data
+      - hapi-postgres-data:/var/lib/postgresql
 
   hapi:
     # hapiproject/hapi:v8.12.0-2 — immutable multi-platform index digest.
@@ -29,7 +29,7 @@ services:
       SPRING_DATASOURCE_PASSWORD: local-test-only-not-a-secret
       SPRING_DATASOURCE_DRIVER_CLASS_NAME: org.postgresql.Driver
       HIBERNATE_DIALECT: ca.uhn.fhir.jpa.model.dialect.HapiFhirPostgresDialect
-      HAPI_FHIR_FHIR_VERSION: R4
+      hapi.fhir.fhir_version: R4
     ports:
       # Loopback only: the upstream starter has no security implementation by default.
       - "127.0.0.1:8080:8080"
