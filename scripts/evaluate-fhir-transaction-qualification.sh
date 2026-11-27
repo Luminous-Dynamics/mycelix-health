@@ -58,6 +58,9 @@ result="$(jq -n \
 
   ($doc[0] // null) as $d
   | ($spec[0] // null) as $s
+  | ($s.required_probes // [] | map(.id)) as $required_ids
+  | (if ($d.probe_evidence.probes | type) == "array" then $d.probe_evidence.probes else [] end) as $probes
+  | ($required_ids | map(. as $id | {id: $id, matches: [$probes[] | select(.id == $id)]})) as $matched
   | if ($d | type) != "object" then
       verdict("defer"; "evidence_document_missing_or_invalid")
     elif ($d.schema_version != 1) or ($s.schema_version != 1) then
@@ -112,26 +115,20 @@ result="$(jq -n \
       verdict("defer"; "probe_evidence_stale_or_future_dated")
     elif ($d.probe_evidence.probes | type) != "array" then
       verdict("defer"; "probe_results_missing")
-    elif any($d.probe_evidence.probes[]?; .result == "fail") then
+    elif any($probes[]; .result == "fail" and ($required_ids | index(.id)) != null) then
       verdict("not_qualified"; "required_probe_failed")
-    elif any($s.required_probes[] as $required;
-      ([$d.probe_evidence.probes[]? | select(.id == $required.id)]) | length != 1
-    ) then
+    elif any($matched[]; (.matches | length) != 1) then
       verdict("defer"; "required_probe_missing_or_duplicated")
-    elif any($s.required_probes[] as $required;
-      ([$d.probe_evidence.probes[]? | select(.id == $required.id)]) as $matches
-      | $matches[0].result != "pass"
-    ) then
+    elif any($matched[]; .matches[0].result != "pass") then
       verdict("defer"; "required_probe_not_passed")
-    elif any($s.required_probes[] as $required;
-      ([$d.probe_evidence.probes[]? | select(.id == $required.id)]) as $matches
-      | (digest_ok($matches[0].evidence_sha256) | not)
-        or (fresh(
-          $matches[0].observed_at;
-          $now;
-          $s.policy.maximum_evidence_age_seconds;
-          $s.policy.maximum_future_clock_skew_seconds
-        ) | not)
+    elif any($matched[];
+      (digest_ok(.matches[0].evidence_sha256) | not)
+      or (fresh(
+        .matches[0].observed_at;
+        $now;
+        $s.policy.maximum_evidence_age_seconds;
+        $s.policy.maximum_future_clock_skew_seconds
+      ) | not)
     ) then
       verdict("defer"; "probe_artifact_digest_or_timestamp_invalid")
     else
