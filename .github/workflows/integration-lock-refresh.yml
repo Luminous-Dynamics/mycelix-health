@@ -1,0 +1,94 @@
+name: Integration Test Lockfile Refresh
+
+on:
+  push:
+    branches: [fix/health-dependency-remediation-combined-2026-11-27]
+    paths:
+      - "tests/integration/package.json"
+      - ".github/workflows/integration-lock-refresh.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: health-integration-lock-refresh
+  cancel-in-progress: false
+
+jobs:
+  refresh-lock:
+    name: Resolve and validate integration test lockfile
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - name: Checkout the owned remediation branch
+        uses: actions/checkout@v4
+        with:
+          ref: fix/health-dependency-remediation-combined-2026-11-27
+          persist-credentials: true
+          fetch-depth: 0
+
+      - name: Set up Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Generate a lockfile from the declared integration dependencies
+        working-directory: tests/integration
+        run: |
+          set -euo pipefail
+          npm install --package-lock-only --ignore-scripts --no-audit --no-fund
+          node -e '
+            const lock = require("./package-lock.json");
+            const root = lock.packages[""];
+            for (const name of ["@holochain/client", "@holochain/tryorama", "vitest"]) {
+              const version = root.devDependencies?.[name];
+              if (!version) throw new Error("missing declared integration dependency " + name);
+            }
+            if (!lock.packages["node_modules/@holochain/client"] ||
+                !lock.packages["node_modules/@holochain/tryorama"] ||
+                !lock.packages["node_modules/vitest"]) {
+              throw new Error("lockfile resolution is incomplete");
+            }
+            console.log("integration dependency graph locked");
+          '
+
+      - name: Verify clean installation from the generated lockfile
+        working-directory: tests/integration
+        run: npm ci --ignore-scripts --no-audit --no-fund
+
+      - name: Preserve exact resolved package versions
+        working-directory: tests/integration
+        run: |
+          node -e '
+            const lock = require("./package-lock.json");
+            const names = ["@holochain/client", "@holochain/tryorama", "vitest"];
+            const versions = Object.fromEntries(names.map(name => [
+              name,
+              lock.packages["node_modules/" + name].version
+            ]));
+            console.log(JSON.stringify(versions, null, 2));
+          ' | tee "$RUNNER_TEMP/health-integration-versions.json"
+
+      - name: Upload lockfile evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: health-integration-dependency-lock
+          path: |
+            tests/integration/package-lock.json
+            ${{ runner.temp }}/health-integration-versions.json
+          if-no-files-found: error
+          retention-days: 90
+
+      - name: Commit generated lockfile to the review branch
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add tests/integration/package-lock.json
+          if git diff --cached --quiet; then
+            echo "Integration package lock is already committed."
+          else
+            git commit -m "chore(test): lock Holochain integration dependencies"
+            git push origin HEAD:fix/health-dependency-remediation-combined-2026-11-27
+          fi

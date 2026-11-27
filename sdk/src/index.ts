@@ -93,6 +93,10 @@ export * from './privacy';
 
 // Re-export accessibility utilities
 export * from './accessibility';
+export * from './crypto/governed-validation';
+export * from './crypto/source-chain-evidence';
+export * from './crypto/native-countersigning';
+export * from './countersigning/native-session';
 
 /**
  * MycelixHealthClient
