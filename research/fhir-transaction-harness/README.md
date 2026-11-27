@@ -1,18 +1,19 @@
-# HAPI FHIR R4 + PostgreSQL transaction probe harness
+# HAPI FHIR R4 + PostgreSQL transaction assurance harness
 
-**Purpose:** run a real, persistent FHIR R4 server and observe declared and active transaction behavior. This is a qualification harness, not a production EHR or a complete Mycelix qualification.
+**Purpose:** actively qualify one pinned FHIR R4 server/database configuration against a reproducible synthetic transaction corpus. This is a behavioral probe harness, not a production EHR, a Mycelix adapter qualification, or a clinical-safety certification.
 
 ## Pinned runtime
 
-- HAPI JPA Starter tag `hapiproject/hapi:v8.12.0-2`, multi-platform index digest `sha256:0ff86aac4c7bd13a1ee226444a70263bb46ed1c28ef543c30a44f865b80ca04e`.
-- PostgreSQL 18.7, multi-platform index digest `sha256:64c8b0d31e4ab6ea665e8426ea406a94bf52de3c05b3a4a8bf713704eefa9328`.
-- HAPI is explicitly configured for R4 and persistent PostgreSQL. Its port is bound to `127.0.0.1` only.
+- HAPI JPA Starter v8.12.0-2, multi-platform image-index digest `sha256:0ff86aac4c7bd13a1ee226444a70263bb46ed1c28ef543c30a44f865b80ca04e`.
+- PostgreSQL 18.7, multi-platform image-index digest `sha256:64c8b0d31e4ab6ea665e8426ea406a94bf52de3c05b3a4a8bf713704eefa9328`.
+- Explicit FHIR R4 configuration and persistent PostgreSQL volume.
+- HAPI binds to `127.0.0.1` only. The upstream starter does not provide production authentication/authorization or enterprise audit defaults.
 
-PostgreSQL 18+ uses the versioned data-directory layout (`/var/lib/postgresql/18/docker`); the Compose volume is mounted at `/var/lib/postgresql`. The image pins are part of the experimental identity; do not use floating tags.
+The Compose file mounts `./init-observer.sql` relative to its own directory. That script creates a separate SELECT-only `hapi_observer` role; it does not grant the observer write privileges.
 
 ## Run locally
 
-Prerequisites: Docker Engine + Compose plugin, `curl`, `jq`, and `sha256sum`.
+Prerequisites: Docker Engine + Compose plugin, `curl`, `jq`, `sha256sum`.
 
 ```bash
 docker compose -f research/fhir-transaction-harness/compose.yaml up -d --wait
@@ -21,70 +22,55 @@ FHIR_BASE_URL=http://127.0.0.1:8080/fhir \
 docker compose -f research/fhir-transaction-harness/compose.yaml down -v
 ```
 
-The script records the exact CapabilityStatement, transaction/replay responses, stale-ETag and concurrent-writer responses, rollback OperationOutcome, and a machine-readable evidence summary. It hashes the checked-in probe-corpus-v1.json, which defines all eight active probes and their expected outcomes; the corpus digest is included in qualification-evidence.json and the workflow harness manifest. PostgreSQL init creates a separate SELECT-only `hapi_observer` role; the final probe queries `HFJ_RESOURCE`, `HFJ_RES_VER`, and `HFJ_SPIDX_TOKEN` directly and checks resource counts/versions plus the absent rollback marker. The observer's result is stored separately from HAPI API read/search results. The Compose bind mount is relative to this Compose file's directory, so the init SQL source is `./init-observer.sql`.
+The versioned `probe-corpus-v1.json` defines eight active probes and is hashed into `qualification-evidence.json`. The workflow fingerprints the Compose file, observer init SQL, corpus and harness script. Every test uses per-run synthetic identifiers and synthetic data; no PHI is used.
 
-## What is probed
+## Active probe contract
 
-1. Read `/metadata`; hash the exact CapabilityStatement bytes; assert FHIR R4 (`4.0.1`); require transaction support and declared conditional-create/search capabilities.
-2. Create one synthetic Patient anchor via conditional create and read it back to obtain the server-assigned ID/version.
-3. Submit 128 concurrent conditional-create requests using the same synthetic Patient identifier. Require exactly one HTTP 201 creator and no unexpected statuses. A pinned HAPI 8.12.0 run exposed two transient HTTP 409 OperationOutcomes from a duplicate `HFJ_RES_SEARCH_URL` unique-key collision; the revised harness preserves these responses and retries **only** that exact diagnostic using the identical conditional-create request.
-4. Require every qualifying 409 retry to return HTTP 200 and the exact resource ID created by the original winner. Then assert one matching resource via FHIR and one master/history/version-1 row through the read-only PostgreSQL observer. Unknown 409 diagnostics, retry failure, ID mismatch or duplicate rows fail the probe. Initial 409 rate is reported separately rather than hidden.
-5. Submit a two-entry FHIR transaction Bundle: create Provenance targeting the pre-created Patient and a linked synthetic Observation.
-6. Replay the exact transaction; assert one Provenance and Observation remain and Observation version is unchanged.
-7. Send a deterministic stale-ETag update; require the observed FHIR version-conflict response (HAPI returns 409 OperationOutcome) and unchanged resource version.
-8. Run two truly concurrent Patient updates from the same valid ETag; require one accepted write and one 409/412 version conflict, with exactly one version increment.
-9. Submit a transaction that creates a rollback-marker Patient then attempts an update with impossible If-Match. Require OperationOutcome failure, no marker, and unchanged existing resource version.
-10. Use a separate read-only PostgreSQL role to inspect HAPI master/history rows, versions and token-index state; assert role privileges and agreement with API-level effects.
+1. **Capability discovery.** Read the live `/metadata`, store/hash the exact CapabilityStatement bytes, assert FHIR R4 `4.0.1`, and require declared transaction, conditional-create and search capabilities for the interactions used. This is declared capability evidence, not proof of runtime behavior.
 
-The race probe distinguishes a normal conflict from an internal contention collision. A 409 only counts as recovered when its diagnostic matches the known unique-index collision and the same conditional operation resolves to the already-created resource. This does not convert the first-attempt 409 into a clean success: it remains separately reported and is a target for reducing/ eliminating in later database/server versions.
+2. **Synthetic Patient anchor.** Conditionally create one synthetic Patient and search it back to obtain its server-assigned ID and current version.
 
-Post-state is checked through both FHIR and SQL. The observer is independent of the FHIR HTTP API but shares the same PostgreSQL instance, not an independent replica or third-party auditor.
-## Direct database observer debugging history
+3. **128-way conditional-create contention.** Launch 128 requests for the same synthetic Patient identifier, in batches of up to 32 parallel requests. Require exactly one HTTP 201 creator and no unclassified status. Preserve every original request response and status.
 
-- HAPI-only run #25 passed the FHIR/API probe set: multi-resource transaction, conditional replay, deterministic stale-ETag conflict, concurrent version conflict, and transaction rollback.
-- First direct-SQL attempt #33 reached the observer query but failed because the script assumed HFJ_RESOURCE.PID. The live HAPI 8.12.0 schema does not expose that column; the relationships use HFJ_RESOURCE.RES_ID. The current probe records the live information_schema column inventory, requires the needed columns, and joins HFJ_RES_VER.RES_ID / HFJ_SPIDX_TOKEN.RES_ID to HFJ_RESOURCE.RES_ID.
-- The next attempt exposed a shell quoting defect in the combined schema-discovery/observer command before services started. These commands are now separate shell operations: first export the schema inventory, then execute the observer SQL. The current exact-head workflow is the first run of that corrected shell structure.
-- Until that run completes, direct PostgreSQL observation is not qualified. The earlier HAPI-only #25 result remains valid for its FHIR API probes, but must not be presented as proof of direct SQL read-back.
+   **Observed HAPI 8.12.0 behavior:** the first 128-way run (#55, workflow 46045883432) returned 1 HTTP 201, 125 HTTP 200 and 2 HTTP 409 OperationOutcomes. The two 409 diagnostics both reported HAPI-0550 / PostgreSQL duplicate-key violation on `hfj_res_search_url_pkey` for the same conditional search URL. All 126 successful response bodies named the same Patient ID (`1001`). The old harness stopped at its strict 1/127/0 assertion, before it performed the final FHIR search or direct SQL observation. This is frozen at `evidence/run-55-conditional-create-contention.json` with the original workflow artifact digest. It is **not** a passing result and does not prove final database cardinality.
 
-## Direct database observer debugging history
+   **Recovery contract under test now:** retry only a 409 OperationOutcome whose diagnostic contains the exact `hfj_res_search_url_pkey` constraint, using the identical conditional-create body and `If-None-Exist` identifier. Require HTTP 200 and the exact same Patient ID returned by the original HTTP 201. Any unknown 409, any other status, retry failure or resource-ID mismatch fails closed. Report initial 409 rate separately; do not hide transient contention errors.
 
-- HAPI-only run #25 passed the FHIR/API probe set: multi-resource transaction, conditional replay, deterministic stale-ETag conflict, concurrent version conflict, and transaction rollback. This remains the last fully green HAPI-only baseline.
-- Direct-SQL run #33 reached the observer query but failed because the script assumed HFJ_RESOURCE.PID. The pinned HAPI 8.12.0 schema does not expose that column; the resource joins use HFJ_RESOURCE.RES_ID. The current script uses RES_ID and records/validates the exact live information_schema column inventory before joining.
-- Run #36 failed at the shell syntax preflight before containers started. The schema-discovery psql call and the JSON observer psql call are now separate shell commands; no nested command substitution is used for the schema inventory.
-- The newest exact-head run must pass bash -n, then prove the catalog query, SELECT-only role, row/history counts, and rollback absence. Until that happens, direct PostgreSQL observation is not qualified.
+4. **FHIR transaction and replay.** Submit a two-entry transaction Bundle: Provenance with a standard `target=Patient/{id}` reference and a linked synthetic Observation. Replay the exact Bundle. Require one Provenance, one Observation and unchanged Observation version. This is in-server transaction/replay evidence, not distributed exactly-once.
 
-## Frozen direct-database result
+5. **Deterministic stale-version precondition.** Send a Patient update with a deliberately stale ETag. The pinned HAPI server returns HTTP 409 OperationOutcome; the harness accepts only the recognized 409/412 version-conflict class and confirms the resource version did not advance.
 
-Runs #45 and #47's read-only PostgreSQL observations are preserved at `evidence/run-45-postgresql-observed.json` and `evidence/run-47-postgresql-observed.json`. It binds the workflow run/artifact IDs, exact source commit, HAPI/PostgreSQL runtime image IDs, PostgreSQL 18.7 version, CapabilityStatement digest, harness file digests, FHIR probe outcomes and direct database row/version counts.
+6. **Concurrent update conflict.** Submit two simultaneous Patient updates with the same current `If-Match` version. Require exactly one accepted update and one HTTP 409/412 conflict, with exactly one resource-version increment. Preserve both response bodies and status codes before assertions.
 
-The snapshot reports:
-- one Patient master row and two history versions, current version 2;
-- one Provenance row/history version;
-- one Observation row/history version, current version 1;
-- zero rollback-marker token-index rows;
-- observer role `hapi_observer`, read-only session, not superuser, no role creation, INSERT, UPDATE or DELETE privileges.
+7. **Atomic rollback.** Submit one FHIR transaction that creates a rollback-marker Patient and then attempts an update with an impossible `If-Match`. Require an OperationOutcome failure, no rollback marker in persisted state, and no version change to the pre-existing Patient.
 
-Both snapshots are frozen experimental observations, not permanent certifications. Run #47 repeats the same FHIR and database invariants with the concurrent write winners reversed (A=409, B=200); that is useful evidence that the invariant is independent of which writer wins. Re-execute for changes to HAPI/PostgreSQL versions, Compose configuration, probe code or schema.
+8. **Direct PostgreSQL observation.** Connect as `hapi_observer`, not the HAPI application role. Export the pinned runtime's actual `information_schema.columns` inventory; require the columns used by the probe; then query `HFJ_RESOURCE`, `HFJ_RES_VER` and `HFJ_SPIDX_TOKEN` directly. Require the database evidence to agree with the FHIR observations, including exactly one conditional-create Patient at version 1 and one history row after contention recovery.
 
-## Interpretation
+The SQL observer must prove: session read-only, not superuser, cannot create roles, cannot INSERT/UPDATE/DELETE. It is independent of the FHIR HTTP API but reads the same PostgreSQL instance; it is not an independent replica or third-party auditor.
 
-A probe pass establishes only the behavior observed for this exact image, configuration, test corpus and runtime. It does not qualify Mycelix's consent/revocation fence, gateway operation ledger, cross-system recovery or remote recipient effect. The generated evidence deliberately leaves overall qualification at `defer`.
+## Verified baseline before the 128-way increment
 
-The earlier `target:identifier` conditional query was rejected by this HAPI image during transaction parsing (`HAPI-1250`). The current harness avoids that modifier and uses the ordinary declared Provenance `target` search against the server-assigned Patient id.
+Three independent exact-head runs of the previous FHIR + direct SQL observer suite passed:
 
-## Limitations and safety
+- Run #45, workflow 46022783456, source `c594b6f2be0a95e3b6957954843e2740d25b0658`, evidence `evidence/run-45-postgresql-observed.json`.
+- Run #47, workflow 46023436149, source `d3f88912729fe5b89510d86b5be1356aa7726588`, evidence `evidence/run-47-postgresql-observed.json`.
+- Run #49, workflow 46024161495, source `5e67b576ed2c425f27793ce2f1c5b53c26d29c77`, evidence `evidence/run-49-postgresql-observed.json`.
 
-The upstream HAPI JPA starter does not provide a production authentication/authorization implementation or enterprise audit configuration by default. This stack is loopback-only and synthetic-data-only; do not expose it to a network or use real patient data.
+Each passed the two-entry Provenance+Observation transaction, exact conditional replay, deterministic stale ETag, one-winner concurrent update, rollback and direct PostgreSQL row/history/token-index checks. The read-only observer saw Patient master/history 1/2 at version 2, Provenance 1/1, Observation 1/1 at version 1 and zero rollback-marker token-index rows. Run #47 reversed which concurrent update won, while preserving the exactly-one-winner invariant.
 
-FHIR transaction atomicity is local to one supporting FHIR server. It does not establish atomic commit across Mycelix identity, consent, gateway, outbox, a second EHR or a recipient. Not yet tested here:
-- consent revocation at the durable commit boundary;
-- Mycelix operation-ledger recovery after crashes/lost acknowledgements;
-- independent recipient-side durable effect witness;
-- independently signed runtime qualification receipt;
-- SMART/OAuth, access control, enterprise audit, or privacy/legal compliance.
+Those results qualify only the prior test set. They do not retroactively qualify the new 128-way conditional-create behavior.
 
-No PHI, clinical-safety, HIPAA / 42 CFR Part 2, regulatory-certification, production-readiness or distributed exactly-once claim is made.
+## Current increment status
+
+- Run #55 is the first observed 128-way contention attempt and **failed the clean first-attempt expectation** due to two HAPI/PostgreSQL search-URL uniqueness conflicts. The frozen result is retained rather than discarded.
+- The script now contains a narrow recovery check for that exact conflict, and the probe corpus specifies the allowed/rejected outcomes. The new recovery path still requires a fresh exact-head run; no 128-way recovery pass is claimed until it completes the retry and direct SQL checks.
+
+## Remaining Mycelix qualification boundary
+
+Overall Mycelix qualification remains `defer`. This harness does not exercise the Mycelix consent/revocation commit fence, gateway/outbox crash or lost-acknowledgement recovery, independent recipient-side durable-effect witness, production identity/authentication, enterprise audit, or an independently issued qualification receipt.
+
+FHIR transaction atomicity is local to one supporting FHIR server. It does not establish cross-service atomic commit. No PHI, clinical-safety, HIPAA / 42 CFR Part 2, regulatory-certification, production-readiness or distributed exactly-once claim is made.
 
 ## Industry conformance baseline
 
-Run the applicable Inferno US Core Test Kit separately for the supported profile claims. Inferno conformance does not replace operational transaction probes; these probes do not replace Inferno conformance.
+Run the applicable Inferno US Core Test Kit for the profile(s) Mycelix intends to claim. Inferno profile conformance complements, but does not replace, active transaction, revocation, recovery and recipient-effect probes. Equally, this custom harness does not establish US Core or SMART conformance.
