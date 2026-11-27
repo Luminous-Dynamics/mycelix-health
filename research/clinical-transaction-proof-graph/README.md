@@ -45,7 +45,7 @@ This is distinct from the Holochain DHT-at-rest confidentiality programme (#164/
 4. Cryptographic digest and signature verification is an injected boundary (EvidenceAuthenticator). The fixture authenticator in unit tests is deliberately not cryptographic. Production must supply a reviewed verifier, trust roots, key rotation and key-revocation semantics.
 5. Missing, unavailable or stale evidence returns Defer. Tampering, identity mismatch, invalid transition, cycle or resource-set mismatch returns Rejected.
 6. A commit or delivery outcome of Unknown remains unresolved. Reconciliation must extend the same operation/attempt and idempotency binding; an unknown result is never promoted to success or denial without new evidence.
-7. A sender-side transport acknowledgement is not a recipient-side effect witness. A successful release proof requires a recipient-role event bound to the expected recipient and exact resource-set digest.
+7. A sender-side transport acknowledgement is not a recipient-side effect witness. A successful release proof requires a recipient-role event carrying a durable effect witness bound to the expected recipient, exact operation/attempt, idempotency key and resource-set digest.
 8. No distributed exactly-once guarantee is implied. A local transactional backend and a remote recipient are separate trust/atomicity boundaries.
 
 ## Run
@@ -58,7 +58,7 @@ The crate has no third-party dependencies and is excluded from the large Holocha
 
 The synthetic authenticator only checks deterministic fixture strings. It does not verify real signatures or hashes. The qualification registry is also a test fixture. These tests validate graph logic only.
 
-## Current v1 test families (29 Rust unit tests)
+## Current v1 test families (32 Rust unit tests)
 
 - valid flow with deliberately out-of-order wall-clock observations;
 - explicit authenticated-subject binding and spoofed-identity rejection;
@@ -69,7 +69,7 @@ The synthetic authenticator only checks deterministic fixture strings. It does n
 - expired or self-issued component qualification;
 - unresolved commit outcome;
 - sender acknowledgement incorrectly presented as recipient effect;
-- incorrect recipient resource-set digest;
+- missing recipient effect witness, wrong idempotency key/attempt and incorrect resource-set witness;
 - causal cycle, sequence gaps, and same-actor sequence forks lacking a direct causal parent;
 - duplicate/misplaced authority-decision rejection;
 - 10,000-event synthetic graph verification as a scale smoke test;
