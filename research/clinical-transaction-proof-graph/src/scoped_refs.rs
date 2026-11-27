@@ -310,12 +310,6 @@ mod tests {
     }
 
     fn valid_operation_binding_v2() -> OperationBindingV2 {
-        let mut set = valid_set();
-        set.source_resource = operation_ref('e');
-        set.resource_set = operation_ref('f');
-        set.consent_revision = operation_ref('1');
-        set.policy_revision = operation_ref('2');
-        set.idempotency_key = operation_ref('3');
         OperationBindingV2 {
             schema_version: 2,
             operation_id: "operation-opaque-001".into(),
@@ -325,15 +319,15 @@ mod tests {
             source_resource_version: "4".into(),
             revocation_epoch: 17,
             references: OperationReferenceSetV2 {
-                patient: set.patient,
-                actor: set.actor,
-                recipient: set.recipient,
-                source_resource: set.source_resource,
-                resource_set: set.resource_set,
-                consent_revision: set.consent_revision,
-                policy_revision: set.policy_revision,
-                idempotency_key: set.idempotency_key,
-                tenant: set.tenant,
+                patient: operation_ref('a'),
+                actor: operation_ref('c'),
+                recipient: operation_ref('d'),
+                source_resource: operation_ref('e'),
+                resource_set: operation_ref('f'),
+                consent_revision: operation_ref('1'),
+                policy_revision: operation_ref('2'),
+                idempotency_key: operation_ref('3'),
+                tenant: tenant_ref(),
             },
         }
     }
