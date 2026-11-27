@@ -982,9 +982,7 @@ mod tests {
         assert_eq!(
             outcomes
                 .iter()
-                .filter(|outcome| {
-                    **outcome == ReleaseOutcome::Denied("nonce_already_consumed")
-                })
+                .filter(|outcome| *outcome == &ReleaseOutcome::Denied("nonce_already_consumed"))
                 .count(),
             1
         );
@@ -1020,14 +1018,15 @@ mod tests {
         revoke.join().expect("revocation worker succeeds");
 
         let committed_before_revocation =
-            matches!(outcome, ReleaseOutcome::Released { .. });
+            matches!(&outcome, ReleaseOutcome::Released { .. });
+        let expected_effects = if committed_before_revocation { 1 } else { 0 };
         assert!(
             committed_before_revocation
                 || outcome == ReleaseOutcome::Denied("consent_revoked_before_commit")
         );
         assert_eq!(
             backend.side_effect_count(),
-            usize::from(committed_before_revocation)
+            expected_effects
         );
         assert_eq!(
             backend.audit_records().len(),
