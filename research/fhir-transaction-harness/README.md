@@ -60,10 +60,13 @@ Each passed the two-entry Provenance+Observation transaction, exact conditional 
 
 Those results qualify only the prior test set. They do not retroactively qualify the new 128-way conditional-create behavior.
 
-## Current increment status
+## Current 128-way conditional-create result
 
-- Run #55 is the first observed 128-way contention attempt and **failed the clean first-attempt expectation** due to two HAPI/PostgreSQL search-URL uniqueness conflicts. The frozen result is retained rather than discarded.
-- The script now contains a narrow recovery check for that exact conflict, and the probe corpus specifies the allowed/rejected outcomes. The new recovery path still requires a fresh exact-head run; no 128-way recovery pass is claimed until it completes the retry and direct SQL checks.
+- Run #55 (workflow 46045883432, source 4edf655cedec667acbd25ea8ec9f263f3977dfcb) observed 1 × 201, 125 × 200 and 2 × 409. Both 409s reported HAPI-0550 / hfj_res_search_url_pkey. The earlier harness failed before final search/SQL observation. Frozen at evidence/run-55-conditional-create-contention.json.
+- Run #62 (workflow 46047236740, source 8c26c5cffbe78b4787889f70c6af6f24cd97a2ff) passed the revised recovery probe. It observed 1 × 201, 126 × 200 and 1 known 409; the exact same conditional-create request retried to HTTP 200 for the original Patient ID 1001. Final FHIR search returned one match. Direct SQL confirmed one Patient master row, one history row and version 1. The observer was read-only, non-superuser and unable to mutate/create roles. Full frozen evidence: evidence/run-62-postgresql-conditional-create-recovered.json.
+- The first-attempt 409 rate in #62 was 0.78125% (1/128). It remains reported as transient contention, not treated as a clean initial success. The accepted outcome is that the conflict is known, same-request retry is safe/idempotent, final effect cardinality is one, and no attempt remains unresolved.
+
+Run #62 also passed the other seven probes: two-resource Provenance+Observation transaction, exact replay with unchanged Observation version, stale ETag handling, same-version concurrent update conflict, transaction rollback, CapabilityStatement and read-only direct SQL observation. Overall Mycelix qualification remains defer for the separate system-level gaps below.
 
 ## Remaining Mycelix qualification boundary
 
