@@ -354,6 +354,76 @@ pub fn verify_runtime_qualification<A: QualificationReceiptAuthenticator>(
     QualificationReport::qualified(probe_count)
 }
 
+/// Builds a component qualification registry from one already-verified runtime
+/// receipt. Signature and freshness verification run once in `new`; every
+/// lookup returns only identities explicitly bound by that receipt.
+pub struct RuntimeReceiptQualificationRegistry<'a> {
+    receipt: &'a RuntimeQualificationReceiptV1,
+    report: QualificationReport,
+}
+
+impl<'a> RuntimeReceiptQualificationRegistry<'a> {
+    pub fn new<A: QualificationReceiptAuthenticator>(
+        receipt: &'a RuntimeQualificationReceiptV1,
+        now_ms: i64,
+        expected_server_id: &str,
+        expected_database_id: &str,
+        authenticator: &A,
+    ) -> Self {
+        let report = verify_runtime_qualification(
+            receipt,
+            now_ms,
+            expected_server_id,
+            expected_database_id,
+            authenticator,
+        );
+        Self { receipt, report }
+    }
+
+    pub fn report(&self) -> &QualificationReport {
+        &self.report
+    }
+}
+
+impl crate::QualificationRegistry for RuntimeReceiptQualificationRegistry<'_> {
+    fn qualification_for(&self, component_id: &str) -> Option<crate::ComponentQualification> {
+        if self.report.verdict != QualificationVerdict::Qualified {
+            return None;
+        }
+
+        let (build_digest, config_digest) =
+            if component_id == self.receipt.server.component_id {
+                (
+                    &self.receipt.server.build_digest,
+                    &self.receipt.server.config_digest,
+                )
+            } else if component_id == self.receipt.database.component_id {
+                (
+                    &self.receipt.database.build_digest,
+                    &self.receipt.database.config_digest,
+                )
+            } else if self.receipt.qualification_profile == QualificationProfile::MycelixFhirAdapterR4
+                && self
+                    .receipt
+                    .adapter
+                    .as_ref()
+                    .is_some_and(|adapter| adapter.component_id == component_id)
+            {
+                let adapter = self.receipt.adapter.as_ref()?;
+                (&adapter.build_digest, &adapter.config_digest)
+            } else {
+                return None;
+            };
+
+        Some(crate::ComponentQualification {
+            build_digest: build_digest.clone(),
+            config_digest: config_digest.clone(),
+            valid_until_ms: self.receipt.expires_at_ms,
+            independently_issued: true,
+        })
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -432,6 +502,91 @@ mod tests {
             canonical_payload_digest: digest('b'),
             signature: Some("fixture-signature".into()),
         }
+    }
+
+    #[test]
+    fn receipt_registry_qualifies_server_and_database_components() {
+        let receipt = valid_receipt();
+        let authenticator = FixtureAuthenticator { valid: true };
+        let registry = RuntimeReceiptQualificationRegistry::new(
+            &receipt,
+            15_000,
+            "hapi-r4",
+            "postgres-18",
+            &authenticator,
+        );
+
+        let server = registry.qualification_for("hapi-r4").unwrap();
+        let database = registry.qualification_for("postgres-18").unwrap();
+        assert_eq!(server.build_digest, receipt.server.build_digest);
+        assert_eq!(server.config_digest, receipt.server.config_digest);
+        assert_eq!(database.build_digest, receipt.database.build_digest);
+        assert_eq!(database.config_digest, receipt.database.config_digest);
+        assert_eq!(server.valid_until_ms, receipt.expires_at_ms);
+        assert!(registry.qualification_for("unlisted-component").is_none());
+    }
+
+    #[test]
+    fn unsigned_receipt_grants_no_component_qualification() {
+        let mut receipt = valid_receipt();
+        receipt.signature = None;
+        let authenticator = FixtureAuthenticator { valid: true };
+        let registry = RuntimeReceiptQualificationRegistry::new(
+            &receipt,
+            15_000,
+            "hapi-r4",
+            "postgres-18",
+            &authenticator,
+        );
+        assert!(registry.qualification_for("hapi-r4").is_none());
+        assert_eq!(
+            registry.report().verdict,
+            QualificationVerdict::Defer
+        );
+    }
+
+    #[test]
+    fn expired_receipt_grants_no_component_qualification() {
+        let receipt = valid_receipt();
+        let authenticator = FixtureAuthenticator { valid: true };
+        let registry = RuntimeReceiptQualificationRegistry::new(
+            &receipt,
+            20_000,
+            "hapi-r4",
+            "postgres-18",
+            &authenticator,
+        );
+        assert!(registry.qualification_for("hapi-r4").is_none());
+        assert!(registry.qualification_for("postgres-18").is_none());
+        assert_eq!(
+            registry.report().verdict,
+            QualificationVerdict::Defer
+        );
+    }
+
+    #[test]
+    fn adapter_profile_qualifies_only_its_declared_adapter_component() {
+        let mut receipt = valid_receipt();
+        receipt.qualification_profile = QualificationProfile::MycelixFhirAdapterR4;
+        receipt.adapter = Some(AdapterBuildIdentity {
+            component_id: "mycelix-fhir-adapter".into(),
+            build_digest: digest('c'),
+            config_digest: digest('d'),
+        });
+        let authenticator = FixtureAuthenticator { valid: true };
+        let registry = RuntimeReceiptQualificationRegistry::new(
+            &receipt,
+            15_000,
+            "hapi-r4",
+            "postgres-18",
+            &authenticator,
+        );
+        let adapter = registry
+            .qualification_for("mycelix-fhir-adapter")
+            .unwrap();
+        assert_eq!(adapter.build_digest, digest('c'));
+        assert_eq!(adapter.config_digest, digest('d'));
+        assert!(registry.qualification_for("different-adapter").is_none());
     }
 
     #[test]
