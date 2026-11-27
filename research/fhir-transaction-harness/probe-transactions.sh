@@ -39,7 +39,7 @@ transaction_declared="$(jq -r '
 test "$transaction_declared" = "true"
 
 # Both resources use conditional create, which the live CapabilityStatement
-# must declare. Provenance is matched by standard target:identifier search,
+# must declare. Provenance is matched by standard target reference search,
 # not an unsupported Provenance.identifier search parameter.
 patient_conditional_create_declared="$(jq -r '
   [.rest[]? | select(.mode == "server") | .resource[]?
@@ -61,41 +61,71 @@ test "$provenance_target_search_declared" = "true"
 run_id="$(date -u +%s)-$RANDOM-$RANDOM"
 identifier_system="urn:mycelix:qualification:synthetic"
 patient_identifier="patient-$run_id"
-patient_full_url="urn:uuid:00000000-0000-4000-8000-000000000001"
-provenance_full_url="urn:uuid:00000000-0000-4000-8000-000000000002"
+observation_identifier="observation-$run_id"
 recorded_at="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 
-# A synthetic Patient and Provenance are submitted in one FHIR R4 transaction.
-# Patient and Provenance each use a declared conditional-create interaction.
+# Create a synthetic Patient anchor using declared conditional-create support.
 jq -n \
-  --arg patient_full_url "$patient_full_url" \
+  --arg identifier_system "$identifier_system" \
+  --arg patient_identifier "$patient_identifier" '
+  {
+    resourceType: "Patient",
+    active: true,
+    identifier: [{system: $identifier_system, value: $patient_identifier}],
+    name: [{family: "MycelixQualificationSynthetic"}]
+  }
+' > "$WORK_DIR/patient-create.json"
+cp "$WORK_DIR/patient-create.json" "$ARTIFACT_DIR/patient-create-request.json"
+
+patient_create_status="$(curl --silent --show-error --output "$WORK_DIR/patient-create-response.json" \
+  --write-out '%{http_code}' \
+  -X POST \
+  -H "If-None-Exist: identifier=$identifier_system|$patient_identifier" \
+  -H 'Content-Type: application/fhir+json' \
+  -H 'Accept: application/fhir+json' \
+  --data-binary @"$WORK_DIR/patient-create.json" "$FHIR_BASE_URL/Patient")"
+case "$patient_create_status" in
+  2??) ;;
+  *)
+    cat "$WORK_DIR/patient-create-response.json" >&2
+    printf 'Conditional Patient create failed: HTTP %s\n' "$patient_create_status" >&2
+    exit 1
+    ;;
+esac
+cp "$WORK_DIR/patient-create-response.json" "$ARTIFACT_DIR/patient-create-response.json"
+
+patient_anchor_json="$WORK_DIR/patient-anchor.json"
+curl --silent --show-error --fail --get "$FHIR_BASE_URL/Patient" \
+  -H 'Accept: application/fhir+json' \
+  --data-urlencode "_count=10" \
+  --data-urlencode "identifier=$identifier_system|$patient_identifier" \
+  > "$patient_anchor_json"
+patient_count="$(jq -r '.total // 0' "$patient_anchor_json")"
+patient_id="$(jq -r '.entry[0].resource.id // empty' "$patient_anchor_json")"
+existing_version="$(jq -r '.entry[0].resource.meta.versionId // empty' "$patient_anchor_json")"
+test "$patient_count" = "1"
+test -n "$patient_id"
+test -n "$existing_version"
+
+provenance_full_url="urn:uuid:00000000-0000-4000-8000-000000000002"
+
+# The two-entry atomic transaction creates Provenance linked to the Patient and
+# a synthetic Observation. Provenance uses the standard target=Patient/{id} search.
+jq -n \
   --arg provenance_full_url "$provenance_full_url" \
   --arg identifier_system "$identifier_system" \
-  --arg patient_identifier "$patient_identifier" \
+  --arg observation_identifier "$observation_identifier" \
+  --arg patient_id "$patient_id" \
   --arg recorded_at "$recorded_at" '
   {
     resourceType: "Bundle",
     type: "transaction",
     entry: [
       {
-        fullUrl: $patient_full_url,
-        resource: {
-          resourceType: "Patient",
-          active: true,
-          identifier: [{system: $identifier_system, value: $patient_identifier}],
-          name: [{family: "MycelixQualificationSynthetic"}]
-        },
-        request: {
-          method: "POST",
-          url: "Patient",
-          ifNoneExist: ("identifier=" + $identifier_system + "|" + $patient_identifier)
-        }
-      },
-      {
         fullUrl: $provenance_full_url,
         resource: {
           resourceType: "Provenance",
-          target: [{reference: $patient_full_url, identifier: {system: $identifier_system, value: $patient_identifier}}],
+          target: [{reference: ("Patient/" + $patient_id)}],
           recorded: $recorded_at,
           activity: {
             coding: [{
@@ -109,12 +139,35 @@ jq -n \
         request: {
           method: "POST",
           url: "Provenance",
-          ifNoneExist: ("target:identifier=" + $identifier_system + "|" + $patient_identifier)
+          ifNoneExist: ("target=Patient/" + $patient_id)
+        }
+      },
+      {
+        resource: {
+          resourceType: "Observation",
+          status: "final",
+          identifier: [{system: $identifier_system, value: $observation_identifier}],
+          code: {
+            coding: [{
+              system: "http://loinc.org",
+              code: "8867-4",
+              display: "Heart rate"
+            }],
+            text: "Synthetic qualification observation"
+          },
+          subject: {reference: ("Patient/" + $patient_id)},
+          valueString: "synthetic qualification fixture"
+        },
+        request: {
+          method: "POST",
+          url: "Observation",
+          ifNoneExist: ("identifier=" + $identifier_system + "|" + $observation_identifier)
         }
       }
     ]
   }
 ' > "$WORK_DIR/transaction.json"
+cp "$WORK_DIR/transaction.json" "$ARTIFACT_DIR/transaction-request.json"
 
 transaction_status="$(curl --silent --show-error --output "$WORK_DIR/transaction-response.json" \
   --write-out '%{http_code}' \
@@ -134,9 +187,7 @@ jq -e '
   and .type == "transaction-response"
   and (.entry | length) == 2
 ' "$WORK_DIR/transaction-response.json" >/dev/null
-cp "$WORK_DIR/transaction.json" "$ARTIFACT_DIR/transaction-request.json"
 cp "$WORK_DIR/transaction-response.json" "$ARTIFACT_DIR/transaction-response.json"
-
 search_total() {
   local resource_type="$1"
   local identifier_value="$2"
@@ -147,29 +198,28 @@ search_total() {
     | jq -r '.total // 0'
 }
 
-patient_count="$(search_total Patient "$patient_identifier")"
 provenance_count="$(curl --silent --show-error --fail --get "$FHIR_BASE_URL/Provenance" \
   -H 'Accept: application/fhir+json' \
   --data-urlencode "_count=10" \
-  --data-urlencode "target:identifier=$identifier_system|$patient_identifier" \
+  --data-urlencode "target=Patient/$patient_id" \
   | jq -r '.total // 0')"
-test "$patient_count" = "1"
+observation_count="$(search_total Observation "$observation_identifier")"
 test "$provenance_count" = "1"
+test "$observation_count" = "1"
 
-# Capture the Patient version before replay; the first search is by synthetic identifier.
-curl --silent --show-error --fail --get "$FHIR_BASE_URL/Patient" \
+observation_before_json="$WORK_DIR/observation-before-replay.json"
+curl --silent --show-error --fail --get "$FHIR_BASE_URL/Observation" \
   -H 'Accept: application/fhir+json' \
-  --data-urlencode "_count=1" \
-  --data-urlencode "identifier=$identifier_system|$patient_identifier" \
-  > "$WORK_DIR/patient-before-replay.json"
-patient_id="$(jq -r '.entry[0].resource.id // empty' "$WORK_DIR/patient-before-replay.json")"
-test -n "$patient_id"
-patient_version_before_replay="$(jq -r '.entry[0].resource.meta.versionId // empty' "$WORK_DIR/patient-before-replay.json")"
-test -n "$patient_version_before_replay"
+  --data-urlencode "_count=10" \
+  --data-urlencode "identifier=$identifier_system|$observation_identifier" \
+  > "$observation_before_json"
+observation_id="$(jq -r '.entry[0].resource.id // empty' "$observation_before_json")"
+observation_version_before_replay="$(jq -r '.entry[0].resource.meta.versionId // empty' "$observation_before_json")"
+test -n "$observation_id"
+test -n "$observation_version_before_replay"
 
-# Replay the exact transaction. Conditional create keeps one Patient and one
-# matching Provenance; this is not a distributed exactly-once claim.
-
+# Replay the same transaction; conditional create should preserve one Provenance
+# and one Observation. This is not a cross-system exactly-once assertion.
 replay_status="$(curl --silent --show-error --output "$WORK_DIR/replay-response.json" \
   --write-out '%{http_code}' \
   -H 'Content-Type: application/fhir+json' \
@@ -183,20 +233,20 @@ case "$replay_status" in
     exit 1
     ;;
 esac
-test "$(search_total Patient "$patient_identifier")" = "1"
 test "$(curl --silent --show-error --fail --get "$FHIR_BASE_URL/Provenance" \
   -H 'Accept: application/fhir+json' \
   --data-urlencode "_count=10" \
-  --data-urlencode "target:identifier=$identifier_system|$patient_identifier" \
+  --data-urlencode "target=Patient/$patient_id" \
   | jq -r '.total // 0')" = "1"
-curl --silent --show-error --fail "$FHIR_BASE_URL/Patient/$patient_id" \
-  -H 'Accept: application/fhir+json' > "$WORK_DIR/patient-after-replay.json"
-patient_version_after_replay="$(jq -r '.meta.versionId // empty' "$WORK_DIR/patient-after-replay.json")"
-test -n "$patient_version_after_replay"
+test "$(search_total Observation "$observation_identifier")" = "1"
+observation_after_json="$WORK_DIR/observation-after-replay.json"
+curl --silent --show-error --fail "$FHIR_BASE_URL/Observation/$observation_id" \
+  -H 'Accept: application/fhir+json' > "$observation_after_json"
+observation_version_after_replay="$(jq -r '.meta.versionId // empty' "$observation_after_json")"
+test "$observation_version_after_replay" = "$observation_version_before_replay"
 cp "$WORK_DIR/replay-response.json" "$ARTIFACT_DIR/replay-response.json"
-cp "$WORK_DIR/patient-before-replay.json" "$ARTIFACT_DIR/patient-before-replay.json"
-cp "$WORK_DIR/patient-after-replay.json" "$ARTIFACT_DIR/patient-after-replay.json"
-
+cp "$observation_before_json" "$ARTIFACT_DIR/observation-before-replay.json"
+cp "$observation_after_json" "$ARTIFACT_DIR/observation-after-replay.json"
 # Verify rollback: create a new marker Patient, then in the same transaction
 # update the existing Patient with a deliberately impossible If-Match version.
 # The operation must fail and the first create must not remain persisted.
@@ -380,8 +430,8 @@ jq -n \
   --arg metadata_sha256 "$metadata_sha256" \
   --arg transaction_http "$transaction_status" \
   --arg replay_http "$replay_status" \
-  --arg patient_version_before_replay "$patient_version_before_replay" \
-  --arg patient_version_after_replay "$patient_version_after_replay" \
+  --arg observation_version_before_replay "$observation_version_before_replay" \
+  --arg observation_version_after_replay "$observation_version_after_replay" \
   --arg rollback_http "$rollback_status" \
   --arg patient_conditional_create_declared "$patient_conditional_create_declared" \
   --arg provenance_conditional_create_declared "$provenance_conditional_create_declared" \
@@ -392,6 +442,7 @@ jq -n \
   --arg version_after_concurrency "$version_after_concurrent" \
   --arg patient_count "$patient_count" \
   --arg provenance_count "$provenance_count" \
+  --arg observation_count "$observation_count" \
   --arg existing_version_before "$version_before_rollback" \
   --arg existing_version_after "$version_after" '
   {
@@ -407,14 +458,15 @@ jq -n \
       provenance_target_search: ($provenance_target_search_declared == "true")
     },
     probes: {
-      patient_provenance_transaction: {result: "passed", http_status: $transaction_http},
+      provenance_observation_transaction: {result: "passed", http_status: $transaction_http},
       replay_resource_cardinality: {
         result: "passed",
         http_status: $replay_http,
         patient_count_after_replay: ($patient_count | tonumber),
         provenance_count_after_replay: ($provenance_count | tonumber),
-        patient_version_before_replay: $patient_version_before_replay,
-        patient_version_after_replay: $patient_version_after_replay
+        observation_count_after_replay: ($observation_count | tonumber),
+        observation_version_before_replay: $observation_version_before_replay,
+        observation_version_after_replay: $observation_version_after_replay
       },
       concurrent_if_match_writers: {
         result: "passed",
