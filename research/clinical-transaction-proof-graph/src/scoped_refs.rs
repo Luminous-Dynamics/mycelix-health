@@ -364,9 +364,11 @@ mod tests {
     #[test]
     fn operation_binding_v2_binds_purpose_without_exporting_plaintext() {
         let binding = valid_operation_binding_v2();
-        assert!(binding.references.purpose_context.validate_operation_scope(
-            "op-scope-opaque-001"
-        ).is_ok());
+        assert!(binding
+            .references
+            .purpose_context
+            .validate_operation_scope("op-scope-opaque-001")
+            .is_ok());
     }
 
     #[test]
