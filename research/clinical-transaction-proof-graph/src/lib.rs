@@ -506,9 +506,9 @@ where
             );
         }
     }
-    let authority_outcome = authority_events[0]
-        .authority_outcome
-        .expect("authority outcome presence was checked above");
+    let Some(authority_outcome) = authority_events[0].authority_outcome else {
+        return VerificationReport::defer(ReasonCode::MissingAuthorityDecision, event_count);
+    };
     let execution_started = graph.events.iter().any(|event| {
         matches!(
             event.kind,
@@ -530,7 +530,10 @@ where
                     event_count,
                 );
             }
-            return VerificationReport::verified(OperationConclusion::DeniedByAuthority, event_count);
+            return VerificationReport::verified(
+                OperationConclusion::DeniedByAuthority,
+                event_count,
+            );
         }
         AuthorityOutcome::Defer => {
             if execution_started {
@@ -1254,7 +1257,10 @@ mod tests {
         graph.events.push(duplicate);
         let report = verify_graph(&graph, 5_000, &FixtureAuthenticator, &qualifications());
         assert_eq!(report.verdict, Verdict::Rejected);
-        assert_eq!(report.findings, vec![ReasonCode::DuplicateAuthorityDecision]);
+        assert_eq!(
+            report.findings,
+            vec![ReasonCode::DuplicateAuthorityDecision]
+        );
     }
 
     #[test]
