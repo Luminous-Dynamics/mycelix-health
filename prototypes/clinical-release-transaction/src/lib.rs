@@ -890,36 +890,50 @@ mod tests {
     }
 
     #[test]
-    fn concurrent_duplicate_attempts_commit_at_most_once() {
-        let backend = Arc::new(InMemoryAtomicBackend::new(current()));
-        let svc = Arc::new(service(Arc::clone(&backend)));
-        let auth = receipt();
-        let request = binding();
-        let handles: Vec<_> = (0..32)
-            .map(|_| {
-                let svc = Arc::clone(&svc);
-                let auth = auth.clone();
-                let request = request.clone();
-                thread::spawn(move || svc.execute(&auth, &request, 1_795_000_010_000))
-            })
-            .collect();
+    fn concurrent_duplicate_attempts_commit_at_most_once_at_multiple_scales() {
+        for attempt_count in [1usize, 10, 32, 128] {
+            let backend = Arc::new(InMemoryAtomicBackend::new(current()));
+            let svc = Arc::new(service(Arc::clone(&backend)));
+            let auth = receipt();
+            let request = binding();
+            let barrier = Arc::new(std::sync::Barrier::new(attempt_count + 1));
 
-        let outcomes: Vec<_> = handles
-            .into_iter()
-            .map(|h| h.join().expect("worker succeeds"))
-            .collect();
-        let released = outcomes
-            .iter()
-            .filter(|o| matches!(o, ReleaseOutcome::Released { .. }))
-            .count();
-        let already = outcomes
-            .iter()
-            .filter(|o| matches!(o, ReleaseOutcome::AlreadyReleased { .. }))
-            .count();
-        assert_eq!(released, 1);
-        assert_eq!(already, 31);
-        assert_eq!(backend.side_effect_count(), 1);
-        assert_eq!(backend.audit_records().len(), 2);
+            let handles: Vec<_> = (0..attempt_count)
+                .map(|_| {
+                    let svc = Arc::clone(&svc);
+                    let auth = auth.clone();
+                    let request = request.clone();
+                    let barrier = Arc::clone(&barrier);
+                    thread::spawn(move || {
+                        barrier.wait();
+                        svc.execute(&auth, &request, 1_795_000_010_000)
+                    })
+                })
+                .collect();
+
+            barrier.wait();
+            let outcomes: Vec<_> = handles
+                .into_iter()
+                .map(|handle| handle.join().expect("worker succeeds"))
+                .collect();
+            let released = outcomes
+                .iter()
+                .filter(|outcome| matches!(outcome, ReleaseOutcome::Released { .. }))
+                .count();
+            let already_released = outcomes
+                .iter()
+                .filter(|outcome| matches!(outcome, ReleaseOutcome::AlreadyReleased { .. }))
+                .count();
+
+            assert_eq!(released, 1, "attempt count {attempt_count}");
+            assert_eq!(
+                already_released,
+                attempt_count - 1,
+                "attempt count {attempt_count}"
+            );
+            assert_eq!(backend.side_effect_count(), 1, "attempt count {attempt_count}");
+            assert_eq!(backend.audit_records().len(), 2, "attempt count {attempt_count}");
+        }
     }
 
     #[test]
