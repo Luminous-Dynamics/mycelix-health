@@ -1,0 +1,96 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:mycelix:schema:clinical-transaction-operation-binding-v2",
+  "title": "Mycelix Clinical Transaction Operation Binding v2",
+  "description": "Versioned proof-envelope binding using operation-scoped and tenant/purpose/epoch-scoped references. Shape only; cross-reference scope equality and cryptographic validity are checked by separate verifier layers.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "operation_id",
+    "attempt_id",
+    "purpose",
+    "action",
+    "source_resource_version",
+    "revocation_epoch",
+    "references"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": 2
+    },
+    "operation_id": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "\\S"
+    },
+    "attempt_id": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "\\S"
+    },
+    "purpose": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "\\S"
+    },
+    "action": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "\\S"
+    },
+    "source_resource_version": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "\\S"
+    },
+    "revocation_epoch": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "references": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "patient",
+        "actor",
+        "recipient",
+        "source_resource",
+        "resource_set",
+        "consent_revision",
+        "policy_revision",
+        "idempotency_key",
+        "tenant"
+      ],
+      "properties": {
+        "patient": {
+          "$ref": "scoped-reference-v1.schema.json#"
+        },
+        "actor": {
+          "$ref": "scoped-reference-v1.schema.json#"
+        },
+        "recipient": {
+          "$ref": "scoped-reference-v1.schema.json#"
+        },
+        "source_resource": {
+          "$ref": "scoped-reference-v1.schema.json#"
+        },
+        "resource_set": {
+          "$ref": "scoped-reference-v1.schema.json#"
+        },
+        "consent_revision": {
+          "$ref": "scoped-reference-v1.schema.json#"
+        },
+        "policy_revision": {
+          "$ref": "scoped-reference-v1.schema.json#"
+        },
+        "idempotency_key": {
+          "$ref": "scoped-reference-v1.schema.json#"
+        },
+        "tenant": {
+          "$ref": "scoped-reference-v1.schema.json#"
+        }
+      }
+    }
+  }
+}
