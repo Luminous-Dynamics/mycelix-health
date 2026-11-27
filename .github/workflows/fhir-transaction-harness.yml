@@ -49,6 +49,16 @@ jobs:
           test "$(grep -Fc '# Independent database observer:' research/fhir-transaction-harness/probe-transactions.sh)" -eq 1
           test "$(grep -Fc 'qualification-evidence.json' research/fhir-transaction-harness/probe-transactions.sh)" -ge 2
           ! grep -Fq 'R.PID' research/fhir-transaction-harness/probe-transactions.sh
+          jq -e '
+            .source.workflow_run_number == 45
+            and .fhir_probes.provenance_observation_transaction.result == "passed"
+            and .fhir_probes.replay_resource_cardinality.result == "passed"
+            and .independent_postgresql_observer.result == "passed"
+            and .independent_postgresql_observer.observer_role == "hapi_observer"
+            and .independent_postgresql_observer.transaction_read_only == true
+            and .privacy.phi_used == false
+            and .qualification.verdict == "defer"
+          ' research/fhir-transaction-harness/evidence/run-45-postgresql-observed.json >/dev/null
           docker compose -f research/fhir-transaction-harness/compose.yaml config --quiet
           docker compose version
           docker version
