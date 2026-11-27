@@ -1024,14 +1024,8 @@ mod tests {
                 || outcome == ReleaseOutcome::Denied("consent_revoked_before_commit")
         );
         assert_eq!(backend.side_effect_count(), expected_effects);
-        assert_eq!(
-            backend.audit_records().len(),
-            2 * usize::from(committed_before_revocation)
-        );
-        assert_eq!(
-            backend.consumed_nonce_count(),
-            usize::from(committed_before_revocation)
-        );
+        assert_eq!(backend.audit_records().len(), 2 * expected_effects);
+        assert_eq!(backend.consumed_nonce_count(), expected_effects);
 
         // Once revocation has linearized, a distinct later request must not
         // reuse the old authority snapshot or create another side effect.
