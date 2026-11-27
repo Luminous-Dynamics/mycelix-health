@@ -11,7 +11,7 @@ This benchmark measures the execution boundary. The actual backend transaction m
 ## Files
 
 - src/lib.rs: typed receipt, backend/verifier traits, release orchestration and Mutex-backed reference transaction backend.
-- scenarios-v1.json: machine-readable adversarial scenario manifest.
+- scenarios-v1.json: machine-readable adversarial scenario manifest (21 scenarios).
 - Cargo.lock: dependency-free locked test target.
 
 ## Outcomes
@@ -37,7 +37,7 @@ TransactionalReleaseBackend::commit_once is deliberately strong. A conforming pr
 
 If the target system cannot provide this boundary, the adapter must return defer or document its weaker consistency model. An outbox and idempotent remote API can reduce duplicate effects, but do not automatically create a cross-system atomic transaction.
 
-The in-memory Mutex backend is a test oracle for the state-machine contract only. It does not demonstrate that Holochain, PostgreSQL, SMART, or a remote FHIR server implements this transaction.
+The in-memory Mutex backend is a test oracle for the state-machine contract only. The threaded nonce and revocation races exercise two critical concurrent histories, but they are not exhaustive model checking and do not prove a production database adapter is linearizable. It does not demonstrate that Holochain, PostgreSQL, SMART, or a remote FHIR server implements this transaction.
 
 The ReceiptVerifier trait is an explicit boundary: production must supply a real cryptographic verifier with key rotation, revocation and algorithm policy. The test verifier is a stub and must never be used for production signatures.
 
@@ -60,7 +60,7 @@ The crate is excluded from the large Holochain workspace so this benchmark runs 
 - Side effects after revocation/resource-version drift: 0.
 - Side effects without durable audit intent: 0.
 - Unknown outcome blindly replayed under a new key: 0.
-- 32 concurrent duplicate attempts: exactly one committed side effect.
+- 32 concurrent duplicate attempts: exactly one committed side effect.\n- Distinct idempotency keys racing on one nonce: exactly one committed side effect.\n- Consent revocation racing release: linearizable order, with zero release after revocation.
 - Correct replay/reconciliation on deterministic fixtures: 100%.
 
 These are reference-test targets, not measured production results.
