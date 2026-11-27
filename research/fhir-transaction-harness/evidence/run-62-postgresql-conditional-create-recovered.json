@@ -1,0 +1,145 @@
+{
+  "schema_version": 1,
+  "evidence_kind": "frozen-runtime-observation",
+  "probe_corpus_id": "mycelix-health-fhir-transaction-assurance-r4-v1",
+  "qualification_verdict": "defer",
+  "source": {
+    "branch": "test/fhir-hapi-postgres-transaction-probes-2026-11-27",
+    "commit": "8c26c5cffbe78b4787889f70c6af6f24cd97a2ff",
+    "workflow_run_id": 46047236740,
+    "workflow_run_number": 62,
+    "workflow_job_id": 140669548394,
+    "artifact_id": 15223446801,
+    "artifact_sha256": "sha256:11556c000df6ea2b9575ab53998a33cf150b0055c3aa7c599bba6ae5673158da"
+  },
+  "runtime": {
+    "fhir_server": "HAPI JPA Starter v8.12.0-2",
+    "fhir_image_index_digest": "sha256:0ff86aac4c7bd13a1ee226444a70263bb46ed1c28ef543c30a44f865b80ca04e",
+    "fhir_runtime_image_id": "sha256:d4a0dc0bcde83fbbb855fc739aa952b376a31b27dca343c51e8607a1db6a8e35",
+    "fhir_version": "4.0.1",
+    "database": "PostgreSQL 18.7",
+    "database_image_index_digest": "sha256:64c8b0d31e4ab6ea665e8426ea406a94bf52de3c05b3a4a8bf713704eefa9328",
+    "database_runtime_image_id": "sha256:71351f08f4be0e8675d0c8c35c7613b37a8e247e1a346e87ae06592cfa6e2b63",
+    "database_platform": "linux/amd64"
+  },
+  "inputs": {
+    "capability_statement_sha256": "sha256:643284ec665697f03dabfcfc1daa87f57ec0cb0afcd87d4559fff5d7042ad635",
+    "probe_corpus_sha256": "sha256:ec8cb074d33be7ca4619cc8062c8515725100416855655dbac5d2720e8106911",
+    "harness_sha256": {
+      "compose": "sha256:1ff0dea3e8bed25fb73a7a13ef45c3bedd7666770053dbc167df5b48296957ff",
+      "observer_init_sql": "sha256:4fdfdde1625b0d072b5e646820ca433f758762d7f6bbaf0a77850fba2b12e34f",
+      "probe_script": "sha256:abe40e53ee596e387c1a4124086e3eab284cc3caa0c93e74ee276a74eae3b339",
+      "prior_contention_finding": "sha256:e942635c6d5cc3c919ccb8ea85bf33099324efd87e0dbeaa0ba0035b4afdd433"
+    }
+  },
+  "probes": {
+    "capability_statement": {
+      "result": "passed",
+      "fhir_version": "4.0.1",
+      "transaction": true
+    },
+    "concurrent_conditional_create": {
+      "result": "passed",
+      "attempts": 128,
+      "first_attempt_http_status_counts": {
+        "200": 126,
+        "201": 1,
+        "409": 1
+      },
+      "other_statuses": 0,
+      "transient_409_diagnostic": "HAPI-0550 / hfj_res_search_url_pkey",
+      "recovered_409_retries": 1,
+      "retry_http_status_counts": {
+        "200": 1
+      },
+      "retry_request_semantics": "exact same conditional-create Patient body and If-None-Exist identifier",
+      "original_creator_patient_id": "1001",
+      "retry_patient_id": "1001",
+      "fhir_search_matches_after_recovery": 1,
+      "direct_postgres_master_rows": 1,
+      "direct_postgres_history_rows": 1,
+      "direct_postgres_current_version": 1,
+      "unresolved_attempts": 0,
+      "initial_transient_conflict_rate_percent": 0.78125
+    },
+    "provenance_observation_transaction": {
+      "result": "passed",
+      "http_status": 200,
+      "response_entries": 2
+    },
+    "replay_resource_cardinality": {
+      "result": "passed",
+      "http_status": 200,
+      "patient_count": 1,
+      "provenance_count": 1,
+      "observation_count": 1,
+      "observation_version_before": "1",
+      "observation_version_after": "1"
+    },
+    "deterministic_stale_if_match": {
+      "result": "passed",
+      "http_status": 409,
+      "version_before": "1",
+      "version_after": "1"
+    },
+    "concurrent_if_match_writers": {
+      "result": "passed",
+      "writer_a_http_status": 409,
+      "writer_b_http_status": 200,
+      "accepted_writers": 1,
+      "version_before": "1",
+      "version_after": "2"
+    },
+    "stale_if_match_transaction_rollback": {
+      "result": "passed",
+      "http_status": 409,
+      "rollback_marker_count": 0,
+      "existing_resource_version_before": "2",
+      "existing_resource_version_after": "2"
+    },
+    "independent_postgres_observer": {
+      "result": "passed",
+      "observer_role": "hapi_observer",
+      "read_only": true,
+      "is_superuser": false,
+      "can_create_roles": false,
+      "can_insert": false,
+      "can_update": false,
+      "can_delete": false,
+      "patient_anchor": {
+        "master_rows": 1,
+        "history_rows": 2,
+        "current_version": 2
+      },
+      "provenance": {
+        "master_rows": 1,
+        "history_rows": 1
+      },
+      "observation": {
+        "master_rows": 1,
+        "history_rows": 1,
+        "current_version": 1
+      },
+      "conditional_create_patient": {
+        "master_rows": 1,
+        "history_rows": 1,
+        "current_version": 1
+      },
+      "rollback_marker_token_index_rows": 0,
+      "join_contract": "HFJ_RESOURCE.RES_ID = HFJ_RES_VER.RES_ID; HFJ_RESOURCE.RES_ID = HFJ_SPIDX_TOKEN.RES_ID"
+    }
+  },
+  "defer_reasons": [
+    "No Mycelix consent-revocation/commit fence was exercised",
+    "No gateway/outbox crash or lost-acknowledgement reconciliation was exercised",
+    "No independent recipient-effect witness was exercised",
+    "No independent cryptographic qualification receipt was issued",
+    "No production authentication, authorization or enterprise audit layer was configured"
+  ],
+  "phi_used": false,
+  "interpretation": {
+    "128-way conditional-create": "Passed the final-effect and recovery contract. One of 128 first attempts returned the known internal unique-index 409 and was recovered with the identical conditional create; the retry returned the same Patient ID. The transient initial conflict remains recorded and must not be hidden.",
+    "database independence": "The SQL role is independent of the FHIR HTTP API but queries the same PostgreSQL instance. It is not a separate replica or external auditor.",
+    "claim_boundary": "This qualifies only the pinned synthetic HAPI+PostgreSQL probe profile, not the integrated Mycelix health system."
+  }
+}
