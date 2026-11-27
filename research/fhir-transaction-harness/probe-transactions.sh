@@ -112,6 +112,73 @@ test "$patient_count" = "1"
 test -n "$patient_id"
 test -n "$existing_version"
 
+# 128 concurrent conditional-create attempts for one synthetic Patient
+# identifier. A successful conditional create may return 201; attempts that
+# match the already-created resource return 200. Cardinality must remain one.
+conditional_race_identifier="conditional-race-$run_id"
+jq -n \
+  --arg identifier_system "$identifier_system" \
+  --arg identifier_value "$conditional_race_identifier" '
+  {
+    resourceType: "Patient",
+    active: true,
+    identifier: [{system: $identifier_system, value: $identifier_value}],
+    name: [{family: "MycelixConditionalCreateRace"}]
+  }
+' > "$WORK_DIR/conditional-race-patient.json"
+cp "$WORK_DIR/conditional-race-patient.json" "$ARTIFACT_DIR/conditional-race-patient-request.json"
+
+conditional_race_pids=()
+for attempt in $(seq 1 128); do
+  (
+    curl --silent --show-error \
+      --output "$WORK_DIR/conditional-race-response-$attempt.json" \
+      --write-out '%{http_code}' \
+      -X POST \
+      -H "If-None-Exist: identifier=$identifier_system|$conditional_race_identifier" \
+      -H 'Content-Type: application/fhir+json' \
+      -H 'Accept: application/fhir+json' \
+      --data-binary @"$WORK_DIR/conditional-race-patient.json" \
+      "$FHIR_BASE_URL/Patient" > "$WORK_DIR/conditional-race-status-$attempt.txt"
+  ) &
+  conditional_race_pids+=("$!")
+  if (( attempt % 32 == 0 )); then
+    for pid in "${conditional_race_pids[@]}"; do
+      wait "$pid"
+    done
+    conditional_race_pids=()
+  fi
+done
+for pid in "${conditional_race_pids[@]}"; do
+  wait "$pid"
+done
+
+conditional_race_201=0
+conditional_race_200=0
+conditional_race_other=0
+for attempt in $(seq 1 128); do
+  status="$(cat "$WORK_DIR/conditional-race-status-$attempt.txt")"
+  case "$status" in
+    201) conditional_race_201=$((conditional_race_201 + 1)) ;;
+    200) conditional_race_200=$((conditional_race_200 + 1)) ;;
+    *) conditional_race_other=$((conditional_race_other + 1)) ;;
+  esac
+  cp "$WORK_DIR/conditional-race-status-$attempt.txt" "$ARTIFACT_DIR/conditional-race-status-$attempt.txt"
+  cp "$WORK_DIR/conditional-race-response-$attempt.json" "$ARTIFACT_DIR/conditional-race-response-$attempt.json"
+done
+test "$conditional_race_201" = "1"
+test "$conditional_race_200" = "127"
+test "$conditional_race_other" = "0"
+
+conditional_race_count="$(curl --silent --show-error --fail --get "$FHIR_BASE_URL/Patient" \
+  -H 'Accept: application/fhir+json' \
+  --data-urlencode "_count=10" \
+  --data-urlencode "identifier=$identifier_system|$conditional_race_identifier" \
+  | jq -r '.total // 0')"
+test "$conditional_race_count" = "1"
+printf '%s\n' "$conditional_race_201" > "$ARTIFACT_DIR/conditional-race-created-count.txt"
+printf '%s\n' "$conditional_race_200" > "$ARTIFACT_DIR/conditional-race-existing-count.txt"
+
 provenance_full_url="urn:uuid:00000000-0000-4000-8000-000000000002"
 
 # The two-entry atomic transaction creates Provenance linked to the Patient and
@@ -504,7 +571,8 @@ database_observation="$(docker compose -f "$compose_file" exec -T \
     -v provenance_id="$provenance_id" \
     -v observation_id="$observation_id" \
     -v rollback_identifier="$rollback_identifier" \
-    -v identifier_system="$identifier_system" <<'SQL'
+    -v identifier_system="$identifier_system" \
+    -v conditional_race_identifier="$conditional_race_identifier" <<'SQL'
 SELECT jsonb_build_object(
   'observer_role', current_user,
   'observer_read_only', current_setting('transaction_read_only')::boolean,
@@ -563,6 +631,34 @@ SELECT jsonb_build_object(
       AND T.SP_NAME = 'identifier'
       AND T.SP_SYSTEM = :'identifier_system'
       AND T.SP_VALUE = :'rollback_identifier'
+  ),
+  'conditional_race_patient_master_rows', (
+    SELECT count(DISTINCT R.RES_ID)
+    FROM HFJ_SPIDX_TOKEN T
+    JOIN HFJ_RESOURCE R ON R.RES_ID = T.RES_ID
+    WHERE R.RES_TYPE = 'Patient'
+      AND T.SP_NAME = 'identifier'
+      AND T.SP_SYSTEM = :'identifier_system'
+      AND T.SP_VALUE = :'conditional_race_identifier'
+  ),
+  'conditional_race_patient_history_rows', (
+    SELECT count(*)
+    FROM HFJ_SPIDX_TOKEN T
+    JOIN HFJ_RESOURCE R ON R.RES_ID = T.RES_ID
+    JOIN HFJ_RES_VER V ON V.RES_ID = R.RES_ID
+    WHERE R.RES_TYPE = 'Patient'
+      AND T.SP_NAME = 'identifier'
+      AND T.SP_SYSTEM = :'identifier_system'
+      AND T.SP_VALUE = :'conditional_race_identifier'
+  ),
+  'conditional_race_patient_current_version', (
+    SELECT max(R.RES_VER)
+    FROM HFJ_SPIDX_TOKEN T
+    JOIN HFJ_RESOURCE R ON R.RES_ID = T.RES_ID
+    WHERE R.RES_TYPE = 'Patient'
+      AND T.SP_NAME = 'identifier'
+      AND T.SP_SYSTEM = :'identifier_system'
+      AND T.SP_VALUE = :'conditional_race_identifier'
   )
 )::text;
 SQL
@@ -585,6 +681,9 @@ jq -e '
   and .observation_current_version == 1
   and .observation_history_rows == 1
   and .rollback_marker_master_rows == 0
+  and .conditional_race_patient_master_rows == 1
+  and .conditional_race_patient_history_rows == 1
+  and .conditional_race_patient_current_version == 1
 ' <<< "$database_observation" >/dev/null
 cp <(jq . <<< "$database_observation") "$ARTIFACT_DIR/direct-postgres-observation.json"
 
@@ -613,6 +712,10 @@ jq -n \
   --arg patient_count "$patient_count" \
   --arg provenance_count "$provenance_count" \
   --arg observation_count "$observation_count" \
+  --arg conditional_race_identifier "$conditional_race_identifier" \
+  --arg conditional_race_count "$conditional_race_count" \
+  --arg conditional_race_201 "$conditional_race_201" \
+  --arg conditional_race_200 "$conditional_race_200" \
   --arg existing_version_before "$version_before_rollback" \
   --arg existing_version_after "$version_after" \
   --argjson database_observation "$database_observation" '
@@ -632,9 +735,22 @@ jq -n \
     independent_postgres_observation: {
       result: "passed",
       backend: "PostgreSQL",
-      observation: $database_observation
+      observation: $database_observation,
+      conditional_create_race: {
+        patient_master_rows: $database_observation.conditional_race_patient_master_rows,
+        patient_history_rows: $database_observation.conditional_race_patient_history_rows,
+        patient_current_version: $database_observation.conditional_race_patient_current_version
+      }
     },
     probes: {
+      concurrent_conditional_create: {
+        result: "passed",
+        attempts: 128,
+        unique_resources: ($conditional_race_count | tonumber),
+        created_201: ($conditional_race_201 | tonumber),
+        existing_200: ($conditional_race_200 | tonumber),
+        other_statuses: 0
+      },
       provenance_observation_transaction: {result: "passed", http_status: $transaction_http},
       replay_resource_cardinality: {
         result: "passed",
