@@ -942,4 +942,116 @@ mod tests {
             .iter()
             .all(|entry| entry.resource_digest == "sha256:resource-v7"));
     }
+
+    #[test]
+    fn concurrent_distinct_idempotency_keys_cannot_consume_same_nonce_twice() {
+        let backend = Arc::new(InMemoryAtomicBackend::new(current()));
+        let svc = Arc::new(service(Arc::clone(&backend)));
+        let barrier = Arc::new(std::sync::Barrier::new(3));
+
+        let mut second = receipt();
+        second.receipt_id = "receipt-2".into();
+        second.idempotency_key = "request-2".into();
+        second.signature = vec![4, 5, 6];
+
+        let attempts = [receipt(), second]
+            .into_iter()
+            .map(|authorization| {
+                let svc = Arc::clone(&svc);
+                let barrier = Arc::clone(&barrier);
+                thread::spawn(move || {
+                    barrier.wait();
+                    svc.execute(&authorization, &binding(), 1_795_000_010_000)
+                })
+            })
+            .collect::<Vec<_>>();
+
+        barrier.wait();
+        let outcomes = attempts
+            .into_iter()
+            .map(|attempt| attempt.join().expect("release worker succeeds"))
+            .collect::<Vec<_>>();
+
+        assert_eq!(
+            outcomes
+                .iter()
+                .filter(|outcome| matches!(outcome, ReleaseOutcome::Released { .. }))
+                .count(),
+            1
+        );
+        assert_eq!(
+            outcomes
+                .iter()
+                .filter(|outcome| {
+                    **outcome == ReleaseOutcome::Denied("nonce_already_consumed")
+                })
+                .count(),
+            1
+        );
+        assert_eq!(backend.side_effect_count(), 1);
+        assert_eq!(backend.consumed_nonce_count(), 1);
+        assert_eq!(backend.audit_records().len(), 2);
+    }
+
+    #[test]
+    fn consent_revocation_race_is_linearizable_at_atomic_commit() {
+        let backend = Arc::new(InMemoryAtomicBackend::new(current()));
+        let svc = service(Arc::clone(&backend));
+        let release_service = svc.clone();
+        let release_backend = Arc::clone(&backend);
+        let barrier = Arc::new(std::sync::Barrier::new(3));
+
+        let release_barrier = Arc::clone(&barrier);
+        let release = thread::spawn(move || {
+            release_barrier.wait();
+            release_service.execute(&receipt(), &binding(), 1_795_000_010_000)
+        });
+
+        let revoke_barrier = Arc::clone(&barrier);
+        let revoke = thread::spawn(move || {
+            let mut revoked = current();
+            revoked.revoked = true;
+            revoke_barrier.wait();
+            release_backend.set_current_authority(revoked);
+        });
+
+        barrier.wait();
+        let outcome = release.join().expect("release worker succeeds");
+        revoke.join().expect("revocation worker succeeds");
+
+        let committed_before_revocation =
+            matches!(outcome, ReleaseOutcome::Released { .. });
+        assert!(
+            committed_before_revocation
+                || outcome == ReleaseOutcome::Denied("consent_revoked_before_commit")
+        );
+        assert_eq!(
+            backend.side_effect_count(),
+            usize::from(committed_before_revocation)
+        );
+        assert_eq!(
+            backend.audit_records().len(),
+            2 * usize::from(committed_before_revocation)
+        );
+        assert_eq!(
+            backend.consumed_nonce_count(),
+            usize::from(committed_before_revocation)
+        );
+
+        // Once revocation has linearized, a distinct later request must not
+        // reuse the old authority snapshot or create another side effect.
+        let mut after_revocation = receipt();
+        after_revocation.receipt_id = "receipt-after-revocation".into();
+        after_revocation.idempotency_key = "request-after-revocation".into();
+        after_revocation.nonce = "nonce-after-revocation".into();
+        after_revocation.signature = vec![7, 8, 9];
+        assert_eq!(
+            svc.execute(&after_revocation, &binding(), 1_795_000_020_000),
+            ReleaseOutcome::Denied("consent_revoked_before_commit")
+        );
+        assert_eq!(
+            backend.side_effect_count(),
+            usize::from(committed_before_revocation)
+        );
+    }
 }
