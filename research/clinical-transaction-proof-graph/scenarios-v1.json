@@ -1,0 +1,21 @@
+{
+  "schema_version": 1,
+  "benchmark": "clinical-transaction-proof-graph",
+  "claim_boundary": "synthetic structural verifier fixtures; no production cryptographic or clinical-safety claim",
+  "scenarios": [
+    {"id":"valid-recipient-effect","mutation":"none","expected":"verified","reason":"exact recipient and resource-set effect witness"},
+    {"id":"clock-skew","mutation":"reorder observed_at_ms while retaining parent digests","expected":"verified","reason":"causal edges, not wall-clock order, define ordering"},
+    {"id":"parent-digest-tamper","mutation":"replace one parent digest","expected":"rejected","reason":"parent reference no longer binds the referenced event"},
+    {"id":"missing-parent","mutation":"remove a referenced event","expected":"defer","reason":"required evidence is unavailable"},
+    {"id":"cross-patient","mutation":"change one event patient reference digest","expected":"rejected","reason":"event bindings disagree"},
+    {"id":"expired-qualification","mutation":"expire component qualification at verification time","expected":"defer","reason":"stale component evidence cannot qualify"},
+    {"id":"self-issued-qualification","mutation":"mark component qualification as self-issued","expected":"defer","reason":"independent qualification evidence is missing"},
+    {"id":"unknown-commit","mutation":"commit result is unknown with no reconciliation","expected":"defer","reason":"unknown must not be promoted to success or denial"},
+    {"id":"sender-ack-as-effect","mutation":"use gateway actor for recipient effect event","expected":"rejected","reason":"sender acknowledgement is not recipient observation"},
+    {"id":"wrong-resource-set","mutation":"recipient observes a different resource-set digest","expected":"rejected","reason":"effect must match the exact authorized set"},
+    {"id":"causal-cycle","mutation":"add a parent edge back to the root","expected":"rejected","reason":"causal cycle is invalid"},
+    {"id":"actor-sequence-gap","mutation":"remove one actor sequence from evidence","expected":"defer","reason":"per-actor event evidence is incomplete"},
+    {"id":"invalid-signature","mutation":"tamper with actor signature","expected":"rejected","reason":"authenticator refuses event"},
+    {"id":"commit-rejected","mutation":"backend reports rejected before delivery","expected":"verified","reason":"valid proof of a non-release"}
+  ]
+}
