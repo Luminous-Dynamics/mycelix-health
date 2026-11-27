@@ -48,6 +48,20 @@ This is distinct from the Holochain DHT-at-rest confidentiality programme (#164/
 7. A sender-side transport acknowledgement is not a recipient-side effect witness. A successful release proof requires a recipient-role event carrying a durable effect witness bound to the expected recipient, exact operation/attempt, idempotency key and resource-set digest.
 8. No distributed exactly-once guarantee is implied. A local transactional backend and a remote recipient are separate trust/atomicity boundaries.
 
+## Scoped privacy references (research v1)
+
+The companion `scoped-reference-v1.schema.json` defines four distinct envelope schemes:
+- `transaction-random-v1`: a fresh 256-bit CSPRNG handle scoped to one operation;
+- `tenant-purpose-epoch-keyed-v1`: a keyed, domain-separated pseudonym bound to an opaque tenant/purpose/epoch scope and key identifier/epoch;
+- `sd-jwt-disclosure-ref-v1`: an opaque reference to an SD-JWT presentation, never the raw token;
+- `bbs-derived-proof-ref-v1`: an opaque reference to an experimental BBS derived proof and issuer key epoch.
+
+The Rust module `scoped_refs.rs` checks scheme/scope/key metadata and rejects malformed or cross-scope references. It does **not** generate CSPRNG values, compute HMACs, verify SD-JWT, verify BBS, validate issuer signatures, check revocation status, or establish unlinkability. The schema and validator are a structural boundary to guide the eventual v2 proof envelope, not a production cryptographic implementation. BBS remains experimental.
+
+The 16-case `privacy-scenarios-v1.json` identifies dictionary attacks, stable-handle reuse, cross-tenant linkage, key rotation/revocation, unauthorized re-identification, over-disclosure and metadata side channels. Most require an external key registry, presentation verifier or independent attack harness; do not report the structural validator as passing those tests.
+
+The `assurance-benchmark-mapping-v1.json` composes the work with existing #288 longitudinal evaluation, #334 authority semantics, #343/#346 commit and recovery, #338 causal evidence, #356/#371 FHIR qualification, and #373 privacy. It explicitly forbids a single composite score from masking failures in safety gates.
+
 ## Run
 
 The crate has no third-party dependencies and is excluded from the large Holochain workspace.
@@ -58,7 +72,7 @@ The crate has no third-party dependencies and is excluded from the large Holocha
 
 The synthetic authenticator only checks deterministic fixture strings. It does not verify real signatures or hashes. The qualification registry is also a test fixture. These tests validate graph logic only.
 
-## Current v1 test families (32 Rust unit tests)
+## Current v1 test families (40 Rust unit tests)
 
 - valid flow with deliberately out-of-order wall-clock observations;
 - explicit authenticated-subject binding and spoofed-identity rejection;
@@ -76,6 +90,7 @@ The synthetic authenticator only checks deterministic fixture strings. It does n
 - conflicting terminal commit outcomes and duplicate recipient effect witnesses;
 - unrelated later success cannot erase an earlier unreconciled unknown commit/delivery result;
 - invalid signature fixture;
+- scoped-reference metadata and operation/tenant/purpose/key-epoch validation (8 additional Rust tests).
 - verified commit rejection without delivery.
 
 ## Next evidence gates
