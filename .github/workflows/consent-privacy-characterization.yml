@@ -1,0 +1,122 @@
+name: Consent Peer-Visibility Characterization
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "tests/sweettest/tests/consent_ownership.rs"
+      - "zomes/consent/**"
+      - "zomes/patient/**"
+      - "dna/**"
+      - ".github/workflows/consent-privacy-characterization.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: consent-privacy-characterization-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  two-agent-dht-characterization:
+    name: Exact-DNA ungranted consent read characterization
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    steps:
+      - name: Check out exact PR head
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+          fetch-depth: 1
+
+      - name: Install pinned Rust toolchain and WASM target
+        uses: dtolnay/rust-toolchain@1.96.0
+        with:
+          components: rustfmt, clippy
+          targets: wasm32-unknown-unknown
+
+      - name: Install native build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential clang libclang-dev libssl-dev libsqlite3-dev pkg-config perl protobuf-compiler jq
+
+      - name: Install pinned Holochain CLI
+        run: |
+          set -euo pipefail
+          curl --fail --location --retry 3 \
+            https://github.com/holochain/holochain/releases/download/holochain-0.7.1/hc-x86_64-unknown-linux-gnu \
+            --output /tmp/hc
+          echo "56eb7de100a77a1883fd606a30b33bc2c17bd5b3bd32935304d4f6e34cbff718  /tmp/hc" | sha256sum --check --status
+          sudo install -m 0755 /tmp/hc /usr/local/bin/hc
+          hc --version
+
+      - name: Stage pinned Mycelix sibling dependencies
+        run: |
+          set -euo pipefail
+          upstream=/tmp/mycelix-parent
+          git clone --quiet https://github.com/Luminous-Dynamics/mycelix.git "$upstream"
+          git -C "$upstream" checkout --quiet d597dcd99ccbf1cc3c341c3442ef6a53efd0dbff
+          test "$(git -C "$upstream" rev-parse HEAD)" = "d597dcd99ccbf1cc3c341c3442ef6a53efd0dbff"
+          mkdir -p ../crates ../mycelix-core ../mycelix-workspace/mycelix-core
+          cp -a "$upstream/crates/." ../crates/
+          cp -a "$upstream/mycelix-core/." ../mycelix-core/
+          cp -a "$upstream/mycelix-core/." ../mycelix-workspace/mycelix-core/
+          rm -rf "$upstream"
+          clang_dir="$(find /usr/lib -name libclang.so -printf '%h\n' | head -n 1)"
+          test -n "$clang_dir"
+          echo "LIBCLANG_PATH=$clang_dir" >> "$GITHUB_ENV"
+
+      - name: Resolve and fingerprint dependency lockfiles
+        run: |
+          set -euo pipefail
+          cargo generate-lockfile
+          cargo generate-lockfile --manifest-path tests/sweettest/Cargo.toml
+          cargo update --manifest-path tests/sweettest/Cargo.toml \
+            -p ed25519-dalek@3.0.0-pre.1 --precise 3.0.0
+          cargo tree --manifest-path tests/sweettest/Cargo.toml -i ed25519-dalek
+          sha256sum Cargo.lock tests/sweettest/Cargo.lock
+
+      - name: Build exact workspace zomes and pack test DNA
+        run: |
+          set -euo pipefail
+          mapfile -t ZOME_PACKAGES < <(
+            cargo metadata --no-deps --format-version 1 \
+              | jq -r '.packages[] | select(.manifest_path | contains("/zomes/")) | .name'
+          )
+          test "${#ZOME_PACKAGES[@]}" -gt 0
+          ZOME_ARGS=()
+          for package in "${ZOME_PACKAGES[@]}"; do
+            ZOME_ARGS+=("-p" "$package")
+          done
+          cargo build --locked --release --target wasm32-unknown-unknown "${ZOME_ARGS[@]}"
+          mkdir -p workdir
+          hc dna pack dna/ -o workdir/health.dna
+          test -s workdir/health.dna
+          sha256sum workdir/health.dna
+
+      - name: Run ungranted-peer consent confidentiality characterization
+        run: |
+          set -euo pipefail
+          HOST="$(rustc -vV | sed -n 's/^host: //p')"
+          test -n "$HOST"
+          cargo test --locked --manifest-path tests/sweettest/Cargo.toml \
+            --target "$HOST" \
+            --test consent_ownership \
+            characterize_ungranted_peer_can_read_full_consent_via_public_getter \
+            -- --ignored --exact --nocapture
+
+      - name: Preserve exact qualification identity
+        if: always()
+        run: |
+          {
+            echo "source_head=$GITHUB_SHA"
+            echo "checked_out_head=$(git rev-parse HEAD)"
+            echo "upstream_dependency_commit=d597dcd99ccbf1cc3c341c3442ef6a53efd0dbff"
+            echo "holochain_cli_sha256=56eb7de100a77a1883fd606a30b33bc2c17bd5b3bd32935304d4f6e34cbff718"
+            sha256sum Cargo.lock tests/sweettest/Cargo.lock workdir/health.dna 2>/dev/null || true
+            rustc --version || true
+            cargo --version || true
+            hc --version || true
+          } | tee "$RUNNER_TEMP/consent-privacy-characterization-metadata.txt"
