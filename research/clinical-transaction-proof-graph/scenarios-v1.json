@@ -122,6 +122,18 @@
       "mutation": "append second recipient effect witness",
       "expected": "rejected",
       "reason": "multiple asserted recipient effects for one operation are ambiguous"
+    },
+    {
+      "id": "unknown-commit-overridden-without-reconciliation",
+      "mutation": "append independent committed result after unknown commit with no CommitReconciled event",
+      "expected": "defer",
+      "reason": "every unknown commit attempt must be explicitly reconciled by parent reference"
+    },
+    {
+      "id": "unknown-delivery-overridden-without-reconciliation",
+      "mutation": "append recipient effect after unknown delivery with no DeliveryReconciled event",
+      "expected": "defer",
+      "reason": "every unknown delivery outcome must be explicitly reconciled"
     }
   ]
 }
