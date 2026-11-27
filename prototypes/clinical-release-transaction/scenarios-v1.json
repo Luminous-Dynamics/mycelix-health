@@ -113,8 +113,14 @@
       "id": "concurrent_duplicate_attempts",
       "expected": "one_release",
       "additional_side_effects": 1,
-      "attempt_count": 32,
-      "description": "32 concurrent attempts with one key produce one committed side effect"
+      "attempt_count": 128,
+      "description": "Concurrent duplicate attempts at 1, 10, 32 and 128 contenders with the same idempotency key must produce one committed side effect at each scale.",
+      "attempt_counts": [
+        1,
+        10,
+        32,
+        128
+      ]
     },
     {
       "id": "revocation_epoch_changed",
