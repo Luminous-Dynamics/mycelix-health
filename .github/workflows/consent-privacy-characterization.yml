@@ -73,9 +73,13 @@ jobs:
           set -euo pipefail
           cargo generate-lockfile
           cargo generate-lockfile --manifest-path tests/sweettest/Cargo.toml
+          # Keep the Holochain-pinned Ed25519 prerelease unchanged.
+          # Try only the transitive Curve25519 stable release, if the upstream
+          # semver requirement permits it.
+          cargo tree --manifest-path tests/sweettest/Cargo.toml -i curve25519-dalek
           cargo update --manifest-path tests/sweettest/Cargo.toml \
-            -p ed25519-dalek@3.0.0-pre.1 --precise 3.0.0
-          cargo tree --manifest-path tests/sweettest/Cargo.toml -i ed25519-dalek
+            -p curve25519-dalek@5.0.0-pre.1 --precise 5.0.0
+          cargo tree --manifest-path tests/sweettest/Cargo.toml -i curve25519-dalek
           sha256sum Cargo.lock tests/sweettest/Cargo.lock
 
       - name: Build exact workspace zomes and pack test DNA
