@@ -54,6 +54,7 @@ jobs:
             psql -U hapi_test -d hapi -Atc 'SELECT version();' \
             | tee artifacts/fhir-qualification-ci/postgres-version.txt
           sha256sum research/fhir-transaction-harness/compose.yaml \
+            research/fhir-transaction-harness/init-observer.sql \
             research/fhir-transaction-harness/probe-transactions.sh \
             | tee artifacts/fhir-qualification-ci/harness-sha256.txt
 
