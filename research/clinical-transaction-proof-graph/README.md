@@ -29,6 +29,14 @@ A graph binds one operation and one attempt to:
 
 No clinical payload or direct identifier belongs in a public proof graph. Binding values should be keyed/canonical digests or opaque references whose disclosure policy is explicit.
 
+## Privacy boundary and follow-up
+
+The `sha256:patient`, `sha256:tenant` and similar values in unit fixtures are **synthetic labels**, not a prescription to publish unkeyed hashes of MRNs, patient identifiers, dates of birth, or clinical payloads. Plain hashes of low-entropy values are susceptible to dictionary attacks and may become stable correlation handles.
+
+The current reference type uses generic digest strings and does not yet enforce a safe commitment scheme. Production exports must not use that representation until the scoped-reference design in [#373](https://github.com/Luminous-Dynamics/mycelix-health/issues/373) is implemented and independently qualified. That work will compare transaction-scoped opaque handles, tenant/purpose/epoch-scoped keyed commitments, SD-JWT selective disclosure, and an experimental BBS derived-proof lane. A verifier should see only what it needs to check the operation's binding; it should not receive a global patient lookup capability.
+
+This is distinct from the Holochain DHT-at-rest confidentiality programme (#164/#157/#192). A privacy-preserving proof envelope cannot compensate for plaintext clinical entries or link topology exposed by the underlying storage network, and private storage alone does not prevent over-disclosure in exported receipts.
+
 ## Key design rules
 
 1. Causal parent references establish ordering. Wall-clock timestamps are retained as observations but are not used as a global order oracle.
