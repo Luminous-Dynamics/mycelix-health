@@ -52,6 +52,7 @@ jobs:
             and (.properties.references.properties.tenant.allOf[1].properties.scheme.const == "tenant-purpose-epoch-keyed-v1")
           ' research/clinical-transaction-proof-graph/operation-binding-v2.schema.json >/dev/null
           jq -e . research/clinical-transaction-proof-graph/privacy-scenarios-v1.json >/dev/null
+          jq -e . research/clinical-transaction-proof-graph/runtime-qualification-receipt-v1.schema.json >/dev/null
           jq -e . research/clinical-transaction-proof-graph/assurance-benchmark-mapping-v1.json >/dev/null
 
       - name: Format
