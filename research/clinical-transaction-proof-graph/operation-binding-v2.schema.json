@@ -64,31 +64,31 @@
       ],
       "properties": {
         "patient": {
-          "$ref": "scoped-reference-v1.schema.json#"
+          "$ref": "urn:mycelix:schema:scoped-reference-v1#"
         },
         "actor": {
-          "$ref": "scoped-reference-v1.schema.json#"
+          "$ref": "urn:mycelix:schema:scoped-reference-v1#"
         },
         "recipient": {
-          "$ref": "scoped-reference-v1.schema.json#"
+          "$ref": "urn:mycelix:schema:scoped-reference-v1#"
         },
         "source_resource": {
-          "$ref": "scoped-reference-v1.schema.json#"
+          "$ref": "urn:mycelix:schema:scoped-reference-v1#"
         },
         "resource_set": {
-          "$ref": "scoped-reference-v1.schema.json#"
+          "$ref": "urn:mycelix:schema:scoped-reference-v1#"
         },
         "consent_revision": {
-          "$ref": "scoped-reference-v1.schema.json#"
+          "$ref": "urn:mycelix:schema:scoped-reference-v1#"
         },
         "policy_revision": {
-          "$ref": "scoped-reference-v1.schema.json#"
+          "$ref": "urn:mycelix:schema:scoped-reference-v1#"
         },
         "idempotency_key": {
-          "$ref": "scoped-reference-v1.schema.json#"
+          "$ref": "urn:mycelix:schema:scoped-reference-v1#"
         },
         "tenant": {
-          "$ref": "scoped-reference-v1.schema.json#"
+          "$ref": "urn:mycelix:schema:scoped-reference-v1#"
         }
       }
     }
