@@ -133,6 +133,22 @@
       "expected": "already_released",
       "additional_side_effects": 0,
       "description": "expiry blocks new releases but does not erase a prior committed receipt"
+    },
+    {
+      "id": "concurrent_distinct_nonce_contenders",
+      "expected": "one_release_one_nonce_denial",
+      "additional_side_effects": 1,
+      "description": "Two concurrent receipts use distinct idempotency keys but the same nonce; only one side effect may commit."
+    },
+    {
+      "id": "consent_revocation_commit_race",
+      "expected": "linearizable_release_or_revocation_denial",
+      "additional_side_effects_max": 1,
+      "allowed_outcomes": [
+        "release_commits_before_revocation",
+        "revocation_commits_before_release"
+      ],
+      "description": "Race consent revocation against the atomic release boundary; either serialized order is valid, but post-revocation release is forbidden."
     }
   ]
 }
