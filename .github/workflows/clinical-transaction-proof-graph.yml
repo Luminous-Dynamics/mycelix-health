@@ -37,6 +37,15 @@ jobs:
         with:
           components: rustfmt, clippy
 
+      - name: Validate schemas and benchmark manifests
+        run: |
+          set -euo pipefail
+          jq -e . research/clinical-transaction-proof-graph/schema-v1.json >/dev/null
+          jq -e . research/clinical-transaction-proof-graph/scenarios-v1.json >/dev/null
+          jq -e . research/clinical-transaction-proof-graph/scoped-reference-v1.schema.json >/dev/null
+          jq -e . research/clinical-transaction-proof-graph/privacy-scenarios-v1.json >/dev/null
+          jq -e . research/clinical-transaction-proof-graph/assurance-benchmark-mapping-v1.json >/dev/null
+
       - name: Format
         run: cargo fmt --manifest-path research/clinical-transaction-proof-graph/Cargo.toml -- --check
 
