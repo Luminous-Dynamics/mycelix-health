@@ -101,14 +101,40 @@
         "crash/restart",
         "direct DB observer",
         "128-way conditional-create cardinality",
-        "read-only SQL observer agreement"
+        "read-only SQL observer agreement",
+        "same-request conditional-create recovery rate",
+        "first-attempt internal conflict rate",
+        "direct database resource/history cardinality"
       ],
       "hard_gates": [
         "no partial writes",
         "no lost update accepted",
         "unknown acknowledgement not promoted",
-        "zero duplicate resources under the 128-way same-identifier conditional-create race"
-      ]
+        "zero duplicate resources under the 128-way same-identifier conditional-create race",
+        "every known conditional-create contention conflict resolves to the same resource ID; unknown or unreconciled outcomes fail"
+      ],
+      "observed_2026_11_27": {
+        "run_id": 46047236740,
+        "source_commit": "8c26c5cffbe78b4787889f70c6af6f24cd97a2ff",
+        "attempts": 128,
+        "first_attempt_http_statuses": {
+          "200": 126,
+          "201": 1,
+          "409": 1
+        },
+        "known_409_recovered_by_same_request_retry": 1,
+        "retry_http_statuses": {
+          "200": 1
+        },
+        "unresolved_attempts": 0,
+        "final_fhir_match_count": 1,
+        "direct_postgres_master_rows": 1,
+        "direct_postgres_history_rows": 1,
+        "direct_postgres_current_version": 1,
+        "first_attempt_conflict_rate_percent": 0.78125,
+        "frozen_evidence": "research/fhir-transaction-harness/evidence/run-62-postgresql-conditional-create-recovered.json",
+        "qualification_scope": "pinned synthetic HAPI 8.12.0-2 + PostgreSQL 18.7 probe only; overall Mycelix qualification remains defer"
+      }
     },
     {
       "issue": 373,
@@ -326,8 +352,15 @@
       },
       {
         "target": "128 concurrent same-identifier conditional creates",
-        "status": "new HAPI harness probe; exact-head run pending",
-        "expected": "one persisted resource and one creator result, remaining requests resolve to same resource"
+        "status": "passed on HAPI run #62 with one known internal 409 recovered by identical conditional-create retry; final FHIR and direct SQL cardinality both one",
+        "expected": "one persisted resource and one creator result, remaining requests resolve to same resource",
+        "observed_metrics": {
+          "attempts": 128,
+          "initial_409_rate_percent": 0.78125,
+          "recovered_409": 1,
+          "unresolved": 0,
+          "unique_resource_count": 1
+        }
       },
       {
         "target": "scale concurrency to 1000 then 10000 attempts",
@@ -338,6 +371,11 @@
         "target": "at least 2995 independent held-out zero-failure security trials for an approximate 0.1% one-sided 95% rule-of-three upper bound",
         "status": "statistical target, not current evidence",
         "caveat": "trials must be independent; repeated mutations of the same seed do not qualify"
+      },
+      {
+        "target": "Reduce first-attempt same-identifier conditional-create conflicts below 0.1% at 1,000 concurrent requests, while preserving zero duplicate resource effects and zero unrecovered operations",
+        "status": "future target; current 128-request measured rate is 0.78125%",
+        "backend": "real persistent database; repeat on at least two supported FHIR server builds; measure p50/p95/p99 response and reconciliation time"
       }
     ],
     "interoperability": [
