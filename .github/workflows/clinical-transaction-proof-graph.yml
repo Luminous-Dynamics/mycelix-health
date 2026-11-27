@@ -1,0 +1,77 @@
+name: Clinical Transaction Proof Graph
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "research/clinical-transaction-proof-graph/**"
+      - ".github/workflows/clinical-transaction-proof-graph.yml"
+  push:
+    branches: [main]
+    paths:
+      - "research/clinical-transaction-proof-graph/**"
+      - ".github/workflows/clinical-transaction-proof-graph.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: clinical-transaction-proof-graph-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  standalone-reference:
+    name: Standalone causal proof graph tests
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - name: Check out exact revision
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@1.96.0
+        with:
+          components: rustfmt, clippy
+
+      - name: Validate schemas and benchmark manifests
+        run: |
+          set -euo pipefail
+          jq -e . research/clinical-transaction-proof-graph/schema-v1.json >/dev/null
+          jq -e . research/clinical-transaction-proof-graph/scenarios-v1.json >/dev/null
+          jq -e . research/clinical-transaction-proof-graph/scoped-reference-v1.schema.json >/dev/null
+          jq -e '.properties.schema_version.const == 2' research/clinical-transaction-proof-graph/operation-binding-v2.schema.json >/dev/null
+          jq -e '
+            ((.properties | has("purpose")) == false)
+            and ((.required | index("purpose")) == null)
+            and ((.properties.references.required | index("purpose_context")) != null)
+            and (.properties.references.properties.patient.allOf[1].properties.scheme.const == "transaction-random-v1")
+            and (.properties.references.properties.tenant.allOf[1].properties.scheme.const == "tenant-purpose-epoch-keyed-v1")
+          ' research/clinical-transaction-proof-graph/operation-binding-v2.schema.json >/dev/null
+          jq -e . research/clinical-transaction-proof-graph/privacy-scenarios-v1.json >/dev/null
+          jq -e . research/clinical-transaction-proof-graph/runtime-qualification-receipt-v1.schema.json >/dev/null
+          jq -e . research/clinical-transaction-proof-graph/runtime-receipt-crypto-profile-v1.json >/dev/null
+          jq -e '(.scenarios | length) == 20' research/clinical-transaction-proof-graph/runtime-receipt-crypto-adversarial-v1.json >/dev/null
+          jq -e . research/clinical-transaction-proof-graph/assurance-benchmark-mapping-v1.json >/dev/null
+
+      - name: Format
+        run: cargo fmt --manifest-path research/clinical-transaction-proof-graph/Cargo.toml -- --check
+
+      - name: Test locked dependency-free crate
+        run: cargo test --manifest-path research/clinical-transaction-proof-graph/Cargo.toml --locked --target "$(rustc -vV | awk '/^host:/{print $2}')"
+
+      - name: Clippy
+        run: cargo clippy --manifest-path research/clinical-transaction-proof-graph/Cargo.toml --locked --target "$(rustc -vV | awk '/^host:/{print $2}')" -- -D warnings
+
+      - name: Preserve exact-head metadata
+        if: always()
+        run: |
+          {
+            echo "source_head=$GITHUB_SHA"
+            echo "checked_out_head=$(git rev-parse HEAD)"
+            rustc --version || true
+            cargo --version || true
+          } | tee "$RUNNER_TEMP/clinical-transaction-proof-graph-metadata.txt"

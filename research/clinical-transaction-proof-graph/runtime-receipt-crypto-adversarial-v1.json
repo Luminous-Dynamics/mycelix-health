@@ -1,0 +1,127 @@
+{
+  "schema_version": 1,
+  "corpus_id": "mycelix-runtime-receipt-crypto-adversarial-v1",
+  "status": "expected outcomes; no implementation result implied",
+  "scenarios": [
+    {
+      "id": "CRYPTO-001",
+      "family": "canonicalization",
+      "mutation": "JSON object member order differs but values are identical",
+      "expected": "same canonical bytes and digest"
+    },
+    {
+      "id": "CRYPTO-002",
+      "family": "canonicalization",
+      "mutation": "duplicate JSON property names carry conflicting values",
+      "expected": "reject-before-deserialization"
+    },
+    {
+      "id": "CRYPTO-003",
+      "family": "canonicalization",
+      "mutation": "number outside I-JSON / exact IEEE-754 safe-integer range",
+      "expected": "reject-or-require-string-encoding"
+    },
+    {
+      "id": "CRYPTO-004",
+      "family": "signature",
+      "mutation": "single signed field is changed after signing",
+      "expected": "reject-invalid-signature"
+    },
+    {
+      "id": "CRYPTO-005",
+      "family": "digest",
+      "mutation": "canonical_payload_digest does not equal SHA-256 of JCS projection",
+      "expected": "reject-digest-mismatch"
+    },
+    {
+      "id": "CRYPTO-006",
+      "family": "signature",
+      "mutation": "signature is valid only under permissive weak-key behavior",
+      "expected": "reject-under-verify-strict"
+    },
+    {
+      "id": "CRYPTO-007",
+      "family": "issuer",
+      "mutation": "issuer_id is not present in independently trusted registry",
+      "expected": "defer-unknown-issuer"
+    },
+    {
+      "id": "CRYPTO-008",
+      "family": "key",
+      "mutation": "key_id not found under the resolved issuer",
+      "expected": "defer-unknown-key"
+    },
+    {
+      "id": "CRYPTO-009",
+      "family": "key",
+      "mutation": "receipt issued before key not-before or after key expiry",
+      "expected": "reject-invalid-key-window"
+    },
+    {
+      "id": "CRYPTO-010",
+      "family": "revocation",
+      "mutation": "key was revoked before receipt issuance",
+      "expected": "reject"
+    },
+    {
+      "id": "CRYPTO-011",
+      "family": "compromise",
+      "mutation": "compromise effective time precedes receipt issuance",
+      "expected": "reject"
+    },
+    {
+      "id": "CRYPTO-012",
+      "family": "registry-freshness",
+      "mutation": "issuer registry or revocation snapshot is stale/unavailable",
+      "expected": "defer"
+    },
+    {
+      "id": "CRYPTO-013",
+      "family": "audience",
+      "mutation": "valid signed receipt is presented to a different deployment audience",
+      "expected": "reject"
+    },
+    {
+      "id": "CRYPTO-014",
+      "family": "profile",
+      "mutation": "FHIR-server-only receipt claims a Mycelix adapter component",
+      "expected": "reject"
+    },
+    {
+      "id": "CRYPTO-015",
+      "family": "profile",
+      "mutation": "adapter receipt omits adapter build/config digest",
+      "expected": "reject"
+    },
+    {
+      "id": "CRYPTO-016",
+      "family": "validity",
+      "mutation": "receipt is future-issued, expired or older than configured max age",
+      "expected": "reject-or-defer-by-expiry-policy"
+    },
+    {
+      "id": "CRYPTO-017",
+      "family": "algorithm",
+      "mutation": "signature suite is downgraded, unknown or mismatched to issuer key algorithm",
+      "expected": "reject"
+    },
+    {
+      "id": "CRYPTO-018",
+      "family": "key-rotation",
+      "mutation": "key id reused with different public-key material",
+      "expected": "reject-registry-integrity"
+    },
+    {
+      "id": "CRYPTO-019",
+      "family": "side-channel",
+      "mutation": "private key appears in artifact, log, source or crash report",
+      "expected": "security-gate-fail"
+    },
+    {
+      "id": "CRYPTO-020",
+      "family": "cross-language",
+      "mutation": "Rust canonical bytes differ from an independent JCS implementation",
+      "expected": "reject-until-interoperability-fixed"
+    }
+  ]
+}

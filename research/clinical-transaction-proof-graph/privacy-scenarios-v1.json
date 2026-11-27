@@ -1,0 +1,169 @@
+{
+  "schema_version": 1,
+  "benchmark": "clinical-transaction-proof-privacy-v1",
+  "source_issue": 373,
+  "scope": "synthetic structural and policy scenarios; not a cryptographic unlinkability benchmark",
+  "scenarios": [
+    {
+      "id": "PRIV-001",
+      "family": "direct-identifier",
+      "attack": "exported reference contains MRN, national identifier, name, or raw FHIR logical identifier",
+      "expected": "rejected",
+      "layer": "export-policy"
+    },
+    {
+      "id": "PRIV-002",
+      "family": "dictionary-attack",
+      "attack": "exported reference is an unkeyed hash of a low-entropy patient identifier or clinical value",
+      "expected": "rejected",
+      "layer": "export-policy"
+    },
+    {
+      "id": "PRIV-003",
+      "family": "cross-operation-linkage",
+      "attack": "same transaction-random handle is reused under a different operation scope",
+      "expected": "rejected",
+      "layer": "scope-validator"
+    },
+    {
+      "id": "PRIV-004",
+      "family": "scope-substitution",
+      "attack": "tenant-purpose-epoch keyed token is substituted for an operation-scoped subject handle",
+      "expected": "rejected",
+      "layer": "scope-validator"
+    },
+    {
+      "id": "PRIV-005",
+      "family": "key-metadata",
+      "attack": "tenant-keyed reference omits key_id or key_epoch",
+      "expected": "rejected",
+      "layer": "scope-validator"
+    },
+    {
+      "id": "PRIV-006",
+      "family": "key-rotation",
+      "attack": "key registry cannot establish whether key epoch was valid at event time",
+      "expected": "defer",
+      "layer": "trust-registry"
+    },
+    {
+      "id": "PRIV-007",
+      "family": "issuer-revocation",
+      "attack": "presentation is signed by an issuer revoked for the requested verification time",
+      "expected": "rejected",
+      "layer": "trust-registry"
+    },
+    {
+      "id": "PRIV-008",
+      "family": "cross-tenant-collusion",
+      "attack": "one tenant key identifier or epoch is presented as authority for another tenant scope",
+      "expected": "rejected",
+      "layer": "scope-validator-and-key-registry"
+    },
+    {
+      "id": "PRIV-009",
+      "family": "sd-jwt-disclosure",
+      "attack": "export embeds a raw SD-JWT or undisclosed claims rather than an opaque presentation reference",
+      "expected": "rejected",
+      "layer": "export-policy"
+    },
+    {
+      "id": "PRIV-010",
+      "family": "bbs-experimental",
+      "attack": "BBS derived-proof reference is accepted only with presentation scope and explicit issuer key epoch",
+      "expected": "accepted-structurally",
+      "layer": "scope-validator"
+    },
+    {
+      "id": "PRIV-011",
+      "family": "bbs-unavailable",
+      "attack": "experimental BBS verifier or required implementation is unavailable",
+      "expected": "defer",
+      "layer": "verifier-capability"
+    },
+    {
+      "id": "PRIV-012",
+      "family": "reidentification-oracle",
+      "attack": "unauthorized verifier requests identity resolution for a scoped handle",
+      "expected": "denied-and-audited",
+      "layer": "identity-resolution-service"
+    },
+    {
+      "id": "PRIV-013",
+      "family": "overdisclosure",
+      "attack": "presentation discloses claims not required for the declared purpose/resource category",
+      "expected": "rejected",
+      "layer": "disclosure-policy"
+    },
+    {
+      "id": "PRIV-014",
+      "family": "side-channel",
+      "attack": "correlator uses timestamps, event counts, resource types or proof size to reidentify or link subjects",
+      "expected": "measured",
+      "layer": "attack-benchmark"
+    },
+    {
+      "id": "PRIV-015",
+      "family": "replay",
+      "attack": "same presentation or derived proof is replayed outside its operation/audience/expiry context",
+      "expected": "rejected",
+      "layer": "presentation-verifier"
+    },
+    {
+      "id": "PRIV-016",
+      "family": "key-compromise",
+      "attack": "one tenant pseudonym key is compromised and attacker attempts to correlate other tenants",
+      "expected": "no-cross-tenant-correlation",
+      "layer": "key-isolation-test"
+    },
+    {
+      "id": "PRIV-017",
+      "family": "v2-binding-cross-scope",
+      "attack": "one or more operation references are reused in a different operation scope",
+      "expected": "rejected",
+      "layer": "operation-binding-v2-validator"
+    },
+    {
+      "id": "PRIV-018",
+      "family": "v2-binding-role-collision",
+      "attack": "same opaque handle is assigned to patient and resource-set or another distinct role",
+      "expected": "rejected",
+      "layer": "operation-binding-v2-validator"
+    },
+    {
+      "id": "PRIV-019",
+      "family": "scope-id-grammar",
+      "attack": "scope identifier is shorter than 16 characters, longer than 128 characters, or contains characters outside the opaque scope grammar",
+      "expected": "rejected",
+      "layer": "scoped-reference-validator"
+    },
+    {
+      "id": "PRIV-020",
+      "family": "zero-key-epoch",
+      "attack": "tenant or BBS reference uses key_epoch zero",
+      "expected": "rejected",
+      "layer": "scoped-reference-validator"
+    },
+    {
+      "id": "PRIV-021",
+      "family": "purpose-metadata-leakage",
+      "attack": "exported v2 operation binding contains plaintext clinical purpose instead of an opaque operation-scoped purpose reference",
+      "expected": "rejected",
+      "layer": "v2-envelope-schema-and-export-policy"
+    },
+    {
+      "id": "PRIV-022",
+      "family": "runtime-receipt-missing-signature",
+      "attack": "runtime qualification evidence has no trusted issuer signature",
+      "expected": "defer",
+      "layer": "runtime-qualification-verifier"
+    },
+    {
+      "id": "PRIV-023",
+      "family": "runtime-receipt-expired",
+      "attack": "runtime qualification receipt validity window has expired",
+      "expected": "defer",
+      "layer": "runtime-qualification-verifier"
+    }
+  ]
+}

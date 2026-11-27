@@ -1,0 +1,159 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:mycelix:schema:scoped-reference-v1",
+  "title": "Mycelix Scoped Reference Envelope v1",
+  "description": "Typed opaque references for clinical transaction evidence. Shape validation only; no cryptographic or unlinkability claim.",
+  "oneOf": [
+    {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "scheme",
+        "scope",
+        "scope_id",
+        "issuer_id",
+        "handle"
+      ],
+      "properties": {
+        "scheme": {
+          "const": "transaction-random-v1"
+        },
+        "scope": {
+          "const": "operation"
+        },
+        "scope_id": {
+          "$ref": "#/$defs/opaqueScope"
+        },
+        "issuer_id": {
+          "$ref": "#/$defs/nonEmpty"
+        },
+        "handle": {
+          "type": "string",
+          "pattern": "^op1:[0-9a-f]{64}$"
+        }
+      }
+    },
+    {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "scheme",
+        "scope",
+        "scope_id",
+        "issuer_id",
+        "key_id",
+        "key_epoch",
+        "handle"
+      ],
+      "properties": {
+        "scheme": {
+          "const": "tenant-purpose-epoch-keyed-v1"
+        },
+        "scope": {
+          "const": "tenant-purpose-epoch"
+        },
+        "scope_id": {
+          "$ref": "#/$defs/opaqueScope"
+        },
+        "issuer_id": {
+          "$ref": "#/$defs/nonEmpty"
+        },
+        "key_id": {
+          "$ref": "#/$defs/nonEmpty"
+        },
+        "key_epoch": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "handle": {
+          "type": "string",
+          "pattern": "^tpk1:[0-9a-f]{64}$"
+        }
+      }
+    },
+    {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "scheme",
+        "scope",
+        "scope_id",
+        "issuer_id",
+        "key_id",
+        "handle"
+      ],
+      "properties": {
+        "scheme": {
+          "const": "sd-jwt-disclosure-ref-v1"
+        },
+        "scope": {
+          "const": "presentation"
+        },
+        "scope_id": {
+          "$ref": "#/$defs/opaqueScope"
+        },
+        "issuer_id": {
+          "$ref": "#/$defs/nonEmpty"
+        },
+        "key_id": {
+          "$ref": "#/$defs/nonEmpty"
+        },
+        "handle": {
+          "type": "string",
+          "pattern": "^sdjwt1:[0-9a-f]{64}$"
+        }
+      }
+    },
+    {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "scheme",
+        "scope",
+        "scope_id",
+        "issuer_id",
+        "key_id",
+        "key_epoch",
+        "handle"
+      ],
+      "properties": {
+        "scheme": {
+          "const": "bbs-derived-proof-ref-v1"
+        },
+        "scope": {
+          "const": "presentation"
+        },
+        "scope_id": {
+          "$ref": "#/$defs/opaqueScope"
+        },
+        "issuer_id": {
+          "$ref": "#/$defs/nonEmpty"
+        },
+        "key_id": {
+          "$ref": "#/$defs/nonEmpty"
+        },
+        "key_epoch": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "handle": {
+          "type": "string",
+          "pattern": "^bbs1:[0-9a-f]{64}$"
+        }
+      }
+    }
+  ],
+  "$defs": {
+    "nonEmpty": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "\\S"
+    },
+    "opaqueScope": {
+      "type": "string",
+      "minLength": 16,
+      "maxLength": 128,
+      "pattern": "^[A-Za-z0-9_-]+$"
+    }
+  }
+}

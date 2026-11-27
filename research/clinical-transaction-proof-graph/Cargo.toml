@@ -1,0 +1,15 @@
+[package]
+name = "clinical-transaction-proof-graph"
+version = "0.1.0"
+edition = "2021"
+license = "AGPL-3.0-or-later"
+description = "Dependency-free reference verifier for causal clinical transaction evidence graphs"
+
+[lib]
+path = "src/lib.rs"
+
+[lints.rust]
+unsafe_code = "forbid"
+
+[workspace]
+resolver = "2"

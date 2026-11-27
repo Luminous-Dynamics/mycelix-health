@@ -1,0 +1,234 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:mycelix:schema:clinical-transaction-operation-binding-v2",
+  "title": "Mycelix Clinical Transaction Operation Binding v2",
+  "description": "Versioned proof-envelope binding using operation-scoped and tenant/purpose/epoch-scoped references. Shape only; cross-reference scope equality and cryptographic validity are checked by separate verifier layers.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "operation_id",
+    "attempt_id",
+    "action",
+    "source_resource_version",
+    "revocation_epoch",
+    "references"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": 2
+    },
+    "operation_id": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "\\S"
+    },
+    "attempt_id": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "\\S"
+    },
+    "action": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "\\S"
+    },
+    "source_resource_version": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "\\S"
+    },
+    "revocation_epoch": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "references": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "patient",
+        "actor",
+        "recipient",
+        "source_resource",
+        "resource_set",
+        "consent_revision",
+        "policy_revision",
+        "idempotency_key",
+        "tenant",
+        "purpose_context"
+      ],
+      "properties": {
+        "patient": {
+          "allOf": [
+            {
+              "$ref": "urn:mycelix:schema:scoped-reference-v1#"
+            },
+            {
+              "properties": {
+                "scheme": {
+                  "const": "transaction-random-v1"
+                },
+                "scope": {
+                  "const": "operation"
+                }
+              }
+            }
+          ]
+        },
+        "actor": {
+          "allOf": [
+            {
+              "$ref": "urn:mycelix:schema:scoped-reference-v1#"
+            },
+            {
+              "properties": {
+                "scheme": {
+                  "const": "transaction-random-v1"
+                },
+                "scope": {
+                  "const": "operation"
+                }
+              }
+            }
+          ]
+        },
+        "recipient": {
+          "allOf": [
+            {
+              "$ref": "urn:mycelix:schema:scoped-reference-v1#"
+            },
+            {
+              "properties": {
+                "scheme": {
+                  "const": "transaction-random-v1"
+                },
+                "scope": {
+                  "const": "operation"
+                }
+              }
+            }
+          ]
+        },
+        "source_resource": {
+          "allOf": [
+            {
+              "$ref": "urn:mycelix:schema:scoped-reference-v1#"
+            },
+            {
+              "properties": {
+                "scheme": {
+                  "const": "transaction-random-v1"
+                },
+                "scope": {
+                  "const": "operation"
+                }
+              }
+            }
+          ]
+        },
+        "resource_set": {
+          "allOf": [
+            {
+              "$ref": "urn:mycelix:schema:scoped-reference-v1#"
+            },
+            {
+              "properties": {
+                "scheme": {
+                  "const": "transaction-random-v1"
+                },
+                "scope": {
+                  "const": "operation"
+                }
+              }
+            }
+          ]
+        },
+        "consent_revision": {
+          "allOf": [
+            {
+              "$ref": "urn:mycelix:schema:scoped-reference-v1#"
+            },
+            {
+              "properties": {
+                "scheme": {
+                  "const": "transaction-random-v1"
+                },
+                "scope": {
+                  "const": "operation"
+                }
+              }
+            }
+          ]
+        },
+        "policy_revision": {
+          "allOf": [
+            {
+              "$ref": "urn:mycelix:schema:scoped-reference-v1#"
+            },
+            {
+              "properties": {
+                "scheme": {
+                  "const": "transaction-random-v1"
+                },
+                "scope": {
+                  "const": "operation"
+                }
+              }
+            }
+          ]
+        },
+        "idempotency_key": {
+          "allOf": [
+            {
+              "$ref": "urn:mycelix:schema:scoped-reference-v1#"
+            },
+            {
+              "properties": {
+                "scheme": {
+                  "const": "transaction-random-v1"
+                },
+                "scope": {
+                  "const": "operation"
+                }
+              }
+            }
+          ]
+        },
+        "tenant": {
+          "allOf": [
+            {
+              "$ref": "urn:mycelix:schema:scoped-reference-v1#"
+            },
+            {
+              "properties": {
+                "scheme": {
+                  "const": "tenant-purpose-epoch-keyed-v1"
+                },
+                "scope": {
+                  "const": "tenant-purpose-epoch"
+                }
+              }
+            }
+          ]
+        },
+        "purpose_context": {
+          "allOf": [
+            {
+              "$ref": "urn:mycelix:schema:scoped-reference-v1#"
+            },
+            {
+              "properties": {
+                "scheme": {
+                  "const": "transaction-random-v1"
+                },
+                "scope": {
+                  "const": "operation"
+                }
+              }
+            }
+          ]
+        }
+      }
+    }
+  }
+}
