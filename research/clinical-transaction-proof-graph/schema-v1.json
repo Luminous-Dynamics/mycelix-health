@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://luminousdynamics.io/schemas/clinical-transaction-proof-graph-v1.json",
+  "$id": "urn:mycelix:clinical-transaction-proof-graph:v1",
   "title": "Clinical Transaction Proof Graph v1",
   "type": "object",
   "additionalProperties": false,
