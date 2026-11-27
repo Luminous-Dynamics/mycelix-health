@@ -50,6 +50,8 @@ pub enum ReferenceError {
     UnexpectedKeyMetadata,
     WrongScopeForScheme,
     MalformedOpaqueHandle,
+    MalformedScopeId,
+    InvalidKeyEpoch,
     DuplicateScopedHandle,
     UnsupportedSchemaVersion,
     IncompleteOperationContext,
@@ -59,6 +61,17 @@ impl ScopedReference {
     pub fn validate(&self) -> Result<(), ReferenceError> {
         if self.scope_id.trim().is_empty() {
             return Err(ReferenceError::EmptyScope);
+        }
+        if !(16..=128).contains(&self.scope_id.len())
+            || !self
+                .scope_id
+                .bytes()
+                .all(|byte| byte.is_ascii_alphanumeric() || byte == b'_' || byte == b'-')
+        {
+            return Err(ReferenceError::MalformedScopeId);
+        }
+        if self.key_epoch == Some(0) {
+            return Err(ReferenceError::InvalidKeyEpoch);
         }
         if self.issuer_id.trim().is_empty() {
             return Err(ReferenceError::EmptyIssuer);
@@ -402,6 +415,20 @@ mod tests {
             ),
             Err(ReferenceError::IncompleteOperationContext)
         );
+    }
+
+    #[test]
+    fn rejects_scope_ids_outside_the_schema_grammar() {
+        let mut reference = operation_ref('a');
+        reference.scope_id = "scope with spaces".into();
+        assert_eq!(reference.validate(), Err(ReferenceError::MalformedScopeId));
+    }
+
+    #[test]
+    fn rejects_zero_key_epoch() {
+        let mut reference = tenant_ref();
+        reference.key_epoch = Some(0);
+        assert_eq!(reference.validate(), Err(ReferenceError::InvalidKeyEpoch));
     }
 
     #[test]
