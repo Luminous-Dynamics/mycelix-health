@@ -38,23 +38,23 @@ transaction_declared="$(jq -r '
 ' "$WORK_DIR/metadata.json")"
 test "$transaction_declared" = "true"
 
-# The synthetic replay uses a client-assigned Patient id (update-as-create)
-# and a conditional Provenance create matched by the standard target reference.
-patient_update_create_declared="$(jq -r '
+# Both resources use conditional create, which the live CapabilityStatement
+# must declare. Provenance is matched by standard target:identifier search,
+# not an unsupported Provenance.identifier search parameter.
+patient_conditional_create_declared="$(jq -r '
   [.rest[]? | select(.mode == "server") | .resource[]?
-   | select(.type == "Patient" and .updateCreate == true)] | length > 0
+   | select(.type == "Patient" and .conditionalCreate == true)] | length > 0
 ' "$WORK_DIR/metadata.json")"
 provenance_conditional_create_declared="$(jq -r '
   [.rest[]? | select(.mode == "server") | .resource[]?
    | select(.type == "Provenance" and .conditionalCreate == true)] | length > 0
 ' "$WORK_DIR/metadata.json")"
-test "$patient_update_create_declared" = "true"
+test "$patient_conditional_create_declared" = "true"
 test "$provenance_conditional_create_declared" = "true"
 
 run_id="$(date -u +%s)-$RANDOM-$RANDOM"
 identifier_system="urn:mycelix:qualification:synthetic"
 patient_identifier="patient-$run_id"
-patient_id="patient-$run_id"
 patient_full_url="urn:uuid:00000000-0000-4000-8000-000000000001"
 provenance_full_url="urn:uuid:00000000-0000-4000-8000-000000000002"
 recorded_at="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
@@ -67,7 +67,6 @@ jq -n \
   --arg provenance_full_url "$provenance_full_url" \
   --arg identifier_system "$identifier_system" \
   --arg patient_identifier "$patient_identifier" \
-  --arg patient_id "$patient_id" \
   --arg recorded_at "$recorded_at" '
   {
     resourceType: "Bundle",
@@ -77,14 +76,14 @@ jq -n \
         fullUrl: $patient_full_url,
         resource: {
           resourceType: "Patient",
-          id: $patient_id,
           active: true,
           identifier: [{system: $identifier_system, value: $patient_identifier}],
           name: [{family: "MycelixQualificationSynthetic"}]
         },
         request: {
-          method: "PUT",
-          url: ("Patient/" + $patient_id)
+          method: "POST",
+          url: "Patient",
+          ifNoneExist: ("identifier=" + $identifier_system + "|" + $patient_identifier)
         }
       },
       {
@@ -105,7 +104,7 @@ jq -n \
         request: {
           method: "POST",
           url: "Provenance",
-          ifNoneExist: ("target=Patient/" + $patient_id)
+          ifNoneExist: ("target:identifier=" + $identifier_system + "|" + $patient_identifier)
         }
       }
     ]
@@ -147,20 +146,26 @@ patient_count="$(search_total Patient "$patient_identifier")"
 provenance_count="$(curl --silent --show-error --fail --get "$FHIR_BASE_URL/Provenance" \
   -H 'Accept: application/fhir+json' \
   --data-urlencode "_count=10" \
-  --data-urlencode "target=Patient/$patient_id" \
+  --data-urlencode "target:identifier=$identifier_system|$patient_identifier" \
   | jq -r '.total // 0')"
 test "$patient_count" = "1"
 test "$provenance_count" = "1"
 
 # Capture the Patient version before replay. The second PUT may create a
 # further version even though it does not create a second logical resource.
-curl --silent --show-error --fail "$FHIR_BASE_URL/Patient/$patient_id" \
+curl --silent --show-error --fail --get "$FHIR_BASE_URL/Patient" \
+  -H 'Accept: application/fhir+json' \
+  --data-urlencode "_count=1" \
+  --data-urlencode "identifier=$identifier_system|$patient_identifier" \
+  > "$WORK_DIR/patient-before-replay.json"
+patient_id="$(jq -r '.entry[0].resource.id // empty' "$WORK_DIR/patient-before-replay.json")"
+test -n "$patient_id"
   -H 'Accept: application/fhir+json' > "$WORK_DIR/patient-before-replay.json"
-patient_version_before_replay="$(jq -r '.meta.versionId // empty' "$WORK_DIR/patient-before-replay.json")"
+patient_version_before_replay="$(jq -r '.entry[0].resource.meta.versionId // empty' "$WORK_DIR/patient-before-replay.json")"
 test -n "$patient_version_before_replay"
 
-# Replay the exact transaction. Stable update-as-create keeps one Patient
-# identity; Provenance conditional create (target=Patient/id) keeps one
+# Replay the exact transaction. Conditional create keeps one Patient and one
+# matching Provenance. A matching replay response is not distributed exactly-once.
 # Provenance. This is not a claim of no-op replay or distributed exactly-once.
 replay_status="$(curl --silent --show-error --output "$WORK_DIR/replay-response.json" \
   --write-out '%{http_code}' \
@@ -179,7 +184,7 @@ test "$(search_total Patient "$patient_identifier")" = "1"
 test "$(curl --silent --show-error --fail --get "$FHIR_BASE_URL/Provenance" \
   -H 'Accept: application/fhir+json' \
   --data-urlencode "_count=10" \
-  --data-urlencode "target=Patient/$patient_id" \
+  --data-urlencode "target:identifier=$identifier_system|$patient_identifier" \
   | jq -r '.total // 0')" = "1"
 curl --silent --show-error --fail "$FHIR_BASE_URL/Patient/$patient_id" \
   -H 'Accept: application/fhir+json' > "$WORK_DIR/patient-after-replay.json"
@@ -375,7 +380,7 @@ jq -n \
   --arg patient_version_before_replay "$patient_version_before_replay" \
   --arg patient_version_after_replay "$patient_version_after_replay" \
   --arg rollback_http "$rollback_status" \
-  --arg patient_update_create_declared "$patient_update_create_declared" \
+  --arg patient_conditional_create_declared "$patient_update_create_declared" \
   --arg provenance_conditional_create_declared "$provenance_conditional_create_declared" \
   --arg concurrent_a_http "$concurrent_a_status" \
   --arg concurrent_b_http "$concurrent_b_status" \
@@ -393,7 +398,7 @@ jq -n \
     capability_statement_sha256: $metadata_sha256,
     declared_transaction_interaction: true,
     declared_capabilities: {
-      patient_update_create: ($patient_update_create_declared == "true"),
+      patient_conditional_create: ($patient_conditional_create_declared == "true"),
       provenance_conditional_create: ($provenance_conditional_create_declared == "true")
     },
     probes: {
