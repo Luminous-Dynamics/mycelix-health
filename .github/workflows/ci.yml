@@ -254,11 +254,11 @@ jobs:
           node -e '
             const lock = require("./tests/integration/package-lock.json");
             const p = lock.packages || {};
-            if (p["node_modules/@holochain/client"]?.version !== "0.20.0") {
-              throw new Error("integration lockfile does not pin @holochain/client 0.20.0");
+            if (p["node_modules/@holochain/client"]?.version !== "0.20.8") {
+              throw new Error("integration lockfile does not pin @holochain/client 0.20.8");
             }
-            if (p["node_modules/@holochain/tryorama"]?.version !== "0.19.0") {
-              throw new Error("integration lockfile does not pin @holochain/tryorama 0.19.0");
+            if (p["node_modules/@holochain/tryorama"]?.version !== "0.19.2") {
+              throw new Error("integration lockfile does not pin @holochain/tryorama 0.19.2");
             }
           '
 
