@@ -7,12 +7,12 @@
 This profile complements established FHIR conformance tooling; it is not a replacement for it.
 
 - Run the official FHIR R4 validator and the applicable implementation-guide validator for structural/profile conformance.
-- Reuse Inferno Test Kits for their intended API-conformance scope, including the ONC Standardized API and SMART App Launch test suites where applicable.
+- Reuse Inferno Test Kits for their intended API-conformance scope, including the ONC Standardized API and SMART App Launch test suites where applicable. As of 2026-11-27, the ONC (g)(10) kit is version 8.1.0 (last updated 2026-09-08) and covers SMART App Launch, US Core and Bulk Data; the dedicated SMART App Launch kit is version 1.0.3 (last updated 2026-08-26) and includes STU2.2. Do not pin a vague "latest" label: record the exact kit and IG version in each conformance receipt.
 - Run this profile after those checks to qualify the *deployed instance's* transactional and recovery behavior under synthetic adversarial histories.
 
 Inferno is an existing framework for authoring and running portable FHIR API conformance suites, and ONC lists it for the §170.315(g)(10) standardized API criterion with FHIR R4 and US Core. Mycelix should compose with those tools and add the transactional authorization/recovery probes they are not designed to replace.
 
-A green FHIR validator or Inferno suite does not imply that a Consent revocation race is closed, that a cross-system outbox is durable, or that a lost remote acknowledgement can be reconciled without a duplicate side effect.
+A green FHIR validator or Inferno suite does not imply that a Consent revocation race is closed, that a cross-system outbox is durable, or that a lost remote acknowledgement can be reconciled without a duplicate side effect. The new profile deliberately composes with (rather than replaces) those suites.
 
 ## Why qualification must be active
 
