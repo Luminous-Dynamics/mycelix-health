@@ -188,6 +188,18 @@
       "mutation": "witness names a different idempotency-key commitment",
       "expected": "rejected",
       "reason": "recipient effect must bind the original idempotency key"
+    },
+    {
+      "id": "recipient-concurrent-conditional-create-one-effect",
+      "mutation": "128 concurrent FHIR conditional-create requests target one synthetic Patient identifier; server state is independently checked for one master resource and one history version",
+      "expected": "accepted",
+      "reason": "exactly one create may take effect; remaining attempts must resolve to the same existing resource"
+    },
+    {
+      "id": "recipient-concurrent-conditional-create-duplicate-effect",
+      "mutation": "same 128-way conditional-create race yields more than one persisted master resource for the same conditional identifier",
+      "expected": "rejected",
+      "reason": "conditional-create race must not produce duplicate resources"
     }
   ]
 }
