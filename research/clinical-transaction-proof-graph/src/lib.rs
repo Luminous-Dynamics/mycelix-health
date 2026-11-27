@@ -869,4 +869,59 @@ mod tests {
         assert_eq!(report.verdict, Verdict::Verified);
         assert_eq!(report.conclusion, OperationConclusion::RejectedBeforeCommit);
     }
+
+    #[test]
+    fn identity_binding_must_match_the_authorized_subject() {
+        let mut graph = successful_graph();
+        graph.events[1].bound_actor_ref_digest = Some("sha256:spoofed-actor".into());
+        let report = verify_graph(&graph, 5_000, &FixtureAuthenticator, &qualifications());
+        assert_eq!(report.verdict, Verdict::Rejected);
+        assert_eq!(report.findings, vec![ReasonCode::AuthenticatedActorMismatch]);
+    }
+
+    #[test]
+    fn unknown_commit_can_only_resolve_through_same_attempt_reconciliation() {
+        let mut graph = successful_graph();
+        graph.events[5].kind = EventKind::CommitResult(CommitOutcome::Unknown);
+        let unknown_commit = graph.events[5].clone();
+        let reconciled = event(
+            "event-09",
+            "commit-reconciler",
+            ActorRole::Reconciler,
+            1,
+            EventKind::CommitReconciled(CommitOutcome::Committed),
+            &[&unknown_commit],
+        );
+        graph.events[6].parents = vec![ParentRef {
+            event_id: reconciled.event_id.clone(),
+            event_digest: reconciled.event_digest.clone(),
+        }];
+        graph.events.push(reconciled);
+
+        let report = verify_graph(&graph, 5_000, &FixtureAuthenticator, &qualifications());
+        assert_eq!(report.verdict, Verdict::Verified);
+        assert_eq!(report.conclusion, OperationConclusion::RecipientEffectObserved);
+    }
+
+    #[test]
+    fn unknown_delivery_can_only_resolve_with_recipient_evidence() {
+        let mut graph = successful_graph();
+        graph.events[7].kind = EventKind::DeliveryResult(DeliveryOutcome::Unknown);
+        graph.events[7].observed_resource_set_digest = None;
+        let unknown_delivery = graph.events[7].clone();
+        let reconciled = event(
+            "event-09",
+            "recipient",
+            ActorRole::Recipient,
+            2,
+            EventKind::DeliveryReconciled(DeliveryOutcome::RecipientEffectObserved),
+            &[&unknown_delivery],
+        );
+        graph.events.push(reconciled);
+
+        let report = verify_graph(&graph, 5_000, &FixtureAuthenticator, &qualifications());
+        assert_eq!(report.verdict, Verdict::Verified);
+        assert_eq!(report.conclusion, OperationConclusion::RecipientEffectObserved);
+    }
+
 }
