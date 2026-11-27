@@ -169,7 +169,7 @@ existing_version="$(jq -r '.entry[0].resource.meta.versionId // empty' "$existin
 test -n "$existing_id"
 test -n "$existing_version"
 version_before_concurrency="$existing_version"
-if_match_header="W/\\"${existing_version}\\""
+if_match_header='W/"'"$existing_version"'"'
 
 # Two concurrent writers start from exactly the same resource version. The
 # server must accept one If-Match update and reject the stale competitor.
@@ -217,7 +217,7 @@ writer_a_pid=$!
   curl --silent --show-error --output "$WORK_DIR/concurrent-b-response.json" \
     --write-out '%{http_code}' \
     -X PUT \
-    -H "If-Match: W/\\"$existing_version\\"" \
+    -H "If-Match: $if_match_header"
     -H 'Content-Type: application/fhir+json' \
     -H 'Accept: application/fhir+json' \
     --data-binary @"$WORK_DIR/concurrent-b.json" \
