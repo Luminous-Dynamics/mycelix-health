@@ -2,9 +2,9 @@ name: CI
 
 on:
   push:
-    branches: [main, develop]
+    branches: [main, develop, fix/health-assurance-stack-2026-11-27]
   pull_request:
-    branches: [main, develop]
+    branches: [main, develop, fix/health-assurance-stack-2026-11-27]
 
 env:
   CARGO_TERM_COLOR: always
