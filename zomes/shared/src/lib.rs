@@ -719,10 +719,8 @@ pub mod access_control {
             if !explicitly_authorized {
                 auth_result.authorized = false;
                 auth_result.permissions.clear();
-                auth_result.reason = format!(
-                    "{:?} requires explicit category-specific consent",
-                    category
-                );
+                auth_result.reason =
+                    format!("{:?} requires explicit category-specific consent", category);
                 return Ok(auth_result);
             }
         }
