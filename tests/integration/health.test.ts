@@ -421,18 +421,30 @@ describe('Trials Zome - FDA Compliance', () => {
         payload: clinicalTrialFixture(alice.agentPubKey, 'TRIAL-ELIGIBILITY-001'),
       });
       const trialHash = actionHashOf(created);
+      const { hash: patientHash } = await createPatientFixture(
+        alice,
+        'PAT-ELIGIBILITY-001',
+      );
 
       const eligible = await alice.cells[0].callZome<{ eligible: boolean }>({
         zome_name: 'trials',
         fn_name: 'check_eligibility',
-        payload: { trial_hash: trialHash, patient_age: 30 },
+        payload: {
+          trial_hash: trialHash,
+          patient_hash: patientHash,
+          patient_age: 30,
+        },
       });
       expect(eligible.eligible).toBe(true);
 
       const notEligible = await alice.cells[0].callZome<{ eligible: boolean }>({
         zome_name: 'trials',
         fn_name: 'check_eligibility',
-        payload: { trial_hash: trialHash, patient_age: 70 },
+        payload: {
+          trial_hash: trialHash,
+          patient_hash: patientHash,
+          patient_age: 70,
+        },
       });
       expect(notEligible.eligible).toBe(false);
     });
