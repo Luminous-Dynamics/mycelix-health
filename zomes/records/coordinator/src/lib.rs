@@ -74,11 +74,13 @@ fn encrypted_record_scope_context(
                     "Encrypted v2 record has no supported typed context verifier".to_string()
                 )));
             }
-            let event_time = record.clinical_event_time.clone().ok_or(wasm_error!(
-                WasmErrorInner::Guest(
-                    "Encrypted v2 record has no clinical event time".to_string()
-                )
-            ))?;
+            let event_time =
+                record
+                    .clinical_event_time
+                    .clone()
+                    .ok_or(wasm_error!(WasmErrorInner::Guest(
+                        "Encrypted v2 record has no clinical event time".to_string()
+                    )))?;
             if record.entry_type == "ProcedurePerformed" && record.encounter_hash.is_none() {
                 return Err(wasm_error!(WasmErrorInner::Guest(
                     "Encrypted v2 procedure record requires an encounter".to_string()
@@ -137,53 +139,67 @@ fn validate_encrypted_v2_context_matches_payload(
         )));
     }
 
-    let event_time = record.clinical_event_time.as_ref().ok_or(wasm_error!(
-        WasmErrorInner::Guest("V2 encrypted record has no clinical event time".to_string())
-    ))?;
+    let event_time =
+        record
+            .clinical_event_time
+            .as_ref()
+            .ok_or(wasm_error!(WasmErrorInner::Guest(
+                "V2 encrypted record has no clinical event time".to_string()
+            )))?;
 
     let matches = match record.entry_type.as_str() {
         "LabResult" => {
-            let value: LabResult = ExternIO::from(plaintext.to_vec()).decode().map_err(|error| {
-                wasm_error!(WasmErrorInner::Guest(format!(
-                    "V2 LabResult payload decoding failed: {}",
-                    error
-                )))
-            })?;
+            let value: LabResult =
+                ExternIO::from(plaintext.to_vec())
+                    .decode()
+                    .map_err(|error| {
+                        wasm_error!(WasmErrorInner::Guest(format!(
+                            "V2 LabResult payload decoding failed: {}",
+                            error
+                        )))
+                    })?;
             value.patient_hash == record.patient_hash
                 && &value.collection_time == event_time
                 && value.encounter_hash == record.encounter_hash
         }
         "ProcedurePerformed" => {
             let value: ProcedurePerformed =
-                ExternIO::from(plaintext.to_vec()).decode().map_err(|error| {
-                    wasm_error!(WasmErrorInner::Guest(format!(
-                        "V2 ProcedurePerformed payload decoding failed: {}",
-                        error
-                    )))
-                })?;
+                ExternIO::from(plaintext.to_vec())
+                    .decode()
+                    .map_err(|error| {
+                        wasm_error!(WasmErrorInner::Guest(format!(
+                            "V2 ProcedurePerformed payload decoding failed: {}",
+                            error
+                        )))
+                    })?;
             value.patient_hash == record.patient_hash
                 && &value.performed_at == event_time
                 && Some(value.encounter_hash) == record.encounter_hash
         }
         "ImagingStudy" => {
             let value: ImagingStudy =
-                ExternIO::from(plaintext.to_vec()).decode().map_err(|error| {
-                    wasm_error!(WasmErrorInner::Guest(format!(
-                        "V2 ImagingStudy payload decoding failed: {}",
-                        error
-                    )))
-                })?;
+                ExternIO::from(plaintext.to_vec())
+                    .decode()
+                    .map_err(|error| {
+                        wasm_error!(WasmErrorInner::Guest(format!(
+                            "V2 ImagingStudy payload decoding failed: {}",
+                            error
+                        )))
+                    })?;
             value.patient_hash == record.patient_hash
                 && &value.study_date == event_time
                 && value.encounter_hash == record.encounter_hash
         }
         "VitalSigns" => {
-            let value: VitalSigns = ExternIO::from(plaintext.to_vec()).decode().map_err(|error| {
-                wasm_error!(WasmErrorInner::Guest(format!(
-                    "V2 VitalSigns payload decoding failed: {}",
-                    error
-                )))
-            })?;
+            let value: VitalSigns =
+                ExternIO::from(plaintext.to_vec())
+                    .decode()
+                    .map_err(|error| {
+                        wasm_error!(WasmErrorInner::Guest(format!(
+                            "V2 VitalSigns payload decoding failed: {}",
+                            error
+                        )))
+                    })?;
             value.patient_hash == record.patient_hash
                 && &value.recorded_at == event_time
                 && value.encounter_hash == record.encounter_hash
@@ -1567,8 +1583,11 @@ pub fn get_patient_encrypted_records(
     // Build the complete authorization snapshot before producing a result.
     // Explicit policy denials omit only that record. Any unavailable consent
     // verifier, transport error or malformed record aborts the whole read.
-    let mut authorized_records: Vec<(Record, DataCategory, mycelix_health_shared::AuthorizationResult)> =
-        Vec::new();
+    let mut authorized_records: Vec<(
+        Record,
+        DataCategory,
+        mycelix_health_shared::AuthorizationResult,
+    )> = Vec::new();
 
     for link in links {
         let Some(hash) = link.target.into_action_hash() else {
@@ -1602,8 +1621,7 @@ pub fn get_patient_encrypted_records(
             )));
         }
 
-        let (clinical_event_time, encounter_hash) =
-            encrypted_record_scope_context(&encrypted)?;
+        let (clinical_event_time, encounter_hash) = encrypted_record_scope_context(&encrypted)?;
 
         let category = parse_encrypted_category(&encrypted.data_category)?;
         let decision = evaluate_authorization_for_resource(
@@ -2703,7 +2721,10 @@ mod tests {
             clinical_event_time: None,
             encounter_hash: None,
         };
-        assert_eq!(encrypted_record_scope_context(&legacy).unwrap(), (None, None));
+        assert_eq!(
+            encrypted_record_scope_context(&legacy).unwrap(),
+            (None, None)
+        );
 
         let scoped = EncryptedRecord {
             envelope_version: ENCRYPTED_RECORD_ENVELOPE_VERSION_V2,
@@ -2806,9 +2827,12 @@ mod tests {
         };
         let key = [9u8; 32];
         let original_aad = encrypted_record_aad(&record).expect("encode v2 AAD");
-        let (ciphertext, nonce) =
-            patient_encryption::encrypt_with_aad(b"synthetic clinical payload", &original_aad, &key)
-                .expect("encrypt synthetic payload");
+        let (ciphertext, nonce) = patient_encryption::encrypt_with_aad(
+            b"synthetic clinical payload",
+            &original_aad,
+            &key,
+        )
+        .expect("encrypt synthetic payload");
         record.ciphertext = ciphertext;
         record.nonce = nonce;
 
@@ -2868,9 +2892,8 @@ mod tests {
 
         assert!(validate_encrypted_v2_context_matches_payload(&record, &plaintext).is_ok());
 
-        record.clinical_event_time = Some(Timestamp::from_micros(
-            lab.collection_time.as_micros() + 1,
-        ));
+        record.clinical_event_time =
+            Some(Timestamp::from_micros(lab.collection_time.as_micros() + 1));
         assert!(validate_encrypted_v2_context_matches_payload(&record, &plaintext).is_err());
 
         record.clinical_event_time = Some(lab.collection_time);
