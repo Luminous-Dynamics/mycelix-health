@@ -11,6 +11,7 @@
 import { runScenario, Scenario, Player } from '@holochain/tryorama';
 import { describe, it, expect, beforeAll } from 'vitest';
 import { ActionHash, AgentPubKey, encodeHashToBase64 } from '@holochain/client';
+import { resolve } from 'node:path';
 
 const HEALTH_HAPP_PATH = '../../mycelix-health.happ';
 
@@ -22,7 +23,7 @@ describe('Patient Zome', () => {
   it('creates and retrieves a patient', async () => {
     await runScenario(async (scenario: Scenario) => {
       const [alice] = await scenario.addPlayersWithApps([
-        { appBundleSource: { path: HEALTH_HAPP_PATH } },
+        { appBundleSource: { type: 'path', value: resolve(HEALTH_HAPP_PATH) } },
       ]);
 
       const patient = {
@@ -74,7 +75,7 @@ describe('Patient Zome', () => {
   it('searches patients by name', async () => {
     await runScenario(async (scenario: Scenario) => {
       const [alice] = await scenario.addPlayersWithApps([
-        { appBundleSource: { path: HEALTH_HAPP_PATH } },
+        { appBundleSource: { type: 'path', value: resolve(HEALTH_HAPP_PATH) } },
       ]);
 
       // Create multiple patients
@@ -117,8 +118,8 @@ describe('Consent Zome - HIPAA Compliance', () => {
   it('creates consent with required HIPAA fields', async () => {
     await runScenario(async (scenario: Scenario) => {
       const [alice, bob] = await scenario.addPlayersWithApps([
-        { appBundleSource: { path: HEALTH_HAPP_PATH } },
-        { appBundleSource: { path: HEALTH_HAPP_PATH } },
+        { appBundleSource: { type: 'path', value: resolve(HEALTH_HAPP_PATH) } },
+        { appBundleSource: { type: 'path', value: resolve(HEALTH_HAPP_PATH) } },
       ]);
 
       const consent = {
@@ -167,8 +168,8 @@ describe('Consent Zome - HIPAA Compliance', () => {
   it('prevents access after consent revocation', async () => {
     await runScenario(async (scenario: Scenario) => {
       const [alice, bob] = await scenario.addPlayersWithApps([
-        { appBundleSource: { path: HEALTH_HAPP_PATH } },
-        { appBundleSource: { path: HEALTH_HAPP_PATH } },
+        { appBundleSource: { type: 'path', value: resolve(HEALTH_HAPP_PATH) } },
+        { appBundleSource: { type: 'path', value: resolve(HEALTH_HAPP_PATH) } },
       ]);
 
       // Create consent
@@ -217,8 +218,8 @@ describe('Consent Zome - HIPAA Compliance', () => {
   it('logs all data access for HIPAA audit trail', async () => {
     await runScenario(async (scenario: Scenario) => {
       const [alice, bob] = await scenario.addPlayersWithApps([
-        { appBundleSource: { path: HEALTH_HAPP_PATH } },
-        { appBundleSource: { path: HEALTH_HAPP_PATH } },
+        { appBundleSource: { type: 'path', value: resolve(HEALTH_HAPP_PATH) } },
+        { appBundleSource: { type: 'path', value: resolve(HEALTH_HAPP_PATH) } },
       ]);
 
       const consentHash: ActionHash = await alice.cells[0].callZome({
@@ -275,7 +276,7 @@ describe('Trials Zome - FDA Compliance', () => {
   it('creates a clinical trial with required FDA fields', async () => {
     await runScenario(async (scenario: Scenario) => {
       const [alice] = await scenario.addPlayersWithApps([
-        { appBundleSource: { path: HEALTH_HAPP_PATH } },
+        { appBundleSource: { type: 'path', value: resolve(HEALTH_HAPP_PATH) } },
       ]);
 
       const trial = {
@@ -337,7 +338,7 @@ describe('Trials Zome - FDA Compliance', () => {
   it('checks patient eligibility for trial', async () => {
     await runScenario(async (scenario: Scenario) => {
       const [alice] = await scenario.addPlayersWithApps([
-        { appBundleSource: { path: HEALTH_HAPP_PATH } },
+        { appBundleSource: { type: 'path', value: resolve(HEALTH_HAPP_PATH) } },
       ]);
 
       // Create trial with eligibility criteria
@@ -398,7 +399,7 @@ describe('Trials Zome - FDA Compliance', () => {
   it('reports adverse events with required fields', async () => {
     await runScenario(async (scenario: Scenario) => {
       const [alice] = await scenario.addPlayersWithApps([
-        { appBundleSource: { path: HEALTH_HAPP_PATH } },
+        { appBundleSource: { type: 'path', value: resolve(HEALTH_HAPP_PATH) } },
       ]);
 
       const ae = {
@@ -437,7 +438,7 @@ describe('Bridge Zome - Cross-hApp Federation', () => {
   it('registers health hApp with bridge', async () => {
     await runScenario(async (scenario: Scenario) => {
       const [alice] = await scenario.addPlayersWithApps([
-        { appBundleSource: { path: HEALTH_HAPP_PATH } },
+        { appBundleSource: { type: 'path', value: resolve(HEALTH_HAPP_PATH) } },
       ]);
 
       const registration = {
@@ -466,7 +467,7 @@ describe('Bridge Zome - Cross-hApp Federation', () => {
   it('creates epistemic claim with classification', async () => {
     await runScenario(async (scenario: Scenario) => {
       const [alice] = await scenario.addPlayersWithApps([
-        { appBundleSource: { path: HEALTH_HAPP_PATH } },
+        { appBundleSource: { type: 'path', value: resolve(HEALTH_HAPP_PATH) } },
       ]);
 
       const claim = {
@@ -502,7 +503,7 @@ describe('Bridge Zome - Cross-hApp Federation', () => {
   it('aggregates federated reputation scores', async () => {
     await runScenario(async (scenario: Scenario) => {
       const [alice] = await scenario.addPlayersWithApps([
-        { appBundleSource: { path: HEALTH_HAPP_PATH } },
+        { appBundleSource: { type: 'path', value: resolve(HEALTH_HAPP_PATH) } },
       ]);
 
       const scores = [
