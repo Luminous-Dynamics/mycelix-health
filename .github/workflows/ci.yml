@@ -334,5 +334,6 @@ jobs:
           nix develop "$HOLONIX_FLAKE" --command bash -euo pipefail -c '
             cd tests/integration
             npm ci --no-audit --no-fund
+            npx tsc --noEmit --target ES2022 --module NodeNext --moduleResolution NodeNext --skipLibCheck health.test.ts
             npm test
           '
