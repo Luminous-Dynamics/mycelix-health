@@ -259,13 +259,6 @@ export const FhirBundleSchema = z.object({
   }).passthrough()).optional(),
 }).passthrough().superRefine((bundle, ctx) => {
   const entries = bundle.entry ?? [];
-  if (entries.length === 0) {
-    ctx.addIssue({
-      code: z.ZodIssueCode.custom,
-      path: ['entry'],
-      message: 'An ingested FHIR Bundle must contain at least one entry',
-    });
-  }
 
   const fullUrls = new Set<string>();
   entries.forEach((entry, index) => {
@@ -325,6 +318,18 @@ export const FhirBundleSchema = z.object({
 });
 
 export type FhirBundle = z.infer<typeof FhirBundleSchema>;
+
+// Ingestion is stricter than generic FHIR Bundle parsing: an empty searchset
+// is a valid EHR response, but an empty webhook ingestion has no work to apply.
+export const FhirIngestBundleSchema = FhirBundleSchema.superRefine((bundle, ctx) => {
+  if (!bundle.entry || bundle.entry.length === 0) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['entry'],
+      message: 'An ingested FHIR Bundle must contain at least one entry',
+    });
+  }
+});
 
 // EHR System Types
 export type EhrSystem = 'epic' | 'cerner' | 'allscripts' | 'meditech' | 'generic';
