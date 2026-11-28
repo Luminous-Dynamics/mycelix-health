@@ -261,6 +261,53 @@ describe('Patient Zome', () => {
     });
   });
 
+  it('denies cross-patient reads and leaves the denied patient's audit trail unchanged', async () => {
+    await runScenario(async (scenario: Scenario) => {
+      const [alice, bob] = await scenario.addPlayersWithApps([
+        { appBundleSource: { type: 'path', value: resolve(HEALTH_HAPP_PATH) } },
+        { appBundleSource: { type: 'path', value: resolve(HEALTH_HAPP_PATH) } },
+      ]);
+      const { hash: patientA } = await createPatientFixture(alice, 'PAT-CROSS-001');
+      const { hash: patientB } = await createPatientFixture(alice, 'PAT-CROSS-002');
+
+      await createConsentFixture(alice, patientA, bob.agentPubKey, {
+        dataCategories: ['Demographics'],
+        permissions: ['Read'],
+        consentId: 'CONSENT-CROSS-001',
+      });
+
+      const permitted = await bob.cells[0].callZome<HolochainRecord | null>({
+        zome_name: 'patient',
+        fn_name: 'get_patient',
+        payload: {
+          patient_hash: patientA,
+          is_emergency: false,
+          emergency_reason: null,
+        },
+      });
+      expect(permitted).not.toBeNull();
+
+      await expect(
+        bob.cells[0].callZome<HolochainRecord | null>({
+          zome_name: 'patient',
+          fn_name: 'get_patient',
+          payload: {
+            patient_hash: patientB,
+            is_emergency: false,
+            emergency_reason: null,
+          },
+        }),
+      ).rejects.toThrow();
+
+      const deniedPatientLogs = await alice.cells[0].callZome<HolochainRecord[]>({
+        zome_name: 'consent',
+        fn_name: 'get_access_logs',
+        payload: patientB,
+      });
+      expect(deniedPatientLogs).toHaveLength(0);
+    });
+  });
+
   it('requires admin authorization before searching across patients', async () => {
     await runScenario(async (scenario: Scenario) => {
       const [alice] = await scenario.addPlayersWithApps([
