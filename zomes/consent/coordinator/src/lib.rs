@@ -126,10 +126,29 @@ pub struct RevokeConsentInput {
     pub reason: String,
 }
 
+/// Check that an authorization payload is bound to the authenticated cell agent.
+///
+/// The requestor field is retained in the wire format for compatibility, but
+/// callers cannot use it to evaluate another agent's consent.
+fn requestor_matches_authenticated_agent(
+    claimed_requestor: &AgentPubKey,
+    authenticated_agent: &AgentPubKey,
+) -> bool {
+    claimed_requestor == authenticated_agent
+}
+
 /// Check if access is authorized
 /// Called by the shared crate's require_authorization() function
 #[hdk_extern]
 pub fn check_authorization(input: AuthorizationCheckInput) -> ExternResult<AuthorizationResult> {
+    let authenticated_agent = agent_info()?.agent_initial_pubkey;
+    if !requestor_matches_authenticated_agent(&input.requestor, &authenticated_agent) {
+        return Err(wasm_error!(WasmErrorInner::Guest(
+            "AUTHORIZATION_REQUESTOR_MISMATCH: requestor must match the authenticated caller"
+                .to_string()
+        )));
+    }
+
     let consents = get_active_consents(input.patient_hash.clone())?;
 
     for record in consents {
@@ -3060,6 +3079,39 @@ mod tests {
 
     fn dummy_agent() -> AgentPubKey {
         AgentPubKey::from_raw_36(vec![0u8; 36])
+    }
+
+    #[test]
+    fn authorization_requestor_must_match_authenticated_agent() {
+        let alice = AgentPubKey::from_raw_36(vec![1u8; 36]);
+        let bob = AgentPubKey::from_raw_36(vec![2u8; 36]);
+
+        assert!(requestor_matches_authenticated_agent(&alice, &alice));
+        assert!(requestor_matches_authenticated_agent(&bob, &bob));
+        assert!(!requestor_matches_authenticated_agent(&alice, &bob));
+        assert!(!requestor_matches_authenticated_agent(&bob, &alice));
+    }
+
+    #[test]
+    fn authorization_input_cannot_claim_a_different_agent() {
+        let alice = AgentPubKey::from_raw_36(vec![1u8; 36]);
+        let bob = AgentPubKey::from_raw_36(vec![2u8; 36]);
+        let input = AuthorizationCheckInput {
+            patient_hash: dummy_hash(),
+            requestor: alice.clone(),
+            data_category: DataCategory::Demographics,
+            permission: DataPermission::Read,
+            is_emergency: false,
+        };
+
+        assert!(!requestor_matches_authenticated_agent(
+            &input.requestor,
+            &bob
+        ));
+        assert!(requestor_matches_authenticated_agent(
+            &input.requestor,
+            &alice
+        ));
     }
 
     // ==================== Serde roundtrip tests ====================
