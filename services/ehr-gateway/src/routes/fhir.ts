@@ -11,7 +11,7 @@
 import { Hono } from 'hono';
 import { z } from 'zod';
 import type { AppContext } from '../server.js';
-import { FhirBundleSchema, type FhirBundle, type IngestReport } from '../types.js';
+import { FhirIngestBundleSchema, type FhirBundle, type IngestReport } from '../types.js';
 import { PullService } from '../sync/pull-service.js';
 
 /**
@@ -42,8 +42,20 @@ export function createFhirRoutes(ctx: AppContext): Hono {
       }, 503);
     }
 
-    // Get source system from header
-    const sourceSystem = c.req.header('X-Source-System') || 'unknown';
+    // FHIR provenance must identify its source. Never silently write "unknown".
+    const sourceSystem = c.req.header('X-Source-System')?.trim();
+    if (!sourceSystem) {
+      return c.json({
+        error: 'Missing source system',
+        message: 'X-Source-System is required for provenance-preserving ingestion.',
+      }, 400);
+    }
+    if (sourceSystem.length > 128) {
+      return c.json({
+        error: 'Invalid source system',
+        message: 'X-Source-System must be at most 128 characters.',
+      }, 400);
+    }
 
     // Parse and validate bundle
     let bundle: FhirBundle;
@@ -59,7 +71,7 @@ export function createFhirRoutes(ctx: AppContext): Hono {
       }
 
       // Parse with Zod for validation
-      bundle = FhirBundleSchema.parse(body);
+      bundle = FhirIngestBundleSchema.parse(body);
     } catch (error) {
       if (error instanceof z.ZodError) {
         return c.json({

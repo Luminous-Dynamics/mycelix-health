@@ -159,6 +159,7 @@ describe('EHR Gateway Server', () => {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          'X-Source-System': 'test-ehr',
         },
         body: JSON.stringify({ resourceType: 'Patient' }),
       });
@@ -167,6 +168,165 @@ describe('EHR Gateway Server', () => {
 
       expect(res.status).toBe(400);
       expect(body.error).toBe('Invalid resource type');
+    });
+
+    it('POST /fhir/Bundle requires an explicit source-system provenance header', async () => {
+      mockHolochainClient.callZome.mockClear();
+
+      const res = await app.request('/fhir/Bundle', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          resourceType: 'Bundle',
+          type: 'collection',
+          entry: [{
+            resource: { resourceType: 'Patient', id: 'source-required-patient' },
+          }],
+        }),
+      });
+
+      const body = await res.json();
+      expect(res.status).toBe(400);
+      expect(body.error).toBe('Missing source system');
+      expect(mockHolochainClient.callZome).not.toHaveBeenCalled();
+    });
+
+    it('POST /fhir/Bundle rejects empty entry arrays before any zome mutation', async () => {
+      mockHolochainClient.callZome.mockClear();
+
+      const res = await app.request('/fhir/Bundle', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/fhir+json',
+          'X-Source-System': 'test-ehr',
+        },
+        body: JSON.stringify({
+          resourceType: 'Bundle',
+          type: 'collection',
+          entry: [],
+        }),
+      });
+
+      const body = await res.json();
+      expect(res.status).toBe(400);
+      expect(body.error).toBe('Invalid FHIR Bundle');
+      expect(mockHolochainClient.callZome).not.toHaveBeenCalled();
+    });
+
+    it('POST /fhir/Bundle rejects duplicate fullUrl values and invalid transaction entries', async () => {
+      mockHolochainClient.callZome.mockClear();
+
+      const duplicateFullUrl = await app.request('/fhir/Bundle', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Source-System': 'test-ehr',
+        },
+        body: JSON.stringify({
+          resourceType: 'Bundle',
+          type: 'collection',
+          entry: [
+            { fullUrl: 'urn:uuid:duplicate', resource: { resourceType: 'Patient', id: 'p1' } },
+            { fullUrl: 'urn:uuid:duplicate', resource: { resourceType: 'Observation', id: 'o1' } },
+          ],
+        }),
+      });
+
+      expect(duplicateFullUrl.status).toBe(400);
+      expect((await duplicateFullUrl.json()).error).toBe('Invalid FHIR Bundle');
+
+      const transactionWithoutRequest = await app.request('/fhir/Bundle', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Source-System': 'test-ehr',
+        },
+        body: JSON.stringify({
+          resourceType: 'Bundle',
+          type: 'transaction',
+          entry: [
+            { resource: { resourceType: 'Patient', id: 'p2' } },
+          ],
+        }),
+      });
+
+      expect(transactionWithoutRequest.status).toBe(400);
+      expect((await transactionWithoutRequest.json()).error).toBe('Invalid FHIR Bundle');
+      expect(mockHolochainClient.callZome).not.toHaveBeenCalled();
+    });
+
+    it('POST /fhir/Bundle preserves unrecognized FHIR extensions and metadata', async () => {
+      const mockReport: IngestReport = {
+        source_system: 'test-ehr',
+        total_processed: 1,
+        patients_created: 1,
+        patients_updated: 0,
+        conditions_created: 0,
+        conditions_skipped: 0,
+        medications_created: 0,
+        medications_skipped: 0,
+        allergies_created: 0,
+        allergies_skipped: 0,
+        immunizations_created: 0,
+        immunizations_skipped: 0,
+        observations_created: 0,
+        observations_skipped: 0,
+        procedures_created: 0,
+        procedures_skipped: 0,
+        unknown_types: [],
+        parse_errors: [],
+      };
+      mockHolochainClient.callZome.mockClear();
+      mockHolochainClient.callZome.mockResolvedValueOnce(mockReport);
+
+      const extension = [{
+        url: 'https://example.org/fhir/StructureDefinition/test-extension',
+        valueString: 'preserve-me',
+      }];
+      const signature = {
+        type: [{ system: 'urn:iso-astm:E1762-95:2013', code: '1.2.840.10065.1.12.1.1' }],
+        when: '2026-11-28T10:00:00Z',
+        who: { reference: 'Practitioner/test-signer' },
+        data: 'c2lnbmF0dXJlLWZpeHR1cmU=',
+      };
+
+      const res = await app.request('/fhir/Bundle', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/fhir+json',
+          'X-Source-System': 'test-ehr',
+        },
+        body: JSON.stringify({
+          resourceType: 'Bundle',
+          type: 'collection',
+          meta: { profile: ['https://example.org/fhir/StructureDefinition/test-profile'] },
+          signature,
+          entry: [{
+            fullUrl: 'urn:uuid:preserved-patient',
+            resource: {
+              resourceType: 'Patient',
+              id: 'preserved-patient',
+              extension,
+              _birthDate: { extension: [{ url: 'data-absent-reason', valueCode: 'masked' }] },
+            },
+          }],
+        }),
+      });
+
+      expect(res.status).toBe(200);
+      const call = mockHolochainClient.callZome.mock.calls[0]?.[0] as {
+        payload: { bundle: Record<string, unknown>; source_system: string };
+      };
+      expect(call.payload.source_system).toBe('test-ehr');
+      expect(call.payload.bundle.meta).toEqual({
+        profile: ['https://example.org/fhir/StructureDefinition/test-profile'],
+      });
+      expect(call.payload.bundle.signature).toEqual(signature);
+      const entries = call.payload.bundle.entry as Array<{ resource: Record<string, unknown> }>;
+      expect(entries[0].resource.extension).toEqual(extension);
+      expect(entries[0].resource._birthDate).toEqual({
+        extension: [{ url: 'data-absent-reason', valueCode: 'masked' }],
+      });
     });
 
     it('GET /fhir/metadata returns capability statement', async () => {

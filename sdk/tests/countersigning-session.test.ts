@@ -23,8 +23,19 @@ import {
 class MockSessionClient implements CountersigningSessionAdminClientV1 {
   published = 0;
   abandoned = 0;
+  stateReads = 0;
+  stateAfterFirstRead: CountersigningSessionState | null | undefined = undefined;
+
   constructor(public state: CountersigningSessionState | null) {}
-  async getCountersigningSessionState(): Promise<CountersigningSessionState | null> { return this.state; }
+
+  async getCountersigningSessionState(): Promise<CountersigningSessionState | null> {
+    this.stateReads += 1;
+    if (this.stateReads > 1 && this.stateAfterFirstRead !== undefined) {
+      return this.stateAfterFirstRead;
+    }
+    return this.state;
+  }
+
   async abandonCountersigningSession(): Promise<null> { this.abandoned += 1; return null; }
   async publishCountersigningSession(): Promise<null> { this.published += 1; return null; }
 }
@@ -144,6 +155,58 @@ describe('native countersigning recovery orchestration', () => {
     const report = await reconcileCountersigningParticipantsV1(intent.participants.map((participant, index) => ({ observer_id: `conductor-${index}`, participant_binding: participant.agent_binding, cell_id: cell(Uint8Array.from(participant.agent_bytes)), client: clients[index]! })), intent, 20_000n, (index) => new Uint8Array(32).fill(30 + index));
     expect(report.has_conflicting_preflight).toBe(true);
     expect(report.recommended_action).toBe('manual_review');
+  });
+
+  it('uses one immutable conductor snapshot for observation and split-view comparison', async () => {
+    const { intent, preflight } = await intentAndPreflight();
+    const altered: PreflightRequest = {
+      ...preflight,
+      app_entry_hash: hashFrom32AndType(new Uint8Array(32).fill(56), 'Entry'),
+    };
+    const clients = [
+      new MockSessionClient({ [CountersigningSessionStateType.Accepted]: preflight }),
+      new MockSessionClient({ [CountersigningSessionStateType.Accepted]: preflight }),
+    ];
+    // Simulate the conductor state changing immediately after the first read.
+    // Reconciliation must report the snapshots it actually observed, not mix
+    // those observations with a second, later read.
+    clients[0]!.stateAfterFirstRead = {
+      [CountersigningSessionStateType.Accepted]: altered,
+    };
+
+    const report = await reconcileCountersigningParticipantsV1(
+      intent.participants.map((participant, index) => ({
+        observer_id: `conductor-${index}`,
+        participant_binding: participant.agent_binding,
+        cell_id: cell(Uint8Array.from(participant.agent_bytes)),
+        client: clients[index]!,
+      })),
+      intent,
+      20_000n,
+      (index) => new Uint8Array(32).fill(50 + index),
+    );
+
+    expect(report.has_conflicting_preflight).toBe(false);
+    expect(report.recommended_action).toBe('wait');
+    expect(clients.map((client) => client.stateReads)).toEqual([1, 1]);
+  });
+
+  it('rejects a participant runtime whose cell agent key differs from its binding', async () => {
+    const { intent, preflight } = await intentAndPreflight();
+    const mismatchedRuntime = {
+      observer_id: 'patient-conductor',
+      participant_binding: intent.participants[0]!.agent_binding,
+      // Provider's cell key must not be presented as the patient participant.
+      cell_id: cell(Uint8Array.from(intent.participants[1]!.agent_bytes)),
+      client: new MockSessionClient({ [CountersigningSessionStateType.Accepted]: preflight }),
+    };
+
+    await expect(inspectCountersigningParticipantV1(
+      mismatchedRuntime,
+      intent,
+      20_000n,
+      new Uint8Array(32).fill(60),
+    )).rejects.toThrow(/cell agent key/i);
   });
 
   it('routes missing participant state to manual review', async () => {

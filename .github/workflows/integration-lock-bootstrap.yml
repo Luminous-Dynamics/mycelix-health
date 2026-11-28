@@ -1,0 +1,87 @@
+name: Integration Test Lockfile Bootstrap
+
+on:
+  push:
+    branches: [fix/health-assurance-stack-2026-11-27]
+    paths:
+      - "tests/integration/package.json"
+      - "tests/integration/package-lock.json"
+      - ".github/workflows/integration-lock-bootstrap.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: health-integration-lock-bootstrap
+  cancel-in-progress: false
+
+jobs:
+  lockfile:
+    name: Generate and verify Tryorama integration lockfile
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - name: Checkout the owned review branch
+        uses: actions/checkout@v4
+        with:
+          ref: fix/health-assurance-stack-2026-11-27
+          persist-credentials: true
+          fetch-depth: 0
+
+      - name: Set up Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: tests/integration/package.json
+
+      - name: Generate deterministic npm lockfile
+        working-directory: tests/integration
+        run: |
+          set -euo pipefail
+          npm install --package-lock-only --ignore-scripts --no-audit --no-fund
+          node -e '
+            const lock = require("./package-lock.json");
+            const packages = lock.packages || {};
+            const expected = {
+              "@holochain/client": "0.20.8",
+              "@holochain/tryorama": "0.19.2"
+            };
+            for (const [name, version] of Object.entries(expected)) {
+              const actual = packages["node_modules/" + name]?.version;
+              if (actual !== version) {
+                throw new Error(name + ": expected " + version + ", got " + actual);
+              }
+            }
+            console.log(JSON.stringify({
+              lockfileVersion: lock.lockfileVersion,
+              client: packages["node_modules/@holochain/client"].version,
+              tryorama: packages["node_modules/@holochain/tryorama"].version
+            }, null, 2));
+          '
+
+      - name: Verify clean installation
+        working-directory: tests/integration
+        run: npm ci --ignore-scripts --no-audit --no-fund
+
+      - name: Preserve lockfile evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: health-integration-lockfile
+          path: tests/integration/package-lock.json
+          if-no-files-found: error
+          retention-days: 90
+
+      - name: Commit lockfile to the owned review branch
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add tests/integration/package-lock.json
+          if git diff --cached --quiet; then
+            echo "Integration package lockfile is already up to date."
+          else
+            git commit -m "chore(test): lock Holochain integration dependencies"
+            git push origin HEAD:fix/health-assurance-stack-2026-11-27
+          fi

@@ -2,9 +2,9 @@ name: CI
 
 on:
   push:
-    branches: [main, develop]
+    branches: [main, develop, fix/health-assurance-stack-2026-11-27]
   pull_request:
-    branches: [main, develop]
+    branches: [main, develop, fix/health-assurance-stack-2026-11-27]
 
 env:
   CARGO_TERM_COLOR: always
@@ -138,9 +138,20 @@ jobs:
           cp -r /tmp/mycelix-parent/mycelix-core/. ../mycelix-workspace/mycelix-core/
           rm -rf /tmp/mycelix-parent
 
-      - uses: EmbarkStudios/cargo-deny-action@v2
+      # Run on the host rather than a Docker action container. The workspace
+      # deliberately resolves sibling crates from ../crates and ../mycelix-core;
+      # a container action only mounts GITHUB_WORKSPACE, not these sibling paths.
+      - name: Install Rust for host-native dependency audit
+        uses: dtolnay/rust-toolchain@1.96.0
         with:
-          command: check
+          components: rustfmt, clippy
+          targets: wasm32-unknown-unknown
+
+      - name: Install cargo-deny (host target)
+        run: cargo install cargo-deny --version 0.20.2 --locked --target "$(rustc -vV | awk '/^host:/{print $2}')"
+
+      - name: Run cargo-deny with sibling workspace dependencies visible
+        run: cargo deny check
 
   # TypeScript SDK
   sdk:
@@ -161,6 +172,16 @@ jobs:
 
       - name: Install dependencies
         run: npm ci
+
+      - name: Verify pinned Holochain sodium wrapper
+        run: |
+          node -e '
+            const p = require("libsodium-wrappers/package.json");
+            if (p.version !== "0.7.15") {
+              throw new Error("Expected libsodium-wrappers 0.7.15, resolved " + p.version);
+            }
+            console.log("libsodium-wrappers " + p.version + " pinned");
+          '
 
       - name: Type check
         run: npm run typecheck
@@ -200,36 +221,119 @@ jobs:
       - name: Test
         run: npm test
 
-  # Integration tests (requires Holochain conductor)
+  # Integration tests use community Tryorama 0.19.x (compatible with HC 0.6.x).
+  # The exact Holonix revision is pinned so conductor and CLI versions cannot drift.
   integration:
     name: Integration Tests
     runs-on: ubuntu-latest
     needs: [rust, sdk]
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install Nix
-        uses: cachix/install-nix-action@v25
+      # This standalone repository has four Cargo path dependencies supplied
+      # by its parent Mycelix checkout: ../crates/*, ../mycelix-core, and
+      # ../mycelix-workspace/mycelix-core. Stage the same complete, pinned
+      # parent layout used by the Rust and cargo-deny jobs; do not copy only
+      # mycelix-bridge-common or synthesize placeholders.
+      - name: Checkout pinned parent Mycelix workspace
+        uses: actions/checkout@v4
+        with:
+          repository: Luminous-Dynamics/mycelix
+          ref: d597dcd99ccbf1cc3c341c3442ef6a53efd0dbff
+          path: mycelix-parent
+          persist-credentials: false
+
+      - name: Stage all declared sibling path dependencies
+        run: |
+          set -euo pipefail
+          source="$GITHUB_WORKSPACE/mycelix-parent"
+          for target in ../crates ../mycelix-core ../mycelix-workspace/mycelix-core; do
+            if [[ -e "$target" || -L "$target" ]]; then
+              echo "Refusing to overwrite existing sibling dependency path: $target" >&2
+              exit 1
+            fi
+          done
+
+          mkdir -p ../crates ../mycelix-core ../mycelix-workspace/mycelix-core
+          cp -a "$source/crates/." ../crates/
+          cp -a "$source/mycelix-core/." ../mycelix-core/
+          cp -a "$source/mycelix-core/." ../mycelix-workspace/mycelix-core/
+
+          required=(
+            ../crates/mycelix-bridge-common/Cargo.toml
+            ../crates/mycelix-leptos-core/Cargo.toml
+            ../crates/mycelix-zkp-core/Cargo.toml
+            ../mycelix-core/libs/mycelix-fl/Cargo.toml
+            ../mycelix-workspace/mycelix-core/libs/proofs-commitment/Cargo.toml
+          )
+          for manifest in "${required[@]}"; do
+            test -s "$manifest" || {
+              echo "Missing declared sibling workspace manifest: $manifest" >&2
+              exit 1
+            }
+          done
+
+          echo "upstream_commit=d597dcd99ccbf1cc3c341c3442ef6a53efd0dbff"
+          for manifest in "${required[@]}"; do
+            printf '%s %s\n' "$manifest" "$(sha256sum "$manifest" | cut -d' ' -f1)"
+          done | tee "$RUNNER_TEMP/health-sibling-manifests.txt"
+
+      - name: Install Nix with Holochain binary cache
+        uses: cachix/install-nix-action@v27
         with:
           nix_path: nixpkgs=channel:nixos-unstable
+          extra_nix_config: |
+            experimental-features = nix-command flakes
+            extra-substituters = https://holochain-ci.cachix.org
+            extra-trusted-public-keys = holochain-ci.cachix.org-1:5IUSkZc0aoRS53rfkvH9Kid40NpyjwCMCzwRTXy+QN8=
 
-      - name: Setup Holochain
-        uses: holochain/holochain-nix-setup-action@v1
-
-      - name: Setup Node.js
+      - name: Set up Node.js 20
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: tests/integration/package-lock.json
 
-      - name: Build hApp
+      - name: Require committed integration lockfile
         run: |
-          nix develop --command bash -c "
-            cargo build --release --workspace
-            # Build WASM zomes and package hApp
-          "
+          set -euo pipefail
+          test -s tests/integration/package-lock.json
+          node -e '
+            const lock = require("./tests/integration/package-lock.json");
+            const p = lock.packages || {};
+            if (p["node_modules/@holochain/client"]?.version !== "0.20.8") {
+              throw new Error("integration lockfile does not pin @holochain/client 0.20.8");
+            }
+            if (p["node_modules/@holochain/tryorama"]?.version !== "0.19.2") {
+              throw new Error("integration lockfile does not pin @holochain/tryorama 0.19.2");
+            }
+          '
 
-      - name: Run integration tests
+      - name: Build and package hApp in pinned Holonix 0.6
+        env:
+          HOLONIX_FLAKE: github:holochain/holonix/21d3a9f3eb1d7a533fc816ab53825f3ef35b0007
         run: |
-          cd tests/integration
-          npm ci
-          npm test
+          set -euo pipefail
+          nix develop "$HOLONIX_FLAKE" --command bash -euo pipefail -c '
+            echo "Holonix pinned to 21d3a9f3eb1d7a533fc816ab53825f3ef35b0007"
+            holochain --version
+            hc --version
+            cargo build --release --workspace --target wasm32-unknown-unknown
+            hc dna pack dna/
+            hc app pack .
+          '
+          test -s dna/health.dna
+          find . -maxdepth 1 -name "*.happ" -type f -size +0c | grep -q .
+
+      - name: Run real two-conductor Tryorama integration tests
+        env:
+          HOLONIX_FLAKE: github:holochain/holonix/21d3a9f3eb1d7a533fc816ab53825f3ef35b0007
+        run: |
+          set -euo pipefail
+          nix develop "$HOLONIX_FLAKE" --command bash -euo pipefail -c '
+            cd tests/integration
+            npm ci --no-audit --no-fund
+            npx tsc --noEmit --target ES2022 --module NodeNext --moduleResolution NodeNext --skipLibCheck health.test.ts
+            npm test
+          '

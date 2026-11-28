@@ -6,7 +6,7 @@ import {
   type CountersigningSessionState,
   type PreflightRequest,
 } from '@holochain/client';
-import { encode } from '@msgpack/msgpack';
+import { decode, encode } from '@msgpack/msgpack';
 import { describe, expect, it } from 'vitest';
 import {
   clinicalCountersigningIntentDigestV1,
@@ -46,12 +46,15 @@ async function participant(role: ClinicalApprovalRoleV1): Promise<ParticipantFix
   const agent = hashFrom32AndType(keypair.publicKey, 'Agent');
   return { role, keypair, agent, binding: encodeHashToBase64(agent) };
 }
-function proposal(operation: ClinicalApprovalProposalV1['operation_class']): ClinicalApprovalProposalV1 {
+function proposal(
+  operation: ClinicalApprovalProposalV1['operation_class'],
+  providerBinding: string,
+): ClinicalApprovalProposalV1 {
   return {
     approval_version: 1,
     operation_class: operation,
     patient_binding: encodeHashToBase64(hashFrom32AndType(new Uint8Array(32).fill(40), 'Action')),
-    provider_binding: encodeHashToBase64(hashFrom32AndType(new Uint8Array(32).fill(41), 'Agent')),
+    provider_binding: providerBinding,
     mutation_binding_digest: new Uint8Array(32).fill(1),
     deployment_evidence_sha256: new Uint8Array(32).fill(2),
     policy_digest: new Uint8Array(32).fill(3),
@@ -98,6 +101,36 @@ async function signedCountersignedCreate(
   };
 }
 
+async function rebuildCountersignedSessionAfterResponseMutation(
+  evidence: NativeClinicalCountersigningEvidenceV1,
+  participants: ParticipantFixture[],
+  mutate: (responseState: Record<string, unknown>) => void,
+): Promise<void> {
+  const decoded = decode(evidence.countersigned_entry_bytes) as {
+    entry: [
+      { responses: Array<[Record<string, unknown>, Uint8Array]> },
+      Uint8Array,
+    ];
+  };
+  mutate(decoded.entry[0].responses[0]![0]);
+  const countersignedEntryBytes = encode(decoded, {
+    useBigInt64: true,
+    ignoreUndefined: true,
+  });
+  const countersignedEntryHash = hashFrom32AndType(blake2b32(countersignedEntryBytes), 'Entry');
+  const participantActions = await Promise.all(participants.map((participant, index) =>
+    signedCountersignedCreate(
+      participant,
+      countersignedEntryBytes,
+      200 + index,
+      (BigInt(evidence.intent.session_start_ms) + BigInt(1_000 + index)) * 1000n,
+    )));
+  evidence.countersigned_entry_bytes = countersignedEntryBytes;
+  evidence.countersigned_entry_hash_bytes = countersignedEntryHash;
+  evidence.countersigned_entry_hash_binding = encodeHashToBase64(countersignedEntryHash);
+  evidence.participant_actions = participantActions;
+}
+
 async function fixture(operation: ClinicalApprovalProposalV1['operation_class'] = 'sensitive_record_release'): Promise<{
   evidence: NativeClinicalCountersigningEvidenceV1;
   preflight: PreflightRequest;
@@ -111,7 +144,10 @@ async function fixture(operation: ClinicalApprovalProposalV1['operation_class'] 
   const participants = await Promise.all(roles.map(participant));
   const intent: ClinicalCountersigningIntentV1 = {
     countersigning_version: 1,
-    proposal: proposal(operation),
+    proposal: proposal(
+      operation,
+      participants.find((item) => item.role === 'provider')!.binding,
+    ),
     participants: participants.map((item) => ({ role: item.role, agent_binding: item.binding, agent_bytes: item.agent })),
     session_start_ms: 1_700_000_010_000n,
     session_end_ms: 1_700_000_130_000n,
@@ -137,8 +173,8 @@ async function fixture(operation: ClinicalApprovalProposalV1['operation_class'] 
     responses: participants.map((_, index) => [
       {
         agent_index: index,
-        chain_top: hashFrom32AndType(new Uint8Array(32).fill(70 + index), 'Action'),
-        action_seq: 100 + index,
+        chain_top: hashFrom32AndType(new Uint8Array(32).fill(201 + index), 'Action'),
+        action_seq: 199 + index,
       },
       new Uint8Array(64).fill(80 + index),
     ]),
@@ -208,6 +244,32 @@ describe('native clinical countersigning evidence', () => {
     await expect(verifyNativeClinicalCountersigningEvidenceV1(evidence)).rejects.toThrow(/count|participant/i);
   });
 
+  it('rejects a participant Create action that does not extend the frozen chain top', async () => {
+    const { evidence, participants } = await fixture();
+    await rebuildCountersignedSessionAfterResponseMutation(
+      evidence,
+      participants,
+      (responseState) => {
+        responseState.chain_top = hashFrom32AndType(new Uint8Array(32).fill(250), 'Action');
+      },
+    );
+    await expect(verifyNativeClinicalCountersigningEvidenceV1(evidence))
+      .rejects.toThrow(/frozen chain top/i);
+  });
+
+  it('rejects a participant Create action that skips the frozen chain sequence', async () => {
+    const { evidence, participants } = await fixture();
+    await rebuildCountersignedSessionAfterResponseMutation(
+      evidence,
+      participants,
+      (responseState) => {
+        responseState.action_seq = 198;
+      },
+    );
+    await expect(verifyNativeClinicalCountersigningEvidenceV1(evidence))
+      .rejects.toThrow(/next frozen-chain sequence/i);
+  });
+
   it('rejects an action authored outside the session window', async () => {
     const { evidence, participants } = await fixture();
     evidence.participant_actions[0] = await signedCountersignedCreate(
@@ -247,11 +309,51 @@ describe('native clinical countersigning evidence', () => {
     expect(unknownObservation.state).toBe('unknown');
   });
 
-  it('requires explicit action evidence for a completed terminal observation', async () => {
+  it('requires verifier-produced evidence for a completed terminal observation', async () => {
     const { evidence } = await fixture();
-    await expect(createTerminalCountersigningObservationV1('observer', evidence.intent.participants[0]!.agent_binding, evidence.intent, 'completed', null, 1_700_000_140_000n, new Uint8Array(32).fill(13))).rejects.toThrow(/action hash/i);
-    const observation = await createTerminalCountersigningObservationV1('observer', evidence.intent.participants[0]!.agent_binding, evidence.intent, 'completed', evidence.participant_actions[0]!.action_hash, 1_700_000_140_000n, new Uint8Array(32).fill(14));
+    const participantBinding = evidence.intent.participants[0]!.agent_binding;
+    const observedAtMs = 1_700_000_140_000n;
+
+    await expect(createTerminalCountersigningObservationV1(
+      'observer',
+      participantBinding,
+      evidence.intent,
+      {} as Awaited<ReturnType<typeof verifyNativeClinicalCountersigningEvidenceV1>>,
+      observedAtMs,
+      new Uint8Array(32).fill(13),
+    )).rejects.toThrow(/verifier-produced evidence/i);
+
+    const verified = await verifyNativeClinicalCountersigningEvidenceV1(evidence);
+    // A caller may mutate the public byte-array view, but terminal authority
+    // must be checked against the verifier's private immutable facts.
+    verified.intent_digest[0] ^= 0xff;
+    const observation = await createTerminalCountersigningObservationV1(
+      'observer',
+      participantBinding,
+      evidence.intent,
+      verified,
+      observedAtMs,
+      new Uint8Array(32).fill(14),
+    );
     expect(observation.state).toBe('completed');
-    expect(await clinicalCountersigningIntentDigestV1(evidence.intent)).toEqual(Uint8Array.from(observation.intent_digest));
+    expect(observation.action_hash_binding).toBe(
+      verified.participants.find((participantItem) => participantItem.agent_binding === participantBinding)!.action_hash,
+    );
+    expect(await clinicalCountersigningIntentDigestV1(evidence.intent)).toEqual(
+      Uint8Array.from(observation.intent_digest),
+    );
+
+    const substitutedIntent = {
+      ...evidence.intent,
+      nonce: new Uint8Array(32).fill(99),
+    };
+    await expect(createTerminalCountersigningObservationV1(
+      'observer',
+      participantBinding,
+      substitutedIntent,
+      verified,
+      observedAtMs,
+      new Uint8Array(32).fill(15),
+    )).rejects.toThrow(/exact clinical intent/i);
   });
 });
