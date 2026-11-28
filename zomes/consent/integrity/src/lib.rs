@@ -128,6 +128,68 @@ pub enum ConsentStatus {
     Rejected,
 }
 
+/// Deterministic consent matching policy shared by the coordinator and tests.
+///
+/// This function deliberately covers only the pure consent predicate:
+/// active/revocation/expiry state, requestor matching, category scope,
+/// exclusions, permission, and the currently implemented guardian restriction.
+/// Provider and organization resolution remain unsupported and fail closed.
+/// Patient-authored break-glass capabilities are checked by the coordinator
+/// after ordinary consent matching; this function never grants them.
+pub fn consent_matches_authorization(
+    consent: &Consent,
+    requestor: &AgentPubKey,
+    data_category: &DataCategory,
+    permission: &DataPermission,
+    is_emergency: bool,
+    now: Timestamp,
+) -> bool {
+    let not_expired = consent
+        .expires_at
+        .map(|expires| expires > now)
+        .unwrap_or(true);
+    let not_revoked = consent.revoked_at.is_none();
+
+    if !matches!(consent.status, ConsentStatus::Active) || !not_expired || !not_revoked {
+        return false;
+    }
+
+    if let Some(representative) = consent.legal_representative.as_ref() {
+        let guardian_authorized = representative == requestor
+            || matches!(&consent.grantee, ConsentGrantee::Agent(agent) if agent == requestor);
+
+        if matches!(
+            data_category,
+            DataCategory::SubstanceAbuse | DataCategory::SexualHealth
+        ) && !is_emergency
+            && !guardian_authorized
+        {
+            return false;
+        }
+    }
+
+    let grantee_matches = match &consent.grantee {
+        ConsentGrantee::Agent(agent) => agent == requestor,
+        // Emergency authority is never granted by this legacy enum.
+        ConsentGrantee::EmergencyAccess => false,
+        // These need independent provider/organization identity resolution.
+        // Until that exists, preserve the production fail-closed behavior.
+        ConsentGrantee::Provider(_) | ConsentGrantee::Organization(_) => false,
+        ConsentGrantee::Public => true,
+        ConsentGrantee::ResearchStudy(_) | ConsentGrantee::InsuranceCompany(_) => false,
+    };
+
+    let category_covered = consent
+        .scope
+        .data_categories
+        .iter()
+        .any(|category| matches!(category, DataCategory::All) || category == data_category);
+    let not_excluded = !consent.scope.exclusions.contains(data_category);
+    let permission_granted = consent.permissions.contains(permission);
+
+    grantee_matches && category_covered && not_excluded && permission_granted
+}
+
 /// Data access request
 #[hdk_entry_helper]
 #[derive(Clone, PartialEq)]

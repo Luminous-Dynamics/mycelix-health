@@ -1,0 +1,76 @@
+name: Consent Policy Reference Tests
+
+on:
+  push:
+    branches: [feat/consent-policy-single-source-eqc-2026-11-27]
+    paths:
+      - "zomes/consent/integrity/**"
+      - "zomes/consent/coordinator/src/lib.rs"
+      - "docs/research/CONSENT_POLICY_EQC_BOUNDARY_V0_1.md"
+      - ".github/workflows/consent-policy-reference.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: consent-policy-reference
+  cancel-in-progress: true
+
+jobs:
+  pure-policy:
+    name: Shared pure policy / coordinator compilation
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    steps:
+      - name: Checkout exact branch head
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+          fetch-depth: 1
+
+      - name: Stage pinned Mycelix sibling workspace dependencies
+        run: |
+          set -euo pipefail
+          upstream=/tmp/mycelix-parent
+          git clone --quiet --depth 1 https://github.com/Luminous-Dynamics/mycelix.git "$upstream"
+          actual="$(git -C "$upstream" rev-parse HEAD)"
+          expected="d597dcd99ccbf1cc3c341c3442ef6a53efd0dbff"
+          test "$actual" = "$expected"
+          mkdir -p ../crates ../mycelix-core ../mycelix-workspace/mycelix-core
+          cp -a "$upstream/crates/." ../crates/
+          cp -a "$upstream/mycelix-core/." ../mycelix-core/
+          cp -a "$upstream/mycelix-core/." ../mycelix-workspace/mycelix-core/
+          rm -rf "$upstream"
+
+      - name: Install repository toolchain
+        uses: dtolnay/rust-toolchain@1.96.0
+        with:
+          components: rustfmt
+
+      - name: Format consent crates
+        run: cargo fmt --manifest-path zomes/consent/integrity/Cargo.toml -- --check
+
+      - name: Test deterministic authorization predicate
+        run: cargo test --locked -p consent_integrity
+
+      - name: Compile production consent coordinator and its tests
+        run: cargo test --locked -p consent --no-run
+
+      - name: Preserve exact source identity
+        run: |
+          {
+            echo "source_head=$GITHUB_SHA"
+            echo "checked_out_head=$(git rev-parse HEAD)"
+            echo "rustc=$(rustc --version)"
+            echo "cargo=$(cargo --version)"
+          } | tee "$RUNNER_TEMP/consent-policy-metadata.txt"
+
+      - name: Upload policy test metadata
+        uses: actions/upload-artifact@v4
+        with:
+          name: consent-policy-reference-${{ github.sha }}
+          path: ${{ runner.temp }}/consent-policy-metadata.txt
+          if-no-files-found: error
+          retention-days: 90
