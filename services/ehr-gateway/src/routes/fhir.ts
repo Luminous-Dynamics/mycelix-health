@@ -11,7 +11,7 @@
 import { Hono } from 'hono';
 import { z } from 'zod';
 import type { AppContext } from '../server.js';
-import { FhirBundleSchema, type FhirBundle, type IngestReport } from '../types.js';
+import { FhirIngestBundleSchema, type FhirBundle, type IngestReport } from '../types.js';
 import { PullService } from '../sync/pull-service.js';
 
 /**
@@ -71,7 +71,7 @@ export function createFhirRoutes(ctx: AppContext): Hono {
       }
 
       // Parse with Zod for validation
-      bundle = FhirBundleSchema.parse(body);
+      bundle = FhirIngestBundleSchema.parse(body);
     } catch (error) {
       if (error instanceof z.ZodError) {
         return c.json({
