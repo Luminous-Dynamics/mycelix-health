@@ -60,7 +60,10 @@ describe('Patient Zome', () => {
 
       expect(createResult).toBeDefined();
 
-      const retrieved = await alice.cells[0].callZome({
+      const retrieved = await alice.cells[0].callZome<{
+        empirical_level: number;
+        supporting_evidence: string[];
+      }>({
         zome_name: 'patient',
         fn_name: 'get_patient',
         payload: createResult,
@@ -371,7 +374,7 @@ describe('Trials Zome - FDA Compliance', () => {
       });
 
       // Check eligibility for patient age 30
-      const eligible = await alice.cells[0].callZome({
+      const eligible = await alice.cells[0].callZome<{ eligible: boolean }>({
         zome_name: 'trials',
         fn_name: 'check_eligibility',
         payload: {
@@ -383,7 +386,7 @@ describe('Trials Zome - FDA Compliance', () => {
       expect(eligible.eligible).toBe(true);
 
       // Check eligibility for patient age 70 (too old)
-      const notEligible = await alice.cells[0].callZome({
+      const notEligible = await alice.cells[0].callZome<{ eligible: boolean }>({
         zome_name: 'trials',
         fn_name: 'check_eligibility',
         payload: {
@@ -527,7 +530,7 @@ describe('Bridge Zome - Cross-hApp Federation', () => {
         },
       ];
 
-      const aggregated = await alice.cells[0].callZome({
+      const aggregated = await alice.cells[0].callZome<{ aggregated_score: number }>({
         zome_name: 'bridge',
         fn_name: 'aggregate_reputation',
         payload: {
