@@ -33,6 +33,14 @@ type TrialEntryForTest = {
   irb_approved: boolean;
 };
 
+type AccessLogEntryForTest = {
+  accessor: Uint8Array;
+  access_type: string;
+  data_categories_accessed: string[];
+  consent_hash: ActionHash | null;
+  emergency_override: boolean;
+};
+
 type EpistemicClaimForTest = {
   claim_id: string;
   claim_content: string;
@@ -367,12 +375,25 @@ describe('Consent Zome - HIPAA Compliance', () => {
       });
       expect(retrieved).not.toBeNull();
 
-      const logs = await alice.cells[0].callZome<HolochainRecord[]>({
+      const logRecords = await alice.cells[0].callZome<HolochainRecord[]>({
         zome_name: 'consent',
         fn_name: 'get_access_logs',
         payload: patientHash,
       });
-      expect(logs.length).toBeGreaterThan(0);
+      const logs = logRecords.map((record) =>
+        decodeAppRecord<AccessLogEntryForTest>(record),
+      );
+      const bobRead = logs.find((log) =>
+        Array.from(log.accessor).every(
+          (byte, index) => byte === bob.agentPubKey[index],
+        ),
+      );
+
+      expect(bobRead).toBeDefined();
+      expect(bobRead?.access_type).toBe('Read');
+      expect(bobRead?.data_categories_accessed).toContain('Demographics');
+      expect(bobRead?.consent_hash).toBeDefined();
+      expect(bobRead?.emergency_override).toBe(false);
     });
   });
 
