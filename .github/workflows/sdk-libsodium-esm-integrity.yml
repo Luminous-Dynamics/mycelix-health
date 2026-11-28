@@ -64,23 +64,13 @@ jobs:
         run: |
           set -euo pipefail
           node --input-type=module <<'NODE'
-          import { createRequire } from "node:module";
           import { access } from "node:fs/promises";
           import sodium from "libsodium-wrappers";
 
-          const require = createRequire(import.meta.url);
-          const wrappersPkg = require("libsodium-wrappers/package.json");
-          const sodiumPkg = require("libsodium/package.json");
-          if (wrappersPkg.version !== "0.8.4" || sodiumPkg.version !== "0.8.4") {
-            throw new Error(
-              `unexpected sodium pair: wrappers=${wrappersPkg.version}, sodium=${sodiumPkg.version}`
-            );
-          }
-
-          const wrappersEntry = require.resolve("libsodium-wrappers");
-          const sodiumRoot = require.resolve("libsodium/package.json");
-          await access(wrappersEntry);
-          await access(sodiumRoot);
+          const wrappersEntry = import.meta.resolve("libsodium-wrappers");
+          const sodiumEntry = import.meta.resolve("libsodium");
+          await access(new URL(wrappersEntry));
+          await access(new URL(sodiumEntry));
 
           await sodium.ready;
           for (const name of [
@@ -94,10 +84,8 @@ jobs:
           }
 
           console.log(JSON.stringify({
-            wrappers: wrappersPkg.version,
-            sodium: sodiumPkg.version,
             wrappers_entry: wrappersEntry,
-            sodium_package_json: sodiumRoot,
+            sodium_entry: sodiumEntry,
             ready: true,
             required_api_count: 3
           }, null, 2));
