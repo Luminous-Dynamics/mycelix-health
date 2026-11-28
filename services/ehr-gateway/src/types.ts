@@ -203,33 +203,125 @@ export const FhirMedicationRequestSchema = z.object({
 
 export type FhirMedicationRequest = z.infer<typeof FhirMedicationRequestSchema>;
 
-// FHIR Bundle
+// FHIR Bundle. Preserve unknown FHIR fields/extensions rather than silently stripping
+// resources this gateway does not interpret.
+const FhirBundleTypeSchema = z.enum([
+  'document',
+  'message',
+  'transaction',
+  'transaction-response',
+  'batch',
+  'batch-response',
+  'history',
+  'searchset',
+  'collection',
+]);
+
+const FhirBundleEntrySchema = z.object({
+  fullUrl: z.string().min(1).optional(),
+  resource: z.record(z.unknown()).superRefine((resource, ctx) => {
+    if (
+      typeof resource.resourceType !== 'string'
+      || resource.resourceType.trim().length === 0
+    ) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['resourceType'],
+        message: 'Bundle entry resource must declare a non-empty resourceType',
+      });
+    }
+  }),
+  search: z.object({
+    mode: z.string().optional(),
+    score: z.number().optional(),
+  }).passthrough().optional(),
+  request: z.object({
+    method: z.enum(['GET', 'POST', 'PUT', 'DELETE', 'PATCH']),
+    url: z.string().min(1),
+  }).passthrough().optional(),
+  response: z.object({
+    status: z.string().min(1),
+    location: z.string().optional(),
+  }).passthrough().optional(),
+}).passthrough();
+
 export const FhirBundleSchema = z.object({
   resourceType: z.literal('Bundle'),
   id: z.string().optional(),
-  type: z.string(),
-  total: z.number().optional(),
+  type: FhirBundleTypeSchema,
+  total: z.number().int().nonnegative().optional(),
   timestamp: z.string().optional(),
-  entry: z.array(z.object({
-    fullUrl: z.string().optional(),
-    resource: z.any(),
-    search: z.object({
-      mode: z.string().optional(),
-      score: z.number().optional(),
-    }).optional(),
-    request: z.object({
-      method: z.string(),
-      url: z.string(),
-    }).optional(),
-    response: z.object({
-      status: z.string(),
-      location: z.string().optional(),
-    }).optional(),
-  })).optional(),
+  entry: z.array(FhirBundleEntrySchema).optional(),
   link: z.array(z.object({
-    relation: z.string(),
-    url: z.string(),
-  })).optional(),
+    relation: z.string().min(1),
+    // FHIR uri values can be relative; do not require an absolute URL here.
+    url: z.string().min(1),
+  }).passthrough()).optional(),
+}).passthrough().superRefine((bundle, ctx) => {
+  const entries = bundle.entry ?? [];
+  if (entries.length === 0) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['entry'],
+      message: 'An ingested FHIR Bundle must contain at least one entry',
+    });
+  }
+
+  const fullUrls = new Set<string>();
+  entries.forEach((entry, index) => {
+    if (entry.fullUrl) {
+      if (fullUrls.has(entry.fullUrl)) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['entry', index, 'fullUrl'],
+          message: 'FHIR Bundle entry fullUrl values must be unique',
+        });
+      }
+      fullUrls.add(entry.fullUrl);
+    }
+
+    if (
+      (bundle.type === 'transaction' || bundle.type === 'batch')
+      && !entry.request
+    ) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['entry', index, 'request'],
+        message: `Bundle type ${bundle.type} requires a request for every entry`,
+      });
+    }
+    if (
+      (bundle.type === 'transaction-response' || bundle.type === 'batch-response')
+      && !entry.response
+    ) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['entry', index, 'response'],
+        message: `Bundle type ${bundle.type} requires a response for every entry`,
+      });
+    }
+  });
+
+  if (
+    bundle.type === 'document'
+    && entries[0]?.resource.resourceType !== 'Composition'
+  ) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['entry', 0, 'resource', 'resourceType'],
+      message: 'The first entry of a document Bundle must be a Composition',
+    });
+  }
+  if (
+    bundle.type === 'message'
+    && entries[0]?.resource.resourceType !== 'MessageHeader'
+  ) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['entry', 0, 'resource', 'resourceType'],
+      message: 'The first entry of a message Bundle must be a MessageHeader',
+    });
+  }
 });
 
 export type FhirBundle = z.infer<typeof FhirBundleSchema>;
