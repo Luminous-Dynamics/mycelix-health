@@ -438,38 +438,83 @@ describe('Trials Zome - FDA Compliance', () => {
     });
   });
 
-  it('reports adverse events with required fields', async () => {
+  it('reports an adverse event for an enrolled participant with valid consent', async () => {
     await runScenario(async (scenario: Scenario) => {
       const [alice] = await scenario.addPlayersWithApps([
         { appBundleSource: { type: 'path', value: resolve(HEALTH_HAPP_PATH) } },
       ]);
+      const { hash: patientHash } = await createPatientFixture(alice, 'PAT-AE-001');
+      const { hash: consentHash } = await createConsentFixture(
+        alice,
+        patientHash,
+        alice.agentPubKey,
+        {
+          dataCategories: ['All'],
+          permissions: ['Write'],
+          consentId: 'CONSENT-AE-001',
+        },
+      );
+      const trialRecord = await alice.cells[0].callZome<HolochainRecord>({
+        zome_name: 'trials',
+        fn_name: 'create_trial',
+        payload: clinicalTrialFixture(alice.agentPubKey, 'TRIAL-AE-001'),
+      });
+      const trialHash = actionHashOf(trialRecord);
+      const now = Date.now() * 1000;
 
-      const ae = {
+      const participantRecord = await alice.cells[0].callZome<HolochainRecord>({
+        zome_name: 'trials',
+        fn_name: 'enroll_participant',
+        payload: {
+          participant_id: 'PART-AE-001',
+          trial_hash: trialHash,
+          patient_hash: patientHash,
+          consent_hash: consentHash,
+          enrollment_date: now,
+          withdrawal_date: null,
+          withdrawal_reason: null,
+          arm_assignment: 'Treatment',
+          status: 'Enrolled',
+          blinded: false,
+          screening_passed: true,
+          screening_date: now,
+          enrollment_site: 'Synthetic Test Site',
+          primary_contact: alice.agentPubKey,
+        },
+      });
+      const participantHash = actionHashOf(participantRecord);
+
+      const adverseEvent = {
         event_id: 'AE-001',
-        participant_id: 'PART-001',
-        trial_id: 'TRIAL-001',
+        participant_hash: participantHash,
+        trial_hash: trialHash,
         event_term: 'Headache',
-        description: 'Mild headache post-dose',
-        onset_date: Date.now() * 1000,
+        description: 'Synthetic mild headache event for integration testing.',
+        onset_date: now,
+        resolution_date: null,
+        ongoing: false,
         severity: 'Mild',
         seriousness: [],
         is_serious: false,
         is_unexpected: false,
         causality: 'PossiblyRelated',
         outcome: 'Recovered',
-        action_taken: ['DrugNotChanged'],
+        action_taken: ['NoneRequired'],
+        reported_by: alice.agentPubKey,
+        reported_at: now,
         medwatch_submitted: false,
+        medwatch_date: null,
       };
 
-      const aeHash: ActionHash = await alice.cells[0].callZome({
+      const eventRecord = await alice.cells[0].callZome<HolochainRecord>({
         zome_name: 'trials',
         fn_name: 'report_adverse_event',
-        payload: ae,
+        payload: adverseEvent,
       });
 
-      expect(aeHash).toBeDefined();
+      expect(actionHashOf(eventRecord)).toBeDefined();
     });
-  });
+  });;
 });
 
 // ============================================================================
@@ -477,7 +522,7 @@ describe('Trials Zome - FDA Compliance', () => {
 // ============================================================================
 
 describe('Bridge Zome - Cross-hApp Federation', () => {
-  it('registers health hApp with bridge', async () => {
+  it('registers health hApp with bridge using an action hash', async () => {
     await runScenario(async (scenario: Scenario) => {
       const [alice] = await scenario.addPlayersWithApps([
         { appBundleSource: { type: 'path', value: resolve(HEALTH_HAPP_PATH) } },
@@ -485,26 +530,27 @@ describe('Bridge Zome - Cross-hApp Federation', () => {
 
       const registration = {
         registration_id: 'REG-HEALTH-001',
-        mycelix_identity_hash: encodeHashToBase64(alice.agentPubKey),
-        happ_id: 'mycelix-health',
+        mycelix_identity_hash: await fakeActionHash(0x42),
         capabilities: [
           'PatientLookup',
           'ProviderVerification',
           'ConsentVerification',
+          'EpistemicClaims',
         ],
-        federated_data: ['ProviderCredentials', 'PatientConsent'],
+        federated_data: ['ProviderCredentials', 'ConsentRecords'],
         minimum_trust_score: 0.7,
       };
 
-      const regHash: ActionHash = await alice.cells[0].callZome({
+      const record = await alice.cells[0].callZome<HolochainRecord>({
         zome_name: 'bridge',
         fn_name: 'register_with_bridge',
         payload: registration,
       });
 
-      expect(regHash).toBeDefined();
+      expect(record).toBeDefined();
+      expect(actionHashOf(record)).toBeDefined();
     });
-  });
+  });;
 
   it('creates and retrieves an epistemic claim through the entity index', async () => {
     await runScenario(async (scenario: Scenario) => {
@@ -551,45 +597,56 @@ describe('Bridge Zome - Cross-hApp Federation', () => {
     });
   });
 
-  it('aggregates federated reputation scores', async () => {
+  it('aggregates federated reputation scores with complete source records', async () => {
     await runScenario(async (scenario: Scenario) => {
       const [alice] = await scenario.addPlayersWithApps([
         { appBundleSource: { type: 'path', value: resolve(HEALTH_HAPP_PATH) } },
       ]);
-
-      const scores = [
-        {
-          source_happ: 'mycelix-identity',
-          score: 0.95,
-          weight: 0.25,
-          score_type: 'verification',
-        },
-        {
-          source_happ: 'mycelix-health',
-          score: 0.88,
-          weight: 0.30,
-          score_type: 'patient_outcomes',
-        },
-        {
-          source_happ: 'mycelix-health',
-          score: 0.82,
-          weight: 0.20,
-          score_type: 'peer_attestations',
-        },
-      ];
-
-      const aggregated = await alice.cells[0].callZome<{ aggregated_score: number }>({
+      const now = Date.now() * 1000;
+      const result = await alice.cells[0].callZome<{
+        federation_id: string;
+        aggregated_score: number;
+        scores: Array<{ timestamp: number }>;
+      }>({
         zome_name: 'bridge',
         fn_name: 'aggregate_reputation',
         payload: {
-          entity_hash: alice.agentPubKey,
+          federation_id: 'FEDERATION-TEST-001',
+          entity_hash: await fakeActionHash(0x43),
           entity_type: 'Provider',
-          scores,
+          scores: [
+            {
+              source_happ: 'mycelix-identity',
+              score: 0.95,
+              weight: 0.25,
+              score_type: 'verification',
+              timestamp: now,
+            },
+            {
+              source_happ: 'mycelix-health',
+              score: 0.88,
+              weight: 0.3,
+              score_type: 'patient_outcomes',
+              timestamp: now,
+            },
+            {
+              source_happ: 'mycelix-health',
+              score: 0.82,
+              weight: 0.2,
+              score_type: 'peer_attestations',
+              timestamp: now,
+            },
+          ],
         },
       });
 
-      expect(aggregated.aggregated_score).toBeGreaterThan(0);
-      expect(aggregated.aggregated_score).toBeLessThanOrEqual(1);
+      expect(result.federation_id).toBe('FEDERATION-TEST-001');
+      expect(result.aggregated_score).toBeCloseTo(
+        (0.95 * 0.25 + 0.88 * 0.3 + 0.82 * 0.2) / (0.25 + 0.3 + 0.2),
+        10,
+      );
+      expect(result.scores).toHaveLength(3);
+      expect(result.scores.every((score) => score.timestamp === now)).toBe(true);
     });
-  });
+  });;
 });
