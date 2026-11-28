@@ -79,10 +79,12 @@ jobs:
           # Keep the Holochain-pinned ed25519-dalek prerelease unchanged.
           # Try only the transitive curve25519-dalek prerelease: if its upstream
           # requirement permits stable 5.0.0, use the API-compatible stable line.
-          cargo tree --manifest-path tests/sweettest/Cargo.toml -i curve25519-dalek
+          cargo tree --manifest-path tests/sweettest/Cargo.toml -i curve25519-dalek@5.0.0-pre.1
           cargo update --manifest-path tests/sweettest/Cargo.toml \
             -p curve25519-dalek@5.0.0-pre.1 --precise 5.0.0
-          cargo tree --manifest-path tests/sweettest/Cargo.toml -i curve25519-dalek
+          # Cargo tree requires an exact package ID because curve25519-dalek
+          # 4.x and 5.x can coexist in this dependency graph.
+          cargo tree --manifest-path tests/sweettest/Cargo.toml -i curve25519-dalek@5.0.0
           sha256sum Cargo.lock tests/sweettest/Cargo.lock
 
       - name: Build exact workspace zomes and pack test DNA
