@@ -159,6 +159,7 @@ describe('EHR Gateway Server', () => {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          'X-Source-System': 'test-ehr',
         },
         body: JSON.stringify({ resourceType: 'Patient' }),
       });
