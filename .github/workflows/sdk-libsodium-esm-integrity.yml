@@ -66,7 +66,6 @@ jobs:
           node --input-type=module <<'NODE'
           import { createRequire } from "node:module";
           import { access } from "node:fs/promises";
-          import { fileURLToPath } from "node:url";
           import sodium from "libsodium-wrappers";
 
           const require = createRequire(import.meta.url);
@@ -80,7 +79,6 @@ jobs:
 
           const wrappersEntry = require.resolve("libsodium-wrappers");
           const sodiumRoot = require.resolve("libsodium/package.json");
-          const sodiumDirectory = fileURLToPath(new URL(".", new URL(sodiumRoot, "file://")));
           await access(wrappersEntry);
           await access(sodiumRoot);
 
