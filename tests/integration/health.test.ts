@@ -514,7 +514,7 @@ describe('Trials Zome - FDA Compliance', () => {
 
       expect(actionHashOf(eventRecord)).toBeDefined();
     });
-  });;
+  });
 });
 
 // ============================================================================
@@ -550,7 +550,7 @@ describe('Bridge Zome - Cross-hApp Federation', () => {
       expect(record).toBeDefined();
       expect(actionHashOf(record)).toBeDefined();
     });
-  });;
+  });
 
   it('creates and retrieves an epistemic claim through the entity index', async () => {
     await runScenario(async (scenario: Scenario) => {
@@ -648,5 +648,5 @@ describe('Bridge Zome - Cross-hApp Federation', () => {
       expect(result.scores).toHaveLength(3);
       expect(result.scores.every((score) => score.timestamp === now)).toBe(true);
     });
-  });;
+  });
 });
