@@ -42,8 +42,20 @@ export function createFhirRoutes(ctx: AppContext): Hono {
       }, 503);
     }
 
-    // Get source system from header
-    const sourceSystem = c.req.header('X-Source-System') || 'unknown';
+    // FHIR provenance must identify its source. Never silently write "unknown".
+    const sourceSystem = c.req.header('X-Source-System')?.trim();
+    if (!sourceSystem) {
+      return c.json({
+        error: 'Missing source system',
+        message: 'X-Source-System is required for provenance-preserving ingestion.',
+      }, 400);
+    }
+    if (sourceSystem.length > 128) {
+      return c.json({
+        error: 'Invalid source system',
+        message: 'X-Source-System must be at most 128 characters.',
+      }, 400);
+    }
 
     // Parse and validate bundle
     let bundle: FhirBundle;
