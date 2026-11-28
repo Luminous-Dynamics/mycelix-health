@@ -1,0 +1,119 @@
+name: SDK Libsodium ESM Package Integrity
+
+on:
+  push:
+    branches: [fix/sdk-libsodium-esm-package-integrity-2026-11-28]
+    paths:
+      - "sdk/package.json"
+      - ".github/workflows/sdk-libsodium-esm-integrity.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: sdk-libsodium-esm-integrity
+  cancel-in-progress: false
+
+jobs:
+  package-integrity:
+    name: Resolve, install and import matched sodium packages
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - name: Checkout remediation branch
+        uses: actions/checkout@v4
+        with:
+          ref: fix/sdk-libsodium-esm-package-integrity-2026-11-28
+          persist-credentials: true
+          fetch-depth: 0
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: sdk/package-lock.json
+
+      - name: Resolve lockfile in SDK workspace
+        working-directory: sdk
+        run: |
+          set -euo pipefail
+          npm install --package-lock-only --ignore-scripts --no-audit --no-fund
+          node --input-type=commonjs -e '
+            const lock = require("./package-lock.json");
+            for (const name of ["libsodium-wrappers", "libsodium"]) {
+              const entries = Object.entries(lock.packages || {})
+                .filter(([path]) => path.endsWith("/node_modules/" + name) || path === "node_modules/" + name);
+              if (!entries.length) throw new Error(name + " is missing from SDK lockfile");
+              for (const [path, pkg] of entries) {
+                if (pkg.version !== "0.8.4") {
+                  throw new Error(path + " resolved " + pkg.version + "; expected 0.8.4");
+                }
+                console.log(path + "=" + pkg.version);
+              }
+            }
+          '
+
+      - name: Install exact lockfile without lifecycle scripts
+        working-directory: sdk
+        run: npm ci --ignore-scripts --no-audit --no-fund
+
+      - name: Verify ESM package files and runtime readiness
+        working-directory: sdk
+        run: |
+          set -euo pipefail
+          node --input-type=module <<'NODE'
+          import { createRequire } from "node:module";
+          import { access } from "node:fs/promises";
+          import { fileURLToPath } from "node:url";
+          import sodium from "libsodium-wrappers";
+
+          const require = createRequire(import.meta.url);
+          const wrappersPkg = require("libsodium-wrappers/package.json");
+          const sodiumPkg = require("libsodium/package.json");
+          if (wrappersPkg.version !== "0.8.4" || sodiumPkg.version !== "0.8.4") {
+            throw new Error(
+              `unexpected sodium pair: wrappers=${wrappersPkg.version}, sodium=${sodiumPkg.version}`
+            );
+          }
+
+          const wrappersEntry = require.resolve("libsodium-wrappers");
+          const sodiumRoot = require.resolve("libsodium/package.json");
+          const sodiumDirectory = fileURLToPath(new URL(".", new URL(sodiumRoot, "file://")));
+          await access(wrappersEntry);
+          await access(sodiumRoot);
+
+          await sodium.ready;
+          for (const name of [
+            "crypto_generichash",
+            "crypto_sign_keypair",
+            "crypto_aead_xchacha20poly1305_ietf_encrypt"
+          ]) {
+            if (typeof sodium[name] !== "function") {
+              throw new Error("required sodium API missing: " + name);
+            }
+          }
+
+          console.log(JSON.stringify({
+            wrappers: wrappersPkg.version,
+            sodium: sodiumPkg.version,
+            wrappers_entry: wrappersEntry,
+            sodium_package_json: sodiumRoot,
+            ready: true,
+            required_api_count: 3
+          }, null, 2));
+          NODE
+
+      - name: Commit the SDK lockfile to the remediation branch
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add sdk/package-lock.json
+          if git diff --cached --quiet; then
+            echo "SDK lockfile already matches package overrides."
+          else
+            git commit -m "chore(sdk): lock matched libsodium packages 0.8.4"
+            git push origin HEAD:fix/sdk-libsodium-esm-package-integrity-2026-11-28
+          fi
