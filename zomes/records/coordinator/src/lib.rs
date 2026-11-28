@@ -18,15 +18,32 @@
 
 use hdk::prelude::*;
 use mycelix_health_shared::{
-    batch::links_to_records, log_data_access, require_admin_authorization, require_authorization,
+    batch::links_to_records, evaluate_authorization_for_resource, log_data_access,
+    require_admin_authorization, require_authorization, require_authorization_for_resource,
     DataCategory, Permission,
 };
 use records_integrity::*;
 
-const ENCRYPTED_RECORD_ENVELOPE_VERSION: u8 = 1;
+const ENCRYPTED_RECORD_ENVELOPE_VERSION_V1: u8 = 1;
+const ENCRYPTED_RECORD_ENVELOPE_VERSION_V2: u8 = 2;
+const ENCRYPTED_RECORD_ENVELOPE_VERSION: u8 = ENCRYPTED_RECORD_ENVELOPE_VERSION_V2;
 
 fn encrypted_record_aad(record: &EncryptedRecord) -> ExternResult<Vec<u8>> {
-    ExternIO::encode(record.aad())
+    let encoded = match record.envelope_version {
+        ENCRYPTED_RECORD_ENVELOPE_VERSION_V1 => ExternIO::encode(record.aad()),
+        ENCRYPTED_RECORD_ENVELOPE_VERSION_V2 => {
+            let aad = record.aad_v2().ok_or(wasm_error!(WasmErrorInner::Guest(
+                "V2 encrypted record is missing clinical event time".to_string()
+            )))?;
+            ExternIO::encode(aad)
+        }
+        _ => {
+            return Err(wasm_error!(WasmErrorInner::Guest(
+                "Unsupported encrypted record envelope version".to_string()
+            )));
+        }
+    };
+    encoded
         .map(|encoded| encoded.as_bytes().to_vec())
         .map_err(|error| {
             wasm_error!(WasmErrorInner::Guest(format!(
@@ -34,6 +51,174 @@ fn encrypted_record_aad(record: &EncryptedRecord) -> ExternResult<Vec<u8>> {
                 error
             )))
         })
+}
+
+/// Return the exact temporal and encounter context authorized by a stored
+/// envelope. V1 is explicitly context-free; v2 must be a supported typed route.
+fn encrypted_record_scope_context(
+    record: &EncryptedRecord,
+) -> ExternResult<(Option<Timestamp>, Option<ActionHash>)> {
+    match record.envelope_version {
+        ENCRYPTED_RECORD_ENVELOPE_VERSION_V1 => {
+            if record.clinical_event_time.is_some() || record.encounter_hash.is_some() {
+                return Err(wasm_error!(WasmErrorInner::Guest(
+                    "Legacy v1 encrypted record carries unauthenticated clinical context"
+                        .to_string()
+                )));
+            }
+            Ok((None, None))
+        }
+        ENCRYPTED_RECORD_ENVELOPE_VERSION_V2 => {
+            if !encrypted_v2_route_is_supported(&record.entry_type, &record.data_category) {
+                return Err(wasm_error!(WasmErrorInner::Guest(
+                    "Encrypted v2 record has no supported typed context verifier".to_string()
+                )));
+            }
+            let event_time =
+                record
+                    .clinical_event_time
+                    .clone()
+                    .ok_or(wasm_error!(WasmErrorInner::Guest(
+                        "Encrypted v2 record has no clinical event time".to_string()
+                    )))?;
+            if record.entry_type == "ProcedurePerformed" && record.encounter_hash.is_none() {
+                return Err(wasm_error!(WasmErrorInner::Guest(
+                    "Encrypted v2 procedure record requires an encounter".to_string()
+                )));
+            }
+            Ok((Some(event_time), record.encounter_hash.clone()))
+        }
+        _ => Err(wasm_error!(WasmErrorInner::Guest(
+            "Unsupported encrypted record envelope version".to_string()
+        ))),
+    }
+}
+
+/// Check this exact envelope's authority before decrypting or returning it.
+fn require_encrypted_record_read_authorization(
+    record: &EncryptedRecord,
+    is_emergency: bool,
+) -> ExternResult<mycelix_health_shared::AuthorizationResult> {
+    let category = parse_encrypted_category(&record.data_category)?;
+    let (clinical_event_time, encounter_hash) = encrypted_record_scope_context(record)?;
+    require_authorization_for_resource(
+        record.patient_hash.clone(),
+        category,
+        Permission::Read,
+        is_emergency,
+        clinical_event_time,
+        encounter_hash,
+    )
+}
+
+/// V2 is currently enabled only for resource types whose typed payload exposes
+/// an event clock that can be compared after decryption.
+fn encrypted_v2_route_is_supported(entry_type: &str, category: &str) -> bool {
+    matches!(
+        (entry_type, category),
+        ("LabResult", "LabResults")
+            | ("ProcedurePerformed", "Procedures")
+            | ("ImagingStudy", "ImagingStudies")
+            | ("VitalSigns", "VitalSigns")
+    )
+}
+
+/// After AEAD verification, compare v2 context against the actual decrypted
+/// typed payload. AAD integrity proves the writer authenticated the metadata;
+/// this check proves the metadata agrees with the encrypted clinical object.
+fn validate_encrypted_v2_context_matches_payload(
+    record: &EncryptedRecord,
+    plaintext: &[u8],
+) -> ExternResult<()> {
+    if record.envelope_version == ENCRYPTED_RECORD_ENVELOPE_VERSION_V1 {
+        return Ok(());
+    }
+    if record.envelope_version != ENCRYPTED_RECORD_ENVELOPE_VERSION_V2 {
+        return Err(wasm_error!(WasmErrorInner::Guest(
+            "Unsupported encrypted record envelope version".to_string()
+        )));
+    }
+
+    let event_time =
+        record
+            .clinical_event_time
+            .as_ref()
+            .ok_or(wasm_error!(WasmErrorInner::Guest(
+                "V2 encrypted record has no clinical event time".to_string()
+            )))?;
+
+    let matches = match record.entry_type.as_str() {
+        "LabResult" => {
+            let value: LabResult =
+                ExternIO::from(plaintext.to_vec())
+                    .decode()
+                    .map_err(|error| {
+                        wasm_error!(WasmErrorInner::Guest(format!(
+                            "V2 LabResult payload decoding failed: {}",
+                            error
+                        )))
+                    })?;
+            value.patient_hash == record.patient_hash
+                && &value.collection_time == event_time
+                && value.encounter_hash == record.encounter_hash
+        }
+        "ProcedurePerformed" => {
+            let value: ProcedurePerformed =
+                ExternIO::from(plaintext.to_vec())
+                    .decode()
+                    .map_err(|error| {
+                        wasm_error!(WasmErrorInner::Guest(format!(
+                            "V2 ProcedurePerformed payload decoding failed: {}",
+                            error
+                        )))
+                    })?;
+            value.patient_hash == record.patient_hash
+                && &value.performed_at == event_time
+                && Some(value.encounter_hash) == record.encounter_hash
+        }
+        "ImagingStudy" => {
+            let value: ImagingStudy =
+                ExternIO::from(plaintext.to_vec())
+                    .decode()
+                    .map_err(|error| {
+                        wasm_error!(WasmErrorInner::Guest(format!(
+                            "V2 ImagingStudy payload decoding failed: {}",
+                            error
+                        )))
+                    })?;
+            value.patient_hash == record.patient_hash
+                && &value.study_date == event_time
+                && value.encounter_hash == record.encounter_hash
+        }
+        "VitalSigns" => {
+            let value: VitalSigns =
+                ExternIO::from(plaintext.to_vec())
+                    .decode()
+                    .map_err(|error| {
+                        wasm_error!(WasmErrorInner::Guest(format!(
+                            "V2 VitalSigns payload decoding failed: {}",
+                            error
+                        )))
+                    })?;
+            value.patient_hash == record.patient_hash
+                && &value.recorded_at == event_time
+                && value.encounter_hash == record.encounter_hash
+        }
+        _ => {
+            return Err(wasm_error!(WasmErrorInner::Guest(
+                "V2 encrypted payload type has no typed context verifier".to_string()
+            )));
+        }
+    };
+
+    if !matches {
+        return Err(wasm_error!(WasmErrorInner::Guest(
+            "Encrypted v2 context does not match the decrypted patient, event time or encounter"
+                .to_string()
+        )));
+    }
+
+    Ok(())
 }
 
 fn parse_encrypted_category(category: &str) -> ExternResult<DataCategory> {
@@ -582,12 +767,19 @@ pub struct CreateDiagnosisInput {
 #[hdk_extern]
 pub fn create_diagnosis(input: CreateDiagnosisInput) -> ExternResult<Record> {
     require_encrypted_phi("create_diagnosis")?;
+    if input.patient_hash != input.diagnosis.patient_hash {
+        return Err(wasm_error!(WasmErrorInner::Guest(
+            "Diagnosis patient hash does not match the authorization subject".to_string()
+        )));
+    }
     // Require Write authorization for Diagnoses category
-    let auth = require_authorization(
+    let auth = require_authorization_for_resource(
         input.patient_hash.clone(),
         DataCategory::Diagnoses,
         Permission::Write,
         input.is_emergency,
+        None,
+        input.diagnosis.encounter_hash.clone(),
     )?;
 
     let diagnosis_hash = create_entry(&EntryTypes::Diagnosis(input.diagnosis.clone()))?;
@@ -695,12 +887,19 @@ pub struct CreateProcedureInput {
 #[hdk_extern]
 pub fn create_procedure(input: CreateProcedureInput) -> ExternResult<Record> {
     require_encrypted_phi("create_procedure")?;
+    if input.patient_hash != input.procedure.patient_hash {
+        return Err(wasm_error!(WasmErrorInner::Guest(
+            "Procedure patient hash does not match the authorization subject".to_string()
+        )));
+    }
     // Require Write authorization for Procedures category
-    let auth = require_authorization(
+    let auth = require_authorization_for_resource(
         input.patient_hash.clone(),
         DataCategory::Procedures,
         Permission::Write,
         input.is_emergency,
+        Some(input.procedure.performed_at),
+        Some(input.procedure.encounter_hash.clone()),
     )?;
 
     let procedure_hash = create_entry(&EntryTypes::ProcedurePerformed(input.procedure.clone()))?;
@@ -751,11 +950,13 @@ pub struct CreateLabResultInput {
 pub fn create_lab_result(input: CreateLabResultInput) -> ExternResult<Record> {
     require_encrypted_phi("create_lab_result")?;
     // Require Write authorization for LabResults category
-    let auth = require_authorization(
+    let auth = require_authorization_for_resource(
         input.lab_result.patient_hash.clone(),
         DataCategory::LabResults,
         Permission::Write,
         input.is_emergency,
+        Some(input.lab_result.collection_time),
+        input.lab_result.encounter_hash.clone(),
     )?;
 
     let result_hash = create_entry(&EntryTypes::LabResult(input.lab_result.clone()))?;
@@ -832,11 +1033,13 @@ pub fn create_encrypted_lab_result(input: CreateEncryptedLabResultInput) -> Exte
     use mycelix_health_shared::patient_encryption;
 
     // Require Write authorization (same as unencrypted path)
-    let auth = require_authorization(
+    let auth = require_authorization_for_resource(
         input.lab_result.patient_hash.clone(),
         DataCategory::LabResults,
         Permission::Write,
         input.is_emergency,
+        Some(input.lab_result.collection_time),
+        input.lab_result.encounter_hash.clone(),
     )?;
 
     // Serialize the lab result to MessagePack
@@ -868,6 +1071,8 @@ pub fn create_encrypted_lab_result(input: CreateEncryptedLabResultInput) -> Exte
         data_category: "LabResults".to_string(),
         entry_type: "LabResult".to_string(),
         encrypted_at: now.as_micros() as i64,
+        clinical_event_time: Some(input.lab_result.collection_time),
+        encounter_hash: input.lab_result.encounter_hash.clone(),
     };
     let aad = encrypted_record_aad(&encrypted)?;
     let (ciphertext, nonce) =
@@ -932,15 +1137,8 @@ pub fn decrypt_lab_result(input: DecryptLabResultInput) -> ExternResult<LabResul
     require_client_side_phi("decrypt_lab_result")?;
     use mycelix_health_shared::patient_encryption;
 
-    // Step 1: Verify consent BEFORE decryption
-    let auth = require_authorization(
-        input.patient_hash.clone(),
-        DataCategory::LabResults,
-        Permission::Read,
-        input.is_emergency,
-    )?;
-
-    // Step 2: Retrieve the encrypted record
+    // Read only the envelope metadata first. Plaintext is not exposed until
+    // this exact record's patient, category, event time and encounter pass.
     let record = get(input.encrypted_record_hash, GetOptions::default())?.ok_or(wasm_error!(
         WasmErrorInner::Guest("Encrypted record not found".to_string())
     ))?;
@@ -958,14 +1156,21 @@ pub fn decrypt_lab_result(input: DecryptLabResultInput) -> ExternResult<LabResul
             "Not an EncryptedRecord entry".to_string()
         )))?;
 
-    // Step 3: Verify this record belongs to the claimed patient
     if encrypted.patient_hash != input.patient_hash {
         return Err(wasm_error!(WasmErrorInner::Guest(
             "Patient hash mismatch — record belongs to a different patient".to_string()
         )));
     }
+    if encrypted.data_category != "LabResults" || encrypted.entry_type != "LabResult" {
+        return Err(wasm_error!(WasmErrorInner::Guest(
+            "Encrypted record is not a LabResult/LabResults envelope".to_string()
+        )));
+    }
 
-    // Step 4: Decrypt (XChaCha20-Poly1305 with Poly1305 auth tag verification)
+    // This is before decryption: v1 carries no clinical context and therefore
+    // cannot satisfy restricted grants; v2 uses authenticated AAD fields.
+    let auth = require_encrypted_record_read_authorization(&encrypted, input.is_emergency)?;
+
     let aad = encrypted_record_aad(&encrypted)?;
     let plaintext = patient_encryption::decrypt_with_aad(
         &encrypted.ciphertext,
@@ -975,12 +1180,11 @@ pub fn decrypt_lab_result(input: DecryptLabResultInput) -> ExternResult<LabResul
     )
     .map_err(|e| {
         wasm_error!(WasmErrorInner::Guest(format!(
-            "Decryption failed (wrong key or data or metadata tampered): {}",
+            "Decryption failed (wrong key, ciphertext or authenticated metadata tampered): {}",
             e
         )))
     })?;
 
-    // Step 5: Deserialize the lab result from MessagePack (ExternIO format)
     let extern_io = ExternIO::from(plaintext);
     let lab_result: LabResult = extern_io.decode().map_err(|e| {
         wasm_error!(WasmErrorInner::Guest(format!(
@@ -989,7 +1193,20 @@ pub fn decrypt_lab_result(input: DecryptLabResultInput) -> ExternResult<LabResul
         )))
     })?;
 
-    // Step 6: Log the decryption access
+    if lab_result.patient_hash != encrypted.patient_hash {
+        return Err(wasm_error!(WasmErrorInner::Guest(
+            "Decrypted LabResult patient does not match its encrypted envelope".to_string()
+        )));
+    }
+    if encrypted.envelope_version == ENCRYPTED_RECORD_ENVELOPE_VERSION_V2
+        && (encrypted.clinical_event_time != Some(lab_result.collection_time)
+            || encrypted.encounter_hash != lab_result.encounter_hash)
+    {
+        return Err(wasm_error!(WasmErrorInner::Guest(
+            "Encrypted v2 context does not match the decrypted LabResult".to_string()
+        )));
+    }
+
     log_data_access(
         input.patient_hash,
         vec![DataCategory::LabResults],
@@ -1017,6 +1234,15 @@ pub struct StoreEncryptedRecordInput {
     pub data_category: String,
     pub entry_type: String,
     pub encrypted_at: i64,
+    /// V2 clinical event time asserted by the encrypting writer and authenticated as AAD.
+    /// The typed payload must carry the same value before plaintext is released.
+    /// This is writer-attested metadata, not independent EHR issuer/Provenance verification.
+    #[serde(default)]
+    pub clinical_event_time: Option<Timestamp>,
+    /// V2 encounter binding, authenticated as AAD and compared to typed payload.
+    /// Its source relationship still requires external Provenance/issuer qualification.
+    #[serde(default)]
+    pub encounter_hash: Option<ActionHash>,
     pub is_emergency: bool,
     pub emergency_reason: Option<String>,
 }
@@ -1027,10 +1253,28 @@ pub struct StoreEncryptedRecordInput {
 /// client must use `EncryptedRecordAad` as XChaCha20-Poly1305 associated data.
 #[hdk_extern]
 pub fn store_encrypted_record(input: StoreEncryptedRecordInput) -> ExternResult<Record> {
-    if input.envelope_version != ENCRYPTED_RECORD_ENVELOPE_VERSION {
-        return Err(wasm_error!(WasmErrorInner::Guest(
-            "Unsupported encrypted record envelope version".to_string()
-        )));
+    match input.envelope_version {
+        ENCRYPTED_RECORD_ENVELOPE_VERSION_V1
+            if input.clinical_event_time.is_none() && input.encounter_hash.is_none() => {}
+        ENCRYPTED_RECORD_ENVELOPE_VERSION_V2
+            if input.clinical_event_time.is_some()
+                && encrypted_v2_route_is_supported(&input.entry_type, &input.data_category)
+                && (input.entry_type != "ProcedurePerformed" || input.encounter_hash.is_some()) => {}
+        ENCRYPTED_RECORD_ENVELOPE_VERSION_V1 => {
+            return Err(wasm_error!(WasmErrorInner::Guest(
+                "V1 envelopes cannot carry unbound clinical context".to_string()
+            )));
+        }
+        ENCRYPTED_RECORD_ENVELOPE_VERSION_V2 => {
+            return Err(wasm_error!(WasmErrorInner::Guest(
+                "V2 requires an event time and a supported typed clinical route".to_string()
+            )));
+        }
+        _ => {
+            return Err(wasm_error!(WasmErrorInner::Guest(
+                "Unsupported encrypted record envelope version".to_string()
+            )));
+        }
     }
     if input.ciphertext.len() < 16 {
         return Err(wasm_error!(WasmErrorInner::Guest(
@@ -1062,12 +1306,27 @@ pub fn store_encrypted_record(input: StoreEncryptedRecordInput) -> ExternResult<
         ))));
     }
 
-    let auth = require_authorization(
-        input.patient_hash.clone(),
-        category.clone(),
-        Permission::Write,
-        input.is_emergency,
-    )?;
+    let auth = match input.envelope_version {
+        ENCRYPTED_RECORD_ENVELOPE_VERSION_V1 => require_authorization(
+            input.patient_hash.clone(),
+            category.clone(),
+            Permission::Write,
+            input.is_emergency,
+        )?,
+        ENCRYPTED_RECORD_ENVELOPE_VERSION_V2 => require_authorization_for_resource(
+            input.patient_hash.clone(),
+            category.clone(),
+            Permission::Write,
+            input.is_emergency,
+            input.clinical_event_time.clone(),
+            input.encounter_hash.clone(),
+        )?,
+        _ => {
+            return Err(wasm_error!(WasmErrorInner::Guest(
+                "Unsupported encrypted record envelope version".to_string()
+            )));
+        }
+    };
 
     let encrypted = EncryptedRecord {
         envelope_version: input.envelope_version,
@@ -1078,6 +1337,8 @@ pub fn store_encrypted_record(input: StoreEncryptedRecordInput) -> ExternResult<
         data_category: input.data_category,
         entry_type: input.entry_type,
         encrypted_at: input.encrypted_at,
+        clinical_event_time: input.clinical_event_time,
+        encounter_hash: input.encounter_hash,
     };
 
     let record_hash = create_entry(&EntryTypes::EncryptedRecord(encrypted))?;
@@ -1170,7 +1431,9 @@ pub fn create_encrypted_record(input: CreateEncryptedRecordInput) -> ExternResul
 
     let now = sys_time()?;
     let mut encrypted = EncryptedRecord {
-        envelope_version: ENCRYPTED_RECORD_ENVELOPE_VERSION,
+        // This migration-only generic plaintext path has no typed event-time
+        // extractor. Preserve it as v1 so it cannot manufacture v2 scope context.
+        envelope_version: ENCRYPTED_RECORD_ENVELOPE_VERSION_V1,
         patient_hash: input.patient_hash.clone(),
         key_fingerprint: input.key_fingerprint,
         ciphertext: Vec::new(),
@@ -1178,6 +1441,8 @@ pub fn create_encrypted_record(input: CreateEncryptedRecordInput) -> ExternResul
         data_category: input.data_category,
         entry_type: input.entry_type,
         encrypted_at: now.as_micros() as i64,
+        clinical_event_time: None,
+        encounter_hash: None,
     };
     let aad = encrypted_record_aad(&encrypted)?;
     let (ciphertext, nonce) =
@@ -1266,13 +1531,9 @@ pub fn decrypt_record(input: DecryptRecordInput) -> ExternResult<ExternIO> {
         )));
     }
 
-    // Verify consent BEFORE decryption
-    let auth = require_authorization(
-        input.patient_hash.clone(),
-        category.clone(),
-        Permission::Read,
-        input.is_emergency,
-    )?;
+    // Check this exact resource's authority before decryption. Legacy v1
+    // has no clinical context and fails closed under temporal/encounter scopes.
+    let auth = require_encrypted_record_read_authorization(&encrypted, input.is_emergency)?;
 
     // Decrypt and authenticate the cleartext routing metadata.
     let aad = encrypted_record_aad(&encrypted)?;
@@ -1288,6 +1549,10 @@ pub fn decrypt_record(input: DecryptRecordInput) -> ExternResult<ExternIO> {
             e
         )))
     })?;
+
+    // Do not release plaintext unless the authenticated v2 context matches
+    // the exact patient, clinical event time and encounter inside its payload.
+    validate_encrypted_v2_context_matches_payload(&encrypted, &plaintext)?;
 
     // Log access
     log_data_access(
@@ -1307,13 +1572,6 @@ pub fn decrypt_record(input: DecryptRecordInput) -> ExternResult<ExternIO> {
 pub fn get_patient_encrypted_records(
     input: GetPatientLabResultsInput,
 ) -> ExternResult<Vec<Record>> {
-    let auth = require_authorization(
-        input.patient_hash.clone(),
-        DataCategory::All,
-        Permission::Read,
-        input.is_emergency,
-    )?;
-
     let links = get_links(
         LinkQuery::try_new(
             input.patient_hash.clone(),
@@ -1322,25 +1580,77 @@ pub fn get_patient_encrypted_records(
         GetStrategy::default(),
     )?;
 
-    let mut records = vec![];
+    // Build the complete authorization snapshot before producing a result.
+    // Explicit policy denials omit only that record. Any unavailable consent
+    // verifier, transport error or malformed record aborts the whole read.
+    let mut authorized_records: Vec<(
+        Record,
+        DataCategory,
+        mycelix_health_shared::AuthorizationResult,
+    )> = Vec::new();
+
     for link in links {
-        if let Some(hash) = link.target.into_action_hash() {
-            if let Some(record) = get(hash, GetOptions::default())? {
-                records.push(record);
-            }
+        let Some(hash) = link.target.into_action_hash() else {
+            continue;
+        };
+        let Some(record) = get(hash, GetOptions::default())? else {
+            continue;
+        };
+
+        let encrypted: EncryptedRecord = record
+            .entry()
+            .to_app_option()
+            .map_err(|error| {
+                wasm_error!(WasmErrorInner::Guest(format!(
+                    "Invalid encrypted record entry: {}",
+                    error
+                )))
+            })?
+            .ok_or(wasm_error!(WasmErrorInner::Guest(
+                "Patient encrypted-record link does not target an EncryptedRecord".to_string()
+            )))?;
+
+        if encrypted.patient_hash != input.patient_hash {
+            return Err(wasm_error!(WasmErrorInner::Guest(
+                "Encrypted record linked under a different patient".to_string()
+            )));
+        }
+        if !encrypted_route_is_valid(&encrypted.entry_type, &encrypted.data_category) {
+            return Err(wasm_error!(WasmErrorInner::Guest(
+                "Encrypted record has an invalid entry-type/category route".to_string()
+            )));
+        }
+
+        let (clinical_event_time, encounter_hash) = encrypted_record_scope_context(&encrypted)?;
+
+        let category = parse_encrypted_category(&encrypted.data_category)?;
+        let decision = evaluate_authorization_for_resource(
+            input.patient_hash.clone(),
+            category.clone(),
+            Permission::Read,
+            input.is_emergency,
+            clinical_event_time,
+            encounter_hash,
+        )?;
+
+        if decision.authorized {
+            authorized_records.push((record, category, decision));
         }
     }
 
-    if !records.is_empty() {
+    let mut records = Vec::with_capacity(authorized_records.len());
+    for (record, category, auth) in authorized_records {
         log_data_access(
-            input.patient_hash,
-            vec![DataCategory::All],
+            input.patient_hash.clone(),
+            vec![category],
             Permission::Read,
             auth.consent_hash,
             auth.emergency_override,
-            input.emergency_reason,
+            input.emergency_reason.clone(),
         )?;
+        records.push(record);
     }
+
     Ok(records)
 }
 
@@ -1413,11 +1723,13 @@ pub fn acknowledge_critical_result(input: AcknowledgeInput) -> ExternResult<Reco
         )))?;
 
     // Require Write authorization (Amend would be more specific but Write is sufficient)
-    let auth = require_authorization(
+    let auth = require_authorization_for_resource(
         lab_result.patient_hash.clone(),
         DataCategory::LabResults,
         Permission::Write,
         input.is_emergency,
+        Some(lab_result.collection_time),
+        lab_result.encounter_hash.clone(),
     )?;
 
     lab_result.acknowledged_by = Some(agent_info()?.agent_initial_pubkey);
@@ -1454,11 +1766,13 @@ pub struct CreateImagingStudyInput {
 pub fn create_imaging_study(input: CreateImagingStudyInput) -> ExternResult<Record> {
     require_encrypted_phi("create_imaging_study")?;
     // Require Write authorization for ImagingStudies category
-    let auth = require_authorization(
+    let auth = require_authorization_for_resource(
         input.imaging.patient_hash.clone(),
         DataCategory::ImagingStudies,
         Permission::Write,
         input.is_emergency,
+        Some(input.imaging.study_date),
+        input.imaging.encounter_hash.clone(),
     )?;
 
     let imaging_hash = create_entry(&EntryTypes::ImagingStudy(input.imaging.clone()))?;
@@ -1556,11 +1870,13 @@ pub struct RecordVitalSignsInput {
 pub fn record_vital_signs(input: RecordVitalSignsInput) -> ExternResult<Record> {
     require_encrypted_phi("record_vital_signs")?;
     // Require Write authorization for VitalSigns category
-    let auth = require_authorization(
+    let auth = require_authorization_for_resource(
         input.vitals.patient_hash.clone(),
         DataCategory::VitalSigns,
         Permission::Write,
         input.is_emergency,
+        Some(input.vitals.recorded_at),
+        input.vitals.encounter_hash.clone(),
     )?;
 
     let vitals_hash = create_entry(&EntryTypes::VitalSigns(input.vitals.clone()))?;
@@ -1782,11 +2098,13 @@ pub struct UpdateLabResultInput {
 pub fn update_lab_result(input: UpdateLabResultInput) -> ExternResult<Record> {
     require_encrypted_phi("update_lab_result")?;
     // Require Amend authorization for LabResults category
-    let auth = require_authorization(
+    let auth = require_authorization_for_resource(
         input.updated_result.patient_hash.clone(),
         DataCategory::LabResults,
         Permission::Amend,
         input.is_emergency,
+        Some(input.updated_result.collection_time),
+        input.updated_result.encounter_hash.clone(),
     )?;
 
     let updated_hash = update_entry(input.original_hash.clone(), &input.updated_result)?;
@@ -1881,11 +2199,13 @@ pub fn get_encounter_history(input: GetEncounterHistoryInput) -> ExternResult<Ve
         )))?;
 
     // Require Read authorization for Procedures category
-    let auth = require_authorization(
+    let auth = require_authorization_for_resource(
         encounter.patient_hash.clone(),
         DataCategory::Procedures,
         Permission::Read,
         input.is_emergency,
+        Some(encounter.start_time),
+        Some(input.encounter_hash.clone()),
     )?;
 
     let links = get_links(
@@ -2388,9 +2708,9 @@ mod tests {
     }
 
     #[test]
-    fn encrypted_record_aad_changes_with_routing_metadata() {
-        let mut record = EncryptedRecord {
-            envelope_version: ENCRYPTED_RECORD_ENVELOPE_VERSION,
+    fn encrypted_record_scope_context_is_versioned_and_fail_closed() {
+        let legacy = EncryptedRecord {
+            envelope_version: ENCRYPTED_RECORD_ENVELOPE_VERSION_V1,
             patient_hash: dummy_hash(),
             key_fingerprint: [1u8; 8],
             ciphertext: vec![1u8; 16],
@@ -2398,11 +2718,214 @@ mod tests {
             data_category: "LabResults".to_string(),
             entry_type: "LabResult".to_string(),
             encrypted_at: 1_000_000,
+            clinical_event_time: None,
+            encounter_hash: None,
         };
-        let original = encrypted_record_aad(&record).expect("encode aad");
+        assert_eq!(
+            encrypted_record_scope_context(&legacy).unwrap(),
+            (None, None)
+        );
+
+        let scoped = EncryptedRecord {
+            envelope_version: ENCRYPTED_RECORD_ENVELOPE_VERSION_V2,
+            patient_hash: dummy_hash(),
+            key_fingerprint: [1u8; 8],
+            ciphertext: vec![1u8; 16],
+            nonce: [2u8; 24],
+            data_category: "LabResults".to_string(),
+            entry_type: "LabResult".to_string(),
+            encrypted_at: 1_000_000,
+            clinical_event_time: Some(Timestamp::from_micros(900_000)),
+            encounter_hash: Some(dummy_hash()),
+        };
+        assert_eq!(
+            encrypted_record_scope_context(&scoped).unwrap(),
+            (Some(Timestamp::from_micros(900_000)), Some(dummy_hash()))
+        );
+
+        let mut malformed_v1 = legacy.clone();
+        malformed_v1.clinical_event_time = Some(Timestamp::from_micros(900_000));
+        assert!(encrypted_record_scope_context(&malformed_v1).is_err());
+
+        let mut malformed_v2 = scoped.clone();
+        malformed_v2.clinical_event_time = None;
+        assert!(encrypted_record_scope_context(&malformed_v2).is_err());
+
+        let mut unsupported_v2 = scoped;
+        unsupported_v2.entry_type = "Diagnosis".to_string();
+        unsupported_v2.data_category = "Diagnoses".to_string();
+        assert!(encrypted_record_scope_context(&unsupported_v2).is_err());
+    }
+
+    #[test]
+    fn encrypted_record_v1_aad_preserves_the_legacy_wire_shape() {
+        let record = EncryptedRecord {
+            envelope_version: ENCRYPTED_RECORD_ENVELOPE_VERSION_V1,
+            patient_hash: dummy_hash(),
+            key_fingerprint: [1u8; 8],
+            ciphertext: vec![1u8; 16],
+            nonce: [2u8; 24],
+            data_category: "LabResults".to_string(),
+            entry_type: "LabResult".to_string(),
+            encrypted_at: 1_000_000,
+            clinical_event_time: None,
+            encounter_hash: None,
+        };
+        let actual = encrypted_record_aad(&record).expect("encode v1 AAD");
+        let expected = ExternIO::encode(record.aad())
+            .expect("encode legacy AAD")
+            .as_bytes()
+            .to_vec();
+        assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn encrypted_record_v2_aad_binds_clinical_event_time_and_encounter() {
+        let mut record = EncryptedRecord {
+            envelope_version: ENCRYPTED_RECORD_ENVELOPE_VERSION_V2,
+            patient_hash: dummy_hash(),
+            key_fingerprint: [1u8; 8],
+            ciphertext: vec![1u8; 16],
+            nonce: [2u8; 24],
+            data_category: "LabResults".to_string(),
+            entry_type: "LabResult".to_string(),
+            encrypted_at: 1_000_000,
+            clinical_event_time: Some(Timestamp::from_micros(900_000)),
+            encounter_hash: Some(dummy_hash()),
+        };
+        let original = encrypted_record_aad(&record).expect("encode v2 AAD");
+
+        record.clinical_event_time = Some(Timestamp::from_micros(900_001));
+        let changed_time = encrypted_record_aad(&record).expect("encode changed event time");
+        assert_ne!(original, changed_time);
+
+        record.clinical_event_time = Some(Timestamp::from_micros(900_000));
+        record.encounter_hash = Some(ActionHash::from_raw_36(vec![1u8; 36]));
+        let changed_encounter = encrypted_record_aad(&record).expect("encode changed encounter");
+        assert_ne!(original, changed_encounter);
+
         record.data_category = "Diagnoses".to_string();
-        let changed = encrypted_record_aad(&record).expect("encode changed aad");
-        assert_ne!(original, changed);
+        let changed_category = encrypted_record_aad(&record).expect("encode changed category");
+        assert_ne!(original, changed_category);
+    }
+
+    #[test]
+    fn encrypted_v2_aead_rejects_event_time_and_encounter_tampering() {
+        use mycelix_health_shared::patient_encryption;
+
+        let mut record = EncryptedRecord {
+            envelope_version: ENCRYPTED_RECORD_ENVELOPE_VERSION_V2,
+            patient_hash: dummy_hash(),
+            key_fingerprint: [1u8; 8],
+            ciphertext: vec![],
+            nonce: [0u8; 24],
+            data_category: "LabResults".to_string(),
+            entry_type: "LabResult".to_string(),
+            encrypted_at: 1_000_000,
+            clinical_event_time: Some(Timestamp::from_micros(900_000)),
+            encounter_hash: Some(dummy_hash()),
+        };
+        let key = [9u8; 32];
+        let original_aad = encrypted_record_aad(&record).expect("encode v2 AAD");
+        let (ciphertext, nonce) = patient_encryption::encrypt_with_aad(
+            b"synthetic clinical payload",
+            &original_aad,
+            &key,
+        )
+        .expect("encrypt synthetic payload");
+        record.ciphertext = ciphertext;
+        record.nonce = nonce;
+
+        assert_eq!(
+            patient_encryption::decrypt_with_aad(
+                &record.ciphertext,
+                &record.nonce,
+                &original_aad,
+                &key,
+            )
+            .expect("decrypt with original AAD"),
+            b"synthetic clinical payload"
+        );
+
+        record.clinical_event_time = Some(Timestamp::from_micros(900_001));
+        let changed_time_aad = encrypted_record_aad(&record).expect("encode changed event time");
+        assert!(patient_encryption::decrypt_with_aad(
+            &record.ciphertext,
+            &record.nonce,
+            &changed_time_aad,
+            &key,
+        )
+        .is_err());
+
+        record.clinical_event_time = Some(Timestamp::from_micros(900_000));
+        record.encounter_hash = Some(ActionHash::from_raw_36(vec![7u8; 36]));
+        let changed_encounter_aad =
+            encrypted_record_aad(&record).expect("encode changed encounter");
+        assert!(patient_encryption::decrypt_with_aad(
+            &record.ciphertext,
+            &record.nonce,
+            &changed_encounter_aad,
+            &key,
+        )
+        .is_err());
+    }
+
+    #[test]
+    fn encrypted_v2_context_must_match_typed_lab_payload() {
+        let lab = sample_lab_result();
+        let plaintext = ExternIO::encode(&lab)
+            .expect("encode typed lab result")
+            .as_bytes()
+            .to_vec();
+        let mut record = EncryptedRecord {
+            envelope_version: ENCRYPTED_RECORD_ENVELOPE_VERSION_V2,
+            patient_hash: lab.patient_hash.clone(),
+            key_fingerprint: [1u8; 8],
+            ciphertext: vec![1u8; 16],
+            nonce: [2u8; 24],
+            data_category: "LabResults".to_string(),
+            entry_type: "LabResult".to_string(),
+            encrypted_at: 1_000_000,
+            clinical_event_time: Some(lab.collection_time),
+            encounter_hash: lab.encounter_hash.clone(),
+        };
+
+        assert!(validate_encrypted_v2_context_matches_payload(&record, &plaintext).is_ok());
+
+        record.clinical_event_time =
+            Some(Timestamp::from_micros(lab.collection_time.as_micros() + 1));
+        assert!(validate_encrypted_v2_context_matches_payload(&record, &plaintext).is_err());
+
+        record.clinical_event_time = Some(lab.collection_time);
+        record.encounter_hash = Some(ActionHash::from_raw_36(vec![9u8; 36]));
+        assert!(validate_encrypted_v2_context_matches_payload(&record, &plaintext).is_err());
+
+        record.encounter_hash = Some(dummy_hash());
+        record.patient_hash = ActionHash::from_raw_36(vec![8u8; 36]);
+        assert!(validate_encrypted_v2_context_matches_payload(&record, &plaintext).is_err());
+    }
+
+    fn sample_lab_result() -> LabResult {
+        LabResult {
+            result_id: "result-v2".to_string(),
+            patient_hash: dummy_hash(),
+            encounter_hash: Some(dummy_hash()),
+            ordering_provider: dummy_agent(),
+            loinc_code: "2345-7".to_string(),
+            test_name: "Glucose".to_string(),
+            value: "91".to_string(),
+            unit: "mg/dL".to_string(),
+            reference_range: "70-99".to_string(),
+            interpretation: LabInterpretation::Normal,
+            specimen_type: "Blood".to_string(),
+            collection_time: Timestamp::from_micros(900_000),
+            result_time: Timestamp::from_micros(950_000),
+            performing_lab: "Synthetic Laboratory".to_string(),
+            notes: None,
+            is_critical: false,
+            acknowledged_by: None,
+            acknowledged_at: None,
+        }
     }
 
     fn dummy_hash() -> ActionHash {

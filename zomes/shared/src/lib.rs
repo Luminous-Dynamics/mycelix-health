@@ -481,6 +481,12 @@ pub mod access_control {
         pub data_category: DataCategory,
         pub permission: Permission,
         pub is_emergency: bool,
+        /// Clinical event time (never receive/ingestion time).
+        #[serde(default)]
+        pub clinical_event_time: Option<Timestamp>,
+        /// Exact encounter containing the resource, when scoped.
+        #[serde(default)]
+        pub encounter_hash: Option<ActionHash>,
     }
 
     /// Check if the calling agent has authorization to access patient data.
@@ -503,6 +509,92 @@ pub mod access_control {
         permission: Permission,
         is_emergency: bool,
     ) -> ExternResult<AuthorizationResult> {
+        require_authorization_with_scope(
+            patient_hash,
+            category,
+            permission,
+            is_emergency,
+            None,
+            None,
+        )
+    }
+
+    /// Authorize access to a specific resource while enforcing any consent
+    /// clinical-event-time and encounter restrictions. Missing context is
+    /// denied whenever the governing consent narrows that dimension.
+    pub fn require_authorization_for_resource(
+        patient_hash: ActionHash,
+        category: DataCategory,
+        permission: Permission,
+        is_emergency: bool,
+        clinical_event_time: Option<Timestamp>,
+        encounter_hash: Option<ActionHash>,
+    ) -> ExternResult<AuthorizationResult> {
+        require_authorization_with_scope(
+            patient_hash,
+            category,
+            permission,
+            is_emergency,
+            clinical_event_time,
+            encounter_hash,
+        )
+    }
+
+    /// Evaluate a resource-scoped authorization without converting an
+    /// explicit policy denial into a transport error. This lets list/read
+    /// handlers omit denied resources while still propagating verifier,
+    /// network and decoding failures as errors.
+    pub fn evaluate_authorization_for_resource(
+        patient_hash: ActionHash,
+        category: DataCategory,
+        permission: Permission,
+        is_emergency: bool,
+        clinical_event_time: Option<Timestamp>,
+        encounter_hash: Option<ActionHash>,
+    ) -> ExternResult<AuthorizationResult> {
+        evaluate_authorization_with_scope(
+            patient_hash,
+            category,
+            permission,
+            is_emergency,
+            clinical_event_time,
+            encounter_hash,
+        )
+    }
+
+    fn require_authorization_with_scope(
+        patient_hash: ActionHash,
+        category: DataCategory,
+        permission: Permission,
+        is_emergency: bool,
+        clinical_event_time: Option<Timestamp>,
+        encounter_hash: Option<ActionHash>,
+    ) -> ExternResult<AuthorizationResult> {
+        let result = evaluate_authorization_with_scope(
+            patient_hash,
+            category,
+            permission,
+            is_emergency,
+            clinical_event_time,
+            encounter_hash,
+        )?;
+        if !result.authorized {
+            return Err(wasm_error!(WasmErrorInner::Guest(format!(
+                "Access denied: {}",
+                result.reason
+            ))));
+        }
+        Ok(result)
+    }
+
+    fn evaluate_authorization_with_scope(
+        patient_hash: ActionHash,
+        category: DataCategory,
+        permission: Permission,
+        is_emergency: bool,
+        clinical_event_time: Option<Timestamp>,
+        encounter_hash: Option<ActionHash>,
+    ) -> ExternResult<AuthorizationResult> {
         let caller = agent_info()?.agent_initial_pubkey;
 
         // First check if caller is the patient themselves (always authorized for own data)
@@ -523,6 +615,8 @@ pub mod access_control {
             data_category: category.clone(),
             permission: permission.clone(),
             is_emergency,
+            clinical_event_time,
+            encounter_hash: encounter_hash.clone(),
         };
 
         let response = call(
@@ -534,7 +628,7 @@ pub mod access_control {
         )?;
 
         // Decode the ZomeCallResponse
-        let auth_result: AuthorizationResult = match response {
+        let mut auth_result: AuthorizationResult = match response {
             ZomeCallResponse::Ok(extern_io) => extern_io.decode().map_err(|e| {
                 wasm_error!(WasmErrorInner::Guest(format!(
                     "Failed to decode authorization response: {:?}",
@@ -567,8 +661,8 @@ pub mod access_control {
 
         // P1-2: Segregated access control for sensitive categories.
         // Sensitive records require an explicit category-specific consent. A blanket
-        // `All` consent is intentionally insufficient, and every transport/decoding
-        // failure is treated as a denial.
+        // `All` consent is intentionally insufficient. Transport/decoding failures
+        // remain errors; they are never reinterpreted as a policy allow or denial.
         let sensitive_category = matches!(
             category,
             DataCategory::SubstanceAbuse | DataCategory::MentalHealth | DataCategory::SexualHealth
@@ -585,6 +679,8 @@ pub mod access_control {
                     data_category: category.clone(),
                     permission: permission.clone(),
                     is_emergency: false,
+                    clinical_event_time,
+                    encounter_hash: encounter_hash.clone(),
                 },
             )?;
 
@@ -621,23 +717,18 @@ pub mod access_control {
             };
 
             if !explicitly_authorized {
-                return Err(wasm_error!(WasmErrorInner::Guest(format!(
-                    "Access denied: {:?} requires explicit category-specific consent",
-                    category
-                ))));
+                auth_result.authorized = false;
+                auth_result.permissions.clear();
+                auth_result.reason =
+                    format!("{:?} requires explicit category-specific consent", category);
+                return Ok(auth_result);
             }
         }
 
         // The consent zome is the single authorization authority for both
-        // ordinary and emergency access. A denied emergency request must not be
-        // upgraded by a second, less-scoped check in this shared wrapper.
-        if !auth_result.authorized {
-            return Err(wasm_error!(WasmErrorInner::Guest(format!(
-                "Access denied: {}",
-                auth_result.reason
-            ))));
-        }
-
+        // ordinary and emergency access. The evaluator returns explicit denials
+        // as data; callers that require a single-resource operation use
+        // require_authorization_with_scope to turn the denial into an error.
         Ok(auth_result)
     }
 

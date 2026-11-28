@@ -271,8 +271,8 @@ pub enum EntryTypes {
 #[hdk_entry_helper]
 #[derive(Clone, PartialEq)]
 pub struct EncryptedRecord {
-    /// Envelope format version. Version 1 authenticates all cleartext metadata
-    /// as XChaCha20-Poly1305 associated data.
+    /// Envelope format version. Version 1 authenticates the legacy routing metadata;
+    /// version 2 also authenticates clinical event time and encounter identity.
     pub envelope_version: u8,
     /// Patient this record belongs to.
     pub patient_hash: ActionHash,
@@ -288,11 +288,18 @@ pub struct EncryptedRecord {
     pub entry_type: String,
     /// Encrypted at (microseconds since UNIX epoch).
     pub encrypted_at: i64,
+    /// Clinical event time, distinct from local ingestion/encryption time.
+    /// Absent on legacy v1 records; never inferred from encrypted_at.
+    #[serde(default)]
+    pub clinical_event_time: Option<Timestamp>,
+    /// Exact encounter containing the resource, where one exists.
+    /// Absent on legacy v1 records and records without a resolvable encounter.
+    #[serde(default)]
+    pub encounter_hash: Option<ActionHash>,
 }
 
-/// Canonical cleartext metadata authenticated by an encrypted-record envelope.
-/// Clients must serialize this value with the same Holochain serialization used
-/// by `ExternIO::encode` and pass the resulting bytes as AEAD associated data.
+/// Canonical v1 AAD. Keep this wire shape unchanged so previously stored v1
+/// ciphertext continues to authenticate with the exact bytes used originally.
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 pub struct EncryptedRecordAad {
     pub envelope_version: u8,
@@ -303,7 +310,22 @@ pub struct EncryptedRecordAad {
     pub encrypted_at: i64,
 }
 
+/// Canonical v2 AAD. Clinical event time and encounter are authenticated by
+/// XChaCha20-Poly1305 and cannot be changed without invalidating the tag.
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+pub struct EncryptedRecordAadV2 {
+    pub envelope_version: u8,
+    pub patient_hash: ActionHash,
+    pub key_fingerprint: [u8; 8],
+    pub data_category: String,
+    pub entry_type: String,
+    pub encrypted_at: i64,
+    pub clinical_event_time: Timestamp,
+    pub encounter_hash: Option<ActionHash>,
+}
+
 impl EncryptedRecord {
+    /// Legacy v1 AAD. Deliberately excludes v2 fields to preserve old ciphertext.
     pub fn aad(&self) -> EncryptedRecordAad {
         EncryptedRecordAad {
             envelope_version: self.envelope_version,
@@ -313,6 +335,19 @@ impl EncryptedRecord {
             entry_type: self.entry_type.clone(),
             encrypted_at: self.encrypted_at,
         }
+    }
+
+    pub fn aad_v2(&self) -> Option<EncryptedRecordAadV2> {
+        Some(EncryptedRecordAadV2 {
+            envelope_version: self.envelope_version,
+            patient_hash: self.patient_hash.clone(),
+            key_fingerprint: self.key_fingerprint,
+            data_category: self.data_category.clone(),
+            entry_type: self.entry_type.clone(),
+            encrypted_at: self.encrypted_at,
+            clinical_event_time: self.clinical_event_time.clone()?,
+            encounter_hash: self.encounter_hash.clone(),
+        })
     }
 }
 
@@ -527,10 +562,26 @@ fn validate_vitals(vitals: &VitalSigns) -> ExternResult<ValidateCallbackResult> 
 }
 
 fn validate_encrypted_record(record: &EncryptedRecord) -> ExternResult<ValidateCallbackResult> {
-    if record.envelope_version != 1 {
-        return Ok(ValidateCallbackResult::Invalid(
-            "Unsupported encrypted record envelope version".to_string(),
-        ));
+    match record.envelope_version {
+        1 if record.clinical_event_time.is_none() && record.encounter_hash.is_none() => {}
+        1 => {
+            return Ok(ValidateCallbackResult::Invalid(
+                "Legacy v1 envelopes cannot carry unauthenticated clinical context".to_string(),
+            ));
+        }
+        2 if record.clinical_event_time.is_some()
+            && encrypted_v2_route_is_supported(&record.entry_type, &record.data_category)
+            && (record.entry_type != "ProcedurePerformed" || record.encounter_hash.is_some()) => {}
+        2 => {
+            return Ok(ValidateCallbackResult::Invalid(
+                "V2 encrypted envelopes require a clinical event time".to_string(),
+            ));
+        }
+        _ => {
+            return Ok(ValidateCallbackResult::Invalid(
+                "Unsupported encrypted record envelope version".to_string(),
+            ));
+        }
     }
     if record.ciphertext.len() < 16 {
         return Ok(ValidateCallbackResult::Invalid(
@@ -556,6 +607,16 @@ fn validate_encrypted_record(record: &EncryptedRecord) -> ExternResult<ValidateC
     Ok(ValidateCallbackResult::Valid)
 }
 
+fn encrypted_v2_route_is_supported(entry_type: &str, data_category: &str) -> bool {
+    matches!(
+        (entry_type, data_category),
+        ("LabResult", "LabResults")
+            | ("ProcedurePerformed", "Procedures")
+            | ("ImagingStudy", "ImagingStudies")
+            | ("VitalSigns", "VitalSigns")
+    )
+}
+
 fn encrypted_route_is_valid(entry_type: &str, data_category: &str) -> bool {
     matches!(
         (entry_type, data_category),
@@ -573,12 +634,127 @@ fn encrypted_route_is_valid(entry_type: &str, data_category: &str) -> bool {
 mod tests {
     use super::*;
 
+    fn encrypted_record_fixture(
+        envelope_version: u8,
+        clinical_event_time: Option<Timestamp>,
+        encounter_hash: Option<ActionHash>,
+        entry_type: &str,
+        data_category: &str,
+    ) -> EncryptedRecord {
+        EncryptedRecord {
+            envelope_version,
+            patient_hash: ActionHash::from_raw_36(vec![1u8; 36]),
+            key_fingerprint: [1u8; 8],
+            ciphertext: vec![2u8; 16],
+            nonce: [3u8; 24],
+            data_category: data_category.to_string(),
+            entry_type: entry_type.to_string(),
+            encrypted_at: 1_000_000,
+            clinical_event_time,
+            encounter_hash,
+        }
+    }
+
     #[test]
     fn encrypted_routes_are_exact_and_fail_closed() {
         assert!(encrypted_route_is_valid("LabResult", "LabResults"));
         assert!(encrypted_route_is_valid("SdohScreening", "Demographics"));
         assert!(!encrypted_route_is_valid("LabResult", "MentalHealth"));
         assert!(!encrypted_route_is_valid("Unknown", "All"));
+    }
+
+    #[test]
+    fn legacy_encrypted_record_deserializes_without_v2_context_fields() {
+        let mut value = serde_json::to_value(EncryptedRecord {
+            envelope_version: 1,
+            patient_hash: ActionHash::from_raw_36(vec![1u8; 36]),
+            key_fingerprint: [2u8; 8],
+            ciphertext: vec![3u8; 16],
+            nonce: [4u8; 24],
+            data_category: "LabResults".to_string(),
+            entry_type: "LabResult".to_string(),
+            encrypted_at: 1_000_000,
+            clinical_event_time: None,
+            encounter_hash: None,
+        })
+        .expect("serialize v1 fixture");
+
+        let object = value.as_object_mut().expect("encrypted record JSON object");
+        object.remove("clinical_event_time");
+        object.remove("encounter_hash");
+
+        let decoded: EncryptedRecord =
+            serde_json::from_value(value).expect("deserialize historical v1 envelope");
+        assert_eq!(decoded.envelope_version, 1);
+        assert!(decoded.clinical_event_time.is_none());
+        assert!(decoded.encounter_hash.is_none());
+    }
+
+    #[test]
+    fn encrypted_record_v1_is_legacy_context_free_only() {
+        let legacy = encrypted_record_fixture(1, None, None, "LabResult", "LabResults");
+        assert!(matches!(
+            validate_encrypted_record(&legacy).expect("v1 validation"),
+            ValidateCallbackResult::Valid
+        ));
+
+        let injected = encrypted_record_fixture(
+            1,
+            Some(Timestamp::from_micros(900_000)),
+            None,
+            "LabResult",
+            "LabResults",
+        );
+        assert!(matches!(
+            validate_encrypted_record(&injected).expect("v1 metadata validation"),
+            ValidateCallbackResult::Invalid(_)
+        ));
+    }
+
+    #[test]
+    fn encrypted_record_v2_requires_supported_typed_context() {
+        let missing_time = encrypted_record_fixture(2, None, None, "LabResult", "LabResults");
+        assert!(matches!(
+            validate_encrypted_record(&missing_time).expect("missing-time validation"),
+            ValidateCallbackResult::Invalid(_)
+        ));
+
+        let unsupported_type = encrypted_record_fixture(
+            2,
+            Some(Timestamp::from_micros(900_000)),
+            None,
+            "Diagnosis",
+            "Diagnoses",
+        );
+        assert!(matches!(
+            validate_encrypted_record(&unsupported_type).expect("unsupported type validation"),
+            ValidateCallbackResult::Invalid(_)
+        ));
+
+        let procedure_without_encounter = encrypted_record_fixture(
+            2,
+            Some(Timestamp::from_micros(900_000)),
+            None,
+            "ProcedurePerformed",
+            "Procedures",
+        );
+        assert!(matches!(
+            validate_encrypted_record(&procedure_without_encounter)
+                .expect("procedure encounter validation"),
+            ValidateCallbackResult::Invalid(_)
+        ));
+
+        let valid_v2 = encrypted_record_fixture(
+            2,
+            Some(Timestamp::from_micros(900_000)),
+            Some(ActionHash::from_raw_36(vec![4u8; 36])),
+            "ProcedurePerformed",
+            "Procedures",
+        );
+        assert!(matches!(
+            validate_encrypted_record(&valid_v2).expect("valid v2 validation"),
+            ValidateCallbackResult::Valid
+        ));
     }
 
     #[cfg(not(feature = "dangerous-plaintext-phi"))]
